@@ -918,9 +918,14 @@ fun BrowserScaffold(vm: BrowserViewModel) {
 
     Column(modifier = Modifier.fillMaxSize()) {
 
-
         if (!vm.isFullscreen) {
-            TopBrowserBar(vm)
+            AnimatedVisibility(
+                visible = vm.showNavButtons,
+                enter   = slideInVertically { -it } + fadeIn(),
+                exit    = slideOutVertically { -it } + fadeOut()
+            ) {
+                TopBrowserBar(vm)
+            }
         }
 
         // ── Find In Page Bar ──────────────────────────────────────────
@@ -1575,6 +1580,18 @@ fun BrowserWebView(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
+
+                // ── Chrome-style scroll: header hide/show ──────────────────
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                    setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
+                        val delta = scrollY - oldScrollY
+                        when {
+                            scrollY <= 80 -> vm.showNavButtons = true  // top এ — সবসময় দেখাও
+                            delta > 8     -> vm.showNavButtons = false // নিচে scroll — লুকাও
+                            delta < -8    -> vm.showNavButtons = true  // উপরে scroll — দেখাও
+                        }
+                    }
+                }
 
                 // ── Hardware Acceleration ──────────────────────────────────
                 setLayerType(View.LAYER_TYPE_HARDWARE, null)

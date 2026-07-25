@@ -919,9 +919,14 @@ fun BrowserScaffold(vm: BrowserViewModel) {
 
     Column(modifier = Modifier.fillMaxSize()) {
 
-
         if (!vm.isFullscreen) {
-            TopBrowserBar(vm)
+            AnimatedVisibility(
+                visible = vm.showNavButtons,
+                enter   = slideInVertically { -it } + fadeIn(),
+                exit    = slideOutVertically { -it } + fadeOut()
+            ) {
+                TopBrowserBar(vm)
+            }
         }
 
         // ── Find In Page Bar ──────────────────────────────────────────
@@ -1053,10 +1058,6 @@ fun BrowserScaffold(vm: BrowserViewModel) {
         DownloadPanel(vm = vm, onDismiss = { vm.showDownloads = false })
     }
 
-        // ── Bottom Navigation Bar (Chrome-style) ──────────────────────────
-        if (!vm.isFullscreen) {
-            BottomNavigationBar(vm)
-        }
     }
 }
 
