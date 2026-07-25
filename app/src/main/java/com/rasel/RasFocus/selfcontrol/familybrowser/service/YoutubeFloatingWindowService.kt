@@ -654,13 +654,21 @@ class YoutubeFloatingWindowService : Service() {
         val screenW = dm.widthPixels
         val screenH = dm.heightPixels
 
-        // Mini player size: 240×135 dp (16:9 ratio, corner তে বসার মতো)
+        // Mini player final size: 240×135 dp (16:9 ratio, corner তে বসার মতো)
         val miniW = dp(240)
         val miniH = dp(135)
 
+        // ★ Native YouTube animation:
+        // শুরুতে full-screen size এ শুরু করো, তারপর corner এ shrink করো।
+        // এটাই native YouTube এর "pinch to corner" effect।
+        val startW = screenW
+        val startH = (screenW * 9f / 16f).toInt()  // 16:9 full-width
+        val startX = 0
+        val startY = miniPosY - (startH - miniH) / 2  // center vertically
+
         val params = WindowManager.LayoutParams(
-            miniW, miniH,
-            miniPosX, miniPosY,
+            startW, startH,  // শুরুতে বড়
+            startX, startY.coerceAtLeast(0),
             overlayWindowType(),
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
@@ -684,11 +692,23 @@ class YoutubeFloatingWindowService : Service() {
         // ── WebView (video area) ──────────────────────────────────────────────
         val wv = getOrBuildWebView()
         webView = wv
+
+        // ★ FIX: Mini player এ video black হওয়া রোধ করো।
+        // WebView কে overlay window এ attach করার আগে LAYER_TYPE_NONE নিশ্চিত করো।
+        // LAYER_TYPE_HARDWARE floating overlay এ video compositor কে block করে।
+        wv.setLayerType(android.view.View.LAYER_TYPE_NONE, null)
+
         (wv.parent as? ViewGroup)?.removeView(wv)
         root.addView(wv, android.widget.FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
         ))
+
+        // ★ FIX: Audio — window এ attach এর পরে 200ms দেরিতে force inject।
+        // WebView re-parenting এর পরে YouTube নিজে থেকে pause করে দেয়।
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            injectStrongAudioKeepAlive(wv)
+        }, 200L)
 
         // ── Overlay controls (video এর উপরে) ────────────────────────────────
         val overlay = android.widget.FrameLayout(this)
@@ -783,9 +803,36 @@ class YoutubeFloatingWindowService : Service() {
             // Overlay permission নেই — teardown
             tearDown()
             stopSelf()
+            return
         }
 
         updateNotification("▶ $currentTitle")
+
+        // ★ Native YouTube এর মতো shrink + slide-to-corner animation
+        // Full-screen → corner এ ছোট হয়ে যাওয়ার smooth animation।
+        // ValueAnimator দিয়ে 320ms এ window size ও position interpolate করো।
+        val finalX = miniPosX
+        val finalY = miniPosY
+        val finalW = miniW
+        val finalH = miniH
+
+        val animator = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration    = 320L
+            interpolator = android.view.animation.DecelerateInterpolator(1.8f)
+            addUpdateListener { anim ->
+                val t = anim.animatedValue as Float
+                // Linear interpolation: start → final
+                params.width  = (startW  + (finalW - startW)  * t).toInt()
+                params.height = (startH  + (finalH - startH)  * t).toInt()
+                params.x      = (startX  + (finalX - startX)  * t).toInt()
+                params.y      = ((startY.coerceAtLeast(0)) + (finalY - startY.coerceAtLeast(0)) * t).toInt()
+                runCatching { windowManager.updateViewLayout(miniWindow, params) }
+            }
+        }
+        // Main thread এ run করো — Looper দরকার
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            animator.start()
+        }
     }
 
     /**
@@ -1094,13 +1141,100 @@ class YoutubeFloatingWindowService : Service() {
         if (pending != null) {
             pendingWebView = null
             (pending.parent as? ViewGroup)?.removeView(pending)
+
+            // ★ FIX: Mini player এ video black হওয়ার মূল কারণ হল WebView কে
+            // floating overlay window এ attach করার সময় SurfaceView / TextureView
+            // based video compositor হারিয়ে ফেলে। LAYER_TYPE_HARDWARE floating window
+            // এ conflict করে। এখানে force করে LAYER_TYPE_NONE দিলে WebView নিজেই
+            // সঠিক compositing বেছে নেয় এবং video frame দেখা যায়।
+            pending.setLayerType(android.view.View.LAYER_TYPE_NONE, null)
+
             injectVisibilitySpoof(pending)
+
+            // ★ FIX: Audio — WebView parent change এর পরে YouTube নিজে থেকে
+            // pause করে ফেলতে পারে। pause() interceptor আবার inject করো।
+            injectStrongAudioKeepAlive(pending)
+
             return pending
         }
 
         return buildYoutubeWebView().also {
             it.loadUrl(normalizeYoutubeUrl(currentUrl))
         }
+    }
+
+    /**
+     * ★ নতুন: Strong Audio Keep-Alive Injector
+     * Mini player এ WebView re-parent হওয়ার পরে YouTube pause করে দেয়।
+     * এই JS: pause() override করে, visibility spoof করে, 500ms এ একবার
+     * video play() force করে — audio যাতে নিশ্চিতভাবে চলে।
+     */
+    private fun injectStrongAudioKeepAlive(view: WebView) {
+        view.evaluateJavascript("""
+            (function() {
+                // Visibility fully spoof — YouTube ভাবুক page সবসময় visible
+                try {
+                    Object.defineProperty(document, 'hidden',
+                        { get: function(){ return false; }, configurable: true });
+                    Object.defineProperty(document, 'visibilityState',
+                        { get: function(){ return 'visible'; }, configurable: true });
+                    Object.defineProperty(document, 'webkitHidden',
+                        { get: function(){ return false; }, configurable: true });
+                    Object.defineProperty(document, 'webkitVisibilityState',
+                        { get: function(){ return 'visible'; }, configurable: true });
+                } catch(e) {}
+
+                // pause() ব্লক করো — YouTube যখনই pause করতে চাইবে, আমরা আটকাবো
+                try {
+                    var _origPause = HTMLMediaElement.prototype.pause;
+                    HTMLMediaElement.prototype.pause = function() {
+                        // শুধু user-intent pause allow করো না — সব system/visibility pause block
+                        // (user notification থেকে pause করলে এটা mediasession callback দিয়ে আসে, এখানে না)
+                        return;
+                    };
+                } catch(e) {}
+
+                // dispatchEvent visibilitychange block করো
+                try {
+                    var _origDispatch = document.dispatchEvent.bind(document);
+                    document.dispatchEvent = function(event) {
+                        if (event && event.type &&
+                            (event.type === 'visibilitychange' ||
+                             event.type === 'webkitvisibilitychange')) return true;
+                        return _origDispatch(event);
+                    };
+                } catch(e) {}
+
+                // একবার force play করো (500ms delay — YouTube JS settle হওয়ার পরে)
+                setTimeout(function() {
+                    try {
+                        var videos = document.querySelectorAll('video');
+                        for (var i = 0; i < videos.length; i++) {
+                            try {
+                                videos[i].muted = false;
+                                if (videos[i].paused && !videos[i].ended) {
+                                    videos[i].play().catch(function(){});
+                                }
+                            } catch(e) {}
+                        }
+                    } catch(e) {}
+                }, 500);
+
+                // 1.5s পরে আবার — কিছু device এ একটু দেরিতে YouTube pause inject করে
+                setTimeout(function() {
+                    try {
+                        var videos = document.querySelectorAll('video');
+                        for (var i = 0; i < videos.length; i++) {
+                            try {
+                                if (videos[i].paused && !videos[i].ended) {
+                                    videos[i].play().catch(function(){});
+                                }
+                            } catch(e) {}
+                        }
+                    } catch(e) {}
+                }, 1500);
+            })();
+        """.trimIndent(), null)
     }
 
     @SuppressLint("SetJavaScriptEnabled")

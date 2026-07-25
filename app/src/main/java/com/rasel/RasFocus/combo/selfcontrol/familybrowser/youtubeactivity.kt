@@ -684,19 +684,119 @@ class YoutubeActivity : ComponentActivity() {
 
         injectVisibilitySpoofBeforeLeave(wv)
 
-        // ── Step 1: Video WebView → mini player service ────────────────────
-        com.rasel.RasFocus.combo.selfcontrol.familybrowser.service.YoutubeFloatingWindowService.pendingWebView = wv
-        com.rasel.RasFocus.combo.selfcontrol.familybrowser.service.YoutubeFloatingWindowService.launchMiniPlayer(
-            this, currentUrl, currentTitle
-        )
-
-        webView = null
-        isMiniPlayerActive = true
-
-        // ── Step 2: Activity তে YouTube home page দেখাও (moveTaskToBack নেই) ──
-        // homeWebView আগে থেকে থাকলে reuse, না থাকলে নতুন বানাও
         val frame = rootFrameRef ?: return
-        startBgAudioService()
+
+        // ★ Native YouTube animation: Activity এর ভেতরেই WebView কে
+        // ধীরে ধীরে corner এ shrink করে দেখাও, তারপর service launch করো।
+        // এতে user দেখবে video টা "সংকুচিত হয়ে" corner এ চলে যাচ্ছে —
+        // ঠিক native YouTube এর মতো।
+        animateMiniPlayerLaunch(wv, frame) {
+            // Animation শেষে service এ পাঠাও
+            injectVisibilitySpoofBeforeLeave(wv)
+
+            // ── Step 1: Video WebView → mini player service ─────────────────
+            com.rasel.RasFocus.combo.selfcontrol.familybrowser.service.YoutubeFloatingWindowService.pendingWebView = wv
+            com.rasel.RasFocus.combo.selfcontrol.familybrowser.service.YoutubeFloatingWindowService.launchMiniPlayer(
+                this, currentUrl, currentTitle
+            )
+
+            webView = null
+            isMiniPlayerActive = true
+            startBgAudioService()
+
+            // ── Step 2: Home page দেখাও ────────────────────────────────────
+            showHomeWebView(frame)
+        }
+    }
+
+    /**
+     * ★ Native YouTube "shrink to corner" animation।
+     * WebView কে Activity এর ভেতরেই animate করো:
+     * Full-screen → bottom-right corner এ ছোট করো।
+     * Animation শেষে onComplete() callback call হয়।
+     */
+    private fun animateMiniPlayerLaunch(wv: WebView, frame: FrameLayout, onComplete: () -> Unit) {
+        val dm      = resources.displayMetrics
+        val screenW = dm.widthPixels
+        val screenH = dm.heightPixels
+
+        // Target size: 240×135dp (16:9 ratio) — service mini player এর same size
+        val targetW = (240 * dm.density).toInt()
+        val targetH = (135 * dm.density).toInt()
+
+        // শুরুতে WebView full-screen — frame এ already আছে
+        // FrameLayout.LayoutParams দিয়ে size ও position animate করবো
+
+        // Home WebView আগে load করতে শুরু করো (background এ)
+        val hWv = homeWebView ?: buildHomeWebView().also { homeWebView = it }
+        if (hWv.url == null || hWv.url == "about:blank") {
+            hWv.loadUrl("https://m.youtube.com/")
+        }
+        // Home WebView পিছনে রাখো (এখনো invisible)
+        (hWv.parent as? ViewGroup)?.removeView(hWv)
+        hWv.layoutParams = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        )
+        hWv.visibility = View.VISIBLE
+        hWv.alpha = 0f  // এখনো দেখা যাবে না
+        frame.addView(hWv, 0)  // WebView এর নিচে
+
+        // WebView কে absolute positioning এর মতো animate করার জন্য
+        // translationX/Y + scaleX/Y ব্যবহার করো
+        val startScaleX = 1f
+        val startScaleY = 1f
+        val targetScaleX = targetW.toFloat() / screenW.toFloat()
+        val targetScaleY = targetH.toFloat() / screenH.toFloat()
+
+        // ★ Pivot: bottom-right corner তে anchor করো।
+        // এতে scale করলে video bottom-right corner এ "সংকুচিত হয়" —
+        // ঠিক native YouTube এর মতো।
+        wv.pivotX = screenW.toFloat()
+        wv.pivotY = screenH.toFloat()
+
+        val animator = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration     = 350L
+            interpolator = android.view.animation.DecelerateInterpolator(2f)
+
+            addUpdateListener { anim ->
+                val t = anim.animatedValue as Float
+                val scaleX = startScaleX + (targetScaleX - startScaleX) * t
+                val scaleY = startScaleY + (targetScaleY - startScaleY) * t
+                wv.scaleX = scaleX
+                wv.scaleY = scaleY
+
+                // Home WebView ধীরে ধীরে fade in করো (animation এর শেষ ৪০% এ)
+                val fadeT = ((t - 0.6f) / 0.4f).coerceIn(0f, 1f)
+                hWv.alpha = fadeT
+            }
+
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    // Animation শেষ — cleanup করো
+                    wv.scaleX = 1f
+                    wv.scaleY = 1f
+                    wv.pivotX = wv.width / 2f
+                    wv.pivotY = wv.height / 2f
+
+                    // WebView frame থেকে সরাও
+                    (wv.parent as? ViewGroup)?.removeView(wv)
+
+                    // Home WebView fully visible করো
+                    hWv.alpha = 1f
+                    hWv.bringToFront()
+
+                    onComplete()
+                }
+            })
+        }
+        animator.start()
+    }
+
+    /**
+     * ★ Helper: Home WebView frame এ দেখাও (animation ছাড়া direct call এর জন্য)
+     */
+    private fun showHomeWebView(frame: FrameLayout) {
 
         runOnUiThread {
             // ── Home WebView build/reuse ────────────────────────────────────
