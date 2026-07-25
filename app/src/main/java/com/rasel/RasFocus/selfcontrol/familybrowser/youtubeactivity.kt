@@ -29,6 +29,15 @@ import java.io.ByteArrayInputStream
 class YoutubeActivity : ComponentActivity() {
 
     private var webView: WebView? = null
+
+    // ★ Mini Player Home WebView: back press বা swipe down এ video mini player এ গেলে
+    // Activity টা বন্ধ হয় না — এই WebView YouTube home page দেখায় (footer সহ)।
+    // Mini player tap করলে এটা লুকিয়ে video WebView ফিরে আসে।
+    private var homeWebView: WebView? = null
+
+    // rootFrame reference — mini player mode এ home WebView attach/detach করতে
+    private var rootFrameRef: FrameLayout? = null
+
     // Feed/search এ visible content (thumbnails, titles, alt-text) scan করে
     // adult content ধরার জন্য — AdBlocker.kt এর existing multi-layer scanner
     private val adBlocker by lazy { com.rasel.RasFocus.selfcontrol.familybrowser.AdBlocker(this) }
@@ -258,6 +267,7 @@ class YoutubeActivity : ComponentActivity() {
             }
         }
         setContentView(rootFrame)
+        rootFrameRef = rootFrame  // mini player home WebView এর জন্য
 
         // ★ Swipe down gesture → mini player
         // Video দেখার সময় নিচে swipe করলে corner mini player হবে
@@ -568,23 +578,40 @@ class YoutubeActivity : ComponentActivity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        // ★ CASE 1: Home WebView দেখাচ্ছে (mini player active, video corner এ চলছে)
+        // Back press → video mini player বন্ধ করে activity finish
+        if (isMiniPlayerActive) {
+            val hWv = homeWebView
+            if (hWv != null && hWv.visibility == View.VISIBLE) {
+                if (hWv.canGoBack()) {
+                    hWv.goBack()
+                    return
+                }
+                // Home এ আর back নেই → service বন্ধ করো + activity close
+                returnFromMiniPlayer(null)
+                // ছোট delay দিয়ে finish — WebView re-attach এর সময় দিতে
+                rootFrameRef?.postDelayed({
+                    stopFloatingAndDestroy()
+                }, 100)
+                return
+            }
+            stopFloatingAndDestroy()
+            return
+        }
+
+        // ★ CASE 2: Normal video WebView — canGoBack আছে?
         val wv = webView
         if (wv != null && wv.canGoBack()) {
             wv.goBack()
             return
         }
-        if (isMiniPlayerActive) {
-            stopFloatingAndDestroy()
-            return
-        }
+
         if (wv == null) {
             super.onBackPressed()
             return
         }
 
-        // ★ Back button চাপলে video চলছে কিনা check করো।
-        // চলছে → Mini Player mode এ পাঠাও (native YouTube এর মতো corner mini player)।
-        // চলছে না → normally close।
+        // ★ CASE 3: Video চলছে কিনা check — চলছে → mini player
         wv.evaluateJavascript("""
             (function() {
                 try {
@@ -597,8 +624,8 @@ class YoutubeActivity : ComponentActivity() {
             })();
         """.trimIndent()) { result ->
             if (result?.contains("not_playing") != true) {
-                // Video চলছে → mini player (corner floating)
-                launchMiniPlayer(wv)
+                // Video চলছে → mini player (corner floating) + home page দেখাও
+                runOnUiThread { launchMiniPlayer(wv) }
             } else {
                 runOnUiThread { @Suppress("DEPRECATION") super.onBackPressed() }
             }
@@ -606,10 +633,15 @@ class YoutubeActivity : ComponentActivity() {
     }
 
     /**
-     * ★ নতুন: Back button চাপলে corner mini player launch।
-     * Native YouTube এর মতো — video corner এ ছোট হয়ে চলতে থাকে,
-     * user home page দেখতে পায় footer সহ।
+     * ★ Mini Player Launch — Native YouTube এর মতো behavior।
+     *
+     * Back press বা swipe down এ:
+     * 1. Video WebView → floating mini player service এ যায় (corner এ চলে)
+     * 2. Activity বন্ধ হয় না → YouTube home page দেখায় নতুন homeWebView দিয়ে
+     * 3. Home WebView এ footer আছে (Home / Shorts / Account)
+     * 4. Mini player tap করলে homeWebView লুকিয়ে video WebView ফিরে আসে
      */
+    @android.annotation.SuppressLint("SetJavaScriptEnabled")
     private fun launchMiniPlayer(wv: WebView) {
         val hasOverlay = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M)
             android.provider.Settings.canDrawOverlays(this)
@@ -626,7 +658,7 @@ class YoutubeActivity : ComponentActivity() {
 
         injectVisibilitySpoofBeforeLeave(wv)
 
-        // WebView service এ দাও
+        // ── Step 1: Video WebView → mini player service ────────────────────
         com.rasel.RasFocus.selfcontrol.familybrowser.service.YoutubeFloatingWindowService.pendingWebView = wv
         com.rasel.RasFocus.selfcontrol.familybrowser.service.YoutubeFloatingWindowService.launchMiniPlayer(
             this, currentUrl, currentTitle
@@ -635,10 +667,215 @@ class YoutubeActivity : ComponentActivity() {
         webView = null
         isMiniPlayerActive = true
 
-        // Activity background এ পাঠাও → home page দেখা যাবে
-        moveTaskToBack(true)
-
+        // ── Step 2: Activity তে YouTube home page দেখাও (moveTaskToBack নেই) ──
+        // homeWebView আগে থেকে থাকলে reuse, না থাকলে নতুন বানাও
+        val frame = rootFrameRef ?: return
         startBgAudioService()
+
+        runOnUiThread {
+            // ── Home WebView build/reuse ────────────────────────────────────
+            val hWv = homeWebView ?: buildHomeWebView().also { homeWebView = it }
+
+            // পুরনো parent থেকে সরাও
+            (hWv.parent as? ViewGroup)?.removeView(hWv)
+
+            hWv.layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            hWv.visibility = View.VISIBLE
+            hWv.alpha = 1f
+            frame.addView(hWv)
+            hWv.bringToFront()
+
+            // এখনও home এ না থাকলে load করো
+            val homeUrl = "https://m.youtube.com/"
+            val existingUrl = hWv.url
+            if (existingUrl == null || existingUrl == "about:blank") {
+                hWv.loadUrl(homeUrl)
+            }
+        }
+    }
+
+    /**
+     * ★ Home WebView builder — YouTube home page with native footer।
+     * Full ad-blocking + adult content blocking সহ।
+     * Video play করলে → mini player এ পাঠায়, home দেখায়।
+     */
+    @android.annotation.SuppressLint("SetJavaScriptEnabled")
+    private fun buildHomeWebView(): WebView {
+        return object : WebView(this) {
+            override fun onPause() { /* suppress */ }
+            override fun pauseTimers() { /* suppress */ }
+            override fun onResume() { super.onResume() }
+        }.apply {
+            if (android.os.Build.VERSION.SDK_INT <= android.os.Build.VERSION_CODES.Q) {
+                setLayerType(View.LAYER_TYPE_HARDWARE, null)
+            } else {
+                setLayerType(View.LAYER_TYPE_NONE, null)
+            }
+            setBackgroundColor(android.graphics.Color.BLACK)
+
+            settings.apply {
+                javaScriptEnabled                = true
+                domStorageEnabled                = true
+                databaseEnabled                  = true
+                loadWithOverviewMode             = true
+                useWideViewPort                  = true
+                mediaPlaybackRequiresUserGesture = false
+                allowFileAccess                  = true
+                allowContentAccess               = true
+                loadsImagesAutomatically         = true
+                mixedContentMode                 = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                cacheMode                        = WebSettings.LOAD_DEFAULT
+                userAgentString                  = YT_USER_AGENT
+            }
+
+            val cookieManager = CookieManager.getInstance()
+            cookieManager.setAcceptCookie(true)
+            cookieManager.setAcceptThirdPartyCookies(this, true)
+
+            webViewClient = object : WebViewClient() {
+                override fun shouldInterceptRequest(
+                    view: WebView,
+                    request: android.webkit.WebResourceRequest
+                ): android.webkit.WebResourceResponse? {
+                    val url  = request.url.toString()
+                    val host = request.url?.host?.lowercase() ?: ""
+                    // Adult block
+                    if (AdBlocker.isAdultSite(url) ||
+                        com.rasel.RasFocus.selfcontrol.FirebaseKeywordSync.containsAdultKeyword(url)) {
+                        if (request.isForMainFrame) {
+                            val html = AdBlocker.buildBlockedPage(url, BlockReason.ADULT)
+                            return android.webkit.WebResourceResponse("text/html", "UTF-8", html.byteInputStream())
+                        }
+                        return android.webkit.WebResourceResponse("text/plain", "UTF-8", java.io.ByteArrayInputStream(ByteArray(0)))
+                    }
+                    // Basic ad block
+                    if (AD_SERVERS.any { host == it || host.endsWith(".$it") }) {
+                        return android.webkit.WebResourceResponse("text/plain", "UTF-8", java.io.ByteArrayInputStream(ByteArray(0)))
+                    }
+                    return super.shouldInterceptRequest(view, request)
+                }
+
+                override fun onPageFinished(view: WebView, url: String) {
+                    super.onPageFinished(view, url)
+                    injectVisibilitySpoof(view)
+                    injectRemoveOpenInAppButton(view)
+                    // Home page এ footer inject করো (YouTube native এর মতো)
+                    injectHomeFooterEnhancement(view)
+                }
+
+                override fun shouldOverrideUrlLoading(
+                    view: WebView,
+                    request: android.webkit.WebResourceRequest
+                ): Boolean {
+                    val url = request.url.toString()
+                    // Watch page → main webView এ open করো (mini player dismiss)
+                    if (url.contains("youtube.com/watch") || url.contains("youtu.be/")) {
+                        returnFromMiniPlayer(url)
+                        return true
+                    }
+                    if (url.startsWith("intent://") || url.startsWith("youtube://")) return true
+                    if (!url.startsWith("http://") && !url.startsWith("https://")) return true
+                    return false
+                }
+            }
+
+            webChromeClient = object : WebChromeClient() {
+                override fun onShowCustomView(view: View, callback: CustomViewCallback) {
+                    // Home WebView এ fullscreen চাওয়া → mini player dismiss করে main এ যাও
+                }
+                override fun onHideCustomView() {}
+            }
+        }
+    }
+
+    /**
+     * ★ Home WebView এ YouTube native footer ঠিকমতো দেখানোর জন্য JS inject।
+     * YouTube mobile এ footer bar (Home/Shorts/Account) native এ আছে — এটা
+     * শুধু ensure করে যে সেটা দৃশ্যমান এবং সঠিকভাবে কাজ করছে।
+     */
+    private fun injectHomeFooterEnhancement(view: WebView) {
+        view.evaluateJavascript("""
+            (function() {
+                if (window.__rasHomeEnhanced__) return;
+                window.__rasHomeEnhanced__ = true;
+                
+                // YouTube mobile footer navigation bar ensure visible
+                function ensureFooter() {
+                    try {
+                        // YouTube mobile এর bottom nav bar
+                        var navBar = document.querySelector(
+                            'ytm-pivot-bar-renderer, ' +
+                            '.pivot-bar, ' +
+                            '[id="tabsContent"], ' +
+                            'ytm-mobile-topbar-renderer'
+                        );
+                        if (navBar) {
+                            navBar.style.display = '';
+                            navBar.style.visibility = 'visible';
+                            navBar.style.opacity = '1';
+                        }
+                        // Bottom nav items (Home, Shorts, Subscriptions, Account)
+                        document.querySelectorAll('ytm-pivot-bar-item-renderer').forEach(function(item) {
+                            item.style.display = '';
+                        });
+                    } catch(e) {}
+                }
+                
+                ensureFooter();
+                // YouTube SPA navigation এ পরেও ensure করো
+                var observer = new MutationObserver(function() { ensureFooter(); });
+                observer.observe(document.documentElement, { childList: true, subtree: true });
+            })();
+        """.trimIndent(), null)
+    }
+
+    /**
+     * ★ Home WebView এ video link click করলে — mini player dismiss, main WebView এ open।
+     * Service বন্ধ → pendingWebView থেকে video WebView নিয়ে re-attach → নতুন URL load।
+     */
+    private fun returnFromMiniPlayer(videoUrl: String? = null) {
+        if (!isMiniPlayerActive) return
+        isMiniPlayerActive = false
+        stopBgAudioService()
+
+        // Floating service বন্ধ করো
+        try {
+            stopService(Intent(
+                this,
+                com.rasel.RasFocus.selfcontrol.familybrowser.service.YoutubeFloatingWindowService::class.java
+            ))
+        } catch (_: Exception) {}
+
+        val frame = rootFrameRef ?: return
+
+        // Home WebView লুকাও
+        homeWebView?.visibility = View.GONE
+
+        // Video WebView re-attach
+        fun reattach(wv: WebView) {
+            reattachWebView(wv, frame)
+            // নতুন URL থাকলে সেটা load করো
+            if (videoUrl != null) {
+                wv.postDelayed({
+                    wv.loadUrl(buildYoutubeSafeSearchUrl(videoUrl) ?: videoUrl)
+                }, 300)
+            }
+        }
+
+        val immediateWv = com.rasel.RasFocus.selfcontrol.familybrowser.service.YoutubeFloatingWindowService.pendingWebView
+        if (immediateWv != null) {
+            reattach(immediateWv)
+        } else {
+            frame.postDelayed({
+                val pendingWv = com.rasel.RasFocus.selfcontrol.familybrowser.service.YoutubeFloatingWindowService.pendingWebView
+                if (pendingWv != null) {
+                    reattach(pendingWv)
+                }
+            }, 200)
+        }
     }
 
     /**
@@ -787,44 +1024,16 @@ class YoutubeActivity : ComponentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         if (isMiniPlayerActive) {
-            // ★ FIX: Mini Player tap → Activity resume flow
-            // isMiniPlayerActive = true মানে WebView এখন floating service এ আছে
-            // Service বন্ধ করলে onDestroy() এ WebView pendingWebView এ রাখবে
-            isMiniPlayerActive = false
-            stopBgAudioService()
-
-            // Floating service বন্ধ করো — onDestroy() এ pendingWebView set হবে
-            try {
-                stopService(Intent(
-                    this,
-                    com.rasel.RasFocus.selfcontrol.familybrowser.service.YoutubeFloatingWindowService::class.java
-                ))
-            } catch (_: Exception) {}
-
-            if (webView == null) {
-                // ★ FIX: Service synchronous হয় না, তাই postDelayed দিয়ে WebView নাও
-                // pendingWebView set হতে সামান্য সময় লাগে
-                val rootFrame = getRootFrame()
-
-                // প্রথমে immediately চেষ্টা করো
-                val immediateWv = com.rasel.RasFocus.selfcontrol.familybrowser.service.YoutubeFloatingWindowService.pendingWebView
-                if (immediateWv != null) {
-                    reattachWebView(immediateWv, rootFrame)
-                } else {
-                    // Fallback: একটু অপেক্ষা করো — service onDestroy() সময় নিচ্ছে
-                    rootFrame?.postDelayed({
-                        val pendingWv = com.rasel.RasFocus.selfcontrol.familybrowser.service.YoutubeFloatingWindowService.pendingWebView
-                        if (pendingWv != null) {
-                            reattachWebView(pendingWv, rootFrame)
-                        }
-                        // পুরোপুরি fail হলে: নতুন করে YouTube load করো (worst case)
-                    }, 200)
-                }
-            }
+            // ★ Mini Player tap → Activity resume flow
+            // Service বন্ধ করো → onDestroy() এ WebView pendingWebView এ যাবে
+            returnFromMiniPlayer(videoUrl = null)
             return
         }
 
-        // Normal resume (floating ছাড়া)
+        // Normal resume (mini player নেই)
+        // homeWebView লুকাও যদি কোনো কারণে দৃশ্যমান থাকে
+        homeWebView?.visibility = View.GONE
+
         webView?.resumeTimers()
         webView?.onResume()
         webView?.apply {
@@ -853,6 +1062,9 @@ class YoutubeActivity : ComponentActivity() {
 
         // পুরনো parent থেকে সরাও
         (returnedWv.parent as? ViewGroup)?.removeView(returnedWv)
+
+        // ★ Home WebView লুকাও — video ফিরে আসছে
+        homeWebView?.visibility = View.GONE
 
         if (rootFrame != null) {
             returnedWv.layoutParams = FrameLayout.LayoutParams(
@@ -970,6 +1182,13 @@ class YoutubeActivity : ComponentActivity() {
             webView?.destroy()
             webView = null
         }
+        // ★ Home WebView cleanup
+        try {
+            homeWebView?.stopLoading()
+            homeWebView?.destroy()
+            homeWebView = null
+        } catch (_: Exception) {}
+        rootFrameRef = null
         super.onDestroy()
     }
 
