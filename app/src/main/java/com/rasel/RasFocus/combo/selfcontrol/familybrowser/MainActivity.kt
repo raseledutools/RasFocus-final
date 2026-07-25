@@ -1208,7 +1208,7 @@ fun TopBrowserBar(vm: BrowserViewModel) {
                     }
                 }
 
-                // ── Cancel / Tab count + Menu ──────────────────────────────
+                // ── Cancel / Tab count + Float ────────────────────────────
                 if (vm.isAddressBarFocused) {
                     TextButton(
                         onClick        = { keyboardCtrl?.hide(); focusMgr.clearFocus(); vm.onAddressBarDismissed() },
@@ -1217,81 +1217,7 @@ fun TopBrowserBar(vm: BrowserViewModel) {
                         Text("Cancel", fontSize = 13.sp, color = FxPurple)
                     }
                 } else {
-                    // ── Float-to-window icon ───────────────────────────────
-                    // Click করলে active tab টি floating window এ যাবে।
-                    // YouTube হলে reload ছাড়াই YoutubeFloatingWindowService দিয়ে,
-                    // অন্য যেকোনো tab হলে FloatingWindowService দিয়ে।
-                    IconButton(
-                        onClick = {
-                            val activeUrl   = vm.currentUrl
-                            val activeTitle = vm.pageTitle
-                            val isYouTube   = activeUrl.contains("youtube.com") ||
-                                              activeUrl.contains("youtu.be")
-                            val hasOverlay  = activity?.hasOverlayPermission() ?: false
-
-                            if (!hasOverlay) {
-                                activity?.requestOverlayPermission()
-                                return@IconButton
-                            }
-
-                            if (isYouTube) {
-                                // visibility spoof — pause না হোক
-                                vm.activeWebView?.evaluateJavascript("""
-                                    (function() {
-                                        try {
-                                            Object.defineProperty(document, 'hidden', { get: function(){ return false; }, configurable: true });
-                                            Object.defineProperty(document, 'visibilityState', { get: function(){ return 'visible'; }, configurable: true });
-                                            Object.defineProperty(document, 'webkitHidden', { get: function(){ return false; }, configurable: true });
-                                            Object.defineProperty(document, 'webkitVisibilityState', { get: function(){ return 'visible'; }, configurable: true });
-                                        } catch(e) {}
-                                    })();
-                                """.trimIndent(), null)
-                                // actual WebView pass করো → service reload করবে না
-                                vm.activeWebView?.let {
-                                    com.rasel.RasFocus.selfcontrol.familybrowser.service.YoutubeFloatingWindowService
-                                        .pendingWebView = it
-                                }
-                                com.rasel.RasFocus.selfcontrol.familybrowser.service.YoutubeFloatingWindowService
-                                    .launchNoReload(context, activeUrl, activeTitle.ifEmpty { "YouTube" })
-                                // FIX: WebView টা floating window এ চলে গেছে —
-                                // browser এ এই tab এর জায়গায় placeholder inject করো
-                                // নাহলে screen সম্পূর্ণ সাদা হয়ে যায়।
-                                vm.activeWebView?.loadDataWithBaseURL(null, """
-                                    <!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
-                                    <style>
-                                        body{margin:0;background:#0f0f0f;display:flex;flex-direction:column;
-                                             align-items:center;justify-content:center;height:100vh;
-                                             font-family:-apple-system,sans-serif;color:#aaa;text-align:center;gap:16px;}
-                                        .icon{font-size:64px;opacity:.6;}
-                                        .title{font-size:18px;font-weight:600;color:#fff;}
-                                        .sub{font-size:14px;color:#888;max-width:260px;line-height:1.5;}
-                                    </style></head><body>
-                                    <div class="icon">▶️</div>
-                                    <div class="title">Playing in floating window</div>
-                                    <div class="sub">YouTube is running in the floating player.<br>Tap the floating window to return.</div>
-                                    </body></html>
-                                """.trimIndent(), "text/html", "UTF-8", null)
-                            } else {
-                                // non-YouTube tab → FloatingWindowService
-                                val activeTab = vm.tabManager.activeTab
-                                if (activeTab != null) {
-                                    com.rasel.RasFocus.selfcontrol.familybrowser.service.FloatingWindowService.launch(
-                                        context, activeTab.url, activeTab.title.ifEmpty { "Tab" }
-                                    )
-                                }
-                            }
-                        },
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.OpenInNew,
-                            contentDescription = "Float tab",
-                            modifier = Modifier.size(18.dp),
-                            tint = Color.White.copy(0.75f)
-                        )
-                    }
-
-                    // Tab count box — Firefox style
+                    // ── Tab count box ──────────────────────────────────────
                     Box(
                         modifier = Modifier
                             .size(32.dp)
@@ -1311,11 +1237,70 @@ fun TopBrowserBar(vm: BrowserViewModel) {
                             color      = Color.White
                         )
                     }
-                    // Menu (3-dot)
-                    IconButton(onClick = { vm.showMenu = !vm.showMenu }, modifier = Modifier.size(36.dp)) {
-                        Icon(Icons.Default.MoreVert, null,
-                            modifier = Modifier.size(20.dp),
-                            tint = Color.White)
+
+                    // ── Float-to-window button (Tab count এর পাশে) ────────
+                    IconButton(
+                        onClick = {
+                            val activeUrl   = vm.currentUrl
+                            val activeTitle = vm.pageTitle
+                            val isYouTube   = activeUrl.contains("youtube.com") ||
+                                              activeUrl.contains("youtu.be")
+                            val hasOverlay  = activity?.hasOverlayPermission() ?: false
+
+                            if (!hasOverlay) {
+                                activity?.requestOverlayPermission()
+                                return@IconButton
+                            }
+
+                            if (isYouTube) {
+                                vm.activeWebView?.evaluateJavascript("""
+                                    (function() {
+                                        try {
+                                            Object.defineProperty(document, 'hidden', { get: function(){ return false; }, configurable: true });
+                                            Object.defineProperty(document, 'visibilityState', { get: function(){ return 'visible'; }, configurable: true });
+                                            Object.defineProperty(document, 'webkitHidden', { get: function(){ return false; }, configurable: true });
+                                            Object.defineProperty(document, 'webkitVisibilityState', { get: function(){ return 'visible'; }, configurable: true });
+                                        } catch(e) {}
+                                    })();
+                                """.trimIndent(), null)
+                                vm.activeWebView?.let {
+                                    com.rasel.RasFocus.selfcontrol.familybrowser.service.YoutubeFloatingWindowService
+                                        .pendingWebView = it
+                                }
+                                com.rasel.RasFocus.selfcontrol.familybrowser.service.YoutubeFloatingWindowService
+                                    .launchNoReload(context, activeUrl, activeTitle.ifEmpty { "YouTube" })
+                                vm.activeWebView?.loadDataWithBaseURL(null, """
+                                    <!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+                                    <style>
+                                        body{margin:0;background:#0f0f0f;display:flex;flex-direction:column;
+                                             align-items:center;justify-content:center;height:100vh;
+                                             font-family:-apple-system,sans-serif;color:#aaa;text-align:center;gap:16px;}
+                                        .icon{font-size:64px;opacity:.6;}
+                                        .title{font-size:18px;font-weight:600;color:#fff;}
+                                        .sub{font-size:14px;color:#888;max-width:260px;line-height:1.5;}
+                                    </style></head><body>
+                                    <div class="icon">▶️</div>
+                                    <div class="title">Playing in floating window</div>
+                                    <div class="sub">YouTube is running in the floating player.<br>Tap the floating window to return.</div>
+                                    </body></html>
+                                """.trimIndent(), "text/html", "UTF-8", null)
+                            } else {
+                                val activeTab = vm.tabManager.activeTab
+                                if (activeTab != null) {
+                                    com.rasel.RasFocus.selfcontrol.familybrowser.service.FloatingWindowService.launch(
+                                        context, activeTab.url, activeTab.title.ifEmpty { "Tab" }
+                                    )
+                                }
+                            }
+                        },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.OpenInNew,
+                            contentDescription = "Float tab",
+                            modifier = Modifier.size(18.dp),
+                            tint = Color.White.copy(0.75f)
+                        )
                     }
                 }
             }
