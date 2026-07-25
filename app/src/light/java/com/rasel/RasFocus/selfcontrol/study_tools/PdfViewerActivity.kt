@@ -95,7 +95,8 @@ fun LightPdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
     val context = LocalContext.current
     val scope   = rememberCoroutineScope()
 
-    var bitmaps  by remember { mutableStateOf<List<Bitmap>>(emptyList()) }
+    // Nullable list — null slot = not rendered yet (placeholder shown instead)
+    val bitmaps  = remember { mutableStateListOf<Bitmap?>() }
     var total    by remember { mutableIntStateOf(0) }
     var current  by remember { mutableIntStateOf(1) }
     var loading  by remember { mutableStateOf(true) }
@@ -107,36 +108,71 @@ fun LightPdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
     val listState  = rememberLazyListState()
     val screenW    = context.resources.displayMetrics.widthPixels
 
+    // Renderer held in a ref so viewport watcher can access it
+    var pdfRenderer by remember { mutableStateOf<PdfRenderer?>(null) }
+    val renderJobs  = remember { mutableMapOf<Int, kotlinx.coroutines.Job>() }
+
+    fun renderPage(renderer: PdfRenderer, i: Int) {
+        if (i < 0 || i >= bitmaps.size) return
+        if (bitmaps[i] != null) return
+        if (renderJobs[i]?.isActive == true) return
+        renderJobs[i] = scope.launch(Dispatchers.IO) {
+            try {
+                val page  = renderer.openPage(i)
+                val ratio = page.height.toFloat() / page.width.toFloat()
+                val bmpW  = screenW
+                val bmpH  = (screenW * ratio).toInt().coerceAtLeast(1)
+                val bmp   = Bitmap.createBitmap(bmpW, bmpH, Bitmap.Config.RGB_565) // half memory
+                bmp.eraseColor(Color.WHITE)
+                page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                page.close()
+                withContext(Dispatchers.Main) { if (i < bitmaps.size) bitmaps[i] = bmp }
+            } catch (_: Exception) { /* page stays placeholder */ }
+        }
+    }
+
     LaunchedEffect(uri) {
         if (uri == null) { loading = false; errorMsg = "ফাইল পাওয়া যায়নি"; return@LaunchedEffect }
+        renderJobs.values.forEach { it.cancel() }; renderJobs.clear()
         withContext(Dispatchers.IO) {
             try {
-                val pfd  = context.contentResolver.openFileDescriptor(uri, "r")
+                val pfd      = context.contentResolver.openFileDescriptor(uri, "r")
                     ?: throw IllegalStateException("File খুলতে পারিনি")
                 val renderer = PdfRenderer(pfd)
                 val count    = renderer.pageCount
-                withContext(Dispatchers.Main) { total = count }
-                val list = mutableListOf<Bitmap>()
-                for (i in 0 until count) {
-                    val page  = renderer.openPage(i)
-                    val ratio = page.height.toFloat() / page.width.toFloat()
-                    val bmpW  = screenW; val bmpH = (screenW * ratio).toInt().coerceAtLeast(1)
-                    val bmp   = Bitmap.createBitmap(bmpW, bmpH, Bitmap.Config.ARGB_8888)
-                    bmp.eraseColor(Color.WHITE)
-                    page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                    page.close()
-                    list.add(bmp)
-                    withContext(Dispatchers.Main) { bitmaps = list.toList() }
+                withContext(Dispatchers.Main) {
+                    bitmaps.clear()
+                    repeat(count) { bitmaps.add(null) }
+                    total   = count
+                    loading = false
+                    pdfRenderer = renderer
+                    // Render first 3 pages immediately for instant feel
+                    for (i in 0 until minOf(3, count)) renderPage(renderer, i)
                 }
-                renderer.close(); pfd.close()
-                withContext(Dispatchers.Main) { loading = false }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) { loading = false; errorMsg = "PDF খোলা যায়নি: ${e.message}" }
             }
         }
     }
 
-    LaunchedEffect(listState.firstVisibleItemIndex) { current = listState.firstVisibleItemIndex + 1 }
+    val visibleIdx by remember { derivedStateOf { listState.firstVisibleItemIndex } }
+    LaunchedEffect(visibleIdx) { current = visibleIdx + 1 }
+
+    // Render pages near viewport on-demand
+    LaunchedEffect(visibleIdx, pdfRenderer) {
+        val renderer = pdfRenderer ?: return@LaunchedEffect
+        for (i in (visibleIdx - 1).coerceAtLeast(0)
+                  ..(visibleIdx + 2).coerceAtMost(total - 1)) {
+            renderPage(renderer, i)
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            renderJobs.values.forEach { it.cancel() }
+            pdfRenderer?.close()
+        }
+    }
 
     val VA_BG = ComposeColor(0xFF111111); val VA_WHITE = ComposeColor(0xFFF5F5F5)
 
@@ -148,7 +184,7 @@ fun LightPdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
                 Text("PDF লোড হচ্ছে...", color = VA_WHITE, fontSize = 14.sp)
             }
             errorMsg.isNotEmpty() -> Text(errorMsg, color = ComposeColor.Red, modifier = Modifier.align(Alignment.Center))
-            bitmaps.isEmpty() -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = ComposeColor(0xFF6C63FF))
+            total == 0 -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = ComposeColor(0xFF6C63FF))
             else -> {
                 val transformState = rememberTransformableState { zc, pc, _ ->
                     scale   = (scale * zc).coerceIn(1f, 5f)
@@ -167,9 +203,25 @@ fun LightPdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     itemsIndexed(bitmaps) { _, bmp ->
-                        Box(Modifier.fillMaxWidth().background(ComposeColor.White)) {
-                            Image(bitmap = bmp.asImageBitmap(), contentDescription = null,
-                                contentScale = ContentScale.FillWidth, modifier = Modifier.fillMaxWidth())
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .background(ComposeColor.White)
+                                // Approximate A4 aspect ratio placeholder so scroll height stays stable
+                                .then(if (bmp == null) Modifier.aspectRatio(0.707f) else Modifier)
+                        ) {
+                            if (bmp != null) {
+                                Image(bitmap = bmp.asImageBitmap(), contentDescription = null,
+                                    contentScale = ContentScale.FillWidth, modifier = Modifier.fillMaxWidth())
+                            } else {
+                                // Loading placeholder
+                                Box(Modifier.fillMaxSize().background(ComposeColor(0xFFEEEEEE))) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.align(Alignment.Center).size(32.dp),
+                                        color = ComposeColor(0xFF6C63FF), strokeWidth = 2.dp
+                                    )
+                                }
+                            }
                         }
                     }
                 }
