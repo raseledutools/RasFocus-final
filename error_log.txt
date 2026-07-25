@@ -26,12 +26,12 @@ e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/
 > Task :app:compileFullReleaseKotlin FAILED
 * What went wrong:
 Execution failed for task ':app:compileFullReleaseKotlin'.
-BUILD FAILED in 3m 13s
+BUILD FAILED in 3m 10s
 
 === LAST 60 LINES ===
-> Task :app:checkFullReleaseAarMetadata
-> Task :app:writeFullReleaseSigningConfigVersions
 > Task :app:checkFullReleaseDuplicateClasses
+> Task :app:writeFullReleaseSigningConfigVersions
+> Task :app:checkFullReleaseAarMetadata
 > Task :app:compressFullReleaseAssets FROM-CACHE
 > Task :app:mergeFullReleaseNativeLibs
 > Task :app:collectFullReleaseDependencies
@@ -41,8 +41,8 @@ Unable to strip the following libraries, packaging them as they are: libbarhoppe
 
 > Task :app:extractFullReleaseNativeSymbolTables FROM-CACHE
 > Task :app:mergeFullReleaseNativeDebugMetadata NO-SOURCE
-> Task :app:sdkFullReleaseDependencyData
 > Task :app:mergeFullReleaseResources FROM-CACHE
+> Task :app:sdkFullReleaseDependencyData
 > Task :app:processFullReleaseMainManifest
 > Task :app:processFullReleaseManifest
 > Task :app:processFullReleaseManifestForPackage
@@ -65,7 +65,7 @@ e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/XlsxViewerActivity.kt:45:7 Redeclaration: XlsxViewerActivity
 
 > Task :app:compileFullReleaseKotlin FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1784959457234.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1784960287863.json
 
 FAILURE: Build failed with an exception.
 
@@ -86,6 +86,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 3m 13s
+BUILD FAILED in 3m 10s
 32 actionable tasks: 22 executed, 10 from cache
 Configuration cache entry stored.
