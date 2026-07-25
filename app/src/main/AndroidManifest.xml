@@ -336,6 +336,14 @@
         android:hardwareAccelerated="true"
         android:theme="@style/Theme.RasFocus"
         android:configChanges="orientation|screenSize|keyboardHidden" />
+    <activity
+        android:name=".combo.selfcontrol.study_tools.XlsxViewerActivity"
+        android:label="RasFocus Spreadsheet"
+        android:exported="false"
+        android:launchMode="singleTask"
+        android:hardwareAccelerated="true"
+        android:theme="@style/Theme.RasFocus"
+        android:configChanges="orientation|screenSize|keyboardHidden" />
 
     <!-- ✅ Credential Manager — Google Sign-In এর জন্য required -->
     <activity
