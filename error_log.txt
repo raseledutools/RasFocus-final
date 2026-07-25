@@ -1,31 +1,36 @@
 === KOTLIN ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/InstallUpdateReceiver.kt:49:21 Unresolved reference: installDownloadedUpdate
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/MissingServices.kt:154:52 No value passed for parameter 'context'
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/MissingServices.kt:157:60 Unresolved reference: silentDownloadUpdate
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/SelfControlModule.kt:2317:40 No value passed for parameter 'context'
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/SelfControlModule.kt:2352:73 Unresolved reference: getDownloadedUpdateFile
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/MissingServices.kt:155:52 No value passed for parameter 'context'
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/MissingServices.kt:158:60 Unresolved reference: silentDownloadUpdate
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/SelfControlModule.kt:1832:40 No value passed for parameter 'context'
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/SelfControlModule.kt:1867:73 Unresolved reference: getDownloadedUpdateFile
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/DocxViewerActivity.kt:37:7 Redeclaration: DocxViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/PptxViewerActivity.kt:40:7 Redeclaration: PptxViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/DocxViewerActivity.kt:37:7 Redeclaration: DocxViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PptxViewerActivity.kt:40:7 Redeclaration: PptxViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/XlsxViewerActivity.kt:37:7 Redeclaration: XlsxViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/DocxViewerActivity.kt:42:7 Redeclaration: DocxViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/PptxViewerActivity.kt:43:7 Redeclaration: PptxViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/DocxViewerActivity.kt:42:7 Redeclaration: DocxViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/PptxViewerActivity.kt:43:7 Redeclaration: PptxViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/XlsxViewerActivity.kt:45:7 Redeclaration: XlsxViewerActivity
 
 === UNRESOLVED / TYPE ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/InstallUpdateReceiver.kt:49:21 Unresolved reference: installDownloadedUpdate
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/MissingServices.kt:157:60 Unresolved reference: silentDownloadUpdate
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/SelfControlModule.kt:2352:73 Unresolved reference: getDownloadedUpdateFile
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/MissingServices.kt:158:60 Unresolved reference: silentDownloadUpdate
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/SelfControlModule.kt:1867:73 Unresolved reference: getDownloadedUpdateFile
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/DocxViewerActivity.kt:37:7 Redeclaration: DocxViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/PptxViewerActivity.kt:40:7 Redeclaration: PptxViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/DocxViewerActivity.kt:37:7 Redeclaration: DocxViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PptxViewerActivity.kt:40:7 Redeclaration: PptxViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/XlsxViewerActivity.kt:37:7 Redeclaration: XlsxViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/DocxViewerActivity.kt:42:7 Redeclaration: DocxViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/PptxViewerActivity.kt:43:7 Redeclaration: PptxViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/DocxViewerActivity.kt:42:7 Redeclaration: DocxViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/PptxViewerActivity.kt:43:7 Redeclaration: PptxViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/XlsxViewerActivity.kt:45:7 Redeclaration: XlsxViewerActivity
 
 === BUILD FAILURE ===
 > Task :app:compileFullReleaseKotlin FAILED
 * What went wrong:
 Execution failed for task ':app:compileFullReleaseKotlin'.
-BUILD FAILED in 3m 11s
+BUILD FAILED in 3m 13s
 
 === LAST 60 LINES ===
-> Task :app:writeFullReleaseAppMetadata
-> Task :app:writeFullReleaseSigningConfigVersions
 > Task :app:checkFullReleaseAarMetadata
+> Task :app:writeFullReleaseSigningConfigVersions
 > Task :app:checkFullReleaseDuplicateClasses
 > Task :app:compressFullReleaseAssets FROM-CACHE
 > Task :app:mergeFullReleaseNativeLibs
@@ -36,8 +41,8 @@ Unable to strip the following libraries, packaging them as they are: libbarhoppe
 
 > Task :app:extractFullReleaseNativeSymbolTables FROM-CACHE
 > Task :app:mergeFullReleaseNativeDebugMetadata NO-SOURCE
-> Task :app:mergeFullReleaseResources FROM-CACHE
 > Task :app:sdkFullReleaseDependencyData
+> Task :app:mergeFullReleaseResources FROM-CACHE
 > Task :app:processFullReleaseMainManifest
 > Task :app:processFullReleaseManifest
 > Task :app:processFullReleaseManifestForPackage
@@ -48,18 +53,19 @@ note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round ico
 > Task :app:processFullReleaseResources
 > Task :app:kspFullReleaseKotlin
 > Task :app:compileFullReleaseKotlin
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/InstallUpdateReceiver.kt:49:21 Unresolved reference: installDownloadedUpdate
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/MissingServices.kt:154:52 No value passed for parameter 'context'
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/MissingServices.kt:157:60 Unresolved reference: silentDownloadUpdate
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/SelfControlModule.kt:2317:40 No value passed for parameter 'context'
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/SelfControlModule.kt:2352:73 Unresolved reference: getDownloadedUpdateFile
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/MissingServices.kt:155:52 No value passed for parameter 'context'
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/MissingServices.kt:158:60 Unresolved reference: silentDownloadUpdate
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/SelfControlModule.kt:1832:40 No value passed for parameter 'context'
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/SelfControlModule.kt:1867:73 Unresolved reference: getDownloadedUpdateFile
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/DocxViewerActivity.kt:37:7 Redeclaration: DocxViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/PptxViewerActivity.kt:40:7 Redeclaration: PptxViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/DocxViewerActivity.kt:37:7 Redeclaration: DocxViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PptxViewerActivity.kt:40:7 Redeclaration: PptxViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/XlsxViewerActivity.kt:37:7 Redeclaration: XlsxViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/DocxViewerActivity.kt:42:7 Redeclaration: DocxViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/PptxViewerActivity.kt:43:7 Redeclaration: PptxViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/DocxViewerActivity.kt:42:7 Redeclaration: DocxViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/PptxViewerActivity.kt:43:7 Redeclaration: PptxViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/XlsxViewerActivity.kt:45:7 Redeclaration: XlsxViewerActivity
 
 > Task :app:compileFullReleaseKotlin FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1784894199536.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1784959457234.json
 
 FAILURE: Build failed with an exception.
 
@@ -80,6 +86,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 3m 11s
+BUILD FAILED in 3m 13s
 32 actionable tasks: 22 executed, 10 from cache
 Configuration cache entry stored.
