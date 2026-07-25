@@ -216,7 +216,6 @@ class YoutubeActivity : ComponentActivity() {
             "/pagead/adformat", "/annotations_auth", "/get_midroll_info",
             "/api/stats/delayplay", "/api/stats/atr",
             "youtubei/v1/player/ad_break", "youtubei/v1/ad_break",
-            "youtubei/v1/log_event",
             "imasdk.googleapis.com/js/sdkloader",
             "imasdk.googleapis.com/admob"
         )
@@ -369,16 +368,12 @@ class YoutubeActivity : ComponentActivity() {
                         injectAdBlocker(view)
                     }
                     injectSettingsRemover(view)
-                    // Layer 3: YouTube এ injectContentScanner ডাকা হয় না।
-                    // কারণ: YouTube home page এর thumbnail/title text এ adult keyword
-                    // থাকলে false-positive block হয় — যেমন কেউ "sex education" series
-                    // recommend হলে home page ই block হয়ে যায়।
-                    // YouTube এ adult block Layer 1 (network/URL) + title-check যথেষ্ট।
-                    // অন্য browser (FamilyBrowserActivity) এ Layer 3 আগের মতোই চলবে।
-                    //
-                    // if (prefs.getBoolean("yt_ad_layer3", true)) {
-                    //     adBlocker.injectContentScanner(view)  // YouTube এ disabled
-                    // }
+                    // Layer 3: YouTube player এলাকায় ad DOM element forcefully hide করো।
+                    // injectContentScanner() ডাকা হয় না (false-positive block হয়)।
+                    // এর বদলে player এর ভেতরের ad overlay/banner/countdown সরানো হয়।
+                    if (prefs.getBoolean("yt_ad_layer3", true)) {
+                        injectYtAdLayerThree(view)
+                    }
 
                     // FIX: এই navigation এ shouldOverrideUrlLoading/shouldInterceptRequest
                     // এ URL-level check করে ইতিমধ্যে একবার block page দেখানো হয়ে থাকলে,
@@ -455,7 +450,6 @@ class YoutubeActivity : ComponentActivity() {
                         if (host.contains("googlevideo.com")) {
                             val isGvAd =
                                 url.contains("initplayback")    ||
-                                url.contains("generate_204")    ||
                                 url.contains("/pcs/activeview") ||
                                 url.contains("ctier=SA")        ||
                                 url.contains("ctier=SR")        ||
@@ -1539,6 +1533,70 @@ class YoutubeActivity : ComponentActivity() {
                     });
                 } catch(e) {}
 
+            })();
+        """.trimIndent(), null)
+    }
+
+    /**
+     * Layer 3 — YouTube player DOM এর ভেতরের ad overlay/banner/countdown forcefully hide।
+     * injectContentScanner() এর মতো পুরো page scan নয় — শুধু player container।
+     * false-positive block হয় না কারণ thumbnail/title text touch করা হয় না।
+     */
+    private fun injectYtAdLayerThree(view: WebView) {
+        view.evaluateJavascript("""
+            (function() {
+                if (window.__rasL3Active__) return;
+                window.__rasL3Active__ = true;
+
+                function removeYtAds() {
+                    try {
+                        // ── Ad overlay / info card / companion ──
+                        var adSelectors = [
+                            'ytm-paid-content-overlay',
+                            'ytm-ad-slot-renderer',
+                            'ytm-display-ad-renderer',
+                            'ytm-companion-slot',
+                            'ytm-banner-promo-renderer',
+                            '.ytp-ad-progress-list',
+                            '.ytp-ad-text-overlay',
+                            '.ytp-ad-image-overlay',
+                            '.ytp-ad-overlay-container',
+                            '.ytm-promoted-sparkles-text-search-ad-renderer',
+                            'ytm-promoted-sparkles-web-renderer',
+                            'ytm-promoted-video-renderer',
+                            // ad info button (top-right "i" icon during ad)
+                            '.ytp-ad-info-dialog-ad-reasons',
+                            '.ytp-ad-button',
+                            // countdown overlay
+                            '.ytp-ad-duration-remaining',
+                            '.ytp-ad-simple-ad-badge',
+                            '.ytp-ad-preview-container',
+                            // mobile ad badge
+                            '[class*="ad-badge"]',
+                            '[class*="AdBadge"]'
+                        ];
+                        adSelectors.forEach(function(sel) {
+                            try {
+                                document.querySelectorAll(sel).forEach(function(el) {
+                                    el.style.setProperty('display', 'none', 'important');
+                                });
+                            } catch(e) {}
+                        });
+                    } catch(e) {}
+                }
+
+                removeYtAds();
+
+                // SPA navigation এ নতুন ad element আসলে সাথে সাথে hide
+                try {
+                    var obs = new MutationObserver(function() { removeYtAds(); });
+                    obs.observe(document.documentElement, {
+                        childList: true, subtree: true, attributes: false
+                    });
+                } catch(e) {}
+
+                // Fallback interval
+                setInterval(removeYtAds, 800);
             })();
         """.trimIndent(), null)
     }
