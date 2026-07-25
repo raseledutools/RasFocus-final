@@ -589,10 +589,7 @@ class YoutubeActivity : ComponentActivity() {
                 }
                 // Home এ আর back নেই → service বন্ধ করো + activity close
                 returnFromMiniPlayer(null)
-                // ছোট delay দিয়ে finish — WebView re-attach এর সময় দিতে
-                rootFrameRef?.postDelayed({
-                    stopFloatingAndDestroy()
-                }, 100)
+                rootFrameRef?.postDelayed({ stopFloatingAndDestroy() }, 100)
                 return
             }
             stopFloatingAndDestroy()
@@ -611,24 +608,23 @@ class YoutubeActivity : ComponentActivity() {
             return
         }
 
-        // ★ CASE 3: Video চলছে কিনা check — চলছে → mini player
-        wv.evaluateJavascript("""
-            (function() {
-                try {
-                    var v = document.querySelector('video');
-                    if (v && !v.paused && !v.ended && v.readyState > 2) {
-                        return 'playing';
-                    }
-                    return 'not_playing';
-                } catch(e) { return 'unknown'; }
-            })();
-        """.trimIndent()) { result ->
-            if (result?.contains("not_playing") != true) {
-                // Video চলছে → mini player (corner floating) + home page দেখাও
-                runOnUiThread { launchMiniPlayer(wv) }
-            } else {
-                runOnUiThread { @Suppress("DEPRECATION") super.onBackPressed() }
-            }
+        // ★ CASE 3 (FIX): Overlay permission আছে কিনা সরাসরি check করো।
+        // আগে JS async দিয়ে video চলছে কিনা দেখা হতো — কিন্তু evaluateJavascript
+        // callback আসার আগেই activity finish হয়ে যেত কারণ কোনো fallback ছিল না।
+        // এখন: overlay আছে → সবসময় mini player launch করো (video না চললেও
+        // launchMiniPlayer() ভেতরে handle করে); overlay নেই → normally close।
+        val hasOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
+            android.provider.Settings.canDrawOverlays(this)
+        else true
+
+        if (hasOverlay) {
+            // Overlay আছে — mini player চালু করো
+            // launchMiniPlayer() ভেতরে JS দিয়ে video check করে:
+            // video না চললে সে নিজেই normally close করবে
+            launchMiniPlayer(wv)
+        } else {
+            // Overlay নেই — normally close
+            @Suppress("DEPRECATION") super.onBackPressed()
         }
     }
 
@@ -636,10 +632,15 @@ class YoutubeActivity : ComponentActivity() {
      * ★ Mini Player Launch — Native YouTube এর মতো behavior।
      *
      * Back press বা swipe down এ:
-     * 1. Video WebView → floating mini player service এ যায় (corner এ চলে)
-     * 2. Activity বন্ধ হয় না → YouTube home page দেখায় নতুন homeWebView দিয়ে
-     * 3. Home WebView এ footer আছে (Home / Shorts / Account)
-     * 4. Mini player tap করলে homeWebView লুকিয়ে video WebView ফিরে আসে
+     * 1. Video চলছে কিনা JS দিয়ে check — না চললে normally close
+     * 2. Video WebView → floating mini player service এ যায় (corner এ চলে)
+     * 3. Activity বন্ধ হয় না → YouTube home page দেখায় নতুন homeWebView দিয়ে
+     * 4. Home WebView এ footer আছে (Home / Shorts / Account)
+     * 5. Mini player tap করলে homeWebView লুকিয়ে video WebView ফিরে আসে
+     *
+     * FIX: আগে onBackPressed() এ JS check ছিল — কিন্তু async callback আসার
+     * আগেই fallback না থাকায় activity close হয়ে যেত। এখন check এখানে রাখা
+     * হয়েছে যাতে "overlay আছে → launchMiniPlayer() call করো" সবসময় নিরাপদ।
      */
     @android.annotation.SuppressLint("SetJavaScriptEnabled")
     private fun launchMiniPlayer(wv: WebView) {
@@ -653,6 +654,31 @@ class YoutubeActivity : ComponentActivity() {
             return
         }
 
+        // ★ FIX: Video চলছে কিনা এখানে check করো।
+        // onBackPressed() এ async JS দিয়ে check করলে callback আসার আগেই
+        // activity finish হয়ে যেত — তাই এখানে JS check করে তারপর launch।
+        // video না চললে → normally close করো।
+        wv.evaluateJavascript("""
+            (function() {
+                try {
+                    var v = document.querySelector('video');
+                    return (v && !v.paused && !v.ended && v.readyState > 2) ? 'playing' : 'not_playing';
+                } catch(e) { return 'playing'; }
+            })();
+        """.trimIndent()) { result ->
+            if (result?.contains("not_playing") == true) {
+                // Video চলছে না — normally close করো
+                runOnUiThread { @Suppress("DEPRECATION") super.onBackPressed() }
+                return@evaluateJavascript
+            }
+            // Video চলছে — mini player launch করো
+            runOnUiThread { doLaunchMiniPlayer(wv) }
+        }
+    }
+
+    /** launchMiniPlayer() এর actual implementation — video check পাস করার পরে call হয় */
+    @android.annotation.SuppressLint("SetJavaScriptEnabled")
+    private fun doLaunchMiniPlayer(wv: WebView) {
         val currentUrl   = wv.url   ?: "https://m.youtube.com"
         val currentTitle = wv.title ?: "YouTube"
 
@@ -885,91 +911,67 @@ class YoutubeActivity : ComponentActivity() {
      * শুরু হওয়া downward swipe ধরা হয় (YouTube এর নিজের gesture এর মতো)।
      */
     @android.annotation.SuppressLint("ClickableViewAccessibility")
+    // ★ FIX: Swipe down gesture — dispatchTouchEvent দিয়ে করা হচ্ছে।
+    // আগে Activity.onTouchEvent() use করা হতো — কিন্তু WebView সব touch নিজে
+    // consume করে, তাই Activity.onTouchEvent() কখনো call হতো না।
+    // dispatchTouchEvent() সব touch এর আগে call হয় — WebView consume করুক বা না করুক।
+    // Manual tracking: ACTION_DOWN এ start point save করি, ACTION_UP এ distance check করি।
+    // GestureDetector.onFling() ব্যবহার করা হচ্ছে না কারণ WebView ACTION_CANCEL inject
+    // করে fling শেষ হওয়ার আগেই, ফলে onFling() callback কখনো আসে না।
+    private var swipeTouchDownY = 0f
+    private var swipeTouchDownX = 0f
+    private var swipeStartedFromTop = false
+    private var swipeConsumedThisGesture = false
+
     private fun setupSwipeDownGesture(rootFrame: FrameLayout) {
-        val SWIPE_DOWN_MIN_PX = (120 * resources.displayMetrics.density).toInt()
-        val SWIPE_START_MAX_Y_RATIO = 0.35f  // screen উপরের 35% থেকে শুরু হলেই ধরবে
-
-        var swipeTouchDownY = 0f
-        var swipeTouchDownX = 0f
-        var swipeStartedInTopArea = false
-        var swipeConsumed = false
-
-        // GestureDetector দিয়ে করা হচ্ছে না কারণ WebView এর internal scroller
-        // GestureDetector এর cancel করে দেয়। তাই simple raw touch tracking।
-        val gestureOverlay = object : View(this) {
-            override fun onTouchEvent(event: MotionEvent): Boolean {
-                return false  // pass through to WebView
-            }
-        }
-        gestureOverlay.layoutParams = FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT
-        )
-
-        // rootFrame এর dispatchTouchEvent override করা যায় না (FrameLayout)।
-        // তাই একটা transparent overlay রাখি যেটা ACTION_DOWN track করবে,
-        // কিন্তু WebView কে touch forward করবে।
-        // এর বদলে rootFrame এর setOnTouchListener — কিন্তু সেটা WebView
-        // গ্রাস করে নেয়। সবচেয়ে clean approach:
-        // একটা custom FrameLayout দিয়ে dispatchTouchEvent intercept করি।
-
-        // NOTE: এই approach টা rootFrame replace করবে না। বরং
-        // Activity window level এ GestureDetector ব্যবহার করবো।
-        val gestureDetector = android.view.GestureDetector(
-            this,
-            object : android.view.GestureDetector.SimpleOnGestureListener() {
-                override fun onFling(
-                    e1: MotionEvent?,
-                    e2: MotionEvent,
-                    velocityX: Float,
-                    velocityY: Float
-                ): Boolean {
-                    val e1nn = e1 ?: return false
-                    val screenH = resources.displayMetrics.heightPixels
-                    val startY = e1nn.rawY
-
-                    // উপরের 35% থেকে শুরু হয়েছে কিনা
-                    if (startY > screenH * SWIPE_START_MAX_Y_RATIO) return false
-
-                    val dy = e2.rawY - e1nn.rawY
-                    val dx = e2.rawX - e1nn.rawX
-
-                    // নিচের দিকে fling, vertical বেশি
-                    if (dy > SWIPE_DOWN_MIN_PX && velocityY > 300 && Math.abs(dy) > Math.abs(dx) * 1.5f) {
-                        val wv = webView ?: return false
-                        if (isMiniPlayerActive) return false
-
-                        // Video চলছে কিনা check করি
-                        wv.evaluateJavascript("""
-                            (function() {
-                                try {
-                                    var v = document.querySelector('video');
-                                    return (v && !v.paused && !v.ended && v.readyState > 2) ? 'playing' : 'not_playing';
-                                } catch(e) { return 'unknown'; }
-                            })();
-                        """.trimIndent()) { result ->
-                            if (result?.contains("not_playing") != true) {
-                                runOnUiThread { launchMiniPlayer(wv) }
-                            }
-                        }
-                        return true
-                    }
-                    return false
-                }
-            }
-        )
-
-        // Window level এ touch ধরার জন্য Activity এর onTouchEvent use করবো।
-        // এটা WebView এর touch consume করে না।
-        swipeGestureDetector = gestureDetector
+        // কিছু করার দরকার নেই — dispatchTouchEvent এ সব tracking হয়।
+        // এই function শুধু onCreate() এর call site টা রাখার জন্য আছে।
     }
 
-    // Swipe gesture detector — onTouchEvent এ use হবে
-    private var swipeGestureDetector: android.view.GestureDetector? = null
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        // ★ Swipe down → mini player detection
+        // শুধু যখন: mini player নেই + video WebView আছে + overlay permission আছে
+        if (!isMiniPlayerActive && webView != null) {
+            val screenH = resources.displayMetrics.heightPixels.toFloat()
+            val SWIPE_MIN_PX    = (100 * resources.displayMetrics.density)  // ন্যূনতম 100dp
+            val TOP_AREA_RATIO  = 0.40f  // screen এর উপরের 40% থেকে শুরু হলে ধরবে
 
-    override fun onTouchEvent(event: MotionEvent): Boolean {
-        swipeGestureDetector?.onTouchEvent(event)
-        return super.onTouchEvent(event)
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    swipeTouchDownY = ev.rawY
+                    swipeTouchDownX = ev.rawX
+                    // শুধু screen এর উপরের 40% থেকে শুরু হওয়া swipe ধরবো
+                    swipeStartedFromTop = (swipeTouchDownY < screenH * TOP_AREA_RATIO)
+                    swipeConsumedThisGesture = false
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
+                    if (swipeStartedFromTop && !swipeConsumedThisGesture) {
+                        val dy = ev.rawY - swipeTouchDownY
+                        val dx = ev.rawX - swipeTouchDownX
+                        // নিচের দিকে + vertical বেশি + minimum distance
+                        if (dy > SWIPE_MIN_PX && dy > Math.abs(dx) * 1.2f) {
+                            swipeConsumedThisGesture = true
+                            swipeStartedFromTop = false
+                            val wv = webView
+                            if (wv != null) {
+                                // overlay check
+                                val hasOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
+                                    android.provider.Settings.canDrawOverlays(this)
+                                else true
+                                if (hasOverlay) {
+                                    launchMiniPlayer(wv)
+                                }
+                            }
+                        }
+                    }
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    swipeStartedFromTop = false
+                    swipeConsumedThisGesture = false
+                }
+            }
+        }
+        return super.dispatchTouchEvent(ev)
     }
 
     private fun launchFloatingDirectly(wv: WebView, moveActivityToBack: Boolean) {
@@ -1550,7 +1552,6 @@ class YoutubeActivity : ComponentActivity() {
 
                 function removeYtAds() {
                     try {
-                        // ── Ad overlay / info card / companion ──
                         var adSelectors = [
                             'ytm-paid-content-overlay',
                             'ytm-ad-slot-renderer',
@@ -1564,14 +1565,11 @@ class YoutubeActivity : ComponentActivity() {
                             '.ytm-promoted-sparkles-text-search-ad-renderer',
                             'ytm-promoted-sparkles-web-renderer',
                             'ytm-promoted-video-renderer',
-                            // ad info button (top-right "i" icon during ad)
                             '.ytp-ad-info-dialog-ad-reasons',
                             '.ytp-ad-button',
-                            // countdown overlay
                             '.ytp-ad-duration-remaining',
                             '.ytp-ad-simple-ad-badge',
                             '.ytp-ad-preview-container',
-                            // mobile ad badge
                             '[class*="ad-badge"]',
                             '[class*="AdBadge"]'
                         ];
@@ -1587,7 +1585,6 @@ class YoutubeActivity : ComponentActivity() {
 
                 removeYtAds();
 
-                // SPA navigation এ নতুন ad element আসলে সাথে সাথে hide
                 try {
                     var obs = new MutationObserver(function() { removeYtAds(); });
                     obs.observe(document.documentElement, {
@@ -1595,13 +1592,12 @@ class YoutubeActivity : ComponentActivity() {
                     });
                 } catch(e) {}
 
-                // Fallback interval
                 setInterval(removeYtAds, 800);
             })();
         """.trimIndent(), null)
     }
 
-    private fun injectYoutubeHacksForced(view: WebView) {
+        private fun injectYoutubeHacksForced(view: WebView) {
         view.evaluateJavascript("""
             (function() {
                 try {
