@@ -953,6 +953,24 @@ class UnifiedBlockerService : AccessibilityService() {
         val targetPkgs = setOf("org.telegram.messenger", "org.telegram.messenger.web",
             "com.whatsapp", "com.whatsapp.w4b", "com.facebook.katana", "com.facebook.lite")
         if (pkg !in targetPkgs || event?.eventType != AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) return false
+
+        // ── Facebook / Facebook Lite: শুধু search bar focused থাকলেই block করো ──
+        // suggestion list scroll করলেও TYPE_VIEW_TEXT_CHANGED আসতে পারে —
+        // সেক্ষেত্রে event source আসে suggestion row থেকে, search bar থেকে নয়।
+        // Suggestion দেখে block করলে "আগের search" এর suggestion থেকে false
+        // positive হয় — search button press করার আগেই block হয়ে যায়।
+        if (pkg == "com.facebook.katana" || pkg == "com.facebook.lite") {
+            val fbSearchBarIds = listOf(
+                "com.facebook.katana:id/search_box_input",
+                "com.facebook.katana:id/global_search_edittext",
+                "com.facebook.lite:id/search_box_input"
+            )
+            val searchBarFocused = fbSearchBarIds.any { id ->
+                root.findAccessibilityNodeInfosByViewId(id).any { it.isFocused || it.isAccessibilityFocused }
+            }
+            if (!searchBarFocused) return false  // search bar focused নয় → suggestion event → skip
+        }
+
         val typedText = event.text.joinToString(" ").lowercase().trim()
         if (typedText.isBlank()) return false
         // Firebase real-time keywords — update হলে সাথে সাথে কাজ করবে
@@ -1021,38 +1039,79 @@ class UnifiedBlockerService : AccessibilityService() {
         if (pkg != "com.google.android.youtube") return false
         if (!blockerPrefs.blockNormalLoading) return false
 
-        // ── Search bar focused মানে এখনও টাইপ করছে — block করব না ──
         val ytSearchBarIds = listOf(
             "com.google.android.youtube:id/search_edit_text",
             "com.google.android.youtube:id/search_bar_text",
             "com.google.android.youtube:id/search_bar_input"
         )
+
+        // ── Search bar focused মানে এখনও টাইপ করছে — block করব না ──
         val searchBarFocused = ytSearchBarIds.any { id ->
             root.findAccessibilityNodeInfosByViewId(id).any { it.isFocused || it.isAccessibilityFocused }
         }
         if (searchBarFocused) return false
 
-        // ── Search bar এ আসলে কোনো query আছে কিনা দেখো ──
-        // কোনো query না থাকলে এটা home/subscription feed → block করব না।
-        // collectAllText() দিয়ে পুরো screen scan করলে home feed এর normal
-        // video title এ "dance", "hot" ইত্যাদি সাধারণ শব্দও match করে false
-        // positive block দেয় — যেমন Spelling শেখার ভিডিও block হয়ে যাওয়া।
-        val searchQueryText = ytSearchBarIds.mapNotNull { id ->
-            root.findAccessibilityNodeInfosByViewId(id)
-                .firstOrNull()?.text?.toString()
-        }.firstOrNull()?.lowercase()?.trim() ?: ""
-
-        if (searchQueryText.isBlank()) return false   // কোনো query নেই → home feed → block না
-
-        // ── Search result page কিনা verify করো ──
+        // ── Search result page কিনা verify করো (FIRST — home feed এ যেন না ঢুকি) ──
         val isSearchResultPage =
             root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/results").isNotEmpty() ||
             root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/search_results_container").isNotEmpty()
 
         if (!isSearchResultPage) return false  // search result page না → block না
 
-        // ── শুধু search query text check করো, পুরো screen dump না ──
-        // এতে home feed/normal page এর video title দিয়ে false positive হবে না।
+        // ── Search bar text পাওয়ার চেষ্টা করো ──
+        // YouTube native app এ search complete হওয়ার পর bar text কখনো ঐ
+        // view-id তে থাকে না। তাই fallback হিসেবে search result page-এর
+        // toolbar/heading থেকে query বের করব।
+        var searchQueryText = ytSearchBarIds.mapNotNull { id ->
+            root.findAccessibilityNodeInfosByViewId(id)
+                .firstOrNull()?.text?.toString()
+        }.firstOrNull()?.lowercase()?.trim() ?: ""
+
+        // ── Fallback: toolbar বা search result heading থেকে query ──
+        if (searchQueryText.isBlank()) {
+            val toolbarIds = listOf(
+                "com.google.android.youtube:id/toolbar",
+                "com.google.android.youtube:id/action_bar",
+                "com.google.android.youtube:id/results_title"
+            )
+            searchQueryText = toolbarIds.mapNotNull { id ->
+                root.findAccessibilityNodeInfosByViewId(id)
+                    .firstOrNull()?.text?.toString()
+            }.firstOrNull()?.lowercase()?.trim() ?: ""
+        }
+
+        // ── Final fallback: search button ContentDescription বা adjacent text ──
+        if (searchQueryText.isBlank()) {
+            // YouTube search result page-এর chips/filter row প্রায়ই প্রথম node
+            // হিসেবে query কে repeat করে — এটা result container-এর direct child
+            val filterIds = listOf(
+                "com.google.android.youtube:id/chip_cloud",
+                "com.google.android.youtube:id/filter_chips_layout"
+            )
+            // filter row-এ query থাকে না; কিন্তু page heading থেকে নিতে পারি
+            // content description দিয়ে: "Search results for <query>"
+            fun findSearchResultHeading(node: AccessibilityNodeInfo?): String? {
+                node ?: return null
+                val cd = node.contentDescription?.toString() ?: ""
+                if (cd.startsWith("Search results for ", ignoreCase = true)) {
+                    return cd.removePrefix("Search results for ").trim().lowercase()
+                }
+                val t = node.text?.toString() ?: ""
+                if (t.startsWith("Search results for ", ignoreCase = true)) {
+                    return t.removePrefix("Search results for ").trim().lowercase()
+                }
+                for (i in 0 until node.childCount) {
+                    val r = findSearchResultHeading(node.getChild(i))
+                    if (r != null) return r
+                }
+                return null
+            }
+            searchQueryText = findSearchResultHeading(root) ?: ""
+        }
+
+        if (searchQueryText.isBlank()) return false   // কোনো query পাইনি → block না
+
+        // ── keyword check — শুধু query text এ, পুরো screen dump না ──
         val fbKw = FirebaseKeywordSync.getAdultKeywords()
         val kwList = if (fbKw.isNotEmpty()) fbKw else adultSiteKeywords
         val matchedKw = kwList.firstOrNull { searchQueryText.contains(it) } ?: return false
@@ -1064,14 +1123,42 @@ class UnifiedBlockerService : AccessibilityService() {
     private fun handleFacebookSearchAdultBlock(root: AccessibilityNodeInfo, pkg: String): Boolean {
         if (pkg != "com.facebook.katana") return false
         if (!blockerPrefs.blockNormalLoading) return false
-        if (isSearchFieldActivelyFocused(root)) return false   // এখনও টাইপ করছে — block না
-        val screenTxt = collectAllText(root).lowercase()
-        if (screenTxt.isBlank()) return false
-        // Firebase keywords — real-time update কাজ করবে
+
+        // ── Search bar focused মানে এখনও টাইপ করছে — block না ──
+        val fbSearchBarIds = listOf(
+            "com.facebook.katana:id/search_box_input",
+            "com.facebook.katana:id/global_search_edittext"
+        )
+        val searchBarFocused = fbSearchBarIds.any { id ->
+            root.findAccessibilityNodeInfosByViewId(id).any { it.isFocused || it.isAccessibilityFocused }
+        }
+        if (searchBarFocused) return false  // টাইপ করছে বা suggestion দেখছে — block না
+
+        // ── Facebook search RESULT page কিনা verify করো ──
+        // search_results_list / search_results_recyclerview / unified_search_results
+        // যেকোনো একটা থাকলে result page, নাহলে home/suggestion — block না।
+        // এই check না থাকলে আগের search-এর suggestion list দেখলেই block হয়।
+        val isFbSearchResultPage =
+            root.findAccessibilityNodeInfosByViewId("com.facebook.katana:id/search_results_list").isNotEmpty() ||
+            root.findAccessibilityNodeInfosByViewId("com.facebook.katana:id/search_results_recyclerview").isNotEmpty() ||
+            root.findAccessibilityNodeInfosByViewId("com.facebook.katana:id/unified_search_results").isNotEmpty()
+
+        if (!isFbSearchResultPage) return false  // suggestion/home/other — block না
+
+        // ── শুধু search bar-এর submitted query text check করো ──
+        // collectAllText() পুরো screen dump করে — result page-এর সব post/comment
+        // text-ও ধরে ফেলে এবং false positive দেয়। শুধু submitted query text
+        // দেখলে নিশ্চিত হওয়া যায় user আসলেই ঐ keyword search করেছে।
+        val fbQueryText = fbSearchBarIds.mapNotNull { id ->
+            root.findAccessibilityNodeInfosByViewId(id).firstOrNull()?.text?.toString()
+        }.firstOrNull()?.lowercase()?.trim() ?: ""
+
+        if (fbQueryText.isBlank()) return false  // query text নেই → skip
+
         val fbKw = FirebaseKeywordSync.getAdultKeywords()
-        val blocked = if (fbKw.isNotEmpty()) fbKw.any { screenTxt.contains(it) }
-                      else adultSiteKeywords.any { screenTxt.contains(it) }
-        if (!blocked) return false
+        val kwList = if (fbKw.isNotEmpty()) fbKw else adultSiteKeywords
+        val matchedKw = kwList.firstOrNull { fbQueryText.contains(it) } ?: return false
+
         blockFacebookContent("Adult Content", "Facebook search results contain blocked content.")
         return true
     }
