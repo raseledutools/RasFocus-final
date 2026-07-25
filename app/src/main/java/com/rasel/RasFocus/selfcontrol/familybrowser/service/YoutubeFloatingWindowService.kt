@@ -128,6 +128,14 @@ class YoutubeFloatingWindowService : Service() {
         const val ACTION_RETURN_TO_ACTIVITY = "com.rasel.yt_float.RETURN_TO_ACTIVITY"
         const val ACTION_ACTIVITY_RESUMED   = "com.rasel.yt_float.ACTIVITY_RESUMED"
 
+        // ★ নতুন: Mini Player → Full Floating convert (Home press এ)
+        // Mini player চলাকালীন home button চাপলে — mini window সরিয়ে
+        // full floating window দেখাও, WebView reload নেই, audio/video অব্যাহত।
+        const val ACTION_EXPAND_MINI_TO_FULL    = "com.rasel.yt_float.EXPAND_MINI_TO_FULL"
+        // Service → Activity broadcast: mini successfully expanded to full floating.
+        // Activity এ isMiniPlayerActive = false করতে হবে।
+        const val ACTION_MINI_EXPANDED_TO_FULL  = "com.rasel.yt_float.MINI_EXPANDED_TO_FULL"
+
         const val EXTRA_URL       = "yt_url"
         const val EXTRA_TITLE     = "yt_title"
         const val EXTRA_NO_RELOAD = "yt_no_reload"
@@ -215,6 +223,21 @@ class YoutubeFloatingWindowService : Service() {
                 putExtra(EXTRA_URL,       url)
                 putExtra(EXTRA_TITLE,     title)
                 putExtra(EXTRA_NO_RELOAD, true)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                context.startForegroundService(i)
+            else
+                context.startService(i)
+        }
+
+        /**
+         * expandMiniToFull — Mini Player চলাকালীন Home button চাপলে call হয়।
+         * Mini player window সরিয়ে full floating window দেখায়।
+         * WebView একই থাকে — reload নেই, audio/video অব্যাহত।
+         */
+        fun expandMiniToFull(context: Context) {
+            val i = Intent(context, YoutubeFloatingWindowService::class.java).apply {
+                action = ACTION_EXPAND_MINI_TO_FULL
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 context.startForegroundService(i)
@@ -503,6 +526,47 @@ class YoutubeFloatingWindowService : Service() {
             // ══════════════════════════════════════════════════════════════════
             ACTION_RETURN_TO_ACTIVITY -> {
                 returnToActivity()
+            }
+
+            // ══════════════════════════════════════════════════════════════════
+            // ★ নতুন: ACTION_EXPAND_MINI_TO_FULL
+            // Mini player চলাকালীন Home button চাপলে YoutubeActivity এই action
+            // পাঠায়। Mini window সরিয়ে full floating window দেখানো হয়।
+            // WebView একই থাকে — পুনরায় load করা হয় না, audio/video চলতে থাকে।
+            // YoutubeActivity এর isMiniPlayerActive = false করা হয় না কারণ
+            // full floating এ থাকলে Activity "aware" থাকে যে service চলছে।
+            // ══════════════════════════════════════════════════════════════════
+            ACTION_EXPAND_MINI_TO_FULL -> {
+                if (isMiniPlayer) {
+                    isMiniPlayer = false
+
+                    // Mini window সরাও
+                    removeMiniWindow()
+
+                    // WebView ghost container এ সরিয়ে রাখো (audio live রাখতে)
+                    val wv = webView
+                    if (wv != null && ghostContainer != null) {
+                        (wv.parent as? ViewGroup)?.removeView(wv)
+                        ghostContainer?.addView(
+                            wv,
+                            android.widget.FrameLayout.LayoutParams(
+                                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                                android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+                            )
+                        )
+                        injectVisibilitySpoof(wv)
+                    }
+
+                    // Full floating window তৈরি করো (WebView re-use হবে)
+                    showFull()
+
+                    // ★ YoutubeActivity কে জানাও যে mini → full হয়ে গেছে।
+                    // Activity তে isMiniPlayerActive = false করতে হবে যাতে
+                    // onResume() এ সে ভুলে returnFromMiniPlayer() call না করে।
+                    val broadcastIntent = android.content.Intent(ACTION_MINI_EXPANDED_TO_FULL)
+                    broadcastIntent.setPackage(packageName)
+                    sendBroadcast(broadcastIntent)
+                }
             }
 
             // ══════════════════════════════════════════════════════════════════

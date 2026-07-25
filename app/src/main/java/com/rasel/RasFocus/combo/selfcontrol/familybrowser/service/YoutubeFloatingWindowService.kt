@@ -128,6 +128,11 @@ class YoutubeFloatingWindowService : Service() {
         const val ACTION_RETURN_TO_ACTIVITY = "com.rasel.yt_float.RETURN_TO_ACTIVITY"
         const val ACTION_ACTIVITY_RESUMED   = "com.rasel.yt_float.ACTIVITY_RESUMED"
 
+        // ★ নতুন: Mini Player → Full Floating convert (Home press এ)
+        const val ACTION_EXPAND_MINI_TO_FULL    = "com.rasel.yt_float.EXPAND_MINI_TO_FULL"
+        // Service → Activity broadcast: mini successfully expanded to full floating.
+        const val ACTION_MINI_EXPANDED_TO_FULL  = "com.rasel.yt_float.MINI_EXPANDED_TO_FULL"
+
         const val EXTRA_URL       = "yt_url"
         const val EXTRA_TITLE     = "yt_title"
         const val EXTRA_NO_RELOAD = "yt_no_reload"
@@ -215,6 +220,19 @@ class YoutubeFloatingWindowService : Service() {
                 putExtra(EXTRA_URL,       url)
                 putExtra(EXTRA_TITLE,     title)
                 putExtra(EXTRA_NO_RELOAD, true)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                context.startForegroundService(i)
+            else
+                context.startService(i)
+        }
+
+        /**
+         * expandMiniToFull — Mini Player চলাকালীন Home button চাপলে call হয়।
+         */
+        fun expandMiniToFull(context: Context) {
+            val i = Intent(context, YoutubeFloatingWindowService::class.java).apply {
+                action = ACTION_EXPAND_MINI_TO_FULL
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 context.startForegroundService(i)
@@ -506,6 +524,38 @@ class YoutubeFloatingWindowService : Service() {
             }
 
             // ══════════════════════════════════════════════════════════════════
+            // ══════════════════════════════════════════════════════════════════
+            // ★ নতুন: ACTION_EXPAND_MINI_TO_FULL
+            // Mini player চলাকালীন Home button চাপলে YoutubeActivity এই action
+            // পাঠায়। Mini window সরিয়ে full floating window দেখানো হয়।
+            // ══════════════════════════════════════════════════════════════════
+            ACTION_EXPAND_MINI_TO_FULL -> {
+                if (isMiniPlayer) {
+                    isMiniPlayer = false
+
+                    removeMiniWindow()
+
+                    val wv = webView
+                    if (wv != null && ghostContainer != null) {
+                        (wv.parent as? ViewGroup)?.removeView(wv)
+                        ghostContainer?.addView(
+                            wv,
+                            android.widget.FrameLayout.LayoutParams(
+                                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                                android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+                            )
+                        )
+                        injectVisibilitySpoof(wv)
+                    }
+
+                    showFull()
+
+                    val broadcastIntent = android.content.Intent(ACTION_MINI_EXPANDED_TO_FULL)
+                    broadcastIntent.setPackage(packageName)
+                    sendBroadcast(broadcastIntent)
+                }
+            }
+
             // ★ Recent apps থেকে ফিরলে MainActivity.onResume() এই action পাঠাবে।
             // Mini bubble/player যেমন আছে তেমনই থাকবে (user experience অপরিবর্তিত)।
             // শুধু window layout params refresh করা হয় যাতে নতুন Activity window

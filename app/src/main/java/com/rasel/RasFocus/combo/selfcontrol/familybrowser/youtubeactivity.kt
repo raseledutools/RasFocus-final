@@ -55,6 +55,17 @@ class YoutubeActivity : ComponentActivity() {
     // Mini player চালু আছে কিনা track করার জন্য
     private var isMiniPlayerActive = false
 
+    // ★ নতুন: Service থেকে broadcast আসলে mini → full হয়ে গেছে জানাবে।
+    private val miniExpandedReceiver = object : BroadcastReceiver() {
+        override fun onReceive(ctx: Context, intent: Intent) {
+            if (intent.action !=
+                com.rasel.RasFocus.combo.selfcontrol.familybrowser.service.YoutubeFloatingWindowService.ACTION_MINI_EXPANDED_TO_FULL
+            ) return
+            isMiniPlayerActive = false
+            homeWebView?.visibility = View.GONE
+        }
+    }
+
     // ── LAYER 2: Wake Lock ─────────────────────────────────────────────────────
     private var wakeLock: PowerManager.WakeLock? = null
 
@@ -287,6 +298,16 @@ class YoutubeActivity : ComponentActivity() {
             registerReceiver(playbackControlReceiver, playbackFilter, Context.RECEIVER_NOT_EXPORTED)
         } else {
             registerReceiver(playbackControlReceiver, playbackFilter)
+        }
+
+        // ★ নতুন: Mini → Full floating broadcast receiver register
+        val miniExpandedFilter = IntentFilter(
+            com.rasel.RasFocus.combo.selfcontrol.familybrowser.service.YoutubeFloatingWindowService.ACTION_MINI_EXPANDED_TO_FULL
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(miniExpandedReceiver, miniExpandedFilter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(miniExpandedReceiver, miniExpandedFilter)
         }
 
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -1244,7 +1265,15 @@ class YoutubeActivity : ComponentActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (isMiniPlayerActive) return
+
+        if (isMiniPlayerActive) {
+            // ★ Mini player চলাকালীন Home button চাপলে:
+            // Mini player → Full floating window এ convert করো।
+            com.rasel.RasFocus.combo.selfcontrol.familybrowser.service.YoutubeFloatingWindowService
+                .expandMiniToFull(this)
+            return
+        }
+
         val wv = webView ?: return
         // Home button চাপলে floating window — same logic
         launchFloatingOnLock(wv)
@@ -1278,6 +1307,7 @@ class YoutubeActivity : ComponentActivity() {
     override fun onDestroy() {
         try { unregisterReceiver(screenOffReceiver) } catch (_: Exception) {}
         try { unregisterReceiver(playbackControlReceiver) } catch (_: Exception) {}
+        try { unregisterReceiver(miniExpandedReceiver) } catch (_: Exception) {}
         try { if (wakeLock?.isHeld == true) wakeLock?.release() } catch (_: Exception) {}
         if (webView != null) {
             stopBgAudioService()
