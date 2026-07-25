@@ -264,12 +264,16 @@
     </activity>
 
     <!-- Internal-only activities (no intent-filters = not shown in picker) -->
+    <!-- FIX: singleTask+taskAffinity="" caused crash when launched from
+         UniversalViewerActivity (also singleTask) — Android tried to route
+         to the task root but the content URI grant didn't transfer, causing
+         SecurityException / instant crash. singleTop is correct: one instance
+         per task, reuses via onNewIntent when the same PDF is reopened. -->
     <activity
         android:name=".selfcontrol.study_tools.PdfViewerActivity"
         android:label="RasFocus PDF"
         android:exported="false"
-        android:launchMode="singleTask"
-        android:taskAffinity=""
+        android:launchMode="singleTop"
         android:hardwareAccelerated="true"
         android:theme="@style/Theme.RasFocus"
         android:configChanges="orientation|screenSize|keyboardHidden" />
@@ -278,7 +282,7 @@
         android:name=".selfcontrol.study_tools.PptxViewerActivity"
         android:label="RasFocus Presentation"
         android:exported="false"
-        android:launchMode="singleTask"
+        android:launchMode="singleTop"
         android:hardwareAccelerated="true"
         android:theme="@style/Theme.RasFocus"
         android:configChanges="orientation|screenSize|keyboardHidden" />
@@ -287,7 +291,7 @@
         android:name=".selfcontrol.study_tools.DocxViewerActivity"
         android:label="RasFocus Document"
         android:exported="false"
-        android:launchMode="singleTask"
+        android:launchMode="singleTop"
         android:hardwareAccelerated="true"
         android:theme="@style/Theme.RasFocus"
         android:configChanges="orientation|screenSize|keyboardHidden" />
@@ -296,7 +300,7 @@
         android:name=".selfcontrol.study_tools.XlsxViewerActivity"
         android:label="RasFocus Spreadsheet"
         android:exported="false"
-        android:launchMode="singleTask"
+        android:launchMode="singleTop"
         android:hardwareAccelerated="true"
         android:theme="@style/Theme.RasFocus"
         android:configChanges="orientation|screenSize|keyboardHidden" />
@@ -305,7 +309,7 @@
         android:name=".selfcontrol.study_tools.TextViewerActivity"
         android:label="RasFocus Text"
         android:exported="false"
-        android:launchMode="singleTask"
+        android:launchMode="singleTop"
         android:hardwareAccelerated="true"
         android:theme="@style/Theme.RasFocus"
         android:configChanges="orientation|screenSize|keyboardHidden" />
@@ -315,8 +319,7 @@
         android:name=".combo.selfcontrol.study_tools.PdfViewerActivity"
         android:label="RasFocus PDF"
         android:exported="false"
-        android:launchMode="singleTask"
-        android:taskAffinity=""
+        android:launchMode="singleTop"
         android:hardwareAccelerated="true"
         android:theme="@style/Theme.RasFocus"
         android:configChanges="orientation|screenSize|keyboardHidden" />
@@ -324,7 +327,7 @@
         android:name=".combo.selfcontrol.study_tools.PptxViewerActivity"
         android:label="RasFocus Presentation"
         android:exported="false"
-        android:launchMode="singleTask"
+        android:launchMode="singleTop"
         android:hardwareAccelerated="true"
         android:theme="@style/Theme.RasFocus"
         android:configChanges="orientation|screenSize|keyboardHidden" />
@@ -332,7 +335,7 @@
         android:name=".combo.selfcontrol.study_tools.DocxViewerActivity"
         android:label="RasFocus Document"
         android:exported="false"
-        android:launchMode="singleTask"
+        android:launchMode="singleTop"
         android:hardwareAccelerated="true"
         android:theme="@style/Theme.RasFocus"
         android:configChanges="orientation|screenSize|keyboardHidden" />
@@ -340,7 +343,7 @@
         android:name=".combo.selfcontrol.study_tools.XlsxViewerActivity"
         android:label="RasFocus Spreadsheet"
         android:exported="false"
-        android:launchMode="singleTask"
+        android:launchMode="singleTop"
         android:hardwareAccelerated="true"
         android:theme="@style/Theme.RasFocus"
         android:configChanges="orientation|screenSize|keyboardHidden" />

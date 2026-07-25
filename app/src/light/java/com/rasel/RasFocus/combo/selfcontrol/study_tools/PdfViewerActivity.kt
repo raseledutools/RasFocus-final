@@ -186,19 +186,29 @@ fun LightPdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
             errorMsg.isNotEmpty() -> Text(errorMsg, color = ComposeColor.Red, modifier = Modifier.align(Alignment.Center))
             total == 0 -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = ComposeColor(0xFF6C63FF))
             else -> {
+                // FIX: graphicsLayer on LazyColumn itself clips content — horizontal
+                // pan after zoom gets cut off at screen edge. Move graphicsLayer to a
+                // wrapper Box with wrapContentSize(unbounded=true) so translated content
+                // can extend past screen bounds without clipping.
                 val transformState = rememberTransformableState { zc, pc, _ ->
                     scale   = (scale * zc).coerceIn(1f, 5f)
-                    val max = (screenW * (scale - 1f)) / 2f
-                    offsetX = (offsetX + pc.x).coerceIn(-max, max)
-                    if (scale == 1f) offsetX = 0f
+                    offsetX = if (scale > 1f) offsetX + pc.x else 0f
                 }
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .transformable(transformState)
+                        .pointerInput(Unit) { detectTapGestures(onTap = { controls = !controls },
+                            onDoubleTap = { if (scale > 1f) { scale = 1f; offsetX = 0f } else scale = 2.5f }) }
+                ) {
+                Box(
+                    Modifier
+                        .wrapContentSize(Alignment.Center, unbounded = true)
+                        .graphicsLayer(scaleX = scale, scaleY = scale, translationX = offsetX, clip = false)
+                ) {
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxSize()
-                        .transformable(transformState)
-                        .graphicsLayer(scaleX = scale, scaleY = scale, translationX = offsetX)
-                        .pointerInput(Unit) { detectTapGestures(onTap = { controls = !controls },
-                            onDoubleTap = { if (scale > 1f) { scale = 1f; offsetX = 0f } else scale = 2.5f }) },
+                    modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
@@ -225,6 +235,8 @@ fun LightPdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
                         }
                     }
                 }
+                } // close inner graphicsLayer Box
+                } // close outer touch Box
 
                 androidx.compose.animation.AnimatedVisibility(visible = controls, enter = fadeIn(), exit = fadeOut(),
                     modifier = Modifier.align(Alignment.TopCenter)) {

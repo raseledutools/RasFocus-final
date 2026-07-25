@@ -415,16 +415,25 @@ fun NativePdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
         }
     }
 
-    // Debounced: waits for pinch/zoom to actually settle before re-rendering,
-    // so a live two-finger gesture doesn't trigger a re-render on every tiny
-    // scale change (would be expensive and janky mid-gesture).
-    LaunchedEffect(scale, visibleIdx) {
+    // FIX: was LaunchedEffect(scale, visibleIdx) — scrolling changes visibleIdx
+    // which restarted the effect and cancelled the delay(350), so zoom + scroll
+    // never triggered a re-render. Now keyed only on scale: the delay fires
+    // after the pinch settles, then captures visibleIdx at that moment.
+    LaunchedEffect(scale) {
         delay(350)
-        val current = pages.getOrNull(visibleIdx) ?: return@LaunchedEffect
-        // Only upgrade once real headroom is used up, and only bother past
-        // roughly 1x — avoids needless re-render churn for small pinches.
+        val currentIdx = visibleIdx   // snapshot after gesture settles
+        val current = pages.getOrNull(currentIdx) ?: return@LaunchedEffect
         if (scale > 1.05f && scale > current.renderedAtScale * 1.4f) {
-            reRenderPageSharper(visibleIdx, scale)
+            reRenderPageSharper(currentIdx, scale)
+        }
+        // Also re-render adjacent visible pages for sharp zoom
+        val doc = pdfDoc ?: return@LaunchedEffect
+        for (i in (currentIdx - 1).coerceAtLeast(0)
+                  ..(currentIdx + 1).coerceAtMost(totalPages - 1)) {
+            val pg = pages.getOrNull(i) ?: continue
+            if (scale > 1.05f && scale > pg.renderedAtScale * 1.4f) {
+                reRenderPageSharper(i, scale)
+            }
         }
     }
 
@@ -487,6 +496,10 @@ fun NativePdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
                 // scroll is frozen (userScrollEnabled = false) so the two
                 // gesture systems don't fight — pinch back out (or double-tap)
                 // to resume normal page-by-page scrolling.
+                // FIX: use wrapContentSize(unbounded=true) on the inner Box so
+                // graphicsLayer translation can move content outside the screen
+                // bounds without clipping. The outer fillMaxSize Box still
+                // receives all touch events via the pointerInput on the inner Box.
                 Box(
                     Modifier
                         .fillMaxSize()
@@ -498,11 +511,6 @@ fun NativePdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
                                     if (event.changes.size >= 2) {
                                         val zoomChange = event.calculateZoom()
                                         val panChange  = event.calculatePan()
-                                        // FIX: was capped at 5x — now that pages
-                                        // re-render at higher resolution when
-                                        // zoomed (see reRenderPageSharper above),
-                                        // a genuinely useful "zoom in a lot" ceiling
-                                        // of 10x stays sharp instead of blurry.
                                         val newScale = (scale * zoomChange).coerceIn(1f, 10f)
                                         offsetX = if (newScale > 1f) offsetX + panChange.x else 0f
                                         offsetY = if (newScale > 1f) offsetY + panChange.y else 0f
@@ -517,8 +525,6 @@ fun NativePdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
                         .pointerInput(Unit) {
                             detectTapGestures(
                                 onTap = {
-                                    // Plain tap — toggle the top bar, and dismiss
-                                    // any active selection toolbar too.
                                     toggleControls()
                                     if (showToolbar) { selection = null; showToolbar = false }
                                 },
@@ -536,14 +542,23 @@ fun NativePdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
                                 }
                             )
                         }
-                        .graphicsLayer(
-                            scaleX       = scale,
-                            scaleY       = scale,
-                            translationX = offsetX,
-                            translationY = offsetY,
-                            clip         = false
-                        )
                 ) {
+                    // FIX: wrapContentSize(unbounded=true) + graphicsLayer here —
+                    // NOT on the outer Box — so the scaled/translated content can
+                    // extend beyond screen edges without being clipped by the
+                    // parent fillMaxSize Box. This gives true horizontal pan when
+                    // zoomed in (content slides left/right freely).
+                    Box(
+                        Modifier
+                            .wrapContentSize(Alignment.Center, unbounded = true)
+                            .graphicsLayer(
+                                scaleX       = scale,
+                                scaleY       = scale,
+                                translationX = offsetX,
+                                translationY = offsetY,
+                                clip         = false
+                            )
+                    ) {
                     LazyColumn(
                         state               = listState,
                         modifier            = Modifier.fillMaxSize(),
@@ -569,6 +584,7 @@ fun NativePdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
                             }
                         }
                     }
+                    } // close inner graphicsLayer Box
                 }
 
                 // ── Selection toolbar ────────────────────────────────────────
