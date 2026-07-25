@@ -369,10 +369,16 @@ class YoutubeActivity : ComponentActivity() {
                         injectAdBlocker(view)
                     }
                     injectSettingsRemover(view)
-                    // Layer 3: Deep content scan (কিছু device এ black screen হতে পারে)
-                    if (prefs.getBoolean("yt_ad_layer3", true)) {
-                        adBlocker.injectContentScanner(view)
-                    }
+                    // Layer 3: YouTube এ injectContentScanner ডাকা হয় না।
+                    // কারণ: YouTube home page এর thumbnail/title text এ adult keyword
+                    // থাকলে false-positive block হয় — যেমন কেউ "sex education" series
+                    // recommend হলে home page ই block হয়ে যায়।
+                    // YouTube এ adult block Layer 1 (network/URL) + title-check যথেষ্ট।
+                    // অন্য browser (FamilyBrowserActivity) এ Layer 3 আগের মতোই চলবে।
+                    //
+                    // if (prefs.getBoolean("yt_ad_layer3", true)) {
+                    //     adBlocker.injectContentScanner(view)  // YouTube এ disabled
+                    // }
 
                     // FIX: এই navigation এ shouldOverrideUrlLoading/shouldInterceptRequest
                     // এ URL-level check করে ইতিমধ্যে একবার block page দেখানো হয়ে থাকলে,
@@ -1331,110 +1337,208 @@ class YoutubeActivity : ComponentActivity() {
     private fun injectAdBlocker(view: WebView) {
         view.evaluateJavascript("""
             (function() {
-                // Guard: একটাই interval সারাজীবন চলবে।
                 if (window.__rasAdBlockerActive__) return;
                 window.__rasAdBlockerActive__ = true;
 
-                // ── BLACK SCREEN ROOT CAUSE ──────────────────────────────────────────
-                // YouTube ad চলার সময় DOM এ দুইটা <video> থাকে:
-                //   [0] = ad video  (src = googlevideo.com/videoplayback?...&oad=...)
-                //   [1] = main video (src = googlevideo.com/videoplayback?...&id=...)
-                // আগের fix: player.querySelector('video') — এটা [0] ধরতো, ঠিকই ad
-                // skip করতো, কিন্তু YouTube এর player state machine তখনও ad-mode এ
-                // থাকে — transition এ compositor নতুন surface allocate করার আগেই
-                // পুরনো surface release করে দেয়, ফলে main video decode শুরু হওয়ার
-                // আগ পর্যন্ত screen blank থাকে।
+                // ═══════════════════════════════════════════════════════════════
+                // LAYER 2 — Mobile YouTube Ad Skipper (m.youtube.com)
                 //
-                // ── FIX STRATEGY ────────────────────────────────────────────────────
-                // 1. সব video element নিই (querySelectorAll)
-                // 2. ad video = src তে "ctier=A" বা "oad=" আছে এমন
-                //    main video = ad video না হলেই main
-                // 3. ad skip করার সাথে সাথে main video কে:
-                //    a. muted=false করি (YouTube sometimes mutes it during ad)
-                //    b. visibility/display force করি
-                //    c. play() call দিই — renderer surface জেগে ওঠে
-                // 4. 300ms পরে আবার play() — transition delay cover করতে
-                // ────────────────────────────────────────────────────────────────────
+                // Bug fix history:
+                // ✗ OLD: '#movie_player', '.html5-video-player' → desktop YouTube
+                //        selector, m.youtube.com এ exist করে না, কখনো কাজ করেনি।
+                // ✓ NEW: mobile YouTube এর actual DOM structure:
+                //   - ad-showing class: <ytm-player> বা body.ad-showing
+                //   - skip button: .ytm-skip-button-renderer, [data-skip-ad-button]
+                //   - ad video: src এ 'ctier=A' / '&oad=' / '&adformat=' আছে
+                //   - promoted card: ytm-promoted-sparkles-web-renderer,
+                //                    ytm-promoted-video-renderer
+                // ═══════════════════════════════════════════════════════════════
 
+                // ── Ad video চেনার helper ──
                 function isAdVideo(v) {
                     try {
                         var src = v.src || '';
-                        // YouTube ad videoplayback URL এ এই params থাকে
-                        return src.indexOf('ctier=A') !== -1 ||
-                               src.indexOf('&oad=') !== -1 ||
-                               src.indexOf('&adformat=') !== -1 ||
-                               (v.closest ? !!v.closest('.ad-showing') : false);
+                        if (src.indexOf('ctier=A')    !== -1) return true;
+                        if (src.indexOf('&oad=')      !== -1) return true;
+                        if (src.indexOf('&adformat=') !== -1) return true;
+                        if (src.indexOf('&source=ytads') !== -1) return true;
+                        // mobile YouTube: ad video element closest ancestor
+                        if (v.closest) {
+                            if (v.closest('.ad-showing'))        return true;
+                            if (v.closest('[class*="ad-slot"]')) return true;
+                        }
+                        return false;
                     } catch(e) { return false; }
                 }
 
-                function wakeMainVideo(player) {
+                // ── Ad শেষ হওয়ার পরে main video জাগানো ──
+                function wakeMainVideo() {
                     try {
-                        var allVideos = player.querySelectorAll('video');
+                        var allVideos = document.querySelectorAll('video');
                         var mainVideo = null;
                         for (var i = 0; i < allVideos.length; i++) {
                             if (!isAdVideo(allVideos[i])) { mainVideo = allVideos[i]; break; }
                         }
-                        // fallback: যদি identify করতে না পারি, সবচেয়ে শেষের video নাও
-                        if (!mainVideo && allVideos.length > 1) {
+                        if (!mainVideo && allVideos.length > 0) {
                             mainVideo = allVideos[allVideos.length - 1];
                         }
                         if (!mainVideo) return;
 
-                        // Surface wake: visibility + mute fix + play
                         mainVideo.style.visibility = 'visible';
                         mainVideo.style.display    = 'block';
                         mainVideo.style.opacity    = '1';
                         if (mainVideo.muted) mainVideo.muted = false;
                         mainVideo.play().catch(function(){});
 
-                        // Double-tap 300ms পরে — transition buffer
                         setTimeout(function() {
                             try {
-                                mainVideo.style.visibility = 'visible';
-                                if (mainVideo.paused) mainVideo.play().catch(function(){});
+                                if (mainVideo.paused && !mainVideo.ended) {
+                                    mainVideo.play().catch(function(){});
+                                }
                             } catch(e) {}
-                        }, 300);
+                        }, 400);
                     } catch(e) {}
                 }
 
+                // ── Ad video skip করা ──
+                function skipAdVideo() {
+                    try {
+                        var allVideos = document.querySelectorAll('video');
+                        for (var i = 0; i < allVideos.length; i++) {
+                            var v = allVideos[i];
+                            if (isAdVideo(v) && v.duration > 0 && !v.ended) {
+                                v.currentTime = v.duration;
+                                return true;
+                            }
+                        }
+                        // Fallback: সব video এর মধ্যে সবচেয়ে ছোট duration টাই ad
+                        if (allVideos.length > 1) {
+                            var shortest = null;
+                            var shortestDur = Infinity;
+                            for (var j = 0; j < allVideos.length; j++) {
+                                var dur = allVideos[j].duration || 0;
+                                if (dur > 0 && dur < shortestDur) {
+                                    shortestDur = dur;
+                                    shortest    = allVideos[j];
+                                }
+                            }
+                            // শুধু skip করো যদি duration ≤ 60s (ad এর মতো)
+                            if (shortest && shortestDur <= 60 && !shortest.ended) {
+                                shortest.currentTime = shortest.duration;
+                                return true;
+                            }
+                        }
+                        return false;
+                    } catch(e) { return false; }
+                }
+
+                // ── body বা player এ ad-showing class আছে কিনা ──
+                function isAdShowingNow() {
+                    try {
+                        // mobile YouTube: body.ad-showing বা ytm-player.ad-showing
+                        if (document.body && document.body.classList.contains('ad-showing')) return true;
+                        // player element এ
+                        var players = document.querySelectorAll(
+                            'ytm-player, ytm-shorts-player, .player-container, [data-player-type]'
+                        );
+                        for (var i = 0; i < players.length; i++) {
+                            if (players[i].classList.contains('ad-showing')) return true;
+                        }
+                        // ytm-paid-content-overlay বা ytm-ad-slot দেখা যাচ্ছে কিনা
+                        var adSlot = document.querySelector('ytm-paid-content-overlay, ytm-ad-slot-renderer');
+                        if (adSlot && adSlot.offsetParent !== null) return true;
+                        return false;
+                    } catch(e) { return false; }
+                }
+
                 var wasAdShowing = false;
+                var skipAttempts = 0;
 
                 setInterval(function() {
                     try {
-                        // ── 1. Skip button ক্লিক (সবচেয়ে safe) ──
+                        // ── Step 1: Skip button — mobile YouTube এর selectors ──
                         var skipBtn = document.querySelector(
-                            '.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button'
+                            // mobile YouTube skip button variants
+                            '.ytm-skip-button-renderer button, ' +
+                            '[data-skip-ad-button] button, ' +
+                            'ytm-skip-button-renderer button, ' +
+                            // desktop-style যদি থাকে
+                            '.ytp-ad-skip-button, ' +
+                            '.ytp-ad-skip-button-modern, ' +
+                            '.ytp-skip-ad-button, ' +
+                            // aria-label based (language-agnostic)
+                            'button[aria-label*="Skip"], ' +
+                            'button[aria-label*="skip"], ' +
+                            'button[aria-label*="Ad"], ' +
+                            '.skip-button'
                         );
-                        if (skipBtn) { skipBtn.click(); return; }
+                        if (skipBtn && skipBtn.offsetParent !== null) {
+                            skipBtn.click();
+                            wasAdShowing = false;
+                            return;
+                        }
 
-                        // ── 2. Banner / overlay ads hide করো ──
+                        // ── Step 2: Banner / card ads hide ──
                         document.querySelectorAll(
-                            '.ytp-ad-overlay-container, ytm-promoted-video-renderer, ' +
-                            '.ytp-ad-text-overlay, .ytp-ad-image-overlay'
-                        ).forEach(function(ad) { ad.style.display = 'none'; });
+                            'ytm-promoted-sparkles-web-renderer, ' +
+                            'ytm-promoted-video-renderer, ' +
+                            'ytm-paid-content-overlay, ' +
+                            'ytm-ad-slot-renderer, ' +
+                            '.ytm-promoted-sparkles-text-search-ad-renderer, ' +
+                            '.ytp-ad-overlay-container, ' +
+                            '.ytp-ad-text-overlay, ' +
+                            '.ytp-ad-image-overlay, ' +
+                            '.ytp-ad-progress-list'
+                        ).forEach(function(ad) {
+                            ad.style.display = 'none';
+                        });
 
-                        // ── 3. Video ad skip + black screen fix ──
-                        var player = document.querySelector('#movie_player, .html5-video-player');
-                        if (!player) return;
+                        // ── Step 3: Video ad — currentTime → duration ──
+                        var adNow = isAdShowingNow();
 
-                        var isAdShowing = player.classList.contains('ad-showing');
-
-                        if (isAdShowing) {
+                        if (adNow) {
                             wasAdShowing = true;
-                            var adVideo = player.querySelector('video');
-                            if (adVideo && adVideo.duration > 0 && !adVideo.ended) {
-                                adVideo.currentTime = adVideo.duration;
+                            skipAttempts++;
+                            var skipped = skipAdVideo();
+
+                            // Extra: ad overlay element এও click করো
+                            if (!skipped) {
+                                var overlay = document.querySelector(
+                                    'ytm-paid-content-overlay, .ad-showing .ytp-ad-player-overlay'
+                                );
+                                if (overlay) overlay.click();
                             }
                         } else if (wasAdShowing) {
-                            // ── ad সবে শেষ হলো — এটাই black screen moment ──
-                            // player.classList থেকে 'ad-showing' উঠে গেছে মানে
-                            // transition শুরু হয়েছে — এখনই main video wake করো
+                            // Ad সবে শেষ — main video জাগাও
                             wasAdShowing = false;
-                            wakeMainVideo(player);
+                            skipAttempts = 0;
+                            wakeMainVideo();
                         }
 
                     } catch(e) {}
-                }, 300);
+                }, 250);
+
+                // ── Extra: MutationObserver দিয়ে skip button আসামাত্র click ──
+                // interval এ 250ms delay আছে — observer instantaneous
+                try {
+                    var skipObserver = new MutationObserver(function() {
+                        try {
+                            var btn = document.querySelector(
+                                '.ytm-skip-button-renderer button, ' +
+                                '[data-skip-ad-button] button, ' +
+                                'ytm-skip-button-renderer button, ' +
+                                '.ytp-ad-skip-button, .ytp-ad-skip-button-modern'
+                            );
+                            if (btn && btn.offsetParent !== null) btn.click();
+                        } catch(e) {}
+                    });
+                    skipObserver.observe(document.documentElement, {
+                        childList: true,
+                        subtree: true,
+                        attributes: false
+                    });
+                } catch(e) {}
+
             })();
         """.trimIndent(), null)
     }
