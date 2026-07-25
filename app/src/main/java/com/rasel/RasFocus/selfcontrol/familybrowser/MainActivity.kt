@@ -1092,19 +1092,8 @@ fun TopBrowserBar(vm: BrowserViewModel) {
                 verticalAlignment     = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // ── Home / Back / Forward — scroll করলে লুকায় (Chrome-style) ──
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = vm.showNavButtons && !vm.isAddressBarFocused,
-                    enter = fadeIn(animationSpec = tween(150)) + expandHorizontally(animationSpec = tween(150)),
-                    exit  = fadeOut(animationSpec = tween(150)) + shrinkHorizontally(animationSpec = tween(150))
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                    val canGoBack    = vm.activeWebView?.canGoBack()  ?: false
-                    val canGoForward = vm.activeWebView?.canGoForward() ?: false
-                    val iconDisabled = Color.White.copy(0.28f)
-                    val iconEnabled  = Color.White.copy(0.85f)
-
-                    // Home
+                // ── Home only — Back/Forward removed ─────────────────────
+                if (!vm.isAddressBarFocused) {
                     IconButton(
                         onClick  = { vm.goHome() },
                         modifier = Modifier.size(32.dp)
@@ -1112,39 +1101,10 @@ fun TopBrowserBar(vm: BrowserViewModel) {
                         Icon(
                             Icons.Default.Home, null,
                             modifier = Modifier.size(19.dp),
-                            tint     = iconEnabled
+                            tint     = Color.White.copy(0.85f)
                         )
                     }
-
-                    // Back
-                    if (!vm.currentUrl.startsWith("about:")) {
-                        IconButton(
-                            onClick  = { if (canGoBack) vm.goBack() },
-                            modifier = Modifier.size(32.dp),
-                            enabled  = canGoBack
-                        ) {
-                            Icon(
-                                Icons.Default.ArrowBack, null,
-                                modifier = Modifier.size(19.dp),
-                                tint     = if (canGoBack) iconEnabled else iconDisabled
-                            )
-                        }
-
-                        // Forward
-                        IconButton(
-                            onClick  = { if (canGoForward) vm.goForward() },
-                            modifier = Modifier.size(32.dp),
-                            enabled  = canGoForward
-                        ) {
-                            Icon(
-                                Icons.Default.ArrowForward, null,
-                                modifier = Modifier.size(19.dp),
-                                tint     = if (canGoForward) iconEnabled else iconDisabled
-                            )
-                        }
-                    }
-                    } // Row
-                } // AnimatedVisibility
+                }
 
                 // ── Chrome-style address bar — dark pill ──────────────────
                 val barBg = if (vm.isAddressBarFocused)
