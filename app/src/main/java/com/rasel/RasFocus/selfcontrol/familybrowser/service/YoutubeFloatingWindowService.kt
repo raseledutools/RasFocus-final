@@ -259,6 +259,71 @@ class YoutubeFloatingWindowService : Service() {
             context.startService(Intent(context, YoutubeFloatingWindowService::class.java)
                 .apply { action = ACTION_RESTORE })
         }
+
+        /**
+         * ★ FIX: Mini Player Mode CSS Injector
+         * Mini player এ থাকার সময় YouTube mobile web এর header bar, comments, recommendations hide করে দেয়
+         * এবং <video> element কে viewport এর 100vw x 100vh এ fixed করে দেয়।
+         * ফলে miniplayer এ কোনো black color বা অর্ধেক কালো দেখায় না।
+         * enable = false দিলে আবার normal watch page layout এ ফিরে আসে।
+         */
+        fun injectMiniPlayerCss(view: WebView?, enable: Boolean) {
+            if (view == null) return
+            val js = if (enable) {
+                """
+                (function() {
+                    try {
+                        var style = document.getElementById('ras-mini-player-style');
+                        if (!style) {
+                            style = document.createElement('style');
+                            style.id = 'ras-mini-player-style';
+                            document.head.appendChild(style);
+                        }
+                        style.innerHTML = `
+                            ytm-mobile-topbar-renderer, ytm-pivot-bar-renderer, #header-bar, .mobile-topbar-header-content,
+                            ytm-watch-next-secondary-results-renderer, ytm-item-section-renderer, ytm-comment-section-renderer,
+                            .watch-below-the-player, ytm-single-column-watch-next-results-renderer > :not(.player-container),
+                            ytm-watch-metadata-app-bundle-slot-renderer, ytm-paid-content-overlay, ytm-ad-slot-renderer {
+                                display: none !important;
+                            }
+                            .player-container, #player, ytm-player, #player-container-id, .html5-video-container, video {
+                                position: fixed !important;
+                                top: 0 !important;
+                                left: 0 !important;
+                                width: 100vw !important;
+                                height: 100vh !important;
+                                max-height: 100vh !important;
+                                margin: 0 !important;
+                                padding: 0 !important;
+                                z-index: 9999999 !important;
+                                background: #000 !important;
+                                object-fit: contain !important;
+                            }
+                            body, html, ytm-app, ytm-watch {
+                                overflow: hidden !important;
+                                margin: 0 !important;
+                                padding: 0 !important;
+                                background: #000 !important;
+                            }
+                        `;
+                        window.scrollTo(0, 0);
+                    } catch(e) {}
+                })();
+                """.trimIndent()
+            } else {
+                """
+                (function() {
+                    try {
+                        var style = document.getElementById('ras-mini-player-style');
+                        if (style) style.innerHTML = '';
+                        document.body.style.overflow = '';
+                        document.documentElement.style.overflow = '';
+                    } catch(e) {}
+                })();
+                """.trimIndent()
+            }
+            view.evaluateJavascript(js, null)
+        }
     }
 
     // ── State ──────────────────────────────────────────────────────────────────
@@ -770,8 +835,10 @@ class YoutubeFloatingWindowService : Service() {
 
         // ★ FIX: Audio — window এ attach এর পরে 200ms দেরিতে force inject।
         // WebView re-parenting এর পরে YouTube নিজে থেকে pause করে দেয়।
+        injectMiniPlayerCss(wv, true)
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
             injectStrongAudioKeepAlive(wv)
+            injectMiniPlayerCss(wv, true)
         }, 200L)
 
         // ── Overlay controls (video এর উপরে) ────────────────────────────────
@@ -905,6 +972,7 @@ class YoutubeFloatingWindowService : Service() {
      * Activity.onResume() → stopService() → onDestroy() → pendingWebView set।
      */
     private fun returnToActivity() {
+        injectMiniPlayerCss(webView, false)
         // YoutubeActivity কে FLAG_ACTIVITY_REORDER_TO_FRONT দিয়ে resume করো
         val resumeIntent = Intent(
             this,
@@ -1175,6 +1243,7 @@ class YoutubeFloatingWindowService : Service() {
 
     private fun showFull() {
         removeBubble()
+        injectMiniPlayerCss(webView, false)
         webView?.evaluateJavascript("""
             (function() {
                 try {
