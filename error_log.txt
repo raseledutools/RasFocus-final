@@ -1,40 +1,31 @@
 === KOTLIN ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/DocxViewerActivity.kt:37:7 Redeclaration: DocxViewerActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/PptxViewerActivity.kt:40:7 Redeclaration: PptxViewerActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/DocxViewerActivity.kt:37:7 Redeclaration: DocxViewerActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PptxViewerActivity.kt:40:7 Redeclaration: PptxViewerActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/XlsxViewerActivity.kt:37:7 Redeclaration: XlsxViewerActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/DocxViewerActivity.kt:42:7 Redeclaration: DocxViewerActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/PptxViewerActivity.kt:43:7 Redeclaration: PptxViewerActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/DocxViewerActivity.kt:42:7 Redeclaration: DocxViewerActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/PptxViewerActivity.kt:43:7 Redeclaration: PptxViewerActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/XlsxViewerActivity.kt:45:7 Redeclaration: XlsxViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/familybrowser/youtubeactivity.kt:411:21 Type mismatch: inferred type is YoutubeActivity but WebView was expected
 
 === UNRESOLVED / TYPE ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/DocxViewerActivity.kt:37:7 Redeclaration: DocxViewerActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/PptxViewerActivity.kt:40:7 Redeclaration: PptxViewerActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/DocxViewerActivity.kt:37:7 Redeclaration: DocxViewerActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PptxViewerActivity.kt:40:7 Redeclaration: PptxViewerActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/XlsxViewerActivity.kt:37:7 Redeclaration: XlsxViewerActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/DocxViewerActivity.kt:42:7 Redeclaration: DocxViewerActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/PptxViewerActivity.kt:43:7 Redeclaration: PptxViewerActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/DocxViewerActivity.kt:42:7 Redeclaration: DocxViewerActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/PptxViewerActivity.kt:43:7 Redeclaration: PptxViewerActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/XlsxViewerActivity.kt:45:7 Redeclaration: XlsxViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/familybrowser/youtubeactivity.kt:411:21 Type mismatch: inferred type is YoutubeActivity but WebView was expected
 
 === BUILD FAILURE ===
 > Task :app:compileFullReleaseKotlin FAILED
 * What went wrong:
 Execution failed for task ':app:compileFullReleaseKotlin'.
-BUILD FAILED in 3m 15s
+BUILD FAILED in 4m 2s
 
 === LAST 60 LINES ===
+> Task :app:extractProguardFiles
+> Task :app:generateFullReleaseBuildConfig
+> Task :app:packageFullReleaseResources FROM-CACHE
+> Task :app:parseFullReleaseLocalResources FROM-CACHE
+> Task :app:mapFullReleaseSourceSetPaths
 > Task :app:checkFullReleaseAarMetadata
-> Task :app:checkFullReleaseDuplicateClasses
+> Task :app:validateSigningFullRelease
+> Task :app:writeFullReleaseAppMetadata
+> Task :app:mergeFullReleaseArtProfile
 > Task :app:mergeFullReleaseAssets FROM-CACHE
+> Task :app:writeFullReleaseSigningConfigVersions
+> Task :app:checkFullReleaseDuplicateClasses
+> Task :app:compressFullReleaseAssets FROM-CACHE
 > Task :app:collectFullReleaseDependencies
 > Task :app:mergeFullReleaseNativeLibs
-> Task :app:compressFullReleaseAssets FROM-CACHE
 
 > Task :app:stripFullReleaseDebugSymbols
 Unable to strip the following libraries, packaging them as they are: libbarhopper_v3.so, libimage_processing_util_jni.so, libpdfium.so, libpdfiumandroid.so.
@@ -53,19 +44,10 @@ note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round ico
 > Task :app:processFullReleaseResources
 > Task :app:kspFullReleaseKotlin
 > Task :app:compileFullReleaseKotlin
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/DocxViewerActivity.kt:37:7 Redeclaration: DocxViewerActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/PptxViewerActivity.kt:40:7 Redeclaration: PptxViewerActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/DocxViewerActivity.kt:37:7 Redeclaration: DocxViewerActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PptxViewerActivity.kt:40:7 Redeclaration: PptxViewerActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/XlsxViewerActivity.kt:37:7 Redeclaration: XlsxViewerActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/DocxViewerActivity.kt:42:7 Redeclaration: DocxViewerActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/PptxViewerActivity.kt:43:7 Redeclaration: PptxViewerActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/DocxViewerActivity.kt:42:7 Redeclaration: DocxViewerActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/PptxViewerActivity.kt:43:7 Redeclaration: PptxViewerActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/XlsxViewerActivity.kt:45:7 Redeclaration: XlsxViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/familybrowser/youtubeactivity.kt:411:21 Type mismatch: inferred type is YoutubeActivity but WebView was expected
 
 > Task :app:compileFullReleaseKotlin FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1784961252041.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785081910058.json
 
 FAILURE: Build failed with an exception.
 
@@ -86,6 +68,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 3m 15s
+BUILD FAILED in 4m 2s
 32 actionable tasks: 22 executed, 10 from cache
 Configuration cache entry stored.
