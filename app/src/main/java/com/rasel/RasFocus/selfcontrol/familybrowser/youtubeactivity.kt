@@ -408,7 +408,7 @@ class YoutubeActivity : ComponentActivity() {
             addJavascriptInterface(YtBlockBridge(this), "RasYtBlockBridge")
             addJavascriptInterface(
                 com.rasel.RasFocus.selfcontrol.familybrowser.AdBlocker.BlockOverlayBridge(
-                    this@YoutubeActivity, "https://m.youtube.com/", { block -> runOnUiThread(block) }
+                    this, "https://m.youtube.com/", { block -> runOnUiThread(block) }
                 ),
                 "RasBlockBridge"
             )
