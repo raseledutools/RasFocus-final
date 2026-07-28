@@ -149,22 +149,30 @@ class UsageNotificationService : Service() {
             while (isActive) {
                 try {
                     val prefs = this@UsageNotificationService.getSharedPreferences("AutoUpdaterPrefs", Context.MODE_PRIVATE)
-                    val lastTag = prefs.getString(com.rasel.RasFocus.AutoUpdater.LAST_TAG_KEY, "") ?: ""
-                    
+                    val lastInstalledTag = prefs.getString(com.rasel.RasFocus.AutoUpdater.LAST_TAG_KEY, "") ?: ""
+                    val lastNotifiedTag  = prefs.getString(com.rasel.RasFocus.AutoUpdater.LAST_NOTIFIED_TAG_KEY, "") ?: ""
+
                     com.rasel.RasFocus.AutoUpdater.fetchLatestReleaseInfo(this@UsageNotificationService) { info ->
-                        if (info != null && info.tagName != lastTag) {
-                            // Found a new update, silently download it
-                            com.rasel.RasFocus.AutoUpdater.silentDownloadUpdate(
-                                this@UsageNotificationService, 
-                                com.rasel.RasFocus.AutoUpdater.APK_UNIVERSAL, 
-                                info.tagName
+                        // ★ FIX: শুধু নতুন version এর জন্য, এবং শুধু একবার download + notification
+                        if (info != null
+                            && info.tagName != lastInstalledTag
+                            && info.tagName != lastNotifiedTag
+                        ) {
+                            // Silent background download
+                            com.rasel.RasFocus.AutoUpdater.downloadWithProgress(
+                                this@UsageNotificationService, info
+                            ) { /* downloadId tracked by DownloadManager */ }
+
+                            // Notification (showUpdateAvailableNotification saves lastNotifiedTag)
+                            com.rasel.RasFocus.AutoUpdater.showUpdateAvailableNotification(
+                                this@UsageNotificationService, info
                             )
                         }
                     }
                 } catch (e: Exception) {
                     // Ignore exceptions in background loop
                 }
-                
+
                 // Wait 12 hours before checking again
                 kotlinx.coroutines.delay(12 * 60 * 60 * 1000L)
             }

@@ -34,12 +34,22 @@ class AutoUpdateWorker(appContext: Context, workerParams: WorkerParameters) : Co
     override suspend fun doWork(): Result {
         return withContext(Dispatchers.IO) {
             val prefs = applicationContext.getSharedPreferences(AutoUpdater.PREFS_NAME, Context.MODE_PRIVATE)
-            val lastTag = prefs.getString(AutoUpdater.LAST_TAG_KEY, "") ?: ""
-            val info = AutoUpdater.fetchLatestReleaseInfoSync(applicationContext)
-            if (info != null && info.tagName != lastTag) {
-                // Background worker শুধু check করে — actual download user-initiated
-                AutoUpdater.showUpdateAvailableNotification(applicationContext, info)
+            val lastInstalledTag = prefs.getString(AutoUpdater.LAST_TAG_KEY, "") ?: ""
+            val lastNotifiedTag  = prefs.getString(AutoUpdater.LAST_NOTIFIED_TAG_KEY, "") ?: ""
+
+            val info = AutoUpdater.fetchLatestReleaseInfoSync(applicationContext) ?: return@withContext Result.success()
+
+            // ★ FIX: ইতিমধ্যে install হয়েছে বা notification দেওয়া হয়েছে এমন version এর জন্য কিছু করো না
+            if (info.tagName == lastInstalledTag || info.tagName == lastNotifiedTag) {
+                return@withContext Result.success()
             }
+
+            // ★ নতুন version পাওয়া গেছে — background এ download করো
+            AutoUpdater.downloadWithProgress(applicationContext, info) { /* download id tracked by DownloadManager */ }
+
+            // ★ Notification দাও (showUpdateAvailableNotification নিজেই lastNotifiedTag save করবে)
+            AutoUpdater.showUpdateAvailableNotification(applicationContext, info)
+
             Result.success()
         }
     }
@@ -51,6 +61,8 @@ object AutoUpdater {
     private const val TAG = "AutoUpdater"
     const val PREFS_NAME    = "AutoUpdaterPrefs"
     const val LAST_TAG_KEY  = "last_installed_tag"
+    // ★ NEW: tracks which tag we already sent a notification for (prevents repeated notifications)
+    const val LAST_NOTIFIED_TAG_KEY = "last_notified_tag"
     const val NOTIFICATION_ID       = 554433
     const val NOTIF_UPDATE_AVAIL    = 554434
     const val CHANNEL_ID = "update_channel"
@@ -126,8 +138,16 @@ object AutoUpdater {
         fetchLatestReleaseInfo(context) { info ->
             if (info == null) return@fetchLatestReleaseInfo
             val currentTag = "v" + BuildConfig.VERSION_NAME
-            if (info.tagName != currentTag) {
-                onUpdateAvailable?.invoke(info) ?: showUpdateAvailableNotification(context, info)
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val lastNotifiedTag = prefs.getString(LAST_NOTIFIED_TAG_KEY, "") ?: ""
+
+            // ★ FIX: শুধু update available হলে AND এই version এর notification আগে না গেলেই notify করো
+            if (info.tagName != currentTag && info.tagName != lastNotifiedTag) {
+                if (onUpdateAvailable != null) {
+                    onUpdateAvailable.invoke(info)
+                } else {
+                    showUpdateAvailableNotification(context, info)
+                }
             }
         }
     }
@@ -199,15 +219,35 @@ object AutoUpdater {
     // ── Notification: update available (background check এ) ───────────────
     fun showUpdateAvailableNotification(context: Context, info: ReleaseInfo) {
         ensureChannel(context)
+
+        // ★ FIX: এই version এর জন্য notification ইতিমধ্যে পাঠানো হয়েছে কিনা check করো
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val lastNotifiedTag = prefs.getString(LAST_NOTIFIED_TAG_KEY, "") ?: ""
+        if (info.tagName == lastNotifiedTag) return  // already notified for this version
+
+        // ★ একটি tap-to-open-app PendingIntent যাতে ক্লিক করলে app খুলে install করা যায়
+        val openIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+            ?.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP) }
+        val pendingIntent = if (openIntent != null) {
+            PendingIntent.getActivity(
+                context, 0, openIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        } else null
+
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val notif = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
-            .setContentTitle("RasFocus Update Available")
-            .setContentText("Version ${info.tagName} is ready. Open app to install.")
+            .setContentTitle("RasFocus Update Available — ${info.tagName}")
+            .setContentText("নতুন আপডেট ডাউনলোড হয়ে আছে। ট্যাপ করে অ্যাপে গিয়ে Install করুন।")
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
+            .apply { if (pendingIntent != null) setContentIntent(pendingIntent) }
             .build()
         nm.notify(NOTIF_UPDATE_AVAIL, notif)
+
+        // ★ FIX: save করো যে এই tag এর জন্য notification পাঠানো হয়েছে
+        prefs.edit().putString(LAST_NOTIFIED_TAG_KEY, info.tagName).apply()
     }
 
     // ── Tag save ──────────────────────────────────────────────────────────

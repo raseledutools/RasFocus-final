@@ -2309,14 +2309,49 @@ fun BrowserAppRow(
 fun UpdateCenterSection(context: Context) {
     var releaseInfo by remember { mutableStateOf<com.rasel.RasFocus.ReleaseInfo?>(null) }
     var checking by remember { mutableStateOf(true) }
-    
-    val prefs = context.getSharedPreferences("AutoUpdaterPrefs", Context.MODE_PRIVATE)
-    val lastTag = prefs.getString(com.rasel.RasFocus.AutoUpdater.LAST_TAG_KEY, "") ?: ""
+
+    // ★ FIX: downloadedFile কে state এ রাখো যাতে download complete হলে UI আপডেট হয়
+    var downloadedFile by remember { mutableStateOf<java.io.File?>(null) }
+
+    // Download progress state
+    var cDl  by remember { mutableStateOf(false) }
+    var cPct by remember { mutableStateOf(0) }
+    var cId  by remember { mutableStateOf(-1L) }
+    var cDone by remember { mutableStateOf(false) }
+    var dlFailed by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         com.rasel.RasFocus.AutoUpdater.fetchLatestReleaseInfo(context) { info ->
             releaseInfo = info
             checking = false
+            if (info != null) {
+                // ★ FIX: screen খোলার সময়ই চেক করো background download হয়ে আছে কিনা
+                downloadedFile = com.rasel.RasFocus.AutoUpdater.getDownloadedUpdateFile(context, info.tagName)
+            }
+        }
+    }
+
+    // ★ FIX: progress polling — download শেষ হলে downloadedFile state আপডেট করো
+    LaunchedEffect(cId, cDl) {
+        if (!cDl || cId < 0L) return@LaunchedEffect
+        while (cDl) {
+            kotlinx.coroutines.delay(400)
+            val (p, s) = com.rasel.RasFocus.AutoUpdater.queryProgress(context, cId)
+            cPct = p
+            when (s) {
+                android.app.DownloadManager.STATUS_SUCCESSFUL -> {
+                    cDl = false
+                    cDone = true
+                    // ★ FIX: download শেষ হলে file reference রিফ্রেশ করো
+                    releaseInfo?.let {
+                        downloadedFile = com.rasel.RasFocus.AutoUpdater.getDownloadedFile(context, it.tagName)
+                    }
+                }
+                android.app.DownloadManager.STATUS_FAILED -> {
+                    cDl = false
+                    dlFailed = true
+                }
+            }
         }
     }
 
@@ -2333,7 +2368,7 @@ fun UpdateCenterSection(context: Context) {
                 Text("Update Center", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = SoftWhite)
             }
             Spacer(Modifier.height(16.dp))
-            
+
             if (checking) {
                 Text("Checking for updates...", color = Color.LightGray, fontSize = 14.sp)
             } else if (releaseInfo != null) {
@@ -2348,52 +2383,74 @@ fun UpdateCenterSection(context: Context) {
                     Text("New version: ${releaseInfo!!.tagName}", color = SoftWhite, fontSize = 14.sp)
                     Text("Released: ${releaseInfo!!.publishedAt}", color = Color.LightGray, fontSize = 12.sp)
                     Spacer(Modifier.height(16.dp))
-                    
-                    val downloadedFile = com.rasel.RasFocus.AutoUpdater.getDownloadedUpdateFile(context, releaseInfo!!.tagName)
-                    
-                    if (downloadedFile != null) {
-                        Button(
-                            onClick = { com.rasel.RasFocus.AutoUpdater.installApk(context, downloadedFile) },
-                            modifier = Modifier.fillMaxWidth().height(50.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(Icons.Default.DownloadDone, contentDescription = null, tint = SoftWhite)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Install Update Now", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = SoftWhite)
-                        }
-                    } else {
-                        var cDl by remember { mutableStateOf(false) }
-                        var cPct by remember { mutableStateOf(0) }
-                        var cId by remember { mutableStateOf(-1L) }
-                        var cDone by remember { mutableStateOf(false) }
-                        LaunchedEffect(cId, cDl) {
-                            if (!cDl || cId < 0L) return@LaunchedEffect
-                            while (cDl) {
-                                kotlinx.coroutines.delay(400)
-                                val (p, s) = com.rasel.RasFocus.AutoUpdater.queryProgress(context, cId)
-                                cPct = p
-                                if (s == android.app.DownloadManager.STATUS_SUCCESSFUL) { cDl = false; cDone = true }
-                                else if (s == android.app.DownloadManager.STATUS_FAILED) { cDl = false }
+
+                    when {
+                        // ★ Case 1: ফাইল ready — install করো (background বা manual download উভয় ক্ষেত্রে)
+                        downloadedFile != null -> {
+                            Text(
+                                "✅ ডাউনলোড সম্পন্ন হয়েছে। Install করুন।",
+                                color = Color(0xFF69F0AE), fontSize = 13.sp,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                            Button(
+                                onClick = {
+                                    com.rasel.RasFocus.AutoUpdater.installApk(context, downloadedFile!!)
+                                    // ★ FIX: install শুরু হলে saveTag করো
+                                    com.rasel.RasFocus.AutoUpdater.saveTag(context, releaseInfo!!.tagName)
+                                },
+                                modifier = Modifier.fillMaxWidth().height(52.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B5E20)),
+                                shape = RoundedCornerShape(14.dp)
+                            ) {
+                                Icon(Icons.Default.DownloadDone, contentDescription = null, tint = Color(0xFF69F0AE), modifier = Modifier.size(20.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Install Update Now ✓", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF69F0AE))
                             }
                         }
-                        if (cDone) {
-                            val f = com.rasel.RasFocus.AutoUpdater.getDownloadedFile(context, releaseInfo!!.tagName)
-                            Button(onClick = { if (f != null) { com.rasel.RasFocus.AutoUpdater.installApk(context, f); com.rasel.RasFocus.AutoUpdater.saveTag(context, releaseInfo!!.tagName) } },
-                                modifier = Modifier.fillMaxWidth().height(48.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B5E20)), shape = RoundedCornerShape(14.dp)
-                            ) { Text("Install Now ✓", color = Color(0xFF69F0AE), fontWeight = FontWeight.Bold) }
-                        } else if (cDl) {
+
+                        // ★ Case 2: downloading in progress
+                        cDl -> {
                             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                                androidx.compose.material3.CircularProgressIndicator(progress = { cPct / 100f }, color = Color(0xFF4FACFE), trackColor = Color(0xFF2A2D3E))
+                                androidx.compose.material3.CircularProgressIndicator(
+                                    progress = { cPct / 100f },
+                                    color = Color(0xFF4FACFE),
+                                    trackColor = Color(0xFF2A2D3E)
+                                )
                                 Spacer(Modifier.height(6.dp))
                                 Text("Downloading... $cPct%", color = SoftWhite, fontSize = 13.sp)
                             }
-                        } else {
-                            Button(onClick = { cDl = true; cPct = 0; cDone = false; com.rasel.RasFocus.AutoUpdater.downloadWithProgress(context, releaseInfo!!) { id -> cId = id } },
+                        }
+
+                        // ★ Case 3: download failed — retry option
+                        dlFailed -> {
+                            Text("❌ ডাউনলোড ব্যর্থ হয়েছে।", color = Color(0xFFFF3B30), fontSize = 13.sp)
+                            Spacer(Modifier.height(8.dp))
+                            Button(
+                                onClick = {
+                                    dlFailed = false; cDl = true; cPct = 0; cDone = false
+                                    com.rasel.RasFocus.AutoUpdater.downloadWithProgress(context, releaseInfo!!) { id -> cId = id }
+                                },
                                 modifier = Modifier.fillMaxWidth().height(48.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4FACFE)), shape = RoundedCornerShape(14.dp)
-                            ) { Icon(Icons.Default.Download, null, tint = SoftWhite, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(8.dp)); Text("Download & Install", fontWeight = FontWeight.Bold, color = SoftWhite) }
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4FACFE)),
+                                shape = RoundedCornerShape(14.dp)
+                            ) { Text("আবার চেষ্টা করুন", fontWeight = FontWeight.Bold, color = SoftWhite) }
+                        }
+
+                        // ★ Case 4: not yet downloaded — download button
+                        else -> {
+                            Button(
+                                onClick = {
+                                    cDl = true; cPct = 0; cDone = false; dlFailed = false
+                                    com.rasel.RasFocus.AutoUpdater.downloadWithProgress(context, releaseInfo!!) { id -> cId = id }
+                                },
+                                modifier = Modifier.fillMaxWidth().height(48.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4FACFE)),
+                                shape = RoundedCornerShape(14.dp)
+                            ) {
+                                Icon(Icons.Default.Download, null, tint = SoftWhite, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Download & Install", fontWeight = FontWeight.Bold, color = SoftWhite)
+                            }
                         }
                     }
                 }
