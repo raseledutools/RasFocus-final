@@ -21,6 +21,7 @@ import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
@@ -584,14 +585,15 @@ fun ReminderDialog(
 // ============================================================
 // LIST SCREEN — WriteDiary-style entry list (first page)
 // ============================================================
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun DiaryListScreen(
     entries: List<DiaryEntry>,
     onEntryClick: (DiaryEntry) -> Unit,
     onNewEntry: () -> Unit,
     onNavigateBack: () -> Unit,
-    onMenuClick: () -> Unit = {}
+    onMenuClick: () -> Unit = {},
+    onDeleteEntry: (DiaryEntry) -> Unit = {}
 ) {
     val context = LocalContext.current
     val magenta = Color(0xFFE91E8C)
@@ -741,7 +743,7 @@ fun DiaryListScreen(
                         }
                     }
 
-                    // ── Entries for this date: compact single-line rows ────────
+                    // ── Entries for this date: swipe-to-delete rows ───────────
                     items(dayEntries, key = { it.id }) { entry ->
                         val moodColor = when {
                             entry.mood.contains("😊") || entry.mood.contains("🎉") -> Color(0xFF4CAF50)
@@ -751,43 +753,101 @@ fun DiaryListScreen(
                             entry.mood.contains("😰") -> Color(0xFFFF9800)
                             else -> magenta
                         }
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onEntryClick(entry) }
-                                .background(Color.White)
-                                .padding(horizontal = 16.dp, vertical = 11.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Left accent dot (mood color)
-                            Box(
-                                modifier = Modifier
-                                    .size(9.dp)
-                                    .background(moodColor, CircleShape)
+
+                        // ── confirm delete dialog state ────────────────────────
+                        var showDeleteConfirm by remember { mutableStateOf(false) }
+                        if (showDeleteConfirm) {
+                            AlertDialog(
+                                onDismissRequest = { showDeleteConfirm = false },
+                                title = { Text("Delete Entry?") },
+                                text = {
+                                    Text("\"${entry.title.ifBlank { "Untitled" }}\" permanently delete হবে।")
+                                },
+                                confirmButton = {
+                                    Button(
+                                        onClick = {
+                                            onDeleteEntry(entry)
+                                            showDeleteConfirm = false
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F))
+                                    ) { Text("Delete", color = Color.White) }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }
+                                }
                             )
-                            Spacer(Modifier.width(10.dp))
-                            // Lock icon if locked
-                            if (entry.isLocked) {
-                                Icon(Icons.Default.Lock, null, tint = magenta, modifier = Modifier.size(12.dp))
-                                Spacer(Modifier.width(4.dp))
+                        }
+
+                        // ── Swipe-to-dismiss wrapper ───────────────────────────
+                        val dismissState = rememberSwipeToDismissBoxState(
+                            confirmValueChange = { dismissValue ->
+                                if (dismissValue == SwipeToDismissBoxValue.EndToStart ||
+                                    dismissValue == SwipeToDismissBoxValue.StartToEnd) {
+                                    showDeleteConfirm = true
+                                }
+                                false  // don't auto-remove — confirm dialog করবে
                             }
-                            // Title + preview on same line (title bold, preview muted)
-                            Text(
-                                entry.title.ifBlank { "Untitled" },
-                                color = Color(0xFF1A237E),
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f)
-                            )
-                            // Mood emoji on right
-                            if (entry.mood.isNotBlank()) {
-                                val moodEmoji = entry.mood.trim().take(2)
-                                Text(moodEmoji, fontSize = 14.sp, modifier = Modifier.padding(start = 6.dp))
+                        )
+
+                        SwipeToDismissBox(
+                            state = dismissState,
+                            backgroundContent = {
+                                val swipeDir = dismissState.currentValue
+                                val isActive = swipeDir != SwipeToDismissBoxValue.Settled
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(
+                                            if (isActive) Color(0xFFD32F2F) else Color(0xFFFFCDD2)
+                                        )
+                                        .padding(horizontal = 20.dp),
+                                    contentAlignment = if (swipeDir == SwipeToDismissBoxValue.StartToEnd)
+                                        Alignment.CenterStart else Alignment.CenterEnd
+                                ) {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        contentDescription = "Delete",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                            },
+                            enableDismissFromStartToEnd = true,
+                            enableDismissFromEndToStart = true,
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color.White)
+                                    .combinedClickable(
+                                        onClick = { onEntryClick(entry) },
+                                        onLongClick = { showDeleteConfirm = true }
+                                    )
+                                    .padding(horizontal = 16.dp, vertical = 11.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(modifier = Modifier.size(9.dp).background(moodColor, CircleShape))
+                                Spacer(Modifier.width(10.dp))
+                                if (entry.isLocked) {
+                                    Icon(Icons.Default.Lock, null, tint = magenta, modifier = Modifier.size(12.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                }
+                                Text(
+                                    entry.title.ifBlank { "Untitled" },
+                                    color = Color(0xFF1A237E),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (entry.mood.isNotBlank()) {
+                                    Text(entry.mood.trim().take(2), fontSize = 14.sp,
+                                        modifier = Modifier.padding(start = 6.dp))
+                                }
                             }
                         }
-                        // Thin divider between entries
+
                         HorizontalDivider(
                             modifier = Modifier.padding(horizontal = 16.dp),
                             color = Color(0xFFF0F0F0),
@@ -911,7 +971,8 @@ fun ProfessionalDiaryScreen(
                     showListScreen = false
                 },
                 onNavigateBack = onNavigateBack,
-                onMenuClick = { scope.launch { drawerState.open() } }
+                onMenuClick = { scope.launch { drawerState.open() } },
+                onDeleteEntry = { entry -> viewModel.deleteEntry(entry) }
             )
         }
 
