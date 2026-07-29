@@ -1322,7 +1322,30 @@ fun ProfessionalDiaryScreen(
                 onRemoveTag = { tag -> viewModel.removeTag(tag) },
                 onFolderClick = { showFolderMenu = true },
                 showFolderMenu = showFolderMenu,
-                onDismissFolderMenu = { showFolderMenu = false }
+                onDismissFolderMenu = { showFolderMenu = false },
+                onDateClick = {
+                    // Parse the current entry date so picker opens on the right month/day
+                    val cal = Calendar.getInstance()
+                    runCatching {
+                        val sdf = SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.ENGLISH)
+                        cal.time = sdf.parse(currentEntry.date) ?: Date()
+                    }
+                    DatePickerDialog(
+                        context,
+                        { _, year, month, dayOfMonth ->
+                            val picked = Calendar.getInstance().apply {
+                                set(year, month, dayOfMonth)
+                            }
+                            val newDate = SimpleDateFormat(
+                                "EEEE, MMMM d, yyyy", Locale.ENGLISH
+                            ).format(picked.time)
+                            viewModel.updateEntry(currentEntry.copy(date = newDate))
+                        },
+                        cal.get(Calendar.YEAR),
+                        cal.get(Calendar.MONTH),
+                        cal.get(Calendar.DAY_OF_MONTH)
+                    ).show()
+                }
             )
         }
     }
@@ -1987,7 +2010,8 @@ fun DiaryEditorArea(
     onRemoveTag: (String) -> Unit,
     onFolderClick: () -> Unit,
     showFolderMenu: Boolean,
-    onDismissFolderMenu: () -> Unit
+    onDismissFolderMenu: () -> Unit,
+    onDateClick: () -> Unit = {}
 ) {
     val wordCount = entry.body.trim().split("\\s+".toRegex()).count { it.isNotEmpty() }
     val magenta = Color(0xFFDD0099)
@@ -2074,15 +2098,21 @@ fun DiaryEditorArea(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
                 .background(Color.White)
+                .clickable { onDateClick() }
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Default.CalendarToday, contentDescription = "Date", tint = Color(0xFF555555), modifier = Modifier.size(20.dp))
+            Icon(Icons.Default.CalendarToday, contentDescription = "Change Date",
+                tint = magenta, modifier = Modifier.size(20.dp))
             Spacer(modifier = Modifier.width(14.dp))
             Text(currentDate, color = magenta, fontSize = 17.sp, fontWeight = FontWeight.Medium)
             Spacer(modifier = Modifier.weight(1f))
             if (entry.isLocked) {
                 Icon(Icons.Default.Lock, contentDescription = "Locked", tint = magenta, modifier = Modifier.size(18.dp))
+            } else {
+                // Small hint that date is tappable
+                Icon(Icons.Default.Edit, contentDescription = "Edit date",
+                    tint = Color(0xFFBBBBBB), modifier = Modifier.size(14.dp))
             }
         }
 
