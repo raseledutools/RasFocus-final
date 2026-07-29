@@ -108,7 +108,7 @@ private sealed class StudyNav {
     object Pomodoro   : StudyNav()
     object QuickNotes : StudyNav()
     object GraphCalculator : StudyNav()
-    object DocScanner : StudyNav()  // ?? CamScanner-style document scanner
+    object DocScanner : StudyNav()  // 📷 CamScanner-style document scanner
 }
 
 // -----------------------------------------------------------------------------
@@ -191,9 +191,9 @@ private fun StudyToolsMain(
                 .padding(start = 24.dp, end = 24.dp, top = 56.dp, bottom = 32.dp)
         ) {
             Column {
-                Text("?? Study Tools", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = TextWhite)
+                Text("📚 Study Tools", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = TextWhite)
                 Spacer(Modifier.height(6.dp))
-                Text("?? ???? ?? ????????", fontSize = 14.sp, color = TextMuted)
+                Text("আজকের পড়াশোনা শুরু করো", fontSize = 14.sp, color = TextMuted)
                 Spacer(Modifier.height(8.dp))
                 Text(
                     SimpleDateFormat("EEEE, dd MMMM yyyy", Locale.getDefault()).format(Date()),
@@ -203,15 +203,15 @@ private fun StudyToolsMain(
         }
 
         // -- Personal Diary ----------------------------------------------
-        SectionTitle("?? Personal Diary", AccentPurple, AccentPink)
+        SectionTitle("📔 Personal Diary", AccentPurple, AccentPink)
         PersonalDiaryCard(onClick = onOpenDiary)
 
         // -- Doc Scanner (CamScanner-style) ------------------------------
-        SectionTitle("?? Doc Scanner", AccentCyan, AccentBlue)
+        SectionTitle("📷 Doc Scanner", AccentCyan, AccentBlue)
         DocScannerCard(onClick = onDocScanner)
 
         // -- PDF Tools ---------------------------------------------------
-        SectionTitle("?? PDF Tools", AccentRed, AccentOrange)
+        SectionTitle("📄 PDF Tools", AccentRed, AccentOrange)
         NativePdfMergeCard(onClick = onPdfMerge)
         NativePdfToolsCard(onClick = onPdfTools)
 
@@ -226,45 +226,45 @@ private fun StudyToolsMain(
         )
 
         // -- Math & Reference --------------------------------------------
-        SectionTitle("?? Math & Reference", AccentGreen, AccentTeal)
+        SectionTitle("🔢 Math & Reference", AccentGreen, AccentTeal)
         ToolGrid(
             items = listOf(
                 ToolItem("8",  "Wolfram Alpha", AccentGreen,        "https://www.wolframalpha.com"),
-                ToolItem("??", "Desmos Graph",  AccentTeal,         "https://www.desmos.com/calculator"),
-                ToolItem("??", "GeoGebra",      Color(0xFF56AB2F),  "https://www.geogebra.org/calculator"),
-                ToolItem("??", "Matrix Calc",   Color(0xFF11998E),  "https://matrix.reshish.com")
+                ToolItem("📈", "Desmos Graph",  AccentTeal,         "https://www.desmos.com/calculator"),
+                ToolItem("📐", "GeoGebra",      Color(0xFF56AB2F),  "https://www.geogebra.org/calculator"),
+                ToolItem("🔢", "Matrix Calc",   Color(0xFF11998E),  "https://matrix.reshish.com")
             ),
             onOpenUrl = onOpenUrl
         )
 
         // -- Dictionary & Translation ------------------------------------
-        SectionTitle("?? Dictionary & Translation", AccentBlue, AccentCyan)
+        SectionTitle("📖 Dictionary & Translation", AccentBlue, AccentCyan)
         ToolGrid(
             items = listOf(
-                ToolItem("????", "Bangla Dict",    AccentBlue,          "https://www.bdword.com"),
-                ToolItem("??", "Google Translate", Color(0xFF4285F4),   "https://translate.google.com"),
-                ToolItem("??", "Oxford Dict",      Color(0xFF0078D7),   "https://www.oxfordlearnersdictionaries.com"),
-                ToolItem("???", "Cambridge Dict",   Color(0xFF003087),   "https://dictionary.cambridge.org")
+                ToolItem("🇧🇩", "Bangla Dict",    AccentBlue,          "https://www.bdword.com"),
+                ToolItem("🌐", "Google Translate", Color(0xFF4285F4),   "https://translate.google.com"),
+                ToolItem("📖", "Oxford Dict",      Color(0xFF0078D7),   "https://www.oxfordlearnersdictionaries.com"),
+                ToolItem("📚", "Cambridge Dict",   Color(0xFF003087),   "https://dictionary.cambridge.org")
             ),
             onOpenUrl = onOpenUrl
         )
 
         // -- AI Section --------------------------------------------------
-        SectionTitle("?? AI Section", AccentPurple, AccentPink)
+        SectionTitle("🤖 AI Section", AccentPurple, AccentPink)
         ToolGrid(
             items = listOf(
-                ToolItem("??", "Claude AI",   AccentBlue,          "https://claude.ai"),
+                ToolItem("🤖", "Claude AI",   AccentBlue,          "https://claude.ai"),
                 ToolItem("?",  "Gemini",      Color(0xFF00C853),   "https://gemini.google.com"),
-                ToolItem("??", "ChatGPT",     Color(0xFF74B9FF),   "https://chat.openai.com"),
-                ToolItem("??", "DeepSeek",    Color(0xFF6C63FF),   "https://chat.deepseek.com"),
-                ToolItem("??", "Perplexity",  Color(0xFF00CEC9),   "https://www.perplexity.ai"),
+                ToolItem("💬", "ChatGPT",     Color(0xFF74B9FF),   "https://chat.openai.com"),
+                ToolItem("🔍", "DeepSeek",    Color(0xFF6C63FF),   "https://chat.deepseek.com"),
+                ToolItem("🔮", "Perplexity",  Color(0xFF00CEC9),   "https://www.perplexity.ai"),
                 ToolItem("?", "Gamma AI",    Color(0xFFA29BFE),   "https://gamma.app")
             ),
             onOpenUrl = onOpenUrl
         )
 
         // -- Tomorrow's Tasks --------------------------------------------
-        SectionTitle("? Tomorrow's Tasks", AccentGreen, AccentTeal)
+        SectionTitle("✅ Tomorrow's Tasks", AccentGreen, AccentTeal)
         TomorrowTasksCard()
         
     }
@@ -282,11 +282,11 @@ private fun NativeToolsGrid(
     onGraphCalculator: () -> Unit
 ) {
     val tools = listOf(
-        Triple("??", "Calculator",   onCalculator) to Pair(AccentYellow, Color(0xFFFF8E00)),
-        Triple("??", "Unit Converter", onUnitConv) to Pair(AccentLime,   Color(0xFF38F9D7)),
-        Triple("??", "Pomodoro",     onPomodoro)   to Pair(AccentRed,    AccentOrange),
-        Triple("??", "Quick Notes",  onQuickNotes) to Pair(AccentPurple, AccentPink),
-        Triple("??", "Graph Calculator", onGraphCalculator) to Pair(AccentBlue, AccentCyan)
+        Triple("🧮", "Calculator",   onCalculator) to Pair(AccentYellow, Color(0xFFFF8E00)),
+        Triple("📏", "Unit Converter", onUnitConv) to Pair(AccentLime,   Color(0xFF38F9D7)),
+        Triple("⏱️", "Pomodoro",     onPomodoro)   to Pair(AccentRed,    AccentOrange),
+        Triple("📝", "Quick Notes",  onQuickNotes) to Pair(AccentPurple, AccentPink),
+        Triple("📊", "Graph Calculator", onGraphCalculator) to Pair(AccentBlue, AccentCyan)
     )
     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
         tools.chunked(2).forEach { row ->
@@ -391,11 +391,11 @@ private fun NativePdfMergeCard(onClick: () -> Unit) {
                 .padding(horizontal = 20.dp, vertical = 18.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("??", fontSize = 28.sp)
+                Text("📄", fontSize = 28.sp)
                 Spacer(Modifier.width(16.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text("PDF Merge", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = AccentRed)
-                    Text("?????? ???? � ????????? ??????", fontSize = 11.sp, color = TextMuted)
+                    Text("পেজ মার্জ করো • একটি ফাইলে আনো", fontSize = 11.sp, color = TextMuted)
                 }
                 Box(
                     modifier = Modifier
@@ -430,11 +430,11 @@ private fun NativePdfToolsCard(onClick: () -> Unit) {
                 .padding(horizontal = 20.dp, vertical = 18.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("???", fontSize = 28.sp)
+                Text("🗂️", fontSize = 28.sp)
                 Spacer(Modifier.width(16.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text("PDF & Image Tools", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = AccentOrange)
-                    Text("Convert � Split � Compress � ????????? ??????", fontSize = 11.sp, color = TextMuted)
+                    Text("Convert • Split • Compress • সব ধরনের কাজ", fontSize = 11.sp, color = TextMuted)
                 }
                 Box(
                     modifier = Modifier
@@ -495,7 +495,7 @@ private fun DocScannerCard(onClick: () -> Unit) {
                         ),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("??", fontSize = 28.sp)
+                    Text("📄", fontSize = 28.sp)
                 }
                 Spacer(Modifier.width(16.dp))
                 Column(modifier = Modifier.weight(1f)) {
@@ -507,7 +507,7 @@ private fun DocScannerCard(onClick: () -> Unit) {
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "CamScanner-?? ??? � Auto edge detect, Magic Color, PDF export",
+                        "CamScanner-এর মতো • � Auto edge detect, Magic Color, PDF export",
                         fontSize = 11.sp,
                         color = TextMuted,
                         lineHeight = 16.sp
@@ -515,7 +515,7 @@ private fun DocScannerCard(onClick: () -> Unit) {
                     Spacer(Modifier.height(8.dp))
                     // Feature tags
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf("?? Crop", "?? Filter", "?? PDF", "??? Gallery").forEach { tag ->
+                        listOf("✂️ Crop", "🎨 Filter", "📄 PDF", "🖼️ Gallery").forEach { tag ->
                             Box(
                                 modifier = Modifier
                                     .background(AccentBlue.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
@@ -771,7 +771,7 @@ private fun ScientificCalculatorScreen(onBack: () -> Unit) {
 
     Column(modifier = Modifier.fillMaxSize().background(BgDeep)) {
         // Top bar
-        TopBar("?? Calculator", onBack)
+        TopBar("🧮 Calculator", onBack)
 
         // Display
         Box(
@@ -910,10 +910,10 @@ private fun evalArithmetic(expr: String): Double {
 //  NATIVE SCREEN 2 � Unit Converter
 // -----------------------------------------------------------------------------
 private enum class UnitCategory(val label: String, val emoji: String) {
-    LENGTH("Length", "??"), MASS("Mass", "??"),
-    TEMP("Temperature", "???"), AREA("Area", "???"),
-    SPEED("Speed", "??"), TIME("Time", "??"),
-    VOLUME("Volume", "??"), DATA("Data", "??")
+    LENGTH("Length", "📏"), MASS("Mass", "⚖️"),
+    TEMP("Temperature", "🌡️"), AREA("Area", "📐"),
+    SPEED("Speed", "💨"), TIME("Time", "⏱️"),
+    VOLUME("Volume", "🧪"), DATA("Data", "💾")
 }
 
 private val unitData: Map<UnitCategory, List<Pair<String, Double>>> = mapOf(
@@ -966,7 +966,7 @@ private fun UnitConverterScreen(onBack: () -> Unit) {
     }
 
     Column(modifier = Modifier.fillMaxSize().background(BgDeep)) {
-        TopBar("?? Unit Converter", onBack)
+        TopBar("📏 Unit Converter", onBack)
 
         Column(
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -1128,7 +1128,7 @@ private fun PomodoroScreen(onBack: () -> Unit) {
     val timeStr = "%02d:%02d".format(mins, secs)
 
     Column(modifier = Modifier.fillMaxSize().background(BgDeep)) {
-        TopBar("?? Pomodoro", onBack)
+        TopBar("⏱️ Pomodoro", onBack)
 
         Column(
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -1208,7 +1208,7 @@ private fun PomodoroScreen(onBack: () -> Unit) {
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         repeat(minOf(sessions, 8)) {
-                            Text("??", fontSize = 20.sp)
+                            Text("🎯", fontSize = 20.sp)
                         }
                         if (sessions == 0) Text("�", color = TextMuted, fontSize = 16.sp)
                         if (sessions > 8) Text("+${sessions-8}", color = AccentRed, fontSize = 14.sp)
@@ -1226,10 +1226,10 @@ private fun PomodoroScreen(onBack: () -> Unit) {
                 colors   = CardDefaults.cardColors(containerColor = Color(0xFF0D1F12))
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("?? Pomodoro Tips", fontSize = 13.sp, color = AccentGreen, fontWeight = FontWeight.Bold)
-                    Text("� ?? ????? focus ? ? ????? break", fontSize = 12.sp, color = TextMuted)
-                    Text("� ??? session ???? ?? ????? long break", fontSize = 12.sp, color = TextMuted)
-                    Text("� Phone down ????, notification ???? ???", fontSize = 12.sp, color = TextMuted)
+                    Text("💡 Pomodoro Tips", fontSize = 13.sp, color = AccentGreen, fontWeight = FontWeight.Bold)
+                    Text("• ২৫ মিনিট focus, ৫ মিনিট break", fontSize = 12.sp, color = TextMuted)
+                    Text("• ৪টি session পরে ১৫ মিনিট long break", fontSize = 12.sp, color = TextMuted)
+                    Text("• Phone down রাখো, notification বন্ধ করো", fontSize = 12.sp, color = TextMuted)
                 }
             }
         }
@@ -1296,7 +1296,7 @@ private fun QuickNotesScreen(onBack: () -> Unit) {
             IconButton(onClick = onBack) {
                 Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = AccentBlue)
             }
-            Text("?? Quick Notes", fontSize = 18.sp, fontWeight = FontWeight.Bold,
+            Text("📝 Quick Notes", fontSize = 18.sp, fontWeight = FontWeight.Bold,
                 color = TextWhite, modifier = Modifier.weight(1f))
             IconButton(onClick = { titleTf = ""; bodyTf = ""; editing = null; showNew = true }) {
                 Icon(Icons.Default.Add, contentDescription = "New note", tint = AccentYellow)
@@ -1345,7 +1345,7 @@ private fun QuickNotesScreen(onBack: () -> Unit) {
                         },
                         modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = AccentYellow)
-                    ) { Text("?? Save", color = Color(0xFF1A1000), fontWeight = FontWeight.Bold) }
+                    ) { Text("💾 Save", color = Color(0xFF1A1000), fontWeight = FontWeight.Bold) }
                 }
             }
         } else {
@@ -1353,12 +1353,12 @@ private fun QuickNotesScreen(onBack: () -> Unit) {
             if (notes.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("??", fontSize = 48.sp)
+                        Text("📝", fontSize = 48.sp)
                         Spacer(Modifier.height(12.dp))
-                        Text("???? note ???", color = TextMuted, fontSize = 16.sp)
+                        Text("কোনো note নেই", color = TextMuted, fontSize = 16.sp)
                         Spacer(Modifier.height(8.dp))
                         TextButton(onClick = { titleTf = ""; bodyTf = ""; showNew = true }) {
-                            Text("+ ???? note ??? ???", color = AccentYellow)
+                            Text("+ নতুন note লেখা শুরু করো", color = AccentYellow)
                         }
                     }
                 }
@@ -1389,7 +1389,7 @@ private fun QuickNotesScreen(onBack: () -> Unit) {
                                 IconButton(
                                     onClick = { deleteNote(note.id) },
                                     modifier = Modifier.size(32.dp)
-                                ) { Text("???", fontSize = 16.sp) }
+                                ) { Text("🗑️", fontSize = 16.sp) }
                             }
                         }
                     }
@@ -1415,7 +1415,7 @@ private fun NativePdfMergeScreen(onBack: () -> Unit) {
     }
 
     Column(modifier = Modifier.fillMaxSize().background(BgDeep)) {
-        TopBar("?? PDF Merge", onBack)
+        TopBar("📄 PDF Merge", onBack)
 
         Column(
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -1428,7 +1428,7 @@ private fun NativePdfMergeScreen(onBack: () -> Unit) {
             ) {
                 Icon(Icons.Default.Add, contentDescription = null, tint = Color.White)
                 Spacer(Modifier.width(8.dp))
-                Text("PDF ???? ??? ???", color = Color.White, fontWeight = FontWeight.Bold)
+                Text("PDF ফাইল যোগ করুন", color = Color.White, fontWeight = FontWeight.Bold)
             }
 
             if (selectedUris.isEmpty()) {
@@ -1436,14 +1436,14 @@ private fun NativePdfMergeScreen(onBack: () -> Unit) {
                     modifier = Modifier.fillMaxWidth().height(140.dp)
                         .background(BgCard, RoundedCornerShape(16.dp)),
                     contentAlignment = Alignment.Center
-                ) { Text("???? ???? ????? ?????", color = TextMuted) }
+                ) { Text("কোনো ফাইল যোগ করা হয়নি", color = TextMuted) }
             } else {
                 Card(shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = BgCard),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        Text("${selectedUris.size}?? ????", fontSize = 12.sp, color = TextMuted,
+                        Text("${selectedUris.size}টি ফাইল", fontSize = 12.sp, color = TextMuted,
                             modifier = Modifier.padding(bottom = 8.dp))
                         selectedUris.forEachIndexed { index, uri ->
                             val name = remember(uri) {
@@ -1456,7 +1456,7 @@ private fun NativePdfMergeScreen(onBack: () -> Unit) {
                             Row(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically) {
                                 Text("${index+1}.", fontSize = 13.sp, color = AccentBlue, modifier = Modifier.width(28.dp))
-                                Text("??", fontSize = 14.sp)
+                                Text("✕", fontSize = 14.sp)
                                 Spacer(Modifier.width(8.dp))
                                 Text(name, fontSize = 13.sp, color = TextWhite, modifier = Modifier.weight(1f), maxLines = 1)
                                 IconButton(onClick = { selectedUris = selectedUris.toMutableList().also { it.removeAt(index) } },
@@ -1469,14 +1469,14 @@ private fun NativePdfMergeScreen(onBack: () -> Unit) {
                     }
                 }
                 TextButton(onClick = { selectedUris = emptyList(); status = "" }, modifier = Modifier.align(Alignment.End)) {
-                    Text("??? ?? ????", color = AccentRed, fontSize = 13.sp)
+                    Text("এরর হয়েছে", color = AccentRed, fontSize = 13.sp)
                 }
             }
 
             if (selectedUris.size >= 2) {
                 Button(
                     onClick = {
-                        isMerging = true; status = "? Merge ?????..."
+                    isMerging = true; status = "⏳ Merge হচ্ছে..."
                         scope.launch {
                             status = mergePdfs(context, selectedUris)
                             isMerging = false
@@ -1488,7 +1488,7 @@ private fun NativePdfMergeScreen(onBack: () -> Unit) {
                     colors = ButtonDefaults.buttonColors(containerColor = AccentGreen)
                 ) {
                     if (isMerging) { CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp); Spacer(Modifier.width(10.dp)) }
-                    Text("?? Merge ??? (${selectedUris.size}?? PDF)", color = Color(0xFF0D1F0D), fontWeight = FontWeight.Bold)
+                    Text("🔗 Merge করো (${selectedUris.size}টি PDF)", color = Color(0xFF0D1F0D), fontWeight = FontWeight.Bold)
                 }
             }
 
@@ -1504,7 +1504,7 @@ private fun NativePdfMergeScreen(onBack: () -> Unit) {
             }
 
             Text(
-                "� ????????? ?????? ??? ???\n� Merged ???? Downloads-? ??? ???\n� ??????? ??? PDF ?????",
+                "• একাধিক ফাইল সিলেক্ট করো\n• Merged ফাইল Downloads-এ যাবে\n• যেকোনো সাইজের PDF সাপোর্ট",
                 fontSize = 12.sp, color = TextMuted, lineHeight = 20.sp
             )
         }
@@ -1517,7 +1517,7 @@ private suspend fun mergePdfs(context: Context, uris: List<Uri>): String =
             val outputDoc = PdfDocument(); var globalPage = 1
             for (uri in uris) {
                 val pfd: ParcelFileDescriptor = context.contentResolver.openFileDescriptor(uri, "r")
-                    ?: return@withContext "? ???? ???? ??????"
+                    ?: return@withContext "❌ ফাইল খুলতে পারছে না"
                 pfd.use { desc ->
                     PdfRenderer(desc).use { r ->
                         for (i in 0 until r.pageCount) {
@@ -1542,7 +1542,7 @@ private suspend fun mergePdfs(context: Context, uris: List<Uri>): String =
                     put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
                 }
                 val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv)
-                    ?: return@withContext "? ??? ??? ??????"
+                    ?: return@withContext "❌ লেখা যাচ্ছে না"
                 context.contentResolver.openOutputStream(uri)?.use { outputDoc.writeTo(it) }
             } else {
                 @Suppress("DEPRECATION")
@@ -1550,7 +1550,7 @@ private suspend fun mergePdfs(context: Context, uris: List<Uri>): String =
                 dir.mkdirs(); File(dir, fileName).outputStream().use { outputDoc.writeTo(it) }
             }
             outputDoc.close()
-            "? Merge ???! Downloads/$fileName"
+            "✅ Merge সম্পন্ন! Downloads/$fileName"
         } catch (e: Exception) { "? Error: ${e.message}" }
     }
 
@@ -1616,7 +1616,7 @@ private fun PersonalDiaryCard(onClick: () -> Unit) {
                         ),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("??", fontSize = 26.sp)
+                    Text("📔", fontSize = 26.sp)
                 }
                 Spacer(Modifier.width(16.dp))
                 Column(modifier = Modifier.weight(1f)) {
@@ -1634,7 +1634,7 @@ private fun PersonalDiaryCard(onClick: () -> Unit) {
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "????? ???????, ?????? ? ?????? ???? ????",
+                        "আজকের ভাবনা, স্বপ্ন ও অনুভূতি লিখে রাখো",
                         fontSize = 12.sp,
                         color = TextMuted
                     )
@@ -1695,10 +1695,10 @@ private fun TomorrowTasksCard() {
             .padding(20.dp)
         ) {
             Column {
-                Text("?? ???????? � ${SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(cal.time)}",
+                Text("✅ আগামীকালের কাজ � ${SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(cal.time)}",
                     fontSize = 13.sp, color = AccentGreen, modifier = Modifier.padding(bottom = 16.dp))
                 if (taskList.isEmpty()) {
-                    Text("???? ???? ??? ???? ???? ??? ????!", fontSize = 13.sp, color = TextMuted, modifier = Modifier.padding(bottom = 12.dp))
+                    Text("আজকের ভাবনা লিখে রাখো। এটা তোমার নিজের জায়গা!", fontSize = 13.sp, color = TextMuted, modifier = Modifier.padding(bottom = 12.dp))
                 } else {
                     taskList.forEachIndexed { index, task ->
                         Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1714,7 +1714,7 @@ private fun TomorrowTasksCard() {
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedTextField(
                         value = newTask, onValueChange = { newTask = it },
-                        modifier = Modifier.weight(1f), placeholder = { Text("???? ???...", color = Color(0xFF44666A)) },
+                        modifier = Modifier.weight(1f), placeholder = { Text("নতুন নোট...", color = Color(0xFF44666A)) },
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = TextWhite, unfocusedTextColor = TextWhite,
                             focusedBorderColor = AccentGreen.copy(alpha = 0.7f),
@@ -1942,6 +1942,5 @@ fun AsyncImageOrBitmap(uri: Uri, context: Context, modifier: Modifier) {
         Image(bitmap = it.asImageBitmap(), contentDescription = null, modifier = modifier, contentScale = ContentScale.Crop)
     } ?: Box(modifier.background(Color.Gray))
 }
-
 
 

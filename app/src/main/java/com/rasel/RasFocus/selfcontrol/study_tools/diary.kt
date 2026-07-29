@@ -595,8 +595,44 @@ fun DiaryListScreen(
 ) {
     val context = LocalContext.current
     val magenta = Color(0xFFE91E8C)
-    val teal    = Color(0xFF009688)
     val indigo  = Color(0xFF3F51B5)
+
+    // ── Home Screen Shortcut helper ─────────────────────────────────────────
+    fun addHomeShortcut() {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                val sm = context.getSystemService(android.content.pm.ShortcutManager::class.java)
+                if (sm != null && sm.isRequestPinShortcutSupported) {
+                    val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+                        ?.apply {
+                            action = "com.rasel.RasFocus.ACTION_OPEN_DIARY"
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                        } ?: return
+                    val shortcut = android.content.pm.ShortcutInfo.Builder(context, "rasdiary_shortcut")
+                        .setShortLabel("RasDiary")
+                        .setLongLabel("Open RasDiary")
+                        .setIcon(android.graphics.drawable.Icon.createWithResource(context, android.R.drawable.ic_menu_edit))
+                        .setIntent(intent)
+                        .build()
+                    sm.requestPinShortcut(shortcut, null)
+                } else {
+                    android.widget.Toast.makeText(context, "Launcher doesn't support shortcuts", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                // Pre-Oreo: broadcast
+                val addIntent = Intent("com.android.launcher.action.INSTALL_SHORTCUT")
+                val shortcutIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+                    ?.apply { action = "com.rasel.RasFocus.ACTION_OPEN_DIARY" }
+                addIntent.putExtra(Intent.EXTRA_SHORTCUT_INTENT, shortcutIntent)
+                addIntent.putExtra(Intent.EXTRA_SHORTCUT_NAME, "RasDiary")
+                addIntent.putExtra("duplicate", false)
+                context.sendBroadcast(addIntent)
+                android.widget.Toast.makeText(context, "Shortcut added to home screen!", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(context, "Could not add shortcut: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
 
     val grouped = remember(entries) {
         entries.groupBy { it.date.ifBlank { "Unknown" } }
@@ -620,6 +656,10 @@ fun DiaryListScreen(
                     }
                 },
                 actions = {
+                    // ── Home Screen Shortcut button ──────────────────────────
+                    IconButton(onClick = { addHomeShortcut() }) {
+                        Icon(Icons.Default.PhoneAndroid, contentDescription = "Add to Home Screen", tint = Color.White)
+                    }
                     IconButton(onClick = { /* search TODO */ }) {
                         Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
                     }
@@ -629,7 +669,7 @@ fun DiaryListScreen(
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = onNewEntry,     // ← সরাসরি onNewEntry, sidebar নয়
+                onClick = onNewEntry,
                 containerColor = magenta,
                 shape = RoundedCornerShape(16.dp)
             ) {
@@ -651,119 +691,112 @@ fun DiaryListScreen(
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(bottom = 90.dp, top = 8.dp)
+                contentPadding = PaddingValues(bottom = 90.dp, top = 4.dp)
             ) {
                 grouped.forEach { (date, dayEntries) ->
+                    // ── Date header: একটি লাইনে — "|" divider + headline ─────
                     item {
                         val cal = runCatching {
                             val sdf = SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.ENGLISH)
                             Calendar.getInstance().also { c -> c.time = sdf.parse(date)!! }
                         }.getOrNull()
+                        val dayNum  = cal?.get(Calendar.DAY_OF_MONTH)?.toString() ?: "?"
+                        val month   = cal?.let { SimpleDateFormat("MMM", Locale.ENGLISH).format(it.time) } ?: ""
+                        val year    = cal?.get(Calendar.YEAR)?.toString() ?: ""
+                        val dayName = cal?.let { SimpleDateFormat("EEE", Locale.ENGLISH).format(it.time) } ?: ""
 
-                        val monthStr = cal?.let { SimpleDateFormat("MMM", Locale.ENGLISH).format(it.time).uppercase() } ?: "???"
-                        val dayNum   = cal?.get(Calendar.DAY_OF_MONTH)?.toString() ?: "?"
-                        val yearStr  = cal?.get(Calendar.YEAR)?.toString() ?: ""
-                        val dayName  = cal?.let { SimpleDateFormat("EEE", Locale.ENGLISH).format(it.time).uppercase() } ?: ""
-
-                        // ── Date section header ────────────────────────────────
+                        // ── Single-line date header: "Mon 12 Jul 2025 | entries" ──
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Premium calendar badge
+                            // Thin accent bar on the left
                             Box(
                                 modifier = Modifier
-                                    .size(52.dp)
-                                    .clip(RoundedCornerShape(12.dp))
+                                    .width(3.dp)
+                                    .height(16.dp)
                                     .background(
-                                        Brush.verticalGradient(listOf(indigo, Color(0xFF7C4DFF)))
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text(monthStr, color = Color.White.copy(.8f), fontSize = 9.sp, fontWeight = FontWeight.Bold, lineHeight = 10.sp)
-                                    Text(dayNum, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 22.sp)
-                                    Text(dayName, color = Color.White.copy(.7f), fontSize = 8.sp, fontWeight = FontWeight.Medium, lineHeight = 9.sp)
-                                }
-                            }
-                            Spacer(Modifier.width(12.dp))
-                            Column {
-                                Text(date.substringBefore(",").ifBlank { date }, color = Color(0xFF1A237E), fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                Text(yearStr, color = Color(0xFF7986CB), fontSize = 12.sp)
-                            }
-                            Spacer(Modifier.weight(1f))
-                            Text("${dayEntries.size} entry${if (dayEntries.size > 1) "ies" else ""}", color = Color.Gray, fontSize = 11.sp)
+                                        Brush.verticalGradient(listOf(indigo, Color(0xFF7C4DFF))),
+                                        RoundedCornerShape(2.dp)
+                                    )
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            // Compact date text all on one line
+                            Text(
+                                "$dayName $dayNum $month $year",
+                                color = Color(0xFF1A237E),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text("·", color = Color(0xFF7986CB), fontSize = 13.sp)
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                "${dayEntries.size} entr${if (dayEntries.size > 1) "ies" else "y"}",
+                                color = Color(0xFF7986CB),
+                                fontSize = 12.sp
+                            )
                         }
-
-                        dayEntries.forEach { entry ->
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 3.dp)
-                                    .clickable { onEntryClick(entry) },
-                                shape = RoundedCornerShape(12.dp),
-                                colors = CardDefaults.cardColors(containerColor = Color.White),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    // Mood indicator dot
-                                    val moodColor = when (entry.mood) {
-                                        "😊" -> Color(0xFF4CAF50)
-                                        "😢" -> Color(0xFF2196F3)
-                                        "😡" -> Color(0xFFF44336)
-                                        "😴" -> Color(0xFF9C27B0)
-                                        else -> magenta
-                                    }
-                                    Box(modifier = Modifier.size(8.dp).background(moodColor, CircleShape))
-                                    Spacer(Modifier.width(10.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            if (entry.isLocked) {
-                                                Icon(Icons.Default.Lock, null, tint = magenta, modifier = Modifier.size(13.dp))
-                                                Spacer(Modifier.width(4.dp))
-                                            }
-                                            Text(
-                                                entry.title.ifBlank { "Untitled" },
-                                                color = Color(0xFF1A237E),
-                                                fontSize = 15.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                maxLines = 1,
-                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                            )
-                                        }
-                                        if (entry.body.isNotBlank()) {
-                                            Text(
-                                                entry.body.take(80).replace('\n', ' '),
-                                                color = Color(0xFF546E7A),
-                                                fontSize = 12.sp,
-                                                maxLines = 1,
-                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                                modifier = Modifier.padding(top = 2.dp)
-                                            )
-                                        }
-                                        if (entry.tags.isNotEmpty()) {
-                                            Row(modifier = Modifier.padding(top = 4.dp)) {
-                                                entry.tags.take(2).forEach { tag ->
-                                                    Box(
-                                                        modifier = Modifier.padding(end = 4.dp)
-                                                            .background(indigo.copy(.1f), RoundedCornerShape(4.dp))
-                                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                                    ) { Text("#$tag", color = indigo, fontSize = 10.sp) }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    if (entry.mood.isNotBlank()) {
-                                        Text(entry.mood, fontSize = 20.sp, modifier = Modifier.padding(start = 8.dp))
-                                    }
-                                }
-                            }
-                        }
-                        Spacer(Modifier.height(8.dp))
                     }
+
+                    // ── Entries for this date: compact single-line rows ────────
+                    items(dayEntries, key = { it.id }) { entry ->
+                        val moodColor = when {
+                            entry.mood.contains("😊") || entry.mood.contains("🎉") -> Color(0xFF4CAF50)
+                            entry.mood.contains("😢") -> Color(0xFF2196F3)
+                            entry.mood.contains("😡") || entry.mood.contains("😠") -> Color(0xFFF44336)
+                            entry.mood.contains("😴") -> Color(0xFF9C27B0)
+                            entry.mood.contains("😰") -> Color(0xFFFF9800)
+                            else -> magenta
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onEntryClick(entry) }
+                                .background(Color.White)
+                                .padding(horizontal = 16.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Left accent dot (mood color)
+                            Box(
+                                modifier = Modifier
+                                    .size(9.dp)
+                                    .background(moodColor, CircleShape)
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            // Lock icon if locked
+                            if (entry.isLocked) {
+                                Icon(Icons.Default.Lock, null, tint = magenta, modifier = Modifier.size(12.dp))
+                                Spacer(Modifier.width(4.dp))
+                            }
+                            // Title + preview on same line (title bold, preview muted)
+                            Text(
+                                entry.title.ifBlank { "Untitled" },
+                                color = Color(0xFF1A237E),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            // Mood emoji on right
+                            if (entry.mood.isNotBlank()) {
+                                val moodEmoji = entry.mood.trim().take(2)
+                                Text(moodEmoji, fontSize = 14.sp, modifier = Modifier.padding(start = 6.dp))
+                            }
+                        }
+                        // Thin divider between entries
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = Color(0xFFF0F0F0),
+                            thickness = 0.5.dp
+                        )
+                    }
+
+                    // Small gap between date groups
+                    item { Spacer(Modifier.height(6.dp)) }
                 }
             }
         }
@@ -938,6 +971,74 @@ fun ProfessionalDiaryScreen(
                         }
                         Text("📱 Local Export", fontWeight = FontWeight.SemiBold,
                             fontSize = 13.sp, color = Color(0xFFE91E8C))
+
+                        // ── Export JSON → Downloads ──────────────────────────
+                        OutlinedButton(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                CoroutineScope(Dispatchers.IO).launch {
+                                    try {
+                                        val arr = JSONArray()
+                                        allEntries.forEach { e ->
+                                            arr.put(JSONObject().apply {
+                                                put("id", e.id); put("title", e.title)
+                                                put("body", e.body); put("date", e.date)
+                                                put("mood", e.mood); put("folder", e.folder)
+                                                put("tags", e.tags.joinToString(","))
+                                                put("locked", e.isLocked)
+                                                put("timestamp", e.timestamp)
+                                            })
+                                        }
+                                        val root = JSONObject().apply {
+                                            put("exported_at", java.text.SimpleDateFormat(
+                                                "yyyy-MM-dd_HH-mm", java.util.Locale.ENGLISH).format(java.util.Date()))
+                                            put("entry_count", allEntries.size)
+                                            put("entries", arr)
+                                        }
+                                        val fileName = "RasDiary_${java.text.SimpleDateFormat(
+                                            "yyyyMMdd_HHmm", java.util.Locale.ENGLISH).format(java.util.Date())}.json"
+                                        val saved = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                                            val values = android.content.ContentValues().apply {
+                                                put(android.provider.MediaStore.Downloads.DISPLAY_NAME, fileName)
+                                                put(android.provider.MediaStore.Downloads.MIME_TYPE, "application/json")
+                                                put(android.provider.MediaStore.Downloads.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/RasDiary")
+                                            }
+                                            val uri = listExportContext.contentResolver.insert(
+                                                android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                                            if (uri != null) {
+                                                listExportContext.contentResolver.openOutputStream(uri)?.use { it.write(root.toString(2).toByteArray()) }
+                                                true
+                                            } else false
+                                        } else {
+                                            val dir = java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                                                android.os.Environment.DIRECTORY_DOWNLOADS), "RasDiary")
+                                            dir.mkdirs()
+                                            java.io.File(dir, fileName).writeText(root.toString(2))
+                                            true
+                                        }
+                                        withContext(Dispatchers.Main) {
+                                            if (saved) {
+                                                Toast.makeText(listExportContext,
+                                                    "✅ JSON saved to Downloads/RasDiary/$fileName",
+                                                    Toast.LENGTH_LONG).show()
+                                            } else {
+                                                Toast.makeText(listExportContext, "❌ JSON save failed", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(listExportContext, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                }
+                                showListExportMenu = false
+                            }
+                        ) {
+                            Icon(Icons.Default.FileDownload, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Export JSON → Downloads")
+                        }
+
                         OutlinedButton(
                             modifier = Modifier.fillMaxWidth(),
                             onClick = {
@@ -948,7 +1049,7 @@ fun ProfessionalDiaryScreen(
                                 } else Toast.makeText(listExportContext, "Export failed", Toast.LENGTH_SHORT).show()
                                 showListExportMenu = false
                             }
-                        ) { Text("PDF (all entries)") }
+                        ) { Text("Export PDF (all entries)") }
 
                         OutlinedButton(
                             modifier = Modifier.fillMaxWidth(),
@@ -1354,6 +1455,71 @@ fun ProfessionalDiaryScreen(
                                 showPdfPasswordDialog = true
                             }
                         ) { Text("PDF\n(all entries)", fontSize = 11.sp, textAlign = TextAlign.Center) }
+                    }
+
+                    // ── LOCAL JSON EXPORT → Downloads ─────────────────────
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            CoroutineScope(Dispatchers.IO).launch {
+                                try {
+                                    val arr = JSONArray()
+                                    allEntries.forEach { e ->
+                                        arr.put(JSONObject().apply {
+                                            put("id", e.id); put("title", e.title)
+                                            put("body", e.body); put("date", e.date)
+                                            put("mood", e.mood); put("folder", e.folder)
+                                            put("tags", e.tags.joinToString(","))
+                                            put("locked", e.isLocked)
+                                            put("timestamp", e.timestamp)
+                                        })
+                                    }
+                                    val root = JSONObject().apply {
+                                        put("exported_at", java.text.SimpleDateFormat(
+                                            "yyyy-MM-dd_HH-mm", java.util.Locale.ENGLISH).format(java.util.Date()))
+                                        put("entry_count", allEntries.size)
+                                        put("entries", arr)
+                                    }
+                                    val fileName = "RasDiary_${java.text.SimpleDateFormat(
+                                        "yyyyMMdd_HHmm", java.util.Locale.ENGLISH).format(java.util.Date())}.json"
+                                    val saved = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                                        val values = android.content.ContentValues().apply {
+                                            put(android.provider.MediaStore.Downloads.DISPLAY_NAME, fileName)
+                                            put(android.provider.MediaStore.Downloads.MIME_TYPE, "application/json")
+                                            put(android.provider.MediaStore.Downloads.RELATIVE_PATH,
+                                                android.os.Environment.DIRECTORY_DOWNLOADS + "/RasDiary")
+                                        }
+                                        val uri = context.contentResolver.insert(
+                                            android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                                        if (uri != null) {
+                                            context.contentResolver.openOutputStream(uri)
+                                                ?.use { it.write(root.toString(2).toByteArray()) }
+                                            true
+                                        } else false
+                                    } else {
+                                        val dir = java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                                            android.os.Environment.DIRECTORY_DOWNLOADS), "RasDiary")
+                                        dir.mkdirs()
+                                        java.io.File(dir, fileName).writeText(root.toString(2))
+                                        true
+                                    }
+                                    withContext(Dispatchers.Main) {
+                                        if (saved) Toast.makeText(context,
+                                            "✅ JSON saved → Downloads/RasDiary/$fileName", Toast.LENGTH_LONG).show()
+                                        else Toast.makeText(context, "❌ JSON save failed", Toast.LENGTH_SHORT).show()
+                                    }
+                                } catch (e: Exception) {
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                            showExportMenu = false
+                        }
+                    ) {
+                        Icon(Icons.Default.FileDownload, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Export JSON → Downloads")
                     }
 
                     // ── LOCAL IMPORT ──────────────────────────────────────
