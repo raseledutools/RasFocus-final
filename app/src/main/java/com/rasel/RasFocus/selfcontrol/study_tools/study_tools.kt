@@ -109,6 +109,7 @@ private sealed class StudyNav {
     object QuickNotes : StudyNav()
     object GraphCalculator : StudyNav()
     object DocScanner : StudyNav()  // 📷 CamScanner-style document scanner
+    object Reminder   : StudyNav()  // ⏰ Reminder & Alarm
 }
 
 // -----------------------------------------------------------------------------
@@ -117,6 +118,7 @@ private sealed class StudyNav {
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun StudyToolsScreen(onBack: () -> Unit = {}, onOpenDiary: () -> Unit) {
+    // Note: Reminder screen is handled as nav state inside
     var nav by remember { mutableStateOf<StudyNav>(StudyNav.Home) }
 
     BackHandler {
@@ -142,6 +144,7 @@ fun StudyToolsScreen(onBack: () -> Unit = {}, onOpenDiary: () -> Unit) {
                 onQuickNotes = { nav = StudyNav.QuickNotes },
                 onGraphCalculator = { nav = StudyNav.GraphCalculator },
                 onDocScanner = { nav = StudyNav.DocScanner },
+                onReminder   = { nav = StudyNav.Reminder },
                 onOpenDiary  = onOpenDiary
             )
             is StudyNav.Web        -> StudyWebView(url = current.url, title = current.title, onBack = { nav = StudyNav.Home })
@@ -153,6 +156,7 @@ fun StudyToolsScreen(onBack: () -> Unit = {}, onOpenDiary: () -> Unit) {
             is StudyNav.QuickNotes -> QuickNotesScreen(onBack = { nav = StudyNav.Home })
             is StudyNav.GraphCalculator -> GraphicCalculatorScreen(onBack = { nav = StudyNav.Home })
             is StudyNav.DocScanner -> ScanToPdfScreen(onBack = { nav = StudyNav.Home })
+            is StudyNav.Reminder   -> ReminderScreen(onBack = { nav = StudyNav.Home })
             else -> {}
         }
     }
@@ -172,6 +176,7 @@ private fun StudyToolsMain(
     onQuickNotes: () -> Unit,
     onGraphCalculator: () -> Unit,
     onDocScanner: () -> Unit,
+    onReminder:   () -> Unit,
     onOpenDiary:  () -> Unit
 ) {
     val scroll = rememberScrollState()
@@ -208,7 +213,7 @@ private fun StudyToolsMain(
 
         // -- ⏰ Reminder -------------------------------------------------
         SectionTitle("⏰ Reminder & Alarm", AccentOrange, AccentRed)
-        ReminderCard()
+        ReminderEntryCard(onClick = onReminder)
 
         // -- Doc Scanner (CamScanner-style) ------------------------------
         SectionTitle("📷 Doc Scanner", AccentCyan, AccentBlue)
