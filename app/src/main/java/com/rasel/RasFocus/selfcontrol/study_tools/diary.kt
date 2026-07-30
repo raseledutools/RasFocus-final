@@ -46,6 +46,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.Image
@@ -2296,6 +2297,7 @@ fun DiaryEditorArea(
                     val uriStr = path.removePrefix("image:")
                     val uri = runCatching { android.net.Uri.parse(uriStr) }.getOrNull()
                     var scale by remember(index) { mutableStateOf(imageScales[index] ?: 1f) }
+                    var offset by remember(index) { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
 
                     Card(
                         modifier = Modifier
@@ -2319,13 +2321,23 @@ fun DiaryEditorArea(
                                         contentScale = ContentScale.FillWidth,
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .scale(scale)
                                             .pointerInput(index) {
-                                                detectTransformGestures { _, _, zoom, _ ->
-                                                    scale = (scale * zoom).coerceIn(0.5f, 4f)
+                                                detectTransformGestures { _, pan, zoom, _ ->
+                                                    scale = (scale * zoom).coerceIn(1f, 5f)
+                                                    if (scale > 1f) {
+                                                        offset += pan
+                                                    } else {
+                                                        offset = androidx.compose.ui.geometry.Offset.Zero
+                                                    }
                                                     imageScales[index] = scale
                                                 }
                                             }
+                                            .graphicsLayer(
+                                                scaleX = scale,
+                                                scaleY = scale,
+                                                translationX = offset.x,
+                                                translationY = offset.y
+                                            )
                                     )
                                 } else {
                                     Box(Modifier.fillMaxWidth().height(80.dp).background(Color(0xFFF0F0F0)),
