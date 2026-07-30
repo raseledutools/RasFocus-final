@@ -4,8 +4,8 @@ e: [ksp] /home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/r
 e: [ksp] /home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/DiaryDatabase.kt:41: Multiple methods define the same conversion. Conflicts with these: CustomTypeConverter(enclosingClass=Converters, isEnclosingClassKotlinObject=false, method=toMediaPaths, from=String, to=List<String>, isProvidedConverter=false)
 e: [ksp] /home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/DiaryDatabase.kt:48: Multiple methods define the same conversion. Conflicts with these: CustomTypeConverter(enclosingClass=Converters, isEnclosingClassKotlinObject=false, method=toTagList, from=String, to=List<String>, isProvidedConverter=false)
 e: Error occurred in KSP, check log for detail
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2586:9 Expecting a top level declaration
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2587:5 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2593:9 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2594:5 Expecting a top level declaration
 
 === UNRESOLVED / TYPE ERRORS ===
 
@@ -13,46 +13,46 @@ e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/
 > Task :app:kspFullReleaseKotlin FAILED
 * What went wrong:
 Execution failed for task ':app:kspFullReleaseKotlin'.
-BUILD FAILED in 40s
+BUILD FAILED in 34s
 
 === LAST 60 LINES ===
+> Task :app:mapFullReleaseSourceSetPaths
+> Task :app:mergeFullReleaseArtProfile
 > Task :app:validateSigningFullRelease
 > Task :app:writeFullReleaseAppMetadata
-> Task :app:mergeFullReleaseArtProfile
+> Task :app:checkFullReleaseAarMetadata
 > Task :app:writeFullReleaseSigningConfigVersions
-> Task :app:checkFullReleaseDuplicateClasses
 > Task :app:mergeFullReleaseAssets FROM-CACHE
+> Task :app:checkFullReleaseDuplicateClasses
 > Task :app:compressFullReleaseAssets FROM-CACHE
-> Task :app:collectFullReleaseDependencies
 > Task :app:mergeFullReleaseNativeLibs
+> Task :app:collectFullReleaseDependencies
 
 > Task :app:stripFullReleaseDebugSymbols
 Unable to strip the following libraries, packaging them as they are: libbarhopper_v3.so, libimage_processing_util_jni.so, libpdfium.so, libpdfiumandroid.so.
 
 > Task :app:extractFullReleaseNativeSymbolTables FROM-CACHE
 > Task :app:mergeFullReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:mergeFullReleaseResources FROM-CACHE
 > Task :app:sdkFullReleaseDependencyData
 > Task :app:processFullReleaseMainManifest
 > Task :app:processFullReleaseManifest
 > Task :app:processFullReleaseManifestForPackage
-> Task :app:mergeFullReleaseResources
 note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
 
 note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
 
 > Task :app:processFullReleaseResources
 
-> Task :app:kspFullReleaseKotlin
+> Task :app:kspFullReleaseKotlin FAILED
 e: [ksp] /home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/DiaryDatabase.kt:38: Multiple methods define the same conversion. Conflicts with these: CustomTypeConverter(enclosingClass=Converters, isEnclosingClassKotlinObject=false, method=fromMediaPaths, from=List<String>, to=String, isProvidedConverter=false)
 e: [ksp] /home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/DiaryDatabase.kt:45: Multiple methods define the same conversion. Conflicts with these: CustomTypeConverter(enclosingClass=Converters, isEnclosingClassKotlinObject=false, method=fromTagList, from=List<String>, to=String, isProvidedConverter=false)
 e: [ksp] /home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/DiaryDatabase.kt:41: Multiple methods define the same conversion. Conflicts with these: CustomTypeConverter(enclosingClass=Converters, isEnclosingClassKotlinObject=false, method=toMediaPaths, from=String, to=List<String>, isProvidedConverter=false)
 e: [ksp] /home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/DiaryDatabase.kt:48: Multiple methods define the same conversion. Conflicts with these: CustomTypeConverter(enclosingClass=Converters, isEnclosingClassKotlinObject=false, method=toTagList, from=String, to=List<String>, isProvidedConverter=false)
 e: Error occurred in KSP, check log for detail
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2586:9 Expecting a top level declaration
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2587:5 Expecting a top level declaration
-
-> Task :app:kspFullReleaseKotlin FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785395830072.json
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2593:9 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2594:5 Expecting a top level declaration
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785396034593.json
 
 FAILURE: Build failed with an exception.
 
@@ -73,6 +73,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 40s
-31 actionable tasks: 24 executed, 7 from cache
+BUILD FAILED in 34s
+31 actionable tasks: 21 executed, 10 from cache
 Configuration cache entry stored.
