@@ -605,10 +605,11 @@ fun DiaryListScreen(
     onDeleteEntry: (DiaryEntry) -> Unit = {}
 ) {
     val context = LocalContext.current
-    val magenta = Color(0xFFE91E8C)
-    val indigo  = Color(0xFF3F51B5)
+    val magenta  = Color(0xFFE91E8C)
+    val calGreen = Color(0xFF3A8C3F)   // WriteDiary green badge
+    val bgColor  = Color(0xFFFFFFFF)
 
-    // ── Home Screen Shortcut helper ─────────────────────────────────────────
+    // ── Home Screen Shortcut ────────────────────────────────────────────────
     fun addHomeShortcut() {
         try {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
@@ -623,14 +624,12 @@ fun DiaryListScreen(
                         .setShortLabel("RasDiary")
                         .setLongLabel("Open RasDiary")
                         .setIcon(android.graphics.drawable.Icon.createWithResource(context, android.R.drawable.ic_menu_edit))
-                        .setIntent(intent)
-                        .build()
+                        .setIntent(intent).build()
                     sm.requestPinShortcut(shortcut, null)
                 } else {
                     android.widget.Toast.makeText(context, "Launcher doesn't support shortcuts", android.widget.Toast.LENGTH_SHORT).show()
                 }
             } else {
-                // Pre-Oreo: broadcast
                 val addIntent = Intent("com.android.launcher.action.INSTALL_SHORTCUT")
                 val shortcutIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
                     ?.apply { action = "com.rasel.RasFocus.ACTION_OPEN_DIARY" }
@@ -638,28 +637,28 @@ fun DiaryListScreen(
                 addIntent.putExtra(Intent.EXTRA_SHORTCUT_NAME, "RasDiary")
                 addIntent.putExtra("duplicate", false)
                 context.sendBroadcast(addIntent)
-                android.widget.Toast.makeText(context, "Shortcut added to home screen!", android.widget.Toast.LENGTH_SHORT).show()
+                android.widget.Toast.makeText(context, "Shortcut added!", android.widget.Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
-            android.widget.Toast.makeText(context, "Could not add shortcut: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(context, "Error: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
         }
     }
 
-    val grouped = remember(entries) {
-        entries.groupBy { it.date.ifBlank { "Unknown" } }
-            .entries.sortedByDescending { grp ->
-                entries.find { e -> e.date == grp.key }?.timestamp ?: 0L
-            }
+    // Sort all entries newest first — flat list like WriteDiary
+    val sorted = remember(entries) {
+        entries.sortedByDescending { it.timestamp }
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text("RasDiary", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
-                        Text("${entries.size} entries", color = Color.White.copy(.65f), fontSize = 11.sp)
-                    }
+                    Text(
+                        "WriteDiary",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp
+                    )
                 },
                 navigationIcon = {
                     IconButton(onClick = onMenuClick) {
@@ -667,205 +666,213 @@ fun DiaryListScreen(
                     }
                 },
                 actions = {
-                    // ── Home Screen Shortcut button ──────────────────────────
                     IconButton(onClick = { addHomeShortcut() }) {
-                        Icon(Icons.Default.PhoneAndroid, contentDescription = "Add to Home Screen", tint = Color.White)
+                        Icon(Icons.Default.PhoneAndroid, contentDescription = "Home Shortcut", tint = Color.White)
                     }
-                    IconButton(onClick = { /* search TODO */ }) {
+                    IconButton(onClick = { }) {
                         Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = indigo)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF1C1C1E))
             )
         },
         floatingActionButton = {
             FloatingActionButton(
                 onClick = onNewEntry,
                 containerColor = magenta,
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.size(60.dp)
             ) {
-                Icon(Icons.Default.Edit, contentDescription = "New Entry", tint = Color.White)
+                Icon(Icons.Default.Edit, contentDescription = "New Entry", tint = Color.White, modifier = Modifier.size(26.dp))
             }
         },
-        containerColor = Color(0xFFF0F4FF)
+        containerColor = bgColor
     ) { padding ->
-        if (entries.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+        if (sorted.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentAlignment = Alignment.Center
+            ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("📔", fontSize = 64.sp)
                     Spacer(Modifier.height(16.dp))
-                    Text("No diary entries yet", fontSize = 18.sp, color = Color(0xFF37474F), fontWeight = FontWeight.Bold)
+                    Text("No diary entries yet", fontSize = 18.sp,
+                        color = Color(0xFF37474F), fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(6.dp))
-                    Text("Tap ✏️ to write your first entry", fontSize = 14.sp, color = Color.Gray)
+                    Text("Tap ✏️ to write your first entry",
+                        fontSize = 14.sp, color = Color.Gray)
                 }
             }
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(bottom = 90.dp, top = 4.dp)
+                contentPadding = PaddingValues(bottom = 100.dp)
             ) {
-                grouped.forEach { (date, dayEntries) ->
-                    // ── Date header: একটি লাইনে — "|" divider + headline ─────
-                    item {
-                        val cal = runCatching {
-                            val sdf = SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.ENGLISH)
-                            Calendar.getInstance().also { c -> c.time = sdf.parse(date)!! }
-                        }.getOrNull()
-                        val dayNum  = cal?.get(Calendar.DAY_OF_MONTH)?.toString() ?: "?"
-                        val month   = cal?.let { SimpleDateFormat("MMM", Locale.ENGLISH).format(it.time) } ?: ""
-                        val year    = cal?.get(Calendar.YEAR)?.toString() ?: ""
-                        val dayName = cal?.let { SimpleDateFormat("EEE", Locale.ENGLISH).format(it.time) } ?: ""
+                items(sorted, key = { it.id }) { entry ->
 
-                        // ── Single-line date header: "Mon 12 Jul 2025 | entries" ──
+                    // ── parse date for calendar badge ──────────────────────
+                    val cal = remember(entry.date) {
+                        runCatching {
+                            val sdf = SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.ENGLISH)
+                            Calendar.getInstance().also { c -> c.time = sdf.parse(entry.date)!! }
+                        }.getOrNull()
+                    }
+                    val monthStr = cal?.let {
+                        SimpleDateFormat("MMM", Locale.ENGLISH).format(it.time).uppercase()
+                    } ?: "—"
+                    val dayNum = cal?.get(Calendar.DAY_OF_MONTH)?.toString() ?: "?"
+                    val yearStr = cal?.get(Calendar.YEAR)?.toString() ?: ""
+
+                    // preview = first non-blank line of body
+                    val preview = entry.body.lines()
+                        .firstOrNull { it.isNotBlank() }
+                        ?.trim()
+                        ?.take(60)
+                        ?: ""
+
+                    // ── delete confirm dialog ──────────────────────────────
+                    var showDeleteConfirm by remember { mutableStateOf(false) }
+                    if (showDeleteConfirm) {
+                        AlertDialog(
+                            onDismissRequest = { showDeleteConfirm = false },
+                            title = { Text("Delete Entry?") },
+                            text = { Text("\"${entry.title.ifBlank { "Untitled" }}\" permanently delete হবে।") },
+                            confirmButton = {
+                                Button(
+                                    onClick = { onDeleteEntry(entry); showDeleteConfirm = false },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F))
+                                ) { Text("Delete", color = Color.White) }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }
+                            }
+                        )
+                    }
+
+                    // ── swipe-to-delete ────────────────────────────────────
+                    val dismissState = rememberSwipeToDismissBoxState(
+                        confirmValueChange = { v ->
+                            if (v != SwipeToDismissBoxValue.Settled) showDeleteConfirm = true
+                            false
+                        }
+                    )
+
+                    SwipeToDismissBox(
+                        state = dismissState,
+                        enableDismissFromStartToEnd = true,
+                        enableDismissFromEndToStart = true,
+                        backgroundContent = {
+                            val active = dismissState.currentValue != SwipeToDismissBoxValue.Settled
+                            Box(
+                                modifier = Modifier.fillMaxSize()
+                                    .background(if (active) Color(0xFFD32F2F) else Color(0xFFFFCDD2))
+                                    .padding(horizontal = 24.dp),
+                                contentAlignment = if (dismissState.currentValue == SwipeToDismissBoxValue.StartToEnd)
+                                    Alignment.CenterStart else Alignment.CenterEnd
+                            ) {
+                                Icon(Icons.Default.Delete, null, tint = Color.White, modifier = Modifier.size(24.dp))
+                            }
+                        }
+                    ) {
+                        // ── WriteDiary row ─────────────────────────────────
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 6.dp),
+                                .background(bgColor)
+                                .combinedClickable(
+                                    onClick = { onEntryClick(entry) },
+                                    onLongClick = { showDeleteConfirm = true }
+                                )
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Thin accent bar on the left
+                            // ── GREEN CALENDAR BADGE (exact WriteDiary style) ──
                             Box(
                                 modifier = Modifier
-                                    .width(3.dp)
-                                    .height(16.dp)
-                                    .background(
-                                        Brush.verticalGradient(listOf(indigo, Color(0xFF7C4DFF))),
-                                        RoundedCornerShape(2.dp)
-                                    )
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            // Compact date text all on one line
-                            Text(
-                                "$dayName $dayNum $month $year",
-                                color = Color(0xFF1A237E),
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text("·", color = Color(0xFF7986CB), fontSize = 13.sp)
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                "${dayEntries.size} entr${if (dayEntries.size > 1) "ies" else "y"}",
-                                color = Color(0xFF7986CB),
-                                fontSize = 12.sp
-                            )
-                        }
-                    }
-
-                    // ── Entries for this date: swipe-to-delete rows ───────────
-                    items(dayEntries, key = { it.id }) { entry ->
-                        val moodColor = when {
-                            entry.mood.contains("😊") || entry.mood.contains("🎉") -> Color(0xFF4CAF50)
-                            entry.mood.contains("😢") -> Color(0xFF2196F3)
-                            entry.mood.contains("😡") || entry.mood.contains("😠") -> Color(0xFFF44336)
-                            entry.mood.contains("😴") -> Color(0xFF9C27B0)
-                            entry.mood.contains("😰") -> Color(0xFFFF9800)
-                            else -> magenta
-                        }
-
-                        // ── confirm delete dialog state ────────────────────────
-                        var showDeleteConfirm by remember { mutableStateOf(false) }
-                        if (showDeleteConfirm) {
-                            AlertDialog(
-                                onDismissRequest = { showDeleteConfirm = false },
-                                title = { Text("Delete Entry?") },
-                                text = {
-                                    Text("\"${entry.title.ifBlank { "Untitled" }}\" permanently delete হবে।")
-                                },
-                                confirmButton = {
-                                    Button(
-                                        onClick = {
-                                            onDeleteEntry(entry)
-                                            showDeleteConfirm = false
-                                        },
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F))
-                                    ) { Text("Delete", color = Color.White) }
-                                },
-                                dismissButton = {
-                                    TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }
-                                }
-                            )
-                        }
-
-                        // ── Swipe-to-dismiss wrapper ───────────────────────────
-                        val dismissState = rememberSwipeToDismissBoxState(
-                            confirmValueChange = { dismissValue ->
-                                if (dismissValue == SwipeToDismissBoxValue.EndToStart ||
-                                    dismissValue == SwipeToDismissBoxValue.StartToEnd) {
-                                    showDeleteConfirm = true
-                                }
-                                false  // don't auto-remove — confirm dialog করবে
-                            }
-                        )
-
-                        SwipeToDismissBox(
-                            state = dismissState,
-                            backgroundContent = {
-                                val swipeDir = dismissState.currentValue
-                                val isActive = swipeDir != SwipeToDismissBoxValue.Settled
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(
-                                            if (isActive) Color(0xFFD32F2F) else Color(0xFFFFCDD2)
-                                        )
-                                        .padding(horizontal = 20.dp),
-                                    contentAlignment = if (swipeDir == SwipeToDismissBoxValue.StartToEnd)
-                                        Alignment.CenterStart else Alignment.CenterEnd
-                                ) {
-                                    Icon(
-                                        Icons.Default.Delete,
-                                        contentDescription = "Delete",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                }
-                            },
-                            enableDismissFromStartToEnd = true,
-                            enableDismissFromEndToStart = true,
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(Color.White)
-                                    .combinedClickable(
-                                        onClick = { onEntryClick(entry) },
-                                        onLongClick = { showDeleteConfirm = true }
-                                    )
-                                    .padding(horizontal = 16.dp, vertical = 11.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                    .width(62.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(calGreen)
                             ) {
-                                Box(modifier = Modifier.size(9.dp).background(moodColor, CircleShape))
-                                Spacer(Modifier.width(10.dp))
-                                if (entry.isLocked) {
-                                    Icon(Icons.Default.Lock, null, tint = magenta, modifier = Modifier.size(12.dp))
-                                    Spacer(Modifier.width(4.dp))
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    // Month header strip (darker green)
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(Color(0xFF2D6E32))
+                                            .padding(vertical = 3.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            monthStr,
+                                            color = Color.White,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            letterSpacing = 1.sp
+                                        )
+                                    }
+                                    // Day number
+                                    Text(
+                                        dayNum,
+                                        color = Color.White,
+                                        fontSize = 26.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        lineHeight = 30.sp,
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    )
+                                    // Year
+                                    Text(
+                                        yearStr,
+                                        color = Color.White.copy(alpha = 0.85f),
+                                        fontSize = 10.sp,
+                                        modifier = Modifier.padding(bottom = 4.dp)
+                                    )
                                 }
-                                Text(
-                                    entry.title.ifBlank { "Untitled" },
-                                    color = Color(0xFF1A237E),
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                if (entry.mood.isNotBlank()) {
-                                    Text(entry.mood.trim().take(2), fontSize = 14.sp,
-                                        modifier = Modifier.padding(start = 6.dp))
+                            }
+
+                            Spacer(Modifier.width(14.dp))
+
+                            // ── Title + preview ────────────────────────────
+                            Column(modifier = Modifier.weight(1f)) {
+                                // Lock icon inline with title
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (entry.isLocked) {
+                                        Icon(Icons.Default.Lock, null,
+                                            tint = magenta, modifier = Modifier.size(13.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                    }
+                                    Text(
+                                        entry.title.ifBlank { "Untitled" },
+                                        color = magenta,
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                    if (entry.mood.isNotBlank()) {
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(entry.mood.trim().take(2), fontSize = 13.sp)
+                                    }
+                                }
+                                // First line of body (preview)
+                                if (preview.isNotBlank()) {
+                                    Text(
+                                        preview,
+                                        color = magenta.copy(alpha = 0.75f),
+                                        fontSize = 13.sp,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    )
                                 }
                             }
                         }
-
-                        HorizontalDivider(
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                            color = Color(0xFFF0F0F0),
-                            thickness = 0.5.dp
-                        )
                     }
 
-                    // Small gap between date groups
-                    item { Spacer(Modifier.height(6.dp)) }
+                    // full-width divider, no indent
+                    HorizontalDivider(color = Color(0xFFEEEEEE), thickness = 0.8.dp)
                 }
             }
         }
