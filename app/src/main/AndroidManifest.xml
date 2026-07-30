@@ -565,6 +565,15 @@
         </intent-filter>
     </receiver>
 
+    <!-- ✅ Reminder Alarm Receiver (study_tools/reminder.kt) -->
+    <receiver
+        android:name=".selfcontrol.study_tools.ReminderAlarmReceiver"
+        android:exported="false">
+        <intent-filter>
+            <action android:name="com.rasel.RasFocus.REMINDER_ALARM" />
+        </intent-filter>
+    </receiver>
+
     <!-- ✅ Unified Blocker Service (UnifiedBlockerService.kt) — adult, website, reels, shorts, app block -->
     <!-- FIX: foregroundServiceType added — without it, onServiceConnected()'s startForeground()
          call throws MissingForegroundServiceTypeException on Android 14+ the moment the user

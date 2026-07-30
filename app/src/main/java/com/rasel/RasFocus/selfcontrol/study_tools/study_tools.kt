@@ -206,6 +206,10 @@ private fun StudyToolsMain(
         SectionTitle("📔 Personal Diary", AccentPurple, AccentPink)
         PersonalDiaryCard(onClick = onOpenDiary)
 
+        // -- ⏰ Reminder -------------------------------------------------
+        SectionTitle("⏰ Reminder & Alarm", AccentOrange, AccentRed)
+        ReminderCard()
+
         // -- Doc Scanner (CamScanner-style) ------------------------------
         SectionTitle("📷 Doc Scanner", AccentCyan, AccentBlue)
         DocScannerCard(onClick = onDocScanner)
