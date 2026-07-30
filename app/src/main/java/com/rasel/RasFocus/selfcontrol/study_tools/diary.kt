@@ -42,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -2318,10 +2319,7 @@ fun DiaryEditorArea(
                                         contentScale = ContentScale.FillWidth,
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .graphicsLayer {
-                                                scaleX = scale
-                                                scaleY = scale
-                                            }
+                                            .scale(scale)
                                             .pointerInput(index) {
                                                 detectTransformGestures { _, _, zoom, _ ->
                                                     scale = (scale * zoom).coerceIn(0.5f, 4f)
