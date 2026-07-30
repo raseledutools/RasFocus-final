@@ -21,6 +21,7 @@ import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
@@ -41,8 +42,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -55,9 +62,16 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.viewmodel.compose.viewModel
-import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
+import android.Manifest
+import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.snapshots.SnapshotStateMap
+import androidx.compose.runtime.mutableStateMapOf
 
 // ============================================================
 // BIOMETRIC HELPER
@@ -577,6 +591,294 @@ fun ReminderDialog(
 }
 
 // ============================================================
+// LIST SCREEN — WriteDiary-style entry list (first page)
+// ============================================================
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+fun DiaryListScreen(
+    entries: List<DiaryEntry>,
+    onEntryClick: (DiaryEntry) -> Unit,
+    onNewEntry: () -> Unit,
+    onNavigateBack: () -> Unit,
+    onMenuClick: () -> Unit = {},
+    onDeleteEntry: (DiaryEntry) -> Unit = {}
+) {
+    val context = LocalContext.current
+    val magenta  = Color(0xFFE91E8C)
+    val calGreen = Color(0xFF3A8C3F)   // WriteDiary green badge
+    val bgColor  = Color(0xFFFFFFFF)
+
+    // ── Home Screen Shortcut ────────────────────────────────────────────────
+    fun addHomeShortcut() {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                val sm = context.getSystemService(android.content.pm.ShortcutManager::class.java)
+                if (sm != null && sm.isRequestPinShortcutSupported) {
+                    val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+                        ?.apply {
+                            action = "com.rasel.RasFocus.ACTION_OPEN_DIARY"
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                        } ?: return
+                    val shortcut = android.content.pm.ShortcutInfo.Builder(context, "rasdiary_shortcut")
+                        .setShortLabel("RasDiary")
+                        .setLongLabel("Open RasDiary")
+                        .setIcon(android.graphics.drawable.Icon.createWithResource(context, android.R.drawable.ic_menu_edit))
+                        .setIntent(intent).build()
+                    sm.requestPinShortcut(shortcut, null)
+                } else {
+                    android.widget.Toast.makeText(context, "Launcher doesn't support shortcuts", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                val addIntent = Intent("com.android.launcher.action.INSTALL_SHORTCUT")
+                val shortcutIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+                    ?.apply { action = "com.rasel.RasFocus.ACTION_OPEN_DIARY" }
+                addIntent.putExtra(Intent.EXTRA_SHORTCUT_INTENT, shortcutIntent)
+                addIntent.putExtra(Intent.EXTRA_SHORTCUT_NAME, "RasDiary")
+                addIntent.putExtra("duplicate", false)
+                context.sendBroadcast(addIntent)
+                android.widget.Toast.makeText(context, "Shortcut added!", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(context, "Error: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Sort all entries newest first — flat list like WriteDiary
+    val sorted = remember(entries) {
+        entries.sortedByDescending { it.timestamp }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        "WriteDiary",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onMenuClick) {
+                        Icon(Icons.Default.Menu, contentDescription = "Menu", tint = Color.White)
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { addHomeShortcut() }) {
+                        Icon(Icons.Default.PhoneAndroid, contentDescription = "Home Shortcut", tint = Color.White)
+                    }
+                    IconButton(onClick = { }) {
+                        Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF1C1C1E))
+            )
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = onNewEntry,
+                containerColor = magenta,
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.size(60.dp)
+            ) {
+                Icon(Icons.Default.Edit, contentDescription = "New Entry", tint = Color.White, modifier = Modifier.size(26.dp))
+            }
+        },
+        containerColor = bgColor
+    ) { padding ->
+        if (sorted.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("📔", fontSize = 64.sp)
+                    Spacer(Modifier.height(16.dp))
+                    Text("No diary entries yet", fontSize = 18.sp,
+                        color = Color(0xFF37474F), fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(6.dp))
+                    Text("Tap ✏️ to write your first entry",
+                        fontSize = 14.sp, color = Color.Gray)
+                }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentPadding = PaddingValues(bottom = 100.dp)
+            ) {
+                items(sorted, key = { it.id }) { entry ->
+
+                    // ── parse date for calendar badge ──────────────────────
+                    val cal = remember(entry.date) {
+                        runCatching {
+                            val sdf = SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.ENGLISH)
+                            Calendar.getInstance().also { c -> c.time = sdf.parse(entry.date)!! }
+                        }.getOrNull()
+                    }
+                    val monthStr = cal?.let {
+                        SimpleDateFormat("MMM", Locale.ENGLISH).format(it.time).uppercase()
+                    } ?: "—"
+                    val dayNum = cal?.get(Calendar.DAY_OF_MONTH)?.toString() ?: "?"
+                    val yearStr = cal?.get(Calendar.YEAR)?.toString() ?: ""
+
+                    // preview = first non-blank line of body
+                    val preview = entry.body.lines()
+                        .firstOrNull { it.isNotBlank() }
+                        ?.trim()
+                        ?.take(60)
+                        ?: ""
+
+                    // ── delete confirm dialog ──────────────────────────────
+                    var showDeleteConfirm by remember { mutableStateOf(false) }
+                    if (showDeleteConfirm) {
+                        AlertDialog(
+                            onDismissRequest = { showDeleteConfirm = false },
+                            title = { Text("Delete Entry?") },
+                            text = { Text("\"${entry.title.ifBlank { "Untitled" }}\" permanently delete হবে।") },
+                            confirmButton = {
+                                Button(
+                                    onClick = { onDeleteEntry(entry); showDeleteConfirm = false },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F))
+                                ) { Text("Delete", color = Color.White) }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }
+                            }
+                        )
+                    }
+
+                    // ── swipe-to-delete ────────────────────────────────────
+                    val dismissState = rememberSwipeToDismissBoxState(
+                        confirmValueChange = { v ->
+                            if (v != SwipeToDismissBoxValue.Settled) showDeleteConfirm = true
+                            false
+                        }
+                    )
+
+                    SwipeToDismissBox(
+                        state = dismissState,
+                        enableDismissFromStartToEnd = true,
+                        enableDismissFromEndToStart = true,
+                        backgroundContent = {
+                            val active = dismissState.currentValue != SwipeToDismissBoxValue.Settled
+                            Box(
+                                modifier = Modifier.fillMaxSize()
+                                    .background(if (active) Color(0xFFD32F2F) else Color(0xFFFFCDD2))
+                                    .padding(horizontal = 24.dp),
+                                contentAlignment = if (dismissState.currentValue == SwipeToDismissBoxValue.StartToEnd)
+                                    Alignment.CenterStart else Alignment.CenterEnd
+                            ) {
+                                Icon(Icons.Default.Delete, null, tint = Color.White, modifier = Modifier.size(24.dp))
+                            }
+                        }
+                    ) {
+                        // ── WriteDiary row ─────────────────────────────────
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(bgColor)
+                                .combinedClickable(
+                                    onClick = { onEntryClick(entry) },
+                                    onLongClick = { showDeleteConfirm = true }
+                                )
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // ── GREEN CALENDAR BADGE (exact WriteDiary style) ──
+                            Box(
+                                modifier = Modifier
+                                    .width(62.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(calGreen)
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    // Month header strip (darker green)
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(Color(0xFF2D6E32))
+                                            .padding(vertical = 3.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            monthStr,
+                                            color = Color.White,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            letterSpacing = 1.sp
+                                        )
+                                    }
+                                    // Day number
+                                    Text(
+                                        dayNum,
+                                        color = Color.White,
+                                        fontSize = 26.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        lineHeight = 30.sp,
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    )
+                                    // Year
+                                    Text(
+                                        yearStr,
+                                        color = Color.White.copy(alpha = 0.85f),
+                                        fontSize = 10.sp,
+                                        modifier = Modifier.padding(bottom = 4.dp)
+                                    )
+                                }
+                            }
+
+                            Spacer(Modifier.width(14.dp))
+
+                            // ── Title + preview ────────────────────────────
+                            Column(modifier = Modifier.weight(1f)) {
+                                // Lock icon inline with title
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (entry.isLocked) {
+                                        Icon(Icons.Default.Lock, null,
+                                            tint = magenta, modifier = Modifier.size(13.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                    }
+                                    Text(
+                                        entry.title.ifBlank { "Untitled" },
+                                        color = magenta,
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                    if (entry.mood.isNotBlank()) {
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(entry.mood.trim().take(2), fontSize = 13.sp)
+                                    }
+                                }
+                                // First line of body (preview)
+                                if (preview.isNotBlank()) {
+                                    Text(
+                                        preview,
+                                        color = magenta.copy(alpha = 0.75f),
+                                        fontSize = 13.sp,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // full-width divider, no indent
+                    HorizontalDivider(color = Color(0xFFEEEEEE), thickness = 0.8.dp)
+                }
+            }
+        }
+    }
+}
+
+// ============================================================
 // MAIN SCREEN
 // ============================================================
 @OptIn(ExperimentalMaterial3Api::class)
@@ -596,15 +898,25 @@ fun ProfessionalDiaryScreen(
     val isUnlocked by viewModel.isUnlocked.collectAsState()
     val cloudStatus by viewModel.cloudStatus.collectAsState()
 
+    // ── NEW: list vs canvas navigation ──────────────────────────────────
+    var showListScreen by remember { mutableStateOf(true) }
+
     var showMoodDialog by remember { mutableStateOf(false) }
     var showTagDialog by remember { mutableStateOf(false) }
     var tagInput by remember { mutableStateOf("") }
-    var showExportMenu by remember { mutableStateOf(false) }
+    var showExportMenu by remember { mutableStateOf(false) }        // canvas (editor) এ export dialog
+    var showListExportMenu by remember { mutableStateOf(false) }   // ✅ FIX: list screen-এর আলাদা export dialog
     var showFolderMenu by remember { mutableStateOf(false) }
     var showSetPinDialog by remember { mutableStateOf(false) }
     var showReminderDialog by remember { mutableStateOf(false) }
     var showCalendar by remember { mutableStateOf(false) }
     var isDarkMode by remember { mutableStateOf(false) }
+
+    // PDF password dialog state
+    var showPdfPasswordDialog by remember { mutableStateOf(false) }
+    var pdfPasswordTarget by remember { mutableStateOf("single") } // "single" or "all"
+    var pdfPassword by remember { mutableStateOf("") }
+    var pdfPasswordVisible by remember { mutableStateOf(false) }
 
     val bgColor = if (isDarkMode) Color(0xFF121212) else Color(0xFFE6CFA3)
     val paperColor = if (isDarkMode) Color(0xFF1E1E1E) else Color(0xFFFAFAFA)
@@ -619,7 +931,288 @@ fun ProfessionalDiaryScreen(
         if (DiaryCloudSync.isLoggedIn()) viewModel.syncFromCloud()
     }
 
-    // Show calendar
+    // ── Show list screen first — wrapped in drawer so menu works ────────────
+    if (showListScreen) {
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            drawerContent = {
+                ModalDrawerSheet(
+                    modifier = Modifier.width(280.dp),
+                    drawerContainerColor = Color(0xFF2D323E)
+                ) {
+                    DiarySidebar(
+                        selectedFilter = selectedFilter,
+                        isDarkMode = isDarkMode,
+                        cloudStatus = cloudStatus,
+                        isLoggedIn = DiaryCloudSync.isLoggedIn(),
+                        onFilterSelect = {
+                            viewModel.setFolderFilter(it)
+                            scope.launch { drawerState.close() }
+                        },
+                        onNewEntry = {
+                            viewModel.startNewEntry()
+                            scope.launch { drawerState.close() }
+                            showListScreen = false
+                        },
+                        onToggleTheme = { isDarkMode = !isDarkMode },
+                        // ✅ FIX: list screen এ নিজস্ব export dialog খোলো, canvas export নয়
+                        onExportClick = {
+                            scope.launch { drawerState.close() }
+                            showListExportMenu = true
+                        },
+                        onCalendarClick = {
+                            scope.launch { drawerState.close() }
+                            showCalendar = true
+                        },
+                        onSyncClick = { viewModel.syncToCloud() },
+                        allEntries = allEntries,
+                        onEntryClick = { entry ->
+                            viewModel.loadEntry(entry)
+                            scope.launch { drawerState.close() }
+                            showListScreen = false
+                        }
+                    )
+                }
+            }
+        ) {
+            DiaryListScreen(
+                entries = allEntries,
+                onEntryClick = { entry ->
+                    viewModel.loadEntry(entry)
+                    showListScreen = false
+                },
+                onNewEntry = {
+                    viewModel.startNewEntry()
+                    showListScreen = false
+                },
+                onNavigateBack = onNavigateBack,
+                onMenuClick = { scope.launch { drawerState.open() } },
+                onDeleteEntry = { entry -> viewModel.deleteEntry(entry) }
+            )
+        }
+
+        // ✅ FIX: List screen এ থাকাকালীন Export dialog (canvas এর showExportMenu নয়)
+        if (showListExportMenu) {
+            val listExportContext = LocalContext.current
+            val listExportScope = rememberCoroutineScope()
+            val driveAvailableForList = DriveBackupManager.isAvailable(listExportContext)
+            var listBusyMsg by remember { mutableStateOf("") }
+
+            val listJsonPickerLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.GetContent()
+            ) { uri: Uri? ->
+                if (uri == null) return@rememberLauncherForActivityResult
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        val text = listExportContext.contentResolver.openInputStream(uri)
+                            ?.bufferedReader()?.readText() ?: return@launch
+                        val root = JSONObject(text)
+                        val arr  = root.optJSONArray("entries") ?: return@launch
+                        val db   = DiaryDatabase.getDatabase(listExportContext)
+                        val toInsert = (0 until arr.length()).map { i ->
+                            val o = arr.getJSONObject(i)
+                            DiaryEntry(
+                                id        = 0,
+                                title     = o.optString("title"),
+                                body      = o.optString("body"),
+                                date      = o.optString("date"),
+                                mood      = o.optString("mood"),
+                                folder    = o.optString("folder", "Personal"),
+                                tags      = o.optString("tags").split(",").filter { it.isNotBlank() },
+                                isLocked  = o.optBoolean("locked", false),
+                                timestamp = o.optLong("timestamp", System.currentTimeMillis())
+                            )
+                        }
+                        db.diaryDao().upsertAll(toInsert)
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(listExportContext, "✅ Imported ${toInsert.size} entries", Toast.LENGTH_SHORT).show()
+                        }
+                    } catch (e: Exception) {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(listExportContext, "Import failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+                showListExportMenu = false
+            }
+
+            AlertDialog(
+                onDismissRequest = { showListExportMenu = false },
+                title = { Text("📂 Backup & Restore", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (listBusyMsg.isNotBlank()) {
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            Text(listBusyMsg, fontSize = 12.sp, color = Color(0xFF888888))
+                        }
+                        Text("📱 Local Export", fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp, color = Color(0xFFE91E8C))
+
+                        // ── Export JSON → Downloads ──────────────────────────
+                        OutlinedButton(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                CoroutineScope(Dispatchers.IO).launch {
+                                    try {
+                                        val arr = JSONArray()
+                                        allEntries.forEach { e ->
+                                            arr.put(JSONObject().apply {
+                                                put("id", e.id); put("title", e.title)
+                                                put("body", e.body); put("date", e.date)
+                                                put("mood", e.mood); put("folder", e.folder)
+                                                put("tags", e.tags.joinToString(","))
+                                                put("locked", e.isLocked)
+                                                put("timestamp", e.timestamp)
+                                            })
+                                        }
+                                        val root = JSONObject().apply {
+                                            put("exported_at", java.text.SimpleDateFormat(
+                                                "yyyy-MM-dd_HH-mm", java.util.Locale.ENGLISH).format(java.util.Date()))
+                                            put("entry_count", allEntries.size)
+                                            put("entries", arr)
+                                        }
+                                        val fileName = "RasDiary_${java.text.SimpleDateFormat(
+                                            "yyyyMMdd_HHmm", java.util.Locale.ENGLISH).format(java.util.Date())}.json"
+                                        val saved = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                                            val values = android.content.ContentValues().apply {
+                                                put(android.provider.MediaStore.Downloads.DISPLAY_NAME, fileName)
+                                                put(android.provider.MediaStore.Downloads.MIME_TYPE, "application/json")
+                                                put(android.provider.MediaStore.Downloads.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/RasDiary")
+                                            }
+                                            val uri = listExportContext.contentResolver.insert(
+                                                android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                                            if (uri != null) {
+                                                listExportContext.contentResolver.openOutputStream(uri)?.use { it.write(root.toString(2).toByteArray()) }
+                                                true
+                                            } else false
+                                        } else {
+                                            val dir = java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                                                android.os.Environment.DIRECTORY_DOWNLOADS), "RasDiary")
+                                            dir.mkdirs()
+                                            java.io.File(dir, fileName).writeText(root.toString(2))
+                                            true
+                                        }
+                                        withContext(Dispatchers.Main) {
+                                            if (saved) {
+                                                Toast.makeText(listExportContext,
+                                                    "✅ JSON saved to Downloads/RasDiary/$fileName",
+                                                    Toast.LENGTH_LONG).show()
+                                            } else {
+                                                Toast.makeText(listExportContext, "❌ JSON save failed", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(listExportContext, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                }
+                                showListExportMenu = false
+                            }
+                        ) {
+                            Icon(Icons.Default.FileDownload, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Export JSON → Downloads")
+                        }
+
+                        OutlinedButton(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                val file = DiaryPdfExporter.exportAllEntries(listExportContext, allEntries)
+                                if (file != null) {
+                                    listExportContext.startActivity(Intent.createChooser(
+                                        DiaryPdfExporter.getShareIntent(listExportContext, file), "Share PDF"))
+                                } else Toast.makeText(listExportContext, "Export failed", Toast.LENGTH_SHORT).show()
+                                showListExportMenu = false
+                            }
+                        ) { Text("Export PDF (all entries)") }
+
+                        OutlinedButton(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = { listJsonPickerLauncher.launch("application/json") }
+                        ) {
+                            Icon(Icons.Default.FileUpload, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Import JSON from device")
+                        }
+
+                        HorizontalDivider()
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("☁️ Google Drive", fontWeight = FontWeight.SemiBold,
+                                fontSize = 13.sp, color = Color(0xFF4A90D9))
+                            if (!driveAvailableForList) {
+                                Spacer(Modifier.width(8.dp))
+                                Text("(Google Sign-In দরকার)", fontSize = 11.sp, color = Color(0xFFFF6B6B))
+                            }
+                        }
+                        if (!driveAvailableForList) {
+                            Text(
+                                "Settings → Google Sign-In করুন এবং Drive permission দিন।",
+                                fontSize = 11.sp, color = Color(0xFF888888)
+                            )
+                        }
+                        if (driveAvailableForList) {
+                            var listShowFixDrive by remember { mutableStateOf(false) }
+                            val listFixDriveLauncher = rememberLauncherForActivityResult(
+                                ActivityResultContracts.StartActivityForResult()
+                            ) {
+                                listShowFixDrive = false
+                                Toast.makeText(listExportContext,
+                                    "Drive permission দেওয়া হয়েছে ✅ — এখন আবার Export করুন",
+                                    Toast.LENGTH_LONG).show()
+                            }
+                            Button(
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = {
+                                    listBusyMsg = "Exporting PDF to Drive..."
+                                    listExportScope.launch {
+                                        val f = withContext(Dispatchers.IO) {
+                                            DiaryPdfExporter.exportAllEntries(listExportContext, allEntries)
+                                        }
+                                        val ok = if (f != null) DriveBackupManager.uploadDiaryPdf(listExportContext, f) else false
+                                        listBusyMsg = ""
+                                        listShowFixDrive = DriveBackupManager.lastRecoveryIntent != null
+                                        Toast.makeText(listExportContext,
+                                            if (ok) "✅ PDF saved to Drive"
+                                            else "❌ ${DriveBackupManager.lastError ?: "Upload failed"}",
+                                            Toast.LENGTH_LONG).show()
+                                        if (!listShowFixDrive) showListExportMenu = false
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4A90D9))
+                            ) { Text("Export PDF to Drive") }
+                            if (listShowFixDrive) {
+                                Button(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    onClick = {
+                                        DriveBackupManager.lastRecoveryIntent?.let {
+                                            listFixDriveLauncher.launch(it)
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))
+                                ) { Text("🔧 Fix Drive Access") }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { showListExportMenu = false }) { Text("Close") }
+                }
+            )
+        }
+        return
+    }
+
+    // BackHandler: physical back button in canvas → save and go to list
+    androidx.activity.compose.BackHandler {
+        viewModel.forceSaveOnExit()
+        showListScreen = true
+    }
+
+    // Show calendar — calendar icon click থেকে DatePickerDialog খোলে যাতে
+    // user যেকোনো date choose করে নতুন entry লিখতে পারে
     if (showCalendar) {
         DiaryCalendarScreen(
             entries = allEntries,
@@ -637,7 +1230,7 @@ fun ProfessionalDiaryScreen(
         DiaryLockScreen(
             entry = currentEntry,
             onUnlock = { viewModel.unlockWithBiometric() },
-            onCancel = { viewModel.startNewEntry() }
+            onCancel = { showListScreen = true }
         )
         return
     }
@@ -686,19 +1279,19 @@ fun ProfessionalDiaryScreen(
                 TopAppBar(
                     title = {
                         Text(
-                            "Write note",
+                            "RasDiary",
                             color = Color.White,
                             fontWeight = FontWeight.Bold,
                             fontSize = 22.sp
                         )
                     },
                     navigationIcon = {
-                        // Screenshot-এ "←" back-arrow দেখানো হলেও, এখানে এটা
-                        // sidebar drawer খোলে (Calendar, Folder filter, Cloud
-                        // Sync, PDF Export, entry list — এগুলো হারিয়ে যাওয়া
-                        // যাবে না)। আসল save & exit checkmark (✓) বাটনে।
-                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "Menu", tint = Color.White)
+                        // Back arrow → save and go back to diary list
+                        IconButton(onClick = {
+                            viewModel.forceSaveOnExit()
+                            showListScreen = true
+                        }) {
+                            Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
                         }
                     },
                     actions = {
@@ -722,10 +1315,10 @@ fun ProfessionalDiaryScreen(
                             )
                         }
 
-                        // Checkmark — save + close, screenshot এর ✓ icon
+                        // Checkmark — save + go back to diary list (NOT out of diary)
                         IconButton(onClick = {
                             viewModel.forceSaveOnExit()
-                            onNavigateBack()
+                            showListScreen = true   // ✅ FIX: diary list এ ফেরত যাও, app থেকে বের নয়
                         }) {
                             Icon(Icons.Default.Check, contentDescription = "Save", tint = Color.White)
                         }
@@ -805,7 +1398,30 @@ fun ProfessionalDiaryScreen(
                 onRemoveTag = { tag -> viewModel.removeTag(tag) },
                 onFolderClick = { showFolderMenu = true },
                 showFolderMenu = showFolderMenu,
-                onDismissFolderMenu = { showFolderMenu = false }
+                onDismissFolderMenu = { showFolderMenu = false },
+                onDateClick = {
+                    // Parse the current entry date so picker opens on the right month/day
+                    val cal = Calendar.getInstance()
+                    runCatching {
+                        val sdf = SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.ENGLISH)
+                        cal.time = sdf.parse(currentEntry.date) ?: Date()
+                    }
+                    DatePickerDialog(
+                        context,
+                        { _, year, month, dayOfMonth ->
+                            val picked = Calendar.getInstance().apply {
+                                set(year, month, dayOfMonth)
+                            }
+                            val newDate = SimpleDateFormat(
+                                "EEEE, MMMM d, yyyy", Locale.ENGLISH
+                            ).format(picked.time)
+                            viewModel.updateEntry(currentEntry.copy(date = newDate))
+                        },
+                        cal.get(Calendar.YEAR),
+                        cal.get(Calendar.MONTH),
+                        cal.get(Calendar.DAY_OF_MONTH)
+                    ).show()
+                }
             )
         }
     }
@@ -924,26 +1540,85 @@ fun ProfessionalDiaryScreen(
                         OutlinedButton(
                             modifier = Modifier.weight(1f),
                             onClick = {
-                                val file = DiaryPdfExporter.exportSingleEntry(context, currentEntry)
-                                if (file != null) {
-                                    context.startActivity(Intent.createChooser(
-                                        DiaryPdfExporter.getShareIntent(context, file), "Share PDF"))
-                                } else Toast.makeText(context, "Export failed", Toast.LENGTH_SHORT).show()
-                                showExportMenu = false
+                                pdfPasswordTarget = "single"
+                                pdfPassword = ""
+                                showPdfPasswordDialog = true
                             }
                         ) { Text("PDF\n(this entry)", fontSize = 11.sp, textAlign = TextAlign.Center) }
 
                         OutlinedButton(
                             modifier = Modifier.weight(1f),
                             onClick = {
-                                val file = DiaryPdfExporter.exportAllEntries(context, allEntries)
-                                if (file != null) {
-                                    context.startActivity(Intent.createChooser(
-                                        DiaryPdfExporter.getShareIntent(context, file), "Share PDF"))
-                                } else Toast.makeText(context, "Export failed", Toast.LENGTH_SHORT).show()
-                                showExportMenu = false
+                                pdfPasswordTarget = "all"
+                                pdfPassword = ""
+                                showPdfPasswordDialog = true
                             }
                         ) { Text("PDF\n(all entries)", fontSize = 11.sp, textAlign = TextAlign.Center) }
+                    }
+
+                    // ── LOCAL JSON EXPORT → Downloads ─────────────────────
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            CoroutineScope(Dispatchers.IO).launch {
+                                try {
+                                    val arr = JSONArray()
+                                    allEntries.forEach { e ->
+                                        arr.put(JSONObject().apply {
+                                            put("id", e.id); put("title", e.title)
+                                            put("body", e.body); put("date", e.date)
+                                            put("mood", e.mood); put("folder", e.folder)
+                                            put("tags", e.tags.joinToString(","))
+                                            put("locked", e.isLocked)
+                                            put("timestamp", e.timestamp)
+                                        })
+                                    }
+                                    val root = JSONObject().apply {
+                                        put("exported_at", java.text.SimpleDateFormat(
+                                            "yyyy-MM-dd_HH-mm", java.util.Locale.ENGLISH).format(java.util.Date()))
+                                        put("entry_count", allEntries.size)
+                                        put("entries", arr)
+                                    }
+                                    val fileName = "RasDiary_${java.text.SimpleDateFormat(
+                                        "yyyyMMdd_HHmm", java.util.Locale.ENGLISH).format(java.util.Date())}.json"
+                                    val saved = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                                        val values = android.content.ContentValues().apply {
+                                            put(android.provider.MediaStore.Downloads.DISPLAY_NAME, fileName)
+                                            put(android.provider.MediaStore.Downloads.MIME_TYPE, "application/json")
+                                            put(android.provider.MediaStore.Downloads.RELATIVE_PATH,
+                                                android.os.Environment.DIRECTORY_DOWNLOADS + "/RasDiary")
+                                        }
+                                        val uri = context.contentResolver.insert(
+                                            android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                                        if (uri != null) {
+                                            context.contentResolver.openOutputStream(uri)
+                                                ?.use { it.write(root.toString(2).toByteArray()) }
+                                            true
+                                        } else false
+                                    } else {
+                                        val dir = java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                                            android.os.Environment.DIRECTORY_DOWNLOADS), "RasDiary")
+                                        dir.mkdirs()
+                                        java.io.File(dir, fileName).writeText(root.toString(2))
+                                        true
+                                    }
+                                    withContext(Dispatchers.Main) {
+                                        if (saved) Toast.makeText(context,
+                                            "✅ JSON saved → Downloads/RasDiary/$fileName", Toast.LENGTH_LONG).show()
+                                        else Toast.makeText(context, "❌ JSON save failed", Toast.LENGTH_SHORT).show()
+                                    }
+                                } catch (e: Exception) {
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                            showExportMenu = false
+                        }
+                    ) {
+                        Icon(Icons.Default.FileDownload, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Export JSON → Downloads")
                     }
 
                     // ── LOCAL IMPORT ──────────────────────────────────────
@@ -965,13 +1640,31 @@ fun ProfessionalDiaryScreen(
                             fontSize = 13.sp, color = Color(0xFF4A90D9))
                         if (!driveAvailable) {
                             Spacer(Modifier.width(8.dp))
-                            Text("(sign in required)", fontSize = 11.sp,
-                                color = Color(0xFF888888))
+                            Text("(Google Sign-In দরকার)", fontSize = 11.sp,
+                                color = Color(0xFFFF6B6B))
                         }
+                    }
+                    if (!driveAvailable) {
+                        Text(
+                            "Settings → Google Sign-In করুন এবং Drive permission দিন, তারপর আবার চেষ্টা করুন।",
+                            fontSize = 11.sp, color = Color(0xFF888888),
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
                     }
 
                     if (driveAvailable) {
                         val scope = rememberCoroutineScope()
+                        var showFixDriveButton by remember { mutableStateOf(false) }
+                        val fixDriveLauncher = rememberLauncherForActivityResult(
+                            ActivityResultContracts.StartActivityForResult()
+                        ) {
+                            // ✅ user resolution screen থেকে ফিরে এসেছে — permission
+                            // দেওয়া হয়ে থাকলে এখন export/import আবার করলে কাজ করবে
+                            showFixDriveButton = false
+                            Toast.makeText(context,
+                                "Drive permission দেওয়া হয়েছে ✅ — এখন আবার Export/Import করুন",
+                                Toast.LENGTH_LONG).show()
+                        }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             // Drive JSON export
                             Button(
@@ -1008,10 +1701,12 @@ fun ProfessionalDiaryScreen(
                                         val ok = DriveBackupManager.uploadDiaryJson(context, file)
                                         file.delete()
                                         busyMsg = ""
+                                        showFixDriveButton = DriveBackupManager.lastRecoveryIntent != null
                                         Toast.makeText(context,
-                                            if (ok) "✅ JSON saved to Drive" else "❌ Upload failed",
-                                            Toast.LENGTH_SHORT).show()
-                                        showExportMenu = false
+                                            if (ok) "✅ JSON saved to Drive"
+                                            else "❌ ${DriveBackupManager.lastError ?: "Upload failed"}",
+                                            Toast.LENGTH_LONG).show()
+                                        if (!showFixDriveButton) showExportMenu = false
                                     }
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4A90D9))
@@ -1030,10 +1725,12 @@ fun ProfessionalDiaryScreen(
                                             DriveBackupManager.uploadDiaryPdf(context, f)
                                         else false
                                         busyMsg = ""
+                                        showFixDriveButton = DriveBackupManager.lastRecoveryIntent != null
                                         Toast.makeText(context,
-                                            if (ok) "✅ PDF saved to Drive" else "❌ Upload failed",
-                                            Toast.LENGTH_SHORT).show()
-                                        showExportMenu = false
+                                            if (ok) "✅ PDF saved to Drive"
+                                            else "❌ ${DriveBackupManager.lastError ?: "Upload failed"}",
+                                            Toast.LENGTH_LONG).show()
+                                        if (!showFixDriveButton) showExportMenu = false
                                     }
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4A90D9))
@@ -1085,11 +1782,16 @@ fun ProfessionalDiaryScreen(
                                             }
                                         }
                                     } else {
-                                        Toast.makeText(context, "No backup found on Drive",
-                                            Toast.LENGTH_SHORT).show()
+                                        // ✅ lastError set থাকলে এটা আসল failure (auth/network),
+                                        // "No backup found" নয় — আগে দুটোই একই message দেখাত
+                                        showFixDriveButton = DriveBackupManager.lastRecoveryIntent != null
+                                        val msg = DriveBackupManager.lastError
+                                            ?.let { "❌ $it" }
+                                            ?: "No backup found on Drive"
+                                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                                     }
                                     busyMsg = ""
-                                    showExportMenu = false
+                                    if (!showFixDriveButton) showExportMenu = false
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF34A853))
@@ -1097,6 +1799,21 @@ fun ProfessionalDiaryScreen(
                             Icon(Icons.Default.CloudDownload, null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
                             Text("Import from Drive")
+                        }
+
+                        // ✅ শুধু তখনই দেখায় যখন real cause হচ্ছে missing Drive
+                        // permission — ট্যাপ করলে সরাসরি Google-এর permission
+                        // screen খুলবে, sign-out/sign-in করার দরকার নেই
+                        if (showFixDriveButton) {
+                            Button(
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = {
+                                    DriveBackupManager.lastRecoveryIntent?.let {
+                                        fixDriveLauncher.launch(it)
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))
+                            ) { Text("🔧 Fix Drive Access") }
                         }
 
                         // Backup Now (one-shot manual trigger)
@@ -1121,6 +1838,60 @@ fun ProfessionalDiaryScreen(
                 TextButton(onClick = { showExportMenu = false }) { Text("Close") }
             }
         )
+    }
+
+    // ── PDF Password Dialog ───────────────────────────────────────────────────
+    if (showPdfPasswordDialog) {
+        Dialog(onDismissRequest = { showPdfPasswordDialog = false }) {
+            Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                Column(modifier = Modifier.padding(24.dp)) {
+                    Text("🔒 PDF Password", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color(0xFF1A237E))
+                    Spacer(Modifier.height(6.dp))
+                    Text("আপনি কি এই PDF-এ password দিতে চান?", fontSize = 13.sp, color = Color(0xFF546E7A))
+                    Spacer(Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = pdfPassword,
+                        onValueChange = { pdfPassword = it },
+                        label = { Text("Password (optional)") },
+                        singleLine = true,
+                        placeholder = { Text("Password না দিলে blank রাখুন") },
+                        visualTransformation = if (pdfPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { pdfPasswordVisible = !pdfPasswordVisible }) {
+                                Icon(if (pdfPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility, null)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(20.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedButton(
+                            onClick = { showPdfPasswordDialog = false; pdfPassword = "" },
+                            modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp)
+                        ) { Text("Cancel") }
+                        Button(
+                            onClick = {
+                                showPdfPasswordDialog = false
+                                val pwd = pdfPassword.trim()
+                                pdfPassword = ""
+                                if (pdfPasswordTarget == "single") {
+                                    val file = DiaryPdfExporter.exportSingleEntry(context, currentEntry, pwd.ifBlank { null })
+                                    if (file != null) context.startActivity(Intent.createChooser(DiaryPdfExporter.getShareIntent(context, file), "Share PDF"))
+                                    else Toast.makeText(context, "Export failed", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    val file = DiaryPdfExporter.exportAllEntries(context, allEntries, pwd.ifBlank { null })
+                                    if (file != null) context.startActivity(Intent.createChooser(DiaryPdfExporter.getShareIntent(context, file), "Share PDF"))
+                                    else Toast.makeText(context, "Export failed", Toast.LENGTH_SHORT).show()
+                                }
+                                showExportMenu = false
+                            },
+                            modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE91E8C))
+                        ) { Text("Export PDF", color = Color.White, fontWeight = FontWeight.Bold) }
+                    }
+                }
+            }
+        }
     }
 
     if (showSetPinDialog) {
@@ -1315,10 +2086,73 @@ fun DiaryEditorArea(
     onRemoveTag: (String) -> Unit,
     onFolderClick: () -> Unit,
     showFolderMenu: Boolean,
-    onDismissFolderMenu: () -> Unit
+    onDismissFolderMenu: () -> Unit,
+    onDateClick: () -> Unit = {}
 ) {
     val wordCount = entry.body.trim().split("\\s+".toRegex()).count { it.isNotEmpty() }
     val magenta = Color(0xFFDD0099)
+    val context = LocalContext.current
+    var showMediaSheet by remember { mutableStateOf(false) }
+    var isRecording by remember { mutableStateOf(false) }
+    var mediaRecorder by remember { mutableStateOf<android.media.MediaRecorder?>(null) }
+    var audioPath by remember { mutableStateOf<String?>(null) }
+
+    // ── current media list (mutable for drag/resize state) ────────────────────
+    // image scale state per index
+    val imageScales = remember(entry.mediaPaths) {
+        mutableStateMapOf<Int, Float>().also { map ->
+            entry.mediaPaths.forEachIndexed { i, _ -> map[i] = 1f }
+        }
+    }
+
+    // ── Photo from Gallery ────────────────────────────────────────────────────
+    val galleryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            // persist read permission
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } catch (_: Exception) {}
+            val newPaths = entry.mediaPaths + "image:$uri"
+            onEntryChange(entry.copy(mediaPaths = newPaths))
+        }
+    }
+
+    // ── Camera photo ─────────────────────────────────────────────────────────
+    var cameraUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    val cameraLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success && cameraUri != null) {
+            val newPaths = entry.mediaPaths + "image:${cameraUri!!}"
+            onEntryChange(entry.copy(mediaPaths = newPaths))
+        }
+    }
+
+    // ── Audio permission ──────────────────────────────────────────────────────
+    val audioPermLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            val file = java.io.File(context.filesDir, "diary_voice_${System.currentTimeMillis()}.m4a")
+            audioPath = file.absolutePath
+            @Suppress("DEPRECATION")
+            val recorder = android.media.MediaRecorder().apply {
+                setAudioSource(android.media.MediaRecorder.AudioSource.MIC)
+                setOutputFormat(android.media.MediaRecorder.OutputFormat.MPEG_4)
+                setAudioEncoder(android.media.MediaRecorder.AudioEncoder.AAC)
+                setOutputFile(file.absolutePath)
+                prepare()
+                start()
+            }
+            mediaRecorder = recorder
+            isRecording = true
+        } else {
+            Toast.makeText(context, "Microphone permission needed", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     Column(
         modifier = modifier
@@ -1331,7 +2165,7 @@ fun DiaryEditorArea(
         // Reminder badge
         if (entry.reminderTimeMillis > 0) {
             val remStr = SimpleDateFormat("MMM d, hh:mm a", Locale.getDefault())
-                .format(Date(entry.reminderTimeMillis))
+                .format(java.util.Date(entry.reminderTimeMillis))
             Row(
                 modifier = Modifier.fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
@@ -1347,21 +2181,26 @@ fun DiaryEditorArea(
 
         // ── Date Card ──────────────────────────────────────────────────────
         val currentDate = if (entry.date.isNotBlank()) entry.date
-            else SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.ENGLISH).format(Date())
+            else SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.ENGLISH).format(java.util.Date())
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
                 .background(Color.White)
+                .clickable { onDateClick() }
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Default.CalendarToday, contentDescription = "Date", tint = Color(0xFF555555), modifier = Modifier.size(20.dp))
+            Icon(Icons.Default.CalendarToday, contentDescription = "Change Date",
+                tint = magenta, modifier = Modifier.size(20.dp))
             Spacer(modifier = Modifier.width(14.dp))
             Text(currentDate, color = magenta, fontSize = 17.sp, fontWeight = FontWeight.Medium)
             Spacer(modifier = Modifier.weight(1f))
             if (entry.isLocked) {
                 Icon(Icons.Default.Lock, contentDescription = "Locked", tint = magenta, modifier = Modifier.size(18.dp))
+            } else {
+                Icon(Icons.Default.Edit, contentDescription = "Edit date",
+                    tint = Color(0xFFBBBBBB), modifier = Modifier.size(14.dp))
             }
         }
 
@@ -1381,7 +2220,7 @@ fun DiaryEditorArea(
                 onValueChange = { onEntryChange(entry.copy(title = it)) },
                 placeholder = { Text("Add title", color = Color(0xFF555555), fontSize = 17.sp) },
                 modifier = Modifier.weight(1f),
-                textStyle = LocalTextStyle.current.copy(fontSize = 17.sp, color = Color(0xFF212121)),
+                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 17.sp, color = Color(0xFF212121)),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = Color.Transparent,
                     unfocusedBorderColor = Color.Transparent,
@@ -1391,18 +2230,14 @@ fun DiaryEditorArea(
             )
         }
 
-        // ── Meta row: folder + word count (compact, screenshot-এ নেই কিন্তু
-        //    feature ধরে রাখার জন্য ছোট আকারে) ─────────────────────────────
+        // ── Folder + word count row ─────────────────────────────────────────
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box {
-                Row(
-                    modifier = Modifier.clickable { onFolderClick() },
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(modifier = Modifier.clickable { onFolderClick() }, verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Folder, contentDescription = "Folder", tint = Color.White, modifier = Modifier.size(15.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(entry.folder, color = Color.White, fontSize = 12.sp)
@@ -1416,41 +2251,34 @@ fun DiaryEditorArea(
                     }
                 }
             }
-            Text(
-                "$wordCount words",
-                color = Color.White.copy(alpha = 0.85f),
-                fontSize = 11.sp,
-                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-            )
+            Text("$wordCount words", color = Color.White.copy(alpha = 0.85f), fontSize = 11.sp,
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
         }
 
         if (entry.tags.isNotEmpty()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
+            Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 entry.tags.forEach { tag -> Chip(label = tag, onClose = { onRemoveTag(tag) }) }
             }
         }
 
-        // ── Body Card — ruled/lined paper effect ────────────────────────────
+        // ── Body Card — ruled paper ─────────────────────────────────────────
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f)
+                .heightIn(min = 200.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(Color.White)
         ) {
             OutlinedTextField(
                 value = entry.body,
                 onValueChange = { onEntryChange(entry.copy(body = it)) },
-                placeholder = {
-                    Text("Start typing here.", color = Color(0xFF555555), fontSize = 17.sp)
-                },
+                placeholder = { Text("Start typing here.", color = Color(0xFF555555), fontSize = 17.sp) },
                 modifier = Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth()
+                    .heightIn(min = 200.dp)
                     .ruledLines(lineColor = Color(0xFFE0E0E0), lineSpacing = 34.dp, topOffset = 52.dp),
-                textStyle = LocalTextStyle.current.copy(fontSize = 17.sp, color = Color(0xFF212121), lineHeight = 34.sp),
+                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 17.sp, color = Color(0xFF212121), lineHeight = androidx.compose.ui.unit.TextUnit(34f, androidx.compose.ui.unit.TextUnitType.Sp)),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = Color.Transparent,
                     unfocusedBorderColor = Color.Transparent,
@@ -1461,7 +2289,232 @@ fun DiaryEditorArea(
             )
         }
 
-        // ── Toolbar — mood, tag, formatting (feature ধরে রাখার জন্য) ────────
+        // ── Media items: images (zoomable) + voice notes (playable) ──────────
+        entry.mediaPaths.forEachIndexed { index, path ->
+            when {
+                path.startsWith("image:") -> {
+                    val uriStr = path.removePrefix("image:")
+                    val uri = runCatching { android.net.Uri.parse(uriStr) }.getOrNull()
+                    var scale by remember(index) { mutableStateOf(imageScales[index] ?: 1f) }
+
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp)),
+                        elevation = CardDefaults.cardElevation(4.dp)
+                    ) {
+                        Box {
+                            if (uri != null) {
+                                // Load bitmap from URI
+                                val bmp = remember(uri) {
+                                    runCatching {
+                                        val stream = context.contentResolver.openInputStream(uri)
+                                        android.graphics.BitmapFactory.decodeStream(stream)
+                                    }.getOrNull()
+                                }
+                                if (bmp != null) {
+                                    var showFullscreen by remember { mutableStateOf(false) }
+
+                                    // Thumbnail — tap to open fullscreen viewer
+                                    Image(
+                                        bitmap = bmp.asImageBitmap(),
+                                        contentDescription = "Diary photo",
+                                        contentScale = ContentScale.FillWidth,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { showFullscreen = true }
+                                    )
+
+                                    // Fullscreen zoomable + pannable viewer
+                                    if (showFullscreen) {
+                                        Dialog(
+                                            onDismissRequest = { showFullscreen = false },
+                                            properties = androidx.compose.ui.window.DialogProperties(
+                                                usePlatformDefaultWidth = false,
+                                                dismissOnClickOutside = true
+                                            )
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .background(Color.Black),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                var fsScale by remember { mutableStateOf(1f) }
+                                                var fsOffset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+
+                                                Image(
+                                                    bitmap = bmp.asImageBitmap(),
+                                                    contentDescription = "Fullscreen photo",
+                                                    contentScale = ContentScale.Fit,
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .graphicsLayer(
+                                                            scaleX = fsScale,
+                                                            scaleY = fsScale,
+                                                            translationX = fsOffset.x,
+                                                            translationY = fsOffset.y
+                                                        )
+                                                        .pointerInput(Unit) {
+                                                            detectTransformGestures { _, pan, zoom, _ ->
+                                                                fsScale = (fsScale * zoom).coerceIn(1f, 8f)
+                                                                fsOffset = if (fsScale > 1f)
+                                                                    fsOffset + pan * fsScale
+                                                                else
+                                                                    androidx.compose.ui.geometry.Offset.Zero
+                                                            }
+                                                        }
+                                                )
+
+                                                // Close button
+                                                IconButton(
+                                                    onClick = {
+                                                        showFullscreen = false
+                                                        fsScale = 1f
+                                                        fsOffset = androidx.compose.ui.geometry.Offset.Zero
+                                                    },
+                                                    modifier = Modifier
+                                                        .align(Alignment.TopEnd)
+                                                        .padding(12.dp)
+                                                        .size(40.dp)
+                                                        .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                                                ) {
+                                                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                                                }
+
+                                                // Hint text
+                                                if (fsScale <= 1f) {
+                                                    Box(
+                                                        Modifier
+                                                            .align(Alignment.BottomCenter)
+                                                            .padding(bottom = 24.dp)
+                                                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                                                            .padding(horizontal = 14.dp, vertical = 6.dp)
+                                                    ) {
+                                                        Text("Pinch to zoom  ·  Drag to pan", fontSize = 12.sp, color = Color.White)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    Box(Modifier.fillMaxWidth().height(80.dp).background(Color(0xFFF0F0F0)),
+                                        contentAlignment = Alignment.Center) {
+                                        Text("Image not found", color = Color.Gray)
+                                    }
+                                }
+                            }
+                            // Delete button top-right
+                            IconButton(
+                                onClick = {
+                                    val newPaths = entry.mediaPaths.toMutableList().also { it.removeAt(index) }
+                                    onEntryChange(entry.copy(mediaPaths = newPaths))
+                                },
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .size(32.dp)
+                                    .background(Color.Black.copy(0.45f), CircleShape)
+                            ) {
+                                Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            }
+                            // Scale hint
+                            Box(
+                                Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(6.dp)
+                                    .background(Color.Black.copy(0.4f), RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text("Pinch to zoom", fontSize = 9.sp, color = Color.White)
+                            }
+                        }
+                    }
+                }
+
+                path.startsWith("voice:") -> {
+                    val filePath = path.removePrefix("voice:")
+                    var isPlaying by remember { mutableStateOf(false) }
+                    var player by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
+
+                    DisposableEffect(filePath) {
+                        onDispose {
+                            player?.release()
+                            player = null
+                        }
+                    }
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF3E5F5))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Play/Pause button
+                            IconButton(
+                                onClick = {
+                                    if (isPlaying) {
+                                        player?.pause()
+                                        isPlaying = false
+                                    } else {
+                                        try {
+                                            if (player == null) {
+                                                player = android.media.MediaPlayer().apply {
+                                                    setDataSource(filePath)
+                                                    prepare()
+                                                    setOnCompletionListener {
+                                                        isPlaying = false
+                                                        this.seekTo(0)
+                                                    }
+                                                }
+                                            }
+                                            player?.start()
+                                            isPlaying = true
+                                        } catch (e: Exception) {
+                                            Toast.makeText(context, "Playback error: ${e.message}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                },
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .background(magenta, CircleShape)
+                            ) {
+                                Icon(
+                                    if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                    contentDescription = if (isPlaying) "Pause" else "Play",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("🎙️ Voice Note", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF6A1B9A))
+                                Text(
+                                    java.io.File(filePath).name,
+                                    fontSize = 10.sp, color = Color.Gray, maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
+                            }
+                            // Delete voice note
+                            IconButton(
+                                onClick = {
+                                    player?.release(); player = null
+                                    val newPaths = entry.mediaPaths.toMutableList().also { it.removeAt(index) }
+                                    onEntryChange(entry.copy(mediaPaths = newPaths))
+                                },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(Icons.Default.Delete, null, tint = Color(0xFF9E9E9E), modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Toolbar ─────────────────────────────────────────────────────────
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1473,29 +2526,124 @@ fun DiaryEditorArea(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onMoodClick, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Default.Face, contentDescription = "Mood", tint = if (entry.mood.isNotBlank()) magenta else Color(0xFF555555))
+                Icon(Icons.Default.Face, contentDescription = "Mood",
+                    tint = if (entry.mood.isNotBlank()) magenta else Color(0xFF555555))
             }
-            IconButton(onClick = { }, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Default.Mic, contentDescription = "Audio", tint = Color(0xFF555555))
+            // ── Voice record button ──────────────────────────────────────────
+            IconButton(
+                onClick = {
+                    if (isRecording) {
+                        try {
+                            mediaRecorder?.apply { stop(); release() }
+                            mediaRecorder = null
+                        } catch (_: Exception) {}
+                        isRecording = false
+                        audioPath?.let { path ->
+                            val newPaths = entry.mediaPaths + "voice:$path"
+                            onEntryChange(entry.copy(mediaPaths = newPaths))
+                            Toast.makeText(context, "Voice note saved ✅", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        audioPermLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    }
+                },
+                modifier = Modifier.size(32.dp)
+                    .then(if (isRecording) Modifier.background(Color(0xFFFF4444).copy(.15f), CircleShape) else Modifier)
+            ) {
+                Icon(
+                    if (isRecording) Icons.Default.Stop else Icons.Default.Mic,
+                    contentDescription = if (isRecording) "Stop Recording" else "Voice Note",
+                    tint = if (isRecording) Color(0xFFFF4444) else Color(0xFF555555)
+                )
             }
             IconButton(onClick = { }, modifier = Modifier.size(32.dp)) {
                 Icon(Icons.Default.Brush, contentDescription = "Draw", tint = Color(0xFF555555))
             }
-            IconButton(onClick = { }, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Default.Image, contentDescription = "Image", tint = Color(0xFF555555))
+            // ── Photo button ─────────────────────────────────────────────────
+            IconButton(onClick = { showMediaSheet = true }, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Default.Image, contentDescription = "Photo",
+                    tint = if (entry.mediaPaths.any { it.startsWith("image:") }) magenta else Color(0xFF555555))
             }
             IconButton(onClick = onTagClick, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Default.Label, contentDescription = "Tag", tint = if (entry.tags.isNotEmpty()) magenta else Color(0xFF555555))
+                Icon(Icons.Default.Label, contentDescription = "Tag",
+                    tint = if (entry.tags.isNotEmpty()) magenta else Color(0xFF555555))
             }
             VerticalDivider(modifier = Modifier.height(24.dp), color = Color.LightGray)
-            Text("B", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = Color(0xFF555555), modifier = Modifier.clickable { }.padding(4.dp))
-            Text("I", fontStyle = FontStyle.Italic, fontSize = 18.sp, color = Color(0xFF555555), modifier = Modifier.clickable { }.padding(4.dp))
-            Text("U", textDecoration = TextDecoration.Underline, fontSize = 18.sp, color = Color(0xFF555555), modifier = Modifier.clickable { }.padding(4.dp))
+            Text("B", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = Color(0xFF555555),
+                modifier = Modifier.clickable { }.padding(4.dp))
+            Text("I", fontStyle = FontStyle.Italic, fontSize = 18.sp, color = Color(0xFF555555),
+                modifier = Modifier.clickable { }.padding(4.dp))
+            Text("U", textDecoration = TextDecoration.Underline, fontSize = 18.sp, color = Color(0xFF555555),
+                modifier = Modifier.clickable { }.padding(4.dp))
+        }
+    }
+
+    // ── Media picker bottom sheet ─────────────────────────────────────────────
+    if (showMediaSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showMediaSheet = false },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+        ) {
+            Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
+                Box(modifier = Modifier.width(36.dp).height(4.dp)
+                    .background(Color(0xFFE0E0E0), CircleShape).align(Alignment.CenterHorizontally))
+                Spacer(Modifier.height(16.dp))
+                Text("Add Media", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Spacer(Modifier.height(16.dp))
+                // Gallery
+                Row(
+                    modifier = Modifier.fillMaxWidth().clickable {
+                        showMediaSheet = false
+                        galleryLauncher.launch(PickVisualMediaRequest(PickVisualMedia.ImageOnly))
+                    }.padding(vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(modifier = Modifier.size(40.dp).background(Color(0xFFE8EAF6), CircleShape),
+                        contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.PhotoLibrary, null, tint = Color(0xFF3F51B5), modifier = Modifier.size(20.dp))
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Text("Choose from Gallery", fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                }
+                HorizontalDivider(color = Color(0xFFF0F0F0))
+                // Camera — fixed authority to match manifest (.fileprovider)
+                Row(
+                    modifier = Modifier.fillMaxWidth().clickable {
+                        showMediaSheet = false
+                        try {
+                            val imgFile = java.io.File(
+                                context.getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES),
+                                "diary_img_${System.currentTimeMillis()}.jpg"
+                            )
+                            imgFile.parentFile?.mkdirs()
+                            val uri = androidx.core.content.FileProvider.getUriForFile(
+                                context,
+                                "${context.packageName}.fileprovider",  // ← fixed: matches manifest
+                                imgFile
+                            )
+                            cameraUri = uri
+                            cameraLauncher.launch(uri)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Camera error: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    }.padding(vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(modifier = Modifier.size(40.dp).background(Color(0xFFE8F5E9), CircleShape),
+                        contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.CameraAlt, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(20.dp))
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Text("Take Photo", fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                }
+                Spacer(Modifier.height(24.dp))
+            }
         }
     }
 }
 
-// ── Ruled/lined paper effect — body card এর background এ horizontal line আঁকে ──
+// ── Ruled/lined paper effect ──────────────────────────────────────────────────
 private fun Modifier.ruledLines(lineColor: Color, lineSpacing: androidx.compose.ui.unit.Dp, topOffset: androidx.compose.ui.unit.Dp): Modifier =
     this.drawBehind {
         val spacingPx = lineSpacing.toPx()
