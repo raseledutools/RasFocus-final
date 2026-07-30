@@ -1,31 +1,34 @@
 === KOTLIN ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:49:35 Conflicting import, imported name 'ContentScale' is ambiguous
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:52:35 Conflicting import, imported name 'ContentScale' is ambiguous
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2323:46 Unresolved reference: graphicsLayer
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2325:49 Unresolved reference. None of the following candidates is applicable because of receiver type mismatch: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2321:46 Unresolved reference: graphicsLayer
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2322:49 Unresolved reference: scaleX
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2323:49 Unresolved reference: scaleY
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2326:49 Unresolved reference. None of the following candidates is applicable because of receiver type mismatch: 
 
 === UNRESOLVED / TYPE ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2323:46 Unresolved reference: graphicsLayer
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2325:49 Unresolved reference. None of the following candidates is applicable because of receiver type mismatch: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2321:46 Unresolved reference: graphicsLayer
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2322:49 Unresolved reference: scaleX
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2323:49 Unresolved reference: scaleY
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2326:49 Unresolved reference. None of the following candidates is applicable because of receiver type mismatch: 
 
 === BUILD FAILURE ===
 > Task :app:compileFullReleaseKotlin FAILED
 * What went wrong:
 Execution failed for task ':app:compileFullReleaseKotlin'.
-BUILD FAILED in 3m 10s
+BUILD FAILED in 2m 43s
 
 === LAST 60 LINES ===
 > Task :app:mapFullReleaseSourceSetPaths
-> Task :app:checkFullReleaseAarMetadata
-> Task :app:validateSigningFullRelease
-> Task :app:writeFullReleaseAppMetadata
 > Task :app:mergeFullReleaseArtProfile
+> Task :app:validateSigningFullRelease
 > Task :app:mergeFullReleaseAssets FROM-CACHE
-> Task :app:writeFullReleaseSigningConfigVersions
+> Task :app:writeFullReleaseAppMetadata
 > Task :app:checkFullReleaseDuplicateClasses
+> Task :app:checkFullReleaseAarMetadata
+> Task :app:writeFullReleaseSigningConfigVersions
 > Task :app:compressFullReleaseAssets FROM-CACHE
-> Task :app:collectFullReleaseDependencies
 > Task :app:mergeFullReleaseNativeLibs
+> Task :app:collectFullReleaseDependencies
+> Task :app:mergeFullReleaseResources FROM-CACHE
 
 > Task :app:stripFullReleaseDebugSymbols
 Unable to strip the following libraries, packaging them as they are: libbarhopper_v3.so, libimage_processing_util_jni.so, libpdfium.so, libpdfiumandroid.so.
@@ -33,7 +36,6 @@ Unable to strip the following libraries, packaging them as they are: libbarhoppe
 > Task :app:extractFullReleaseNativeSymbolTables FROM-CACHE
 > Task :app:mergeFullReleaseNativeDebugMetadata NO-SOURCE
 > Task :app:sdkFullReleaseDependencyData
-> Task :app:mergeFullReleaseResources FROM-CACHE
 > Task :app:processFullReleaseMainManifest
 > Task :app:processFullReleaseManifest
 > Task :app:processFullReleaseManifestForPackage
@@ -44,14 +46,14 @@ note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round ico
 > Task :app:processFullReleaseResources
 > Task :app:kspFullReleaseKotlin
 > Task :app:compileFullReleaseKotlin
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:49:35 Conflicting import, imported name 'ContentScale' is ambiguous
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:52:35 Conflicting import, imported name 'ContentScale' is ambiguous
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2323:46 Unresolved reference: graphicsLayer
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2325:49 Unresolved reference. None of the following candidates is applicable because of receiver type mismatch: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2321:46 Unresolved reference: graphicsLayer
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2322:49 Unresolved reference: scaleX
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2323:49 Unresolved reference: scaleY
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2326:49 Unresolved reference. None of the following candidates is applicable because of receiver type mismatch: 
 public suspend fun PointerInputScope.detectTransformGestures(panZoomLock: Boolean = ..., onGesture: (centroid: Offset, pan: Offset, zoom: Float, rotation: Float) -> Unit): Unit defined in androidx.compose.foundation.gestures
 
 > Task :app:compileFullReleaseKotlin FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785398446562.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785399654667.json
 
 FAILURE: Build failed with an exception.
 
@@ -72,6 +74,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 3m 10s
+BUILD FAILED in 2m 43s
 32 actionable tasks: 22 executed, 10 from cache
 Configuration cache entry stored.
