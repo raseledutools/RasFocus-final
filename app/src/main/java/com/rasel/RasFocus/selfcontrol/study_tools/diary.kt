@@ -2590,8 +2590,6 @@ private fun Modifier.ruledLines(lineColor: Color, lineSpacing: androidx.compose.
             y += spacingPx
         }
     }
-        }
-    }
 
 @Composable
 fun Chip(label: String, onClose: () -> Unit) {
