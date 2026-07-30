@@ -1,30 +1,31 @@
 === KOTLIN ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/reminder.kt:189:34 Unresolved reference: StudyToolsActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/reminder.kt:209:40 Unresolved reference: StudyToolsActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/reminder.kt:314:45 Unresolved reference: tabIndicatorOffset
 
 === UNRESOLVED / TYPE ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/reminder.kt:189:34 Unresolved reference: StudyToolsActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/reminder.kt:209:40 Unresolved reference: StudyToolsActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/reminder.kt:314:45 Unresolved reference: tabIndicatorOffset
 
 === BUILD FAILURE ===
 > Task :app:compileFullReleaseKotlin FAILED
 * What went wrong:
 Execution failed for task ':app:compileFullReleaseKotlin'.
-BUILD FAILED in 3m 14s
+BUILD FAILED in 3m 18s
 
 === LAST 60 LINES ===
-> Task :app:buildKotlinToolingMetadata
 > Task :app:generateFullReleaseBuildConfig
 > Task :app:packageFullReleaseResources FROM-CACHE
 > Task :app:parseFullReleaseLocalResources FROM-CACHE
 > Task :app:mapFullReleaseSourceSetPaths
-> Task :app:mergeFullReleaseArtProfile
+> Task :app:checkFullReleaseAarMetadata
+> Task :app:mergeFullReleaseAssets FROM-CACHE
 > Task :app:validateSigningFullRelease
 > Task :app:writeFullReleaseAppMetadata
-> Task :app:checkFullReleaseAarMetadata
+> Task :app:mergeFullReleaseArtProfile
 > Task :app:writeFullReleaseSigningConfigVersions
-> Task :app:mergeFullReleaseAssets FROM-CACHE
-> Task :app:mergeFullReleaseNativeLibs
-> Task :app:compressFullReleaseAssets FROM-CACHE
 > Task :app:checkFullReleaseDuplicateClasses
+> Task :app:compressFullReleaseAssets FROM-CACHE
+> Task :app:mergeFullReleaseNativeLibs
 > Task :app:collectFullReleaseDependencies
 
 > Task :app:stripFullReleaseDebugSymbols
@@ -44,10 +45,11 @@ note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round ico
 > Task :app:processFullReleaseResources
 > Task :app:kspFullReleaseKotlin
 > Task :app:compileFullReleaseKotlin
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/reminder.kt:189:34 Unresolved reference: StudyToolsActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/reminder.kt:209:40 Unresolved reference: StudyToolsActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/reminder.kt:314:45 Unresolved reference: tabIndicatorOffset
 
 > Task :app:compileFullReleaseKotlin FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785429862856.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785430906748.json
 
 FAILURE: Build failed with an exception.
 
@@ -68,6 +70,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 3m 14s
+BUILD FAILED in 3m 18s
 32 actionable tasks: 22 executed, 10 from cache
 Configuration cache entry stored.
