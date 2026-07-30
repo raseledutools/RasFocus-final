@@ -46,6 +46,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.Image
@@ -1009,10 +1010,16 @@ fun ProfessionalDiaryScreen(
                         val root = JSONObject(text)
                         val arr  = root.optJSONArray("entries") ?: return@launch
                         val db   = DiaryDatabase.getDatabase(listExportContext)
+                        val baseTime = System.currentTimeMillis()
                         val toInsert = (0 until arr.length()).map { i ->
                             val o = arr.getJSONObject(i)
+                            // Restore original timestamp; if missing/duplicate use offset
+                            val origTs = o.optLong("timestamp", 0L)
+                            val safeTs = if (origTs > 0L) origTs else (baseTime - (arr.length() - i) * 1000L)
+                            // Use timestamp as id (same as original schema default)
+                            val safeId = if (origTs > 0L) origTs else (baseTime - (arr.length() - i) * 1000L)
                             DiaryEntry(
-                                id        = 0,
+                                id        = safeId,
                                 title     = o.optString("title"),
                                 body      = o.optString("body"),
                                 date      = o.optString("date"),
@@ -1020,7 +1027,7 @@ fun ProfessionalDiaryScreen(
                                 folder    = o.optString("folder", "Personal"),
                                 tags      = o.optString("tags").split(",").filter { it.isNotBlank() },
                                 isLocked  = o.optBoolean("locked", false),
-                                timestamp = o.optLong("timestamp", System.currentTimeMillis())
+                                timestamp = safeTs
                             )
                         }
                         db.diaryDao().upsertAll(toInsert)
@@ -1492,10 +1499,14 @@ fun ProfessionalDiaryScreen(
                     val root    = JSONObject(text)
                     val arr     = root.optJSONArray("entries") ?: return@launch
                     val db      = DiaryDatabase.getDatabase(context)
+                    val baseTime2 = System.currentTimeMillis()
                     val toInsert = (0 until arr.length()).map { i ->
                         val o = arr.getJSONObject(i)
+                        val origTs = o.optLong("timestamp", 0L)
+                        val safeTs = if (origTs > 0L) origTs else (baseTime2 - (arr.length() - i) * 1000L)
+                        val safeId = if (origTs > 0L) origTs else (baseTime2 - (arr.length() - i) * 1000L)
                         DiaryEntry(
-                            id        = 0,   // let Room assign new id
+                            id        = safeId,
                             title     = o.optString("title"),
                             body      = o.optString("body"),
                             date      = o.optString("date"),
@@ -1504,8 +1515,7 @@ fun ProfessionalDiaryScreen(
                             tags      = o.optString("tags").split(",")
                                          .filter { it.isNotBlank() },
                             isLocked  = o.optBoolean("locked", false),
-                            timestamp = o.optLong("timestamp",
-                                System.currentTimeMillis())
+                            timestamp = safeTs
                         )
                     }
                     db.diaryDao().upsertAll(toInsert)
@@ -1751,10 +1761,14 @@ fun ProfessionalDiaryScreen(
                                                 val arr3    = root3.optJSONArray("entries")
                                                     ?: return@withContext
                                                 val db      = DiaryDatabase.getDatabase(context)
+                                                val baseTime3 = System.currentTimeMillis()
                                                 val entries3 = (0 until arr3.length()).map { i ->
                                                     val o = arr3.getJSONObject(i)
+                                                    val origTs3 = o.optLong("timestamp", 0L)
+                                                    val safeTs3 = if (origTs3 > 0L) origTs3 else (baseTime3 - (arr3.length() - i) * 1000L)
+                                                    val safeId3 = if (origTs3 > 0L) origTs3 else (baseTime3 - (arr3.length() - i) * 1000L)
                                                     DiaryEntry(
-                                                        id        = 0,
+                                                        id        = safeId3,
                                                         title     = o.optString("title"),
                                                         body      = o.optString("body"),
                                                         date      = o.optString("date"),
@@ -1763,8 +1777,7 @@ fun ProfessionalDiaryScreen(
                                                         tags      = o.optString("tags").split(",")
                                                                      .filter { it.isNotBlank() },
                                                         isLocked  = o.optBoolean("locked", false),
-                                                        timestamp = o.optLong("timestamp",
-                                                            System.currentTimeMillis())
+                                                        timestamp = safeTs3
                                                     )
                                                 }
                                                 db.diaryDao().upsertAll(entries3)
@@ -2296,6 +2309,7 @@ fun DiaryEditorArea(
                     val uriStr = path.removePrefix("image:")
                     val uri = runCatching { android.net.Uri.parse(uriStr) }.getOrNull()
                     var scale by remember(index) { mutableStateOf(imageScales[index] ?: 1f) }
+                    var offset by remember(index) { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
 
                     Card(
                         modifier = Modifier
@@ -2313,90 +2327,30 @@ fun DiaryEditorArea(
                                     }.getOrNull()
                                 }
                                 if (bmp != null) {
-                                    var showFullscreen by remember { mutableStateOf(false) }
-
-                                    // Thumbnail — tap to open fullscreen viewer
                                     Image(
                                         bitmap = bmp.asImageBitmap(),
                                         contentDescription = "Diary photo",
                                         contentScale = ContentScale.FillWidth,
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .clickable { showFullscreen = true }
-                                    )
-
-                                    // Fullscreen zoomable + pannable viewer
-                                    if (showFullscreen) {
-                                        Dialog(
-                                            onDismissRequest = { showFullscreen = false },
-                                            properties = androidx.compose.ui.window.DialogProperties(
-                                                usePlatformDefaultWidth = false,
-                                                dismissOnClickOutside = true
-                                            )
-                                        ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxSize()
-                                                    .background(Color.Black),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                var fsScale by remember { mutableStateOf(1f) }
-                                                var fsOffset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
-
-                                                Image(
-                                                    bitmap = bmp.asImageBitmap(),
-                                                    contentDescription = "Fullscreen photo",
-                                                    contentScale = ContentScale.Fit,
-                                                    modifier = Modifier
-                                                        .fillMaxSize()
-                                                        .graphicsLayer(
-                                                            scaleX = fsScale,
-                                                            scaleY = fsScale,
-                                                            translationX = fsOffset.x,
-                                                            translationY = fsOffset.y
-                                                        )
-                                                        .pointerInput(Unit) {
-                                                            detectTransformGestures { _, pan, zoom, _ ->
-                                                                fsScale = (fsScale * zoom).coerceIn(1f, 8f)
-                                                                fsOffset = if (fsScale > 1f)
-                                                                    fsOffset + pan * fsScale
-                                                                else
-                                                                    androidx.compose.ui.geometry.Offset.Zero
-                                                            }
-                                                        }
-                                                )
-
-                                                // Close button
-                                                IconButton(
-                                                    onClick = {
-                                                        showFullscreen = false
-                                                        fsScale = 1f
-                                                        fsOffset = androidx.compose.ui.geometry.Offset.Zero
-                                                    },
-                                                    modifier = Modifier
-                                                        .align(Alignment.TopEnd)
-                                                        .padding(12.dp)
-                                                        .size(40.dp)
-                                                        .background(Color.Black.copy(alpha = 0.6f), CircleShape)
-                                                ) {
-                                                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
-                                                }
-
-                                                // Hint text
-                                                if (fsScale <= 1f) {
-                                                    Box(
-                                                        Modifier
-                                                            .align(Alignment.BottomCenter)
-                                                            .padding(bottom = 24.dp)
-                                                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                                                            .padding(horizontal = 14.dp, vertical = 6.dp)
-                                                    ) {
-                                                        Text("Pinch to zoom  ·  Drag to pan", fontSize = 12.sp, color = Color.White)
+                                            .pointerInput(index) {
+                                                detectTransformGestures { _, pan, zoom, _ ->
+                                                    scale = (scale * zoom).coerceIn(1f, 5f)
+                                                    if (scale > 1f) {
+                                                        offset += pan
+                                                    } else {
+                                                        offset = androidx.compose.ui.geometry.Offset.Zero
                                                     }
+                                                    imageScales[index] = scale
                                                 }
                                             }
-                                        }
-                                    }
+                                            .graphicsLayer(
+                                                scaleX = scale,
+                                                scaleY = scale,
+                                                translationX = offset.x,
+                                                translationY = offset.y
+                                            )
+                                    )
                                 } else {
                                     Box(Modifier.fillMaxWidth().height(80.dp).background(Color(0xFFF0F0F0)),
                                         contentAlignment = Alignment.Center) {
