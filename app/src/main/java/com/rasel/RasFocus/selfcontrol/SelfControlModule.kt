@@ -126,13 +126,8 @@ object PremiumTrialManager {
     }
     
     fun getTrialStatus(context: Context): TrialStatus {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val installTime = prefs.getLong(INSTALL_TIME_KEY, System.currentTimeMillis())
-        val elapsedDays = ((System.currentTimeMillis() - installTime) / (1000L * 60 * 60 * 24)).toInt()
-        val daysLeft = maxOf(0, TRIAL_DAYS - elapsedDays)
-        val isTrialActive = daysLeft > 0
-        
-        return TrialStatus(isTrialActive, daysLeft, elapsedDays)
+        // Trial always active - no expiry
+        return TrialStatus(isActive = true, daysLeft = 999, daysElapsed = 0)
     }
     
     data class TrialStatus(
