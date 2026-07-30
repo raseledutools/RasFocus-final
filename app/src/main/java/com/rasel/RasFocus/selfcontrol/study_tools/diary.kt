@@ -44,6 +44,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -64,6 +70,9 @@ import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.snapshots.SnapshotStateMap
+import androidx.compose.runtime.mutableStateMapOf
 
 // ============================================================
 // BIOMETRIC HELPER
@@ -2082,24 +2091,37 @@ fun DiaryEditorArea(
     var mediaRecorder by remember { mutableStateOf<android.media.MediaRecorder?>(null) }
     var audioPath by remember { mutableStateOf<String?>(null) }
 
+    // ── current media list (mutable for drag/resize state) ────────────────────
+    // image scale state per index
+    val imageScales = remember(entry.mediaPaths) {
+        mutableStateMapOf<Int, Float>().also { map ->
+            entry.mediaPaths.forEachIndexed { i, _ -> map[i] = 1f }
+        }
+    }
+
     // ── Photo from Gallery ────────────────────────────────────────────────────
     val galleryLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) {
-            val tag = "\n📷 [Image: $uri]"
-            onEntryChange(entry.copy(body = entry.body + tag))
+            // persist read permission
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } catch (_: Exception) {}
+            val newPaths = entry.mediaPaths + "image:$uri"
+            onEntryChange(entry.copy(mediaPaths = newPaths))
         }
     }
 
     // ── Camera photo ─────────────────────────────────────────────────────────
-    var cameraUri by remember { mutableStateOf<Uri?>(null) }
+    var cameraUri by remember { mutableStateOf<android.net.Uri?>(null) }
     val cameraLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.TakePicture()
     ) { success ->
         if (success && cameraUri != null) {
-            val tag = "\n📷 [Photo: $cameraUri]"
-            onEntryChange(entry.copy(body = entry.body + tag))
+            val newPaths = entry.mediaPaths + "image:${cameraUri!!}"
+            onEntryChange(entry.copy(mediaPaths = newPaths))
         }
     }
 
@@ -2108,7 +2130,7 @@ fun DiaryEditorArea(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
-            val file = java.io.File(context.cacheDir, "diary_voice_${System.currentTimeMillis()}.m4a")
+            val file = java.io.File(context.filesDir, "diary_voice_${System.currentTimeMillis()}.m4a")
             audioPath = file.absolutePath
             @Suppress("DEPRECATION")
             val recorder = android.media.MediaRecorder().apply {
@@ -2137,7 +2159,7 @@ fun DiaryEditorArea(
         // Reminder badge
         if (entry.reminderTimeMillis > 0) {
             val remStr = SimpleDateFormat("MMM d, hh:mm a", Locale.getDefault())
-                .format(Date(entry.reminderTimeMillis))
+                .format(java.util.Date(entry.reminderTimeMillis))
             Row(
                 modifier = Modifier.fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
@@ -2153,7 +2175,7 @@ fun DiaryEditorArea(
 
         // ── Date Card ──────────────────────────────────────────────────────
         val currentDate = if (entry.date.isNotBlank()) entry.date
-            else SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.ENGLISH).format(Date())
+            else SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.ENGLISH).format(java.util.Date())
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -2171,7 +2193,6 @@ fun DiaryEditorArea(
             if (entry.isLocked) {
                 Icon(Icons.Default.Lock, contentDescription = "Locked", tint = magenta, modifier = Modifier.size(18.dp))
             } else {
-                // Small hint that date is tappable
                 Icon(Icons.Default.Edit, contentDescription = "Edit date",
                     tint = Color(0xFFBBBBBB), modifier = Modifier.size(14.dp))
             }
@@ -2193,7 +2214,7 @@ fun DiaryEditorArea(
                 onValueChange = { onEntryChange(entry.copy(title = it)) },
                 placeholder = { Text("Add title", color = Color(0xFF555555), fontSize = 17.sp) },
                 modifier = Modifier.weight(1f),
-                textStyle = LocalTextStyle.current.copy(fontSize = 17.sp, color = Color(0xFF212121)),
+                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 17.sp, color = Color(0xFF212121)),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = Color.Transparent,
                     unfocusedBorderColor = Color.Transparent,
@@ -2203,18 +2224,14 @@ fun DiaryEditorArea(
             )
         }
 
-        // ── Meta row: folder + word count (compact, screenshot-এ নেই কিন্তু
-        //    feature ধরে রাখার জন্য ছোট আকারে) ─────────────────────────────
+        // ── Folder + word count row ─────────────────────────────────────────
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box {
-                Row(
-                    modifier = Modifier.clickable { onFolderClick() },
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(modifier = Modifier.clickable { onFolderClick() }, verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Folder, contentDescription = "Folder", tint = Color.White, modifier = Modifier.size(15.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(entry.folder, color = Color.White, fontSize = 12.sp)
@@ -2228,41 +2245,34 @@ fun DiaryEditorArea(
                     }
                 }
             }
-            Text(
-                "$wordCount words",
-                color = Color.White.copy(alpha = 0.85f),
-                fontSize = 11.sp,
-                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-            )
+            Text("$wordCount words", color = Color.White.copy(alpha = 0.85f), fontSize = 11.sp,
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
         }
 
         if (entry.tags.isNotEmpty()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
+            Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 entry.tags.forEach { tag -> Chip(label = tag, onClose = { onRemoveTag(tag) }) }
             }
         }
 
-        // ── Body Card — ruled/lined paper effect ────────────────────────────
+        // ── Body Card — ruled paper ─────────────────────────────────────────
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f)
+                .heightIn(min = 200.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(Color.White)
         ) {
             OutlinedTextField(
                 value = entry.body,
                 onValueChange = { onEntryChange(entry.copy(body = it)) },
-                placeholder = {
-                    Text("Start typing here.", color = Color(0xFF555555), fontSize = 17.sp)
-                },
+                placeholder = { Text("Start typing here.", color = Color(0xFF555555), fontSize = 17.sp) },
                 modifier = Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth()
+                    .heightIn(min = 200.dp)
                     .ruledLines(lineColor = Color(0xFFE0E0E0), lineSpacing = 34.dp, topOffset = 52.dp),
-                textStyle = LocalTextStyle.current.copy(fontSize = 17.sp, color = Color(0xFF212121), lineHeight = 34.sp),
+                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 17.sp, color = Color(0xFF212121), lineHeight = androidx.compose.ui.unit.TextUnit(34f, androidx.compose.ui.unit.TextUnitType.Sp)),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = Color.Transparent,
                     unfocusedBorderColor = Color.Transparent,
@@ -2273,7 +2283,162 @@ fun DiaryEditorArea(
             )
         }
 
-        // ── Toolbar — mood, tag, formatting (feature ধরে রাখার জন্য) ────────
+        // ── Media items: images (zoomable) + voice notes (playable) ──────────
+        entry.mediaPaths.forEachIndexed { index, path ->
+            when {
+                path.startsWith("image:") -> {
+                    val uriStr = path.removePrefix("image:")
+                    val uri = runCatching { android.net.Uri.parse(uriStr) }.getOrNull()
+                    var scale by remember(index) { mutableStateOf(imageScales[index] ?: 1f) }
+
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp)),
+                        elevation = CardDefaults.cardElevation(4.dp)
+                    ) {
+                        Box {
+                            if (uri != null) {
+                                // Load bitmap from URI
+                                val bmp = remember(uri) {
+                                    runCatching {
+                                        val stream = context.contentResolver.openInputStream(uri)
+                                        android.graphics.BitmapFactory.decodeStream(stream)
+                                    }.getOrNull()
+                                }
+                                if (bmp != null) {
+                                    Image(
+                                        bitmap = bmp.asImageBitmap(),
+                                        contentDescription = "Diary photo",
+                                        contentScale = ContentScale.FillWidth,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .graphicsLayer(scaleX = scale, scaleY = scale)
+                                            .pointerInput(index) {
+                                                detectTransformGestures { _, _, zoom, _ ->
+                                                    scale = (scale * zoom).coerceIn(0.5f, 4f)
+                                                    imageScales[index] = scale
+                                                }
+                                            }
+                                    )
+                                } else {
+                                    Box(Modifier.fillMaxWidth().height(80.dp).background(Color(0xFFF0F0F0)),
+                                        contentAlignment = Alignment.Center) {
+                                        Text("Image not found", color = Color.Gray)
+                                    }
+                                }
+                            }
+                            // Delete button top-right
+                            IconButton(
+                                onClick = {
+                                    val newPaths = entry.mediaPaths.toMutableList().also { it.removeAt(index) }
+                                    onEntryChange(entry.copy(mediaPaths = newPaths))
+                                },
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .size(32.dp)
+                                    .background(Color.Black.copy(0.45f), CircleShape)
+                            ) {
+                                Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            }
+                            // Scale hint
+                            Box(
+                                Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(6.dp)
+                                    .background(Color.Black.copy(0.4f), RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text("Pinch to zoom", fontSize = 9.sp, color = Color.White)
+                            }
+                        }
+                    }
+                }
+
+                path.startsWith("voice:") -> {
+                    val filePath = path.removePrefix("voice:")
+                    var isPlaying by remember { mutableStateOf(false) }
+                    var player by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
+
+                    DisposableEffect(filePath) {
+                        onDispose {
+                            player?.release()
+                            player = null
+                        }
+                    }
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF3E5F5))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Play/Pause button
+                            IconButton(
+                                onClick = {
+                                    if (isPlaying) {
+                                        player?.pause()
+                                        isPlaying = false
+                                    } else {
+                                        try {
+                                            if (player == null) {
+                                                player = android.media.MediaPlayer().apply {
+                                                    setDataSource(filePath)
+                                                    prepare()
+                                                    setOnCompletionListener {
+                                                        isPlaying = false
+                                                        this.seekTo(0)
+                                                    }
+                                                }
+                                            }
+                                            player?.start()
+                                            isPlaying = true
+                                        } catch (e: Exception) {
+                                            Toast.makeText(context, "Playback error: ${e.message}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                },
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .background(magenta, CircleShape)
+                            ) {
+                                Icon(
+                                    if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                    contentDescription = if (isPlaying) "Pause" else "Play",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("🎙️ Voice Note", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF6A1B9A))
+                                Text(
+                                    java.io.File(filePath).name,
+                                    fontSize = 10.sp, color = Color.Gray, maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
+                            }
+                            // Delete voice note
+                            IconButton(
+                                onClick = {
+                                    player?.release(); player = null
+                                    val newPaths = entry.mediaPaths.toMutableList().also { it.removeAt(index) }
+                                    onEntryChange(entry.copy(mediaPaths = newPaths))
+                                },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(Icons.Default.Delete, null, tint = Color(0xFF9E9E9E), modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Toolbar ─────────────────────────────────────────────────────────
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -2285,22 +2450,22 @@ fun DiaryEditorArea(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onMoodClick, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Default.Face, contentDescription = "Mood", tint = if (entry.mood.isNotBlank()) magenta else Color(0xFF555555))
+                Icon(Icons.Default.Face, contentDescription = "Mood",
+                    tint = if (entry.mood.isNotBlank()) magenta else Color(0xFF555555))
             }
-            // ── Voice record button ───────────────────────────────────────
+            // ── Voice record button ──────────────────────────────────────────
             IconButton(
                 onClick = {
                     if (isRecording) {
-                        // Stop recording
                         try {
                             mediaRecorder?.apply { stop(); release() }
                             mediaRecorder = null
                         } catch (_: Exception) {}
                         isRecording = false
                         audioPath?.let { path ->
-                            val tag = "\n🎙️ [Voice: $path]"
-                            onEntryChange(entry.copy(body = entry.body + tag))
-                            Toast.makeText(context, "Voice note saved", Toast.LENGTH_SHORT).show()
+                            val newPaths = entry.mediaPaths + "voice:$path"
+                            onEntryChange(entry.copy(mediaPaths = newPaths))
+                            Toast.makeText(context, "Voice note saved ✅", Toast.LENGTH_SHORT).show()
                         }
                     } else {
                         audioPermLauncher.launch(Manifest.permission.RECORD_AUDIO)
@@ -2318,21 +2483,26 @@ fun DiaryEditorArea(
             IconButton(onClick = { }, modifier = Modifier.size(32.dp)) {
                 Icon(Icons.Default.Brush, contentDescription = "Draw", tint = Color(0xFF555555))
             }
-            // ── Photo button — gallery or camera ─────────────────────────
+            // ── Photo button ─────────────────────────────────────────────────
             IconButton(onClick = { showMediaSheet = true }, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Default.Image, contentDescription = "Photo", tint = Color(0xFF555555))
+                Icon(Icons.Default.Image, contentDescription = "Photo",
+                    tint = if (entry.mediaPaths.any { it.startsWith("image:") }) magenta else Color(0xFF555555))
             }
             IconButton(onClick = onTagClick, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Default.Label, contentDescription = "Tag", tint = if (entry.tags.isNotEmpty()) magenta else Color(0xFF555555))
+                Icon(Icons.Default.Label, contentDescription = "Tag",
+                    tint = if (entry.tags.isNotEmpty()) magenta else Color(0xFF555555))
             }
             VerticalDivider(modifier = Modifier.height(24.dp), color = Color.LightGray)
-            Text("B", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = Color(0xFF555555), modifier = Modifier.clickable { }.padding(4.dp))
-            Text("I", fontStyle = FontStyle.Italic, fontSize = 18.sp, color = Color(0xFF555555), modifier = Modifier.clickable { }.padding(4.dp))
-            Text("U", textDecoration = TextDecoration.Underline, fontSize = 18.sp, color = Color(0xFF555555), modifier = Modifier.clickable { }.padding(4.dp))
+            Text("B", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = Color(0xFF555555),
+                modifier = Modifier.clickable { }.padding(4.dp))
+            Text("I", fontStyle = FontStyle.Italic, fontSize = 18.sp, color = Color(0xFF555555),
+                modifier = Modifier.clickable { }.padding(4.dp))
+            Text("U", textDecoration = TextDecoration.Underline, fontSize = 18.sp, color = Color(0xFF555555),
+                modifier = Modifier.clickable { }.padding(4.dp))
         }
     }
 
-    // ── Media picker sheet ────────────────────────────────────────────────────
+    // ── Media picker bottom sheet ─────────────────────────────────────────────
     if (showMediaSheet) {
         ModalBottomSheet(
             onDismissRequest = { showMediaSheet = false },
@@ -2340,9 +2510,10 @@ fun DiaryEditorArea(
             shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
         ) {
             Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
-                Box(modifier = Modifier.width(36.dp).height(4.dp).background(Color(0xFFE0E0E0), CircleShape).align(Alignment.CenterHorizontally))
+                Box(modifier = Modifier.width(36.dp).height(4.dp)
+                    .background(Color(0xFFE0E0E0), CircleShape).align(Alignment.CenterHorizontally))
                 Spacer(Modifier.height(16.dp))
-                Text("Add Photo", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text("Add Media", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 Spacer(Modifier.height(16.dp))
                 // Gallery
                 Row(
@@ -2352,20 +2523,29 @@ fun DiaryEditorArea(
                     }.padding(vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(modifier = Modifier.size(40.dp).background(Color(0xFFE8EAF6), CircleShape), contentAlignment = Alignment.Center) {
+                    Box(modifier = Modifier.size(40.dp).background(Color(0xFFE8EAF6), CircleShape),
+                        contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.PhotoLibrary, null, tint = Color(0xFF3F51B5), modifier = Modifier.size(20.dp))
                     }
                     Spacer(Modifier.width(14.dp))
                     Text("Choose from Gallery", fontSize = 15.sp, fontWeight = FontWeight.Medium)
                 }
                 HorizontalDivider(color = Color(0xFFF0F0F0))
-                // Camera
+                // Camera — fixed authority to match manifest (.fileprovider)
                 Row(
                     modifier = Modifier.fillMaxWidth().clickable {
                         showMediaSheet = false
                         try {
-                            val imgFile = java.io.File.createTempFile("diary_img_", ".jpg", context.cacheDir)
-                            val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.provider", imgFile)
+                            val imgFile = java.io.File(
+                                context.getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES),
+                                "diary_img_${System.currentTimeMillis()}.jpg"
+                            )
+                            imgFile.parentFile?.mkdirs()
+                            val uri = androidx.core.content.FileProvider.getUriForFile(
+                                context,
+                                "${context.packageName}.fileprovider",  // ← fixed: matches manifest
+                                imgFile
+                            )
                             cameraUri = uri
                             cameraLauncher.launch(uri)
                         } catch (e: Exception) {
@@ -2374,7 +2554,8 @@ fun DiaryEditorArea(
                     }.padding(vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(modifier = Modifier.size(40.dp).background(Color(0xFFE8F5E9), CircleShape), contentAlignment = Alignment.Center) {
+                    Box(modifier = Modifier.size(40.dp).background(Color(0xFFE8F5E9), CircleShape),
+                        contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.CameraAlt, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(20.dp))
                     }
                     Spacer(Modifier.width(14.dp))
@@ -2386,7 +2567,7 @@ fun DiaryEditorArea(
     }
 }
 
-// ── Ruled/lined paper effect — body card এর background এ horizontal line আঁকে ──
+// ── Ruled/lined paper effect ──────────────────────────────────────────────────
 private fun Modifier.ruledLines(lineColor: Color, lineSpacing: androidx.compose.ui.unit.Dp, topOffset: androidx.compose.ui.unit.Dp): Modifier =
     this.drawBehind {
         val spacingPx = lineSpacing.toPx()
@@ -2400,6 +2581,8 @@ private fun Modifier.ruledLines(lineColor: Color, lineSpacing: androidx.compose.
                 strokeWidth = 1.dp.toPx()
             )
             y += spacingPx
+        }
+    }
         }
     }
 

@@ -19,6 +19,9 @@
     <external-files-path
         name="external_files"
         path="Documents/" />
+    <external-files-path
+        name="external_pictures"
+        path="Pictures/" />
     <external-path
         name="external_downloads"
         path="Download/" />

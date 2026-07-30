@@ -25,6 +25,9 @@ data class DiaryEntry(
     // Reminder
     val reminderTimeMillis: Long = 0L, // 0 = no reminder
     val reminderLabel: String = "",
+
+    // Media attachments: "image:/path", "voice:/path"
+    val mediaPaths: List<String> = emptyList(),
 )
 
 // ============================================================
@@ -36,6 +39,13 @@ class Converters {
 
     @TypeConverter
     fun toTagList(data: String): List<String> =
+        if (data.isEmpty()) emptyList() else data.split("|||")
+
+    @TypeConverter
+    fun fromMediaPaths(paths: List<String>): String = paths.joinToString("|||")
+
+    @TypeConverter
+    fun toMediaPaths(data: String): List<String> =
         if (data.isEmpty()) emptyList() else data.split("|||")
 }
 
@@ -81,7 +91,7 @@ interface DiaryDao {
 // ============================================================
 @Database(
     entities = [DiaryEntry::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
