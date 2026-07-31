@@ -17,53 +17,8 @@ e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:615:32 Unresolved reference: textPageCountChars
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:621:31 Unresolved reference: textPageGetCharBox
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:637:33 Unresolved reference: textPageGetText
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1205:79 Unresolved reference: lastRecoveryIntent
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1208:74 Unresolved reference: lastError
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1219:60 Unresolved reference: lastRecoveryIntent
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1220:73 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1734:81 Unresolved reference: lastRecoveryIntent
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1737:74 Unresolved reference: lastError
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1758:81 Unresolved reference: lastRecoveryIntent
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1761:74 Unresolved reference: lastError
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1817:81 Unresolved reference: lastRecoveryIntent
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1818:70 Unresolved reference: lastError
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1819:57 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1841:56 Unresolved reference: lastRecoveryIntent
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1842:65 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1908:106 Too many arguments for public final fun exportSingleEntry(context: Context, entry: DiaryEntry): File? defined in com.rasel.RasFocus.selfcontrol.study_tools.DiaryPdfExporter
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1912:103 Too many arguments for public final fun exportAllEntries(context: Context, entries: List<DiaryEntry>): File? defined in com.rasel.RasFocus.selfcontrol.study_tools.DiaryPdfExporter
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2132:38 Unresolved reference: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2134:19 Unresolved reference: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2134:47 Cannot infer a type for this parameter. Please specify it explicitly.
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2134:50 Cannot infer a type for this parameter. Please specify it explicitly.
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2148:34 Unresolved reference: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2149:38 Cannot find a parameter with this name: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2159:34 Unresolved reference: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2160:38 Cannot find a parameter with this name: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2323:15 Unresolved reference: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2323:43 Cannot infer a type for this parameter. Please specify it explicitly.
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2323:50 Cannot infer a type for this parameter. Please specify it explicitly.
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2328:34 @Composable invocations can only happen from the context of a @Composable function
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2329:35 @Composable invocations can only happen from the context of a @Composable function
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2331:21 @Composable invocations can only happen from the context of a @Composable function
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2335:50 @Composable invocations can only happen from the context of a @Composable function
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2381:58 Unresolved reference: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2381:92 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2382:62 Cannot find a parameter with this name: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2407:38 @Composable invocations can only happen from the context of a @Composable function
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2408:35 @Composable invocations can only happen from the context of a @Composable function
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2410:21 @Composable invocations can only happen from the context of a @Composable function
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2417:21 @Composable invocations can only happen from the context of a @Composable function
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2420:47 @Composable invocations can only happen from the context of a @Composable function
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2436:53 Overload resolution ambiguity: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2466:45 Overload resolution ambiguity: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2475:58 Unresolved reference: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2475:92 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2476:62 Cannot find a parameter with this name: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2513:50 Unresolved reference: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2514:54 Cannot find a parameter with this name: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2536:38 Unresolved reference: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2536:55 Unresolved reference: it
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2320:67 Unresolved reference: imageScales
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2353:53 Unresolved reference: imageScales
 
 === UNRESOLVED / TYPE ERRORS ===
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:53:11 Unresolved reference: legere
@@ -84,83 +39,53 @@ e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:615:32 Unresolved reference: textPageCountChars
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:621:31 Unresolved reference: textPageGetCharBox
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:637:33 Unresolved reference: textPageGetText
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1205:79 Unresolved reference: lastRecoveryIntent
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1208:74 Unresolved reference: lastError
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1219:60 Unresolved reference: lastRecoveryIntent
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1220:73 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1734:81 Unresolved reference: lastRecoveryIntent
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1737:74 Unresolved reference: lastError
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1758:81 Unresolved reference: lastRecoveryIntent
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1761:74 Unresolved reference: lastError
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1817:81 Unresolved reference: lastRecoveryIntent
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1818:70 Unresolved reference: lastError
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1819:57 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1841:56 Unresolved reference: lastRecoveryIntent
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1842:65 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2132:38 Unresolved reference: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2134:19 Unresolved reference: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2148:34 Unresolved reference: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2149:38 Cannot find a parameter with this name: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2159:34 Unresolved reference: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2160:38 Cannot find a parameter with this name: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2323:15 Unresolved reference: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2381:58 Unresolved reference: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2381:92 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2382:62 Cannot find a parameter with this name: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2436:53 Overload resolution ambiguity: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2466:45 Overload resolution ambiguity: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2475:58 Unresolved reference: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2475:92 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2476:62 Cannot find a parameter with this name: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2513:50 Unresolved reference: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2514:54 Cannot find a parameter with this name: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2536:38 Unresolved reference: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2536:55 Unresolved reference: it
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2320:67 Unresolved reference: imageScales
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2353:53 Unresolved reference: imageScales
 
 === BUILD FAILURE ===
 > Task :app:compileFullReleaseKotlin FAILED
 * What went wrong:
 Execution failed for task ':app:compileFullReleaseKotlin'.
-BUILD FAILED in 2m 28s
+BUILD FAILED in 2m 54s
 
 === LAST 60 LINES ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2148:34 Unresolved reference: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2149:38 Cannot find a parameter with this name: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2159:34 Unresolved reference: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2160:38 Cannot find a parameter with this name: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2323:15 Unresolved reference: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2323:43 Cannot infer a type for this parameter. Please specify it explicitly.
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2323:50 Cannot infer a type for this parameter. Please specify it explicitly.
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2328:34 @Composable invocations can only happen from the context of a @Composable function
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2329:35 @Composable invocations can only happen from the context of a @Composable function
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2331:21 @Composable invocations can only happen from the context of a @Composable function
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2335:50 @Composable invocations can only happen from the context of a @Composable function
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2381:58 Unresolved reference: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2381:92 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2382:62 Cannot find a parameter with this name: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2407:38 @Composable invocations can only happen from the context of a @Composable function
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2408:35 @Composable invocations can only happen from the context of a @Composable function
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2410:21 @Composable invocations can only happen from the context of a @Composable function
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2417:21 @Composable invocations can only happen from the context of a @Composable function
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2420:47 @Composable invocations can only happen from the context of a @Composable function
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2436:53 Overload resolution ambiguity: 
-public open fun setDataSource(p0: AssetFileDescriptor): Unit defined in android.media.MediaPlayer
-public open fun setDataSource(p0: MediaDataSource!): Unit defined in android.media.MediaPlayer
-public open fun setDataSource(p0: FileDescriptor!): Unit defined in android.media.MediaPlayer
-public open fun setDataSource(p0: String!): Unit defined in android.media.MediaPlayer
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2466:45 Overload resolution ambiguity: 
-public constructor File(p0: URI!) defined in java.io.File
-public constructor File(p0: String!) defined in java.io.File
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2475:58 Unresolved reference: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2475:92 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2476:62 Cannot find a parameter with this name: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2513:50 Unresolved reference: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2514:54 Cannot find a parameter with this name: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2536:38 Unresolved reference: mediaPaths
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2536:55 Unresolved reference: it
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:53:11 Unresolved reference: legere
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:54:11 Unresolved reference: legere
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:55:11 Unresolved reference: legere
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:89:20 Unresolved reference: PdfTextPage
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:243:31 Unresolved reference: PdfiumCore
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:244:21 Property delegate must have a 'getValue(Nothing?, KProperty<*>)' method. None of the following functions is suitable: 
+public inline operator fun <T> State<Nothing?>.getValue(thisObj: Any?, property: KProperty<*>): Nothing? defined in androidx.compose.runtime
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:244:21 Property delegate must have a 'setValue(Nothing?, KProperty<*>, [Error type: Error delegation type for remember { mutableStateOf<PdfDocument?>(null) }])' method. None of the following functions is suitable: 
+public inline operator fun <T> MutableState<Nothing?>.setValue(thisObj: Any?, property: KProperty<*>, value: Nothing?): Unit defined in androidx.compose.runtime
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:244:47 Unresolved reference: PdfDocument
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:277:35 Unresolved reference: newDocument
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:295:51 Overload resolution ambiguity: 
+public final operator fun div(other: Byte): Float defined in kotlin.Float
+public final operator fun div(other: Double): Double defined in kotlin.Float
+public final operator fun div(other: Float): Float defined in kotlin.Float
+public final operator fun div(other: Int): Float defined in kotlin.Float
+public final operator fun div(other: Long): Float defined in kotlin.Float
+public final operator fun div(other: Short): Float defined in kotlin.Float
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:298:35 Unresolved reference: PdfTextPage
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:319:32 Unresolved reference: openPage
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:323:51 Overload resolution ambiguity: 
+public final operator fun div(other: Byte): Float defined in kotlin.Float
+public final operator fun div(other: Double): Double defined in kotlin.Float
+public final operator fun div(other: Float): Float defined in kotlin.Float
+public final operator fun div(other: Int): Float defined in kotlin.Float
+public final operator fun div(other: Long): Float defined in kotlin.Float
+public final operator fun div(other: Short): Float defined in kotlin.Float
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:386:35 Unresolved reference: closeDocument
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:386:49 Unresolved reference: it
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:615:32 Unresolved reference: textPageCountChars
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:621:31 Unresolved reference: textPageGetCharBox
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:637:33 Unresolved reference: textPageGetText
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2320:67 Unresolved reference: imageScales
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2353:53 Unresolved reference: imageScales
 
 > Task :app:compileFullReleaseKotlin FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785456521093.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785457033175.json
 
 FAILURE: Build failed with an exception.
 
@@ -181,6 +106,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 2m 28s
-32 actionable tasks: 26 executed, 6 from cache
+BUILD FAILED in 2m 54s
+32 actionable tasks: 22 executed, 10 from cache
 Configuration cache entry stored.
