@@ -56,7 +56,7 @@ e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/
 > Task :app:compileFullReleaseKotlin FAILED
 * What went wrong:
 Execution failed for task ':app:compileFullReleaseKotlin'.
-BUILD FAILED in 3m 27s
+BUILD FAILED in 3m 19s
 
 === LAST 60 LINES ===
 public final var lastRecoveryIntent: Intent? defined in com.rasel.RasFocus.drivebackup.DriveBackupManager
@@ -95,7 +95,7 @@ public final var lastRecoveryIntent: Intent? defined in com.rasel.RasFocus.drive
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1813:65 Unresolved reference: it
 
 > Task :app:compileFullReleaseKotlin FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785476219242.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785477686320.json
 
 FAILURE: Build failed with an exception.
 
@@ -116,6 +116,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 3m 27s
+BUILD FAILED in 3m 19s
 32 actionable tasks: 22 executed, 10 from cache
 Configuration cache entry stored.
