@@ -246,7 +246,8 @@ dependencies {
 
     // Lifecycle
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.2")
-    implementation("androidx.activity:activity-compose:1.9.0")
+    implementation("androidx.activity:activity-compose:1.10.0")
+    implementation("androidx.activity:activity-ktx:1.10.0")
     implementation("androidx.savedstate:savedstate-ktx:1.2.1")
 
     // Jetpack Compose
