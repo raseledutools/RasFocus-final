@@ -10,4 +10,14 @@
         <item name="android:windowIsTranslucent">false</item>
         <item name="android:windowAnimationStyle">@null</item>
     </style>
+
+    <!-- Translucent theme for dialog-style activities (e.g. QuickReminderActivity).
+         Makes the window background transparent so the activity floats over whatever
+         is currently on screen, without a solid backdrop. -->
+    <style name="Theme.AppCompat.Translucent" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">true</item>
+    </style>
 </resources>
