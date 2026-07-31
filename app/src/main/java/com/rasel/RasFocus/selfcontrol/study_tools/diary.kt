@@ -1013,7 +1013,7 @@ fun ProfessionalDiaryScreen(
                         val toInsert = (0 until arr.length()).map { i ->
                             val o = arr.getJSONObject(i)
                             DiaryEntry(
-                                id        = 0,
+                                id        = o.optLong("id", System.currentTimeMillis() + i),
                                 title     = o.optString("title"),
                                 body      = o.optString("body"),
                                 date      = o.optString("date"),
@@ -1536,7 +1536,7 @@ fun ProfessionalDiaryScreen(
                     val toInsert = (0 until arr.length()).map { i ->
                         val o = arr.getJSONObject(i)
                         DiaryEntry(
-                            id        = 0,   // let Room assign new id
+                            id        = o.optLong("id", System.currentTimeMillis() + i),
                             title     = o.optString("title"),
                             body      = o.optString("body"),
                             date      = o.optString("date"),
@@ -1795,7 +1795,7 @@ fun ProfessionalDiaryScreen(
                                                 val entries3 = (0 until arr3.length()).map { i ->
                                                     val o = arr3.getJSONObject(i)
                                                     DiaryEntry(
-                                                        id        = 0,
+                                                        id        = o.optLong("id", System.currentTimeMillis() + i),
                                                         title     = o.optString("title"),
                                                         body      = o.optString("body"),
                                                         date      = o.optString("date"),
