@@ -676,8 +676,8 @@ fun TopHeader(navController: NavController? = null, onMenuClick: () -> Unit = {}
             }
             Spacer(Modifier.height(16.dp))
             PremiumFeatureWrapper(
-                featureName = "Drive File Manager",
-                onClick = { val intent = Intent(context, com.rasel.RasFocus.drivebackup.DriveFileManagerActivity::class.java); intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); context.startActivity(intent) }
+                featureName = "File Manager +",
+                onClick = { val intent = Intent(context, com.rasel.RasFocus.filemanager.FileManagerPlusActivity::class.java); intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); context.startActivity(intent) }
             ) {
                 DriveFileManagerCard(context)
             }
@@ -693,7 +693,7 @@ fun DriveFileManagerCard(context: Context) {
     com.rasel.RasFocus.ui.theme.PremiumCard(
         Modifier.fillMaxWidth().padding(horizontal = 20.dp),
         onClick = {
-            val intent = Intent(context, com.rasel.RasFocus.drivebackup.DriveFileManagerActivity::class.java)
+            val intent = Intent(context, com.rasel.RasFocus.filemanager.FileManagerPlusActivity::class.java)
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
         }
@@ -722,7 +722,7 @@ fun DriveFileManagerCard(context: Context) {
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "Google Drive Files",
+                    "File Manager +",
                     color = White,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 15.sp,
@@ -730,7 +730,7 @@ fun DriveFileManagerCard(context: Context) {
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    "Browse all files on your Drive",
+                    "Access Local & Cloud Storage",
                     color = White.copy(alpha = 0.6f),
                     fontSize = 11.sp,
                     maxLines = 1,

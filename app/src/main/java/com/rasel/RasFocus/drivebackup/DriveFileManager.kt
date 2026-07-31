@@ -88,4 +88,25 @@ object DriveFileManager {
             null
         }
     }
+
+    suspend fun uploadFile(context: Context, localFile: java.io.File, parentFolderId: String = "root"): com.google.api.services.drive.model.File? = withContext(Dispatchers.IO) {
+        val driveService = buildDriveService(context) ?: return@withContext null
+        try {
+            val fileMetadata = com.google.api.services.drive.model.File()
+            fileMetadata.name = localFile.name
+            fileMetadata.parents = listOf(parentFolderId)
+            
+            val mediaContent = com.google.api.client.http.FileContent(null, localFile)
+            val file = driveService.files().create(fileMetadata, mediaContent)
+                .setFields("id, name")
+                .execute()
+            
+            lastError = null
+            lastRecoveryIntent = null
+            file
+        } catch (e: Exception) {
+            recordFailure("uploadFile", e)
+            null
+        }
+    }
 }
