@@ -117,9 +117,9 @@ private sealed class StudyNav {
 // -----------------------------------------------------------------------------
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun StudyToolsScreen(onBack: () -> Unit = {}, onOpenDiary: () -> Unit) {
+fun StudyToolsScreen(initialTab: String? = null, onBack: () -> Unit = {}, onOpenDiary: () -> Unit) {
     // Note: Reminder screen is handled as nav state inside
-    var nav by remember { mutableStateOf<StudyNav>(StudyNav.Home) }
+    var nav by remember { mutableStateOf<StudyNav>(if (initialTab == "reminder") StudyNav.Reminder else StudyNav.Home) }
 
     BackHandler {
         if (nav != StudyNav.Home) nav = StudyNav.Home else onBack()

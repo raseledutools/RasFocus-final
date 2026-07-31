@@ -125,8 +125,29 @@ data class ReminderItem(
     val withVibration: Boolean = true,
     val ringtoneDuration: RingtoneDuration = RingtoneDuration.ONE_MINUTE,
     val ringtoneUriString: String = "", // empty = system default alarm
-    val isCompleted: Boolean = false
+    val isCompleted: Boolean = false,
+    val isActive: Boolean = true
 )
+
+// ── Storage Helpers ────────────────────────────────────────────────────────────
+object ReminderStorage {
+    private const val PREFS_NAME = "reminder_prefs"
+    private const val KEY_LIST = "reminders_list"
+
+    fun save(context: Context, items: List<ReminderItem>) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_LIST, com.google.gson.Gson().toJson(items)).apply()
+    }
+
+    fun load(context: Context): List<ReminderItem> {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val json = prefs.getString(KEY_LIST, null) ?: return emptyList()
+        return try {
+            val type = object : com.google.gson.reflect.TypeToken<List<ReminderItem>>() {}.type
+            com.google.gson.Gson().fromJson(json, type)
+        } catch (_: Exception) { emptyList() }
+    }
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 private fun relativeDate(millis: Long): String {
@@ -164,13 +185,35 @@ fun repeatIntervalMillis(item: ReminderItem): Long? {
     }
 }
 
-// ── MediaPlayer singleton for alarm sound ─────────────────────────────────────
+// ── MediaPlayer & Vibrator singleton for alarm ────────────────────────────────
 object ReminderAlarmPlayer {
     private var player: MediaPlayer? = null
     private var stopTimer: java.util.Timer? = null
+    private var vibrator: Vibrator? = null
+    private var vibratorManager: VibratorManager? = null
 
-    fun play(context: Context, ringtoneUri: Uri, durationEnum: RingtoneDuration) {
+    fun play(context: Context, ringtoneUri: Uri, durationEnum: RingtoneDuration, withVib: Boolean) {
         stop()
+        
+        if (withVib) {
+            try {
+                val pattern = longArrayOf(0, 1000, 1000)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    val vm = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+                    vibratorManager = vm
+                    vm.defaultVibrator.vibrate(VibrationEffect.createWaveform(pattern, 0))
+                } else {
+                    @Suppress("DEPRECATION")
+                    val v = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+                    vibrator = v
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                        v.vibrate(VibrationEffect.createWaveform(pattern, 0))
+                    else
+                        @Suppress("DEPRECATION") v.vibrate(pattern, 0)
+                }
+            } catch (_: Exception) {}
+        }
+
         try {
             player = MediaPlayer().apply {
                 setAudioAttributes(
@@ -198,6 +241,14 @@ object ReminderAlarmPlayer {
     fun stop() {
         stopTimer?.cancel()
         stopTimer = null
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                vibratorManager?.defaultVibrator?.cancel()
+            }
+            vibrator?.cancel()
+        } catch (_: Exception) {}
+        vibrator = null
+        vibratorManager = null
         try {
             player?.run { if (isPlaying) stop(); release() }
         } catch (_: Exception) {}
@@ -238,31 +289,13 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
 
         ensureReminderChannel(context)
 
-        // 1. Play ringtone via MediaPlayer
+        // 1. Play ringtone and vibrate via singleton
         val ringtoneUri = when {
             ringtoneUriStr.isNotEmpty() -> android.net.Uri.parse(ringtoneUriStr)
             else -> RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
                 ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
         }
-        ReminderAlarmPlayer.play(context, ringtoneUri, duration)
-
-        // 2. Vibrate
-        if (withVib) {
-            try {
-                val pattern = longArrayOf(0, 700, 200, 700, 200, 700)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    val vm = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
-                    vm.defaultVibrator.vibrate(VibrationEffect.createWaveform(pattern, -1))
-                } else {
-                    @Suppress("DEPRECATION")
-                    val v = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                        v.vibrate(VibrationEffect.createWaveform(pattern, -1))
-                    else
-                        @Suppress("DEPRECATION") v.vibrate(pattern, -1)
-                }
-            } catch (_: Exception) {}
-        }
+        ReminderAlarmPlayer.play(context, ringtoneUri, duration, withVib)
 
         // 3. Build repeat label for popup
         val repeatLabel = when (repeatType) {
@@ -291,6 +324,15 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         val stopIntent = Intent(context, StopRingtoneReceiver::class.java).let {
             PendingIntent.getBroadcast(context, notifId + 10000, it, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         }
+        
+        val contentIntent = PendingIntent.getActivity(
+            context, notifId + 40000,
+            Intent(context, StudyToolsActivity::class.java).apply {
+                putExtra("open_tab", "reminder")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
 
         (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
             .notify(notifId, NotificationCompat.Builder(context, RM_CHANNEL_ID)
@@ -299,6 +341,7 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
                 .setContentText(if (description.isNotBlank()) description else "Tap to view")
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setContentIntent(contentIntent)
                 .setFullScreenIntent(
                     PendingIntent.getActivity(
                         context, notifId + 20000, popupIntent,
@@ -320,7 +363,7 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
                 .setAutoCancel(true)
                 .build())
 
-        // 6. Schedule next repeat alarm if needed
+        // 6. Schedule next repeat alarm & update storage
         val fakeItem = ReminderItem(
             id = notifId,
             title = label,
@@ -338,6 +381,20 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         if (interval != null && interval > 0) {
             val nextTrigger = triggerMillis + interval
             scheduleReminderAlarmFull(context, fakeItem.copy(triggerMillis = nextTrigger))
+            
+            val items = ReminderStorage.load(context).toMutableList()
+            val idx = items.indexOfFirst { it.id == notifId }
+            if (idx != -1) {
+                items[idx] = items[idx].copy(triggerMillis = nextTrigger, isActive = true)
+                ReminderStorage.save(context, items)
+            }
+        } else {
+            val items = ReminderStorage.load(context).toMutableList()
+            val idx = items.indexOfFirst { it.id == notifId }
+            if (idx != -1) {
+                items[idx] = items[idx].copy(isCompleted = true, isActive = false)
+                ReminderStorage.save(context, items)
+            }
         }
     }
 }

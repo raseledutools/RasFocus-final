@@ -23,9 +23,10 @@ import com.rasel.RasFocus.selfcontrol.study_tools.StudyToolsScreen
 class StudyToolsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val openTab = intent.getStringExtra("open_tab")
         setContent {
             MaterialTheme {
-                var showDiary by remember { mutableStateOf(false) }
+                var showDiary by remember { mutableStateOf(openTab == "diary") }
 
                 if (showDiary) {
                     ProfessionalDiaryScreen(
@@ -33,6 +34,7 @@ class StudyToolsActivity : ComponentActivity() {
                     )
                 } else {
                     StudyToolsScreen(
+                        initialTab = openTab,
                         onBack = { finish() },
                         onOpenDiary = { showDiary = true }
                     )
