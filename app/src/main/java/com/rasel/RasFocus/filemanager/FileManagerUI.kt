@@ -51,11 +51,36 @@ fun LocalFileScreen(
     var files by remember { mutableStateOf<List<File>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var selectedFiles by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var hasPermission by remember { mutableStateOf(LocalFileManager.hasStorageAccess(context)) }
 
-    LaunchedEffect(path) {
-        isLoading = true
-        files = LocalFileManager.listFiles(path)
-        isLoading = false
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) {
+        hasPermission = LocalFileManager.hasStorageAccess(context)
+        if (hasPermission) {
+            isLoading = true
+            files = LocalFileManager.listFiles(path)
+            isLoading = false
+        }
+    }
+    
+    val manageStorageLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        hasPermission = LocalFileManager.hasStorageAccess(context)
+        if (hasPermission) {
+            isLoading = true
+            files = LocalFileManager.listFiles(path)
+            isLoading = false
+        }
+    }
+
+    LaunchedEffect(path, hasPermission) {
+        if (hasPermission) {
+            isLoading = true
+            files = LocalFileManager.listFiles(path)
+            isLoading = false
+        }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -76,7 +101,34 @@ fun LocalFileScreen(
             )
         }
 
-        if (isLoading) {
+        if (!hasPermission) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Storage permission is required to view files.", color = Color.Gray)
+                    Spacer(Modifier.height(16.dp))
+                    Button(onClick = {
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                            try {
+                                val intent = Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                                    data = android.net.Uri.parse("package:${context.packageName}")
+                                }
+                                manageStorageLauncher.launch(intent)
+                            } catch (e: Exception) {
+                                val intent = Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                                manageStorageLauncher.launch(intent)
+                            }
+                        } else {
+                            permissionLauncher.launch(arrayOf(
+                                android.Manifest.permission.READ_EXTERNAL_STORAGE,
+                                android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+                            ))
+                        }
+                    }) {
+                        Text("Grant Permission")
+                    }
+                }
+            }
+        } else if (isLoading) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
