@@ -2317,7 +2317,7 @@ fun DiaryEditorArea(
                 path.startsWith("image:") -> {
                     val uriStr = path.removePrefix("image:")
                     val uri = runCatching { android.net.Uri.parse(uriStr) }.getOrNull()
-                    var scale by remember(index) { mutableStateOf(imageScales[index] ?: 1f) }
+                    var scale by remember(index) { mutableStateOf(1f) }
                     var offset by remember(index) { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
 
                     Card(
@@ -2350,7 +2350,6 @@ fun DiaryEditorArea(
                                                     } else {
                                                         offset = androidx.compose.ui.geometry.Offset.Zero
                                                     }
-                                                    imageScales[index] = scale
                                                 }
                                             }
                                             .graphicsLayer(
