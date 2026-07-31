@@ -6,9 +6,6 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -22,7 +19,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -330,194 +326,320 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
         }
     }
 
-    // Colored icons matching common file managers
-    val gridItems = listOf(
-        Triple("Internal storage", internalInfo.usedText, Icons.Default.PhoneAndroid),
-        Triple("Main storage", externalInfo.usedText, Icons.Default.Storage),
-        Triple("SD card", sdInfo.usedText, Icons.Default.SdStorage),
-        Triple("Downloads", "", Icons.Default.Download),
-        Triple("Images", "", Icons.Default.Image),
-        Triple("Audio", "", Icons.Default.Audiotrack),
-        Triple("Videos", "", Icons.Default.VideoLibrary),
-        Triple("Documents", "", Icons.Default.Description),
-        Triple("Apps", "", Icons.Default.Android),
-        Triple("New files", "", Icons.Default.Schedule),
-        Triple("Cloud", "", Icons.Default.Cloud),
-        Triple("Remote", "", Icons.Default.Computer)
-    )
+    // --- Screenshot exact layout ---
+    // Row 1: Main storage | SD card | Downloads  (বড় storage cards, size+count দেখায়)
+    // Row 2-4: Images | Audio | Videos / Documents | Apps | New files  (3-col category grid)
+    // Row 5: Cloud | Remote | Access from...  (bottom row)
 
-    val iconColors = listOf(
-        Color(0xFF5C6BC0), // Internal storage — indigo
-        Color(0xFF26A69A), // Main storage — teal
-        Color(0xFF66BB6A), // SD card — green
-        Color(0xFFFFA726), // Downloads — orange
-        Color(0xFFEC407A), // Images — pink
-        Color(0xFF42A5F5), // Audio — blue
-        Color(0xFFAB47BC), // Videos — purple
-        Color(0xFF78909C), // Documents — blue-grey
-        Color(0xFF26C6DA), // Apps — cyan
-        Color(0xFF8D6E63), // New files — brown
-        Color(0xFF1E88E5), // Cloud — bright blue
-        Color(0xFF546E7A), // Remote — slate
-    )
+    val mainStorageInfo = externalInfo  // /storage/emulated/0
+    val sdCardPath = remember { LocalFileManager.getSdCardPath(context) }
 
-    Column(modifier = modifier.fillMaxSize()) {
-        // Storage summary cards at top
-        if (internalInfo.total > 0 || externalInfo.total > 0) {
-            Column(
+    // category subtitle: count গণনা করা হবে background এ
+    var downloadsCount by remember { mutableStateOf("") }
+    var imagesCount   by remember { mutableStateOf("") }
+    var audioCount    by remember { mutableStateOf("") }
+    var videosCount   by remember { mutableStateOf("") }
+    var docsCount     by remember { mutableStateOf("") }
+    var appsCount     by remember { mutableStateOf("") }
+    var newFilesCount by remember { mutableStateOf("") }
+    var cloudCount    by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            val base = LocalFileManager.mainStoragePath
+            fun countDir(path: String): String {
+                val f = java.io.File(path)
+                if (!f.exists()) return ""
+                val files = f.listFiles() ?: return ""
+                val count = files.size
+                val size = files.sumOf { if (it.isFile) it.length() else 0L }
+                val sizeStr = if (size > 0) formatFileSize(size) else ""
+                return if (sizeStr.isNotEmpty()) "$sizeStr ($count)" else "($count)"
+            }
+            downloadsCount = countDir("$base/Download")
+            imagesCount    = countDir("$base/DCIM") .ifEmpty { countDir("$base/Pictures") }
+            audioCount     = countDir("$base/Music")
+            videosCount    = countDir("$base/Movies").ifEmpty { countDir("$base/Video") }
+            docsCount      = countDir("$base/Documents")
+            newFilesCount  = ""
+            appsCount      = ""
+            cloudCount     = ""
+        }
+    }
+
+    fun navigate(title: String) {
+        val base = LocalFileManager.mainStoragePath
+        when (title) {
+            "Main storage" -> {
+                if (hasStorageAccess()) onNavigate(NavState.Local(base))
+                else openStoragePermissionSettings()
+            }
+            "SD card" -> {
+                val sdPath = LocalFileManager.getSdCardPath(context)
+                if (sdPath != null) {
+                    if (hasStorageAccess()) onNavigate(NavState.Local(sdPath))
+                    else openStoragePermissionSettings()
+                } else android.widget.Toast.makeText(context, "No SD card found", android.widget.Toast.LENGTH_SHORT).show()
+            }
+            "Downloads" -> {
+                if (hasStorageAccess()) onNavigate(NavState.Local("$base/Download"))
+                else openStoragePermissionSettings()
+            }
+            "Images"    -> { if (hasStorageAccess()) onNavigate(NavState.Local("$base/DCIM")) else openStoragePermissionSettings() }
+            "Audio"     -> { if (hasStorageAccess()) onNavigate(NavState.Local("$base/Music")) else openStoragePermissionSettings() }
+            "Videos"    -> { if (hasStorageAccess()) onNavigate(NavState.Local("$base/Movies")) else openStoragePermissionSettings() }
+            "Documents" -> { if (hasStorageAccess()) onNavigate(NavState.Local("$base/Documents")) else openStoragePermissionSettings() }
+            "Apps"      -> android.widget.Toast.makeText(context, "Apps coming soon", android.widget.Toast.LENGTH_SHORT).show()
+            "New files" -> android.widget.Toast.makeText(context, "New files coming soon", android.widget.Toast.LENGTH_SHORT).show()
+            "Cloud"     -> onNavigate(NavState.CloudAccounts)
+            "Remote"    -> android.widget.Toast.makeText(context, "Remote coming soon", android.widget.Toast.LENGTH_SHORT).show()
+            "Access from..." -> android.widget.Toast.makeText(context, "Access from PC coming soon", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    androidx.compose.foundation.lazy.LazyColumn(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color(0xFFF2F2F7)), // iOS-style light grey bg
+        contentPadding = PaddingValues(bottom = 16.dp)
+    ) {
+        // ── Row 1: Main storage / SD card / Downloads ──────────────────────
+        item {
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                if (internalInfo.total > 0) {
-                    StorageSummaryCard(
-                        label = "Internal storage",
-                        info = internalInfo,
-                        color = Color(0xFF5C6BC0)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
-                if (externalInfo.total > 0 && externalInfo.total != internalInfo.total) {
-                    StorageSummaryCard(
-                        label = "Main storage (External)",
-                        info = externalInfo,
-                        color = Color(0xFF26A69A)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
-            }
-        }
-
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(3),
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            items(gridItems.size) { index ->
-                val (title, subtitle, icon) = gridItems[index]
-                val color = iconColors[index]
-                GridItemView(
-                    item = GridItemData(title, subtitle, icon),
-                    iconColor = color,
-                    onClick = {
-                        when (title) {
-                            "Internal storage" -> {
-                                if (hasStorageAccess()) {
-                                    // ExternalStorageDirectory = user-visible "Internal Storage" (/storage/emulated/0)
-                                    // getDataDirectory() = /data (system, no user access) — বাদ দেওয়া হয়েছে
-                                    onNavigate(NavState.Local(Environment.getExternalStorageDirectory().absolutePath))
-                                } else {
-                                    openStoragePermissionSettings()
-                                }
-                            }
-                            "Main storage" -> {
-                                if (hasStorageAccess()) {
-                                    onNavigate(NavState.Local(LocalFileManager.mainStoragePath))
-                                } else {
-                                    openStoragePermissionSettings()
-                                }
-                            }
-                            "SD card" -> {
-                                val sdPath = LocalFileManager.getSdCardPath(context)
-                                if (sdPath != null) {
-                                    if (hasStorageAccess()) {
-                                        onNavigate(NavState.Local(sdPath))
-                                    } else {
-                                        openStoragePermissionSettings()
-                                    }
-                                } else {
-                                    android.widget.Toast.makeText(context, "No SD card found", android.widget.Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                            "Downloads" -> onNavigate(NavState.Local(LocalFileManager.mainStoragePath + "/Download"))
-                            "Cloud" -> onNavigate(NavState.CloudAccounts)
-                        }
-                    }
+                // Main storage card
+                StorageTopCard(
+                    label = "Main storage",
+                    subtitle = mainStorageInfo.usedText,
+                    icon = Icons.Default.PhoneAndroid,
+                    iconColor = Color(0xFF5C6BC0),
+                    progress = mainStorageInfo.progress,
+                    modifier = Modifier.weight(1f),
+                    onClick = { navigate("Main storage") }
+                )
+                // SD card card
+                StorageTopCard(
+                    label = "SD card",
+                    subtitle = if (sdInfo.total > 0) sdInfo.usedText else "Not found",
+                    icon = Icons.Default.SdStorage,
+                    iconColor = Color(0xFF388E3C),
+                    progress = sdInfo.progress,
+                    modifier = Modifier.weight(1f),
+                    onClick = { navigate("SD card") }
+                )
+                // Downloads card
+                StorageTopCard(
+                    label = "Downloads",
+                    subtitle = downloadsCount,
+                    icon = Icons.Default.Download,
+                    iconColor = Color(0xFFE65100),
+                    progress = 0f,
+                    showProgress = false,
+                    modifier = Modifier.weight(1f),
+                    onClick = { navigate("Downloads") }
                 )
             }
         }
-    }
-}
 
-@Composable
-fun StorageSummaryCard(label: String, info: StorageInfo, color: Color) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(text = label, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                Text(
-                    text = "${(info.progress * 100).toInt()}% used",
-                    fontSize = 12.sp,
-                    color = if (info.progress > 0.9f) Color(0xFFE53935) else color
-                )
-            }
-            Spacer(modifier = Modifier.height(6.dp))
-            LinearProgressIndicator(
-                progress = { info.progress },
-                modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
-                color = if (info.progress > 0.9f) Color(0xFFE53935) else color,
-                trackColor = color.copy(alpha = 0.2f)
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(text = info.usedText, fontSize = 11.sp, color = Color.Gray)
-        }
-    }
-}
-
-@Composable
-fun GridItemView(item: GridItemData, iconColor: Color = Color(0xFF26A69A), onClick: () -> Unit) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .clickable { onClick() }
-            .padding(8.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(64.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(iconColor.copy(alpha = 0.12f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = item.icon,
-                contentDescription = item.title,
-                modifier = Modifier.size(34.dp),
-                tint = iconColor
-            )
-        }
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(
-            text = item.title,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
-            textAlign = TextAlign.Center,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
+        // ── Row 2-4: category grid 3 columns ──────────────────────────────
+        val categoryItems = listOf(
+            GridItemData("Images",    imagesCount,   Icons.Default.Image)        to Color(0xFFAD1457),
+            GridItemData("Audio",     audioCount,    Icons.Default.Audiotrack)   to Color(0xFF1565C0),
+            GridItemData("Videos",    videosCount,   Icons.Default.VideoLibrary) to Color(0xFF6A1B9A),
+            GridItemData("Documents", docsCount,     Icons.Default.Description)  to Color(0xFF37474F),
+            GridItemData("Apps",      appsCount,     Icons.Default.Android)      to Color(0xFF00838F),
+            GridItemData("New files", newFilesCount, Icons.Default.Schedule)     to Color(0xFF4E342E),
         )
-        if (item.subtitle.isNotEmpty()) {
+
+        item {
+            Column(modifier = Modifier.padding(horizontal = 12.dp)) {
+                for (row in categoryItems.chunked(3)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        for ((data, color) in row) {
+                            CategoryCard(
+                                label = data.title,
+                                subtitle = data.subtitle,
+                                icon = data.icon,
+                                iconColor = color,
+                                modifier = Modifier.weight(1f),
+                                onClick = { navigate(data.title) }
+                            )
+                        }
+                        // padding cell যদি row টা 3 এর কম হয়
+                        repeat(3 - row.size) { Spacer(modifier = Modifier.weight(1f)) }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+            }
+        }
+
+        // ── Bottom row: Cloud / Remote / Access from... ────────────────────
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                CategoryCard(
+                    label = "Cloud",
+                    subtitle = cloudCount,
+                    icon = Icons.Default.Cloud,
+                    iconColor = Color(0xFF1565C0),
+                    modifier = Modifier.weight(1f),
+                    onClick = { navigate("Cloud") }
+                )
+                CategoryCard(
+                    label = "Remote",
+                    subtitle = "",
+                    icon = Icons.Default.Computer,
+                    iconColor = Color(0xFF4E342E),
+                    modifier = Modifier.weight(1f),
+                    onClick = { navigate("Remote") }
+                )
+                CategoryCard(
+                    label = "Access from...",
+                    subtitle = "",
+                    icon = Icons.Default.Devices,
+                    iconColor = Color(0xFF37474F),
+                    modifier = Modifier.weight(1f),
+                    onClick = { navigate("Access from...") }
+                )
+            }
+        }
+    }
+}
+
+// ── Top storage card (Main storage / SD card / Downloads) ──────────────
+@Composable
+fun StorageTopCard(
+    label: String,
+    subtitle: String,
+    icon: ImageVector,
+    iconColor: Color,
+    progress: Float,
+    modifier: Modifier = Modifier,
+    showProgress: Boolean = true,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = modifier.clickable { onClick() },
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        shape = RoundedCornerShape(14.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.Start
+        ) {
+            // Icon
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(iconColor.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    tint = iconColor,
+                    modifier = Modifier.size(26.dp)
+                )
+            }
+            Spacer(Modifier.height(8.dp))
             Text(
-                text = item.subtitle,
-                fontSize = 10.sp,
-                color = Color.Gray,
-                textAlign = TextAlign.Center,
+                text = label,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+            if (subtitle.isNotEmpty()) {
+                Text(
+                    text = subtitle,
+                    fontSize = 10.sp,
+                    color = Color.Gray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (showProgress && progress > 0f) {
+                Spacer(Modifier.height(6.dp))
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)),
+                    color = if (progress > 0.9f) Color(0xFFE53935) else iconColor,
+                    trackColor = iconColor.copy(alpha = 0.15f)
+                )
+            }
         }
     }
 }
+
+// ── Category card (Images / Audio / Videos / etc.) ───────────────────────
+@Composable
+fun CategoryCard(
+    label: String,
+    subtitle: String,
+    icon: ImageVector,
+    iconColor: Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = modifier.clickable { onClick() },
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        shape = RoundedCornerShape(14.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 14.dp),
+            horizontalAlignment = Alignment.Start
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(iconColor.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    tint = iconColor,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = label,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (subtitle.isNotEmpty()) {
+                Text(
+                    text = subtitle,
+                    fontSize = 10.sp,
+                    color = Color.Gray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+// GridItemView legacy — replaced by CategoryCard and StorageTopCard
 
 @Composable
 fun DrawerContent(onNavigate: (NavState) -> Unit) {
