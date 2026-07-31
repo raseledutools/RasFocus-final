@@ -1166,6 +1166,46 @@ fun ProfessionalDiaryScreen(
                             Button(
                                 modifier = Modifier.fillMaxWidth(),
                                 onClick = {
+                                    listBusyMsg = "Exporting JSON to Drive..."
+                                    listExportScope.launch {
+                                        val file = withContext(Dispatchers.IO) {
+                                            val arr2 = org.json.JSONArray()
+                                            allEntries.forEach { e ->
+                                                arr2.put(org.json.JSONObject().apply {
+                                                    put("id", e.id); put("title", e.title)
+                                                    put("body", e.body); put("date", e.date)
+                                                    put("mood", e.mood); put("folder", e.folder)
+                                                    put("tags", e.tags.joinToString(","))
+                                                    put("locked", e.isLocked)
+                                                    put("timestamp", e.timestamp)
+                                                })
+                                            }
+                                            val root2 = org.json.JSONObject().apply {
+                                                put("exported_at", java.text.SimpleDateFormat(
+                                                    "yyyy-MM-dd HH:mm", java.util.Locale.ENGLISH)
+                                                    .format(java.util.Date()))
+                                                put("entry_count", allEntries.size)
+                                                put("entries", arr2)
+                                            }
+                                            java.io.File(listExportContext.cacheDir, "diary_manual_list.json")
+                                                .also { it.writeText(root2.toString(2)) }
+                                        }
+                                        val ok = DriveBackupManager.uploadDiaryJson(listExportContext, file)
+                                        file.delete()
+                                        listBusyMsg = ""
+                                        listShowFixDrive = DriveBackupManager.lastRecoveryIntent != null
+                                        Toast.makeText(listExportContext,
+                                            if (ok) "✅ JSON saved to Drive"
+                                            else "❌ ${DriveBackupManager.lastError ?: "Upload failed"}",
+                                            Toast.LENGTH_LONG).show()
+                                        if (!listShowFixDrive) showListExportMenu = false
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4A90D9))
+                            ) { Text("Export JSON to Drive") }
+                            Button(
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = {
                                     listBusyMsg = "Exporting PDF to Drive..."
                                     listExportScope.launch {
                                         val f = withContext(Dispatchers.IO) {

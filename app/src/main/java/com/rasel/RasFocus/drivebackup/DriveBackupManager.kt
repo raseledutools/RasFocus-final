@@ -23,9 +23,6 @@ import java.io.File as JFile
 object DriveBackupManager {
 
     // ── Public error/recovery state (set after each operation) ───────────────
-    var lastError: String? = null
-    var lastRecoveryIntent: android.content.Intent? = null
-
     private const val TAG              = "DriveBackupManager"
     private const val APP_FOLDER_NAME  = "RasFocus+"
     private const val FOLDER_PREF_KEY  = "drive_app_folder_id"
