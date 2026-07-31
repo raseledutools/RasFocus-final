@@ -1,58 +1,86 @@
 === KOTLIN ERRORS ===
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:178:65 Unresolved reference: LocalFileManager
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:249:55 Unresolved reference: LocalFileManager
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:263:147 Unresolved reference: LocalFileManager
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:49:17 Unresolved reference: LocalFileManager
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:115:76 Unresolved reference: ContentPaste
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:179:41 Smart cast to 'Intent' is impossible, because 'DriveFileManager.lastRecoveryIntent' is a mutable property that could have been changed by this time
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:223:91 Type mismatch: inferred type is Int but Long was expected
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:256:76 Unresolved reference: ContentPaste
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:293:14 Unresolved reference: background
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:335:1 A 'return' expression required in a function with a block body ('{...}')
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:356:72 Unresolved reference: ContentCopy
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:362:72 Unresolved reference: DriveFileMove
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:368:72 Unresolved reference: Delete
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:374:72 Unresolved reference: Close
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/QuickReminderActivity.kt:120:40 Unresolved reference: BoltOutlined
 
 === UNRESOLVED / TYPE ERRORS ===
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:178:65 Unresolved reference: LocalFileManager
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:249:55 Unresolved reference: LocalFileManager
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:263:147 Unresolved reference: LocalFileManager
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:49:17 Unresolved reference: LocalFileManager
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:115:76 Unresolved reference: ContentPaste
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:223:91 Type mismatch: inferred type is Int but Long was expected
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:256:76 Unresolved reference: ContentPaste
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:293:14 Unresolved reference: background
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:356:72 Unresolved reference: ContentCopy
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:362:72 Unresolved reference: DriveFileMove
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:368:72 Unresolved reference: Delete
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:374:72 Unresolved reference: Close
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/QuickReminderActivity.kt:120:40 Unresolved reference: BoltOutlined
 
 === BUILD FAILURE ===
-> Task :app:processFullReleaseResources FAILED
+> Task :app:compileFullReleaseKotlin FAILED
 * What went wrong:
-Execution failed for task ':app:processFullReleaseResources'.
-BUILD FAILED in 21s
+Execution failed for task ':app:compileFullReleaseKotlin'.
+BUILD FAILED in 3m 17s
 
 === LAST 60 LINES ===
-> Task :app:checkKotlinGradlePluginConfigurationErrors
-> Task :app:processFullReleaseGoogleServices FROM-CACHE
-> Task :app:buildKotlinToolingMetadata
-> Task :app:javaPreCompileFullRelease FROM-CACHE
-> Task :app:mergeFullReleaseJniLibFolders FROM-CACHE
-> Task :app:createFullReleaseCompatibleScreenManifests
-> Task :app:extractDeepLinksFullRelease FROM-CACHE
-> Task :app:extractProguardFiles
-> Task :app:generateFullReleaseBuildConfig
-> Task :app:packageFullReleaseResources FROM-CACHE
-> Task :app:parseFullReleaseLocalResources FROM-CACHE
-> Task :app:mergeFullReleaseArtProfile
-> Task :app:mapFullReleaseSourceSetPaths
-> Task :app:validateSigningFullRelease
-> Task :app:writeFullReleaseAppMetadata
-> Task :app:writeFullReleaseSigningConfigVersions
-> Task :app:checkFullReleaseAarMetadata
-> Task :app:mergeFullReleaseAssets FROM-CACHE
-> Task :app:checkFullReleaseDuplicateClasses
-> Task :app:compressFullReleaseAssets FROM-CACHE
-> Task :app:mergeFullReleaseNativeLibs
-> Task :app:collectFullReleaseDependencies
-
 > Task :app:stripFullReleaseDebugSymbols
 Unable to strip the following libraries, packaging them as they are: libbarhopper_v3.so, libimage_processing_util_jni.so, libpdfium.so, libpdfiumandroid.so.
 
 > Task :app:extractFullReleaseNativeSymbolTables FROM-CACHE
 > Task :app:mergeFullReleaseNativeDebugMetadata NO-SOURCE
-> Task :app:mergeFullReleaseResources FROM-CACHE
-> Task :app:sdkFullReleaseDependencyData
+> Task :app:compressFullReleaseAssets FROM-CACHE
+> Task :app:collectFullReleaseDependencies
 > Task :app:processFullReleaseMainManifest
+> Task :app:sdkFullReleaseDependencyData
 > Task :app:processFullReleaseManifest
 > Task :app:processFullReleaseManifestForPackage
-> Task :app:processFullReleaseResources FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785493846892.json
+> Task :app:mergeFullReleaseResources
+note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
+
+note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
+
+> Task :app:processFullReleaseResources
+> Task :app:kspFullReleaseKotlin
+> Task :app:compileFullReleaseKotlin
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:178:65 Unresolved reference: LocalFileManager
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:249:55 Unresolved reference: LocalFileManager
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:263:147 Unresolved reference: LocalFileManager
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:49:17 Unresolved reference: LocalFileManager
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:115:76 Unresolved reference: ContentPaste
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:179:41 Smart cast to 'Intent' is impossible, because 'DriveFileManager.lastRecoveryIntent' is a mutable property that could have been changed by this time
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:223:91 Type mismatch: inferred type is Int but Long was expected
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:256:76 Unresolved reference: ContentPaste
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:293:14 Unresolved reference: background
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:335:1 A 'return' expression required in a function with a block body ('{...}')
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:356:72 Unresolved reference: ContentCopy
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:362:72 Unresolved reference: DriveFileMove
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:368:72 Unresolved reference: Delete
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:374:72 Unresolved reference: Close
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/QuickReminderActivity.kt:120:40 Unresolved reference: BoltOutlined
+
+> Task :app:compileFullReleaseKotlin FAILED
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785494100800.json
 
 FAILURE: Build failed with an exception.
 
 * What went wrong:
-Execution failed for task ':app:processFullReleaseResources'.
-> A failure occurred while executing com.android.build.gradle.internal.res.LinkApplicationAndroidResourcesTask$TaskAction
-   > Android resource linking failed
-     ERROR: /home/runner/work/RasFocus-final/RasFocus-final/app/src/main/AndroidManifest.xml:598:5-608:16: AAPT: error: resource style/Theme.AppCompat.Translucent (aka com.rasel.RasFocus:style/Theme.AppCompat.Translucent) not found.
-         
+Execution failed for task ':app:compileFullReleaseKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
 
 * Try:
 > Run with --stacktrace option to get the stack trace.
@@ -66,6 +94,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 21s
-30 actionable tasks: 20 executed, 10 from cache
+BUILD FAILED in 3m 17s
+32 actionable tasks: 25 executed, 7 from cache
 Configuration cache entry stored.
