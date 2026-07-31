@@ -53,6 +53,7 @@ class DriveFileManagerActivity : ComponentActivity() {
 fun DriveFileManagerScreen(onClose: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val accountName = com.google.android.gms.auth.api.signin.GoogleSignIn.getLastSignedInAccount(context)?.email ?: ""
     
     // Navigation stack: Pair<FolderId, FolderName>
     var navStack by remember { mutableStateOf(listOf(Pair("root", "My Drive"))) }
@@ -70,7 +71,7 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
         // Retry loading
         scope.launch {
             isLoading = true
-            val result = DriveFileManager.listFiles(context, currentFolder.first)
+            val result = DriveFileManager.listFiles(context, accountName, currentFolder.first)
             if (result != null) {
                 files = result
                 errorMsg = null
@@ -86,7 +87,7 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
         scope.launch {
             isLoading = true
             errorMsg = null
-            val result = DriveFileManager.listFiles(context, currentFolder.first)
+            val result = DriveFileManager.listFiles(context, accountName, currentFolder.first)
             if (result != null) {
                 // Sort folders first, then files
                 files = result.sortedWith(compareBy({ it.mimeType != "application/vnd.google-apps.folder" }, { it.name.lowercase() }))
@@ -182,7 +183,9 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
                                     // Handle file click (Download & Open)
                                     Toast.makeText(context, "Downloading ${file.name}...", Toast.LENGTH_SHORT).show()
                                     scope.launch {
-                                        val downloadedFile = DriveFileManager.downloadFile(context, file.id, file.name)
+                                        val downloadedFile = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                            DriveFileManager.downloadFile(context, accountName, file.id, file.name)
+                                        }
                                         if (downloadedFile != null) {
                                             Toast.makeText(context, "Downloaded to ${downloadedFile.absolutePath}", Toast.LENGTH_LONG).show()
                                         } else {

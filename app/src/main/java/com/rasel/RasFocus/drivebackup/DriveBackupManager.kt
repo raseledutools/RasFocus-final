@@ -282,4 +282,111 @@ object DriveBackupManager {
             null
         }
     }
+    // ── Public: upload all media files (photos + voice notes) for diary entries ─
+    // Creates a "RasFocus+/diary_media/" subfolder and uploads each file there.
+    // Returns a map of localPath -> driveFileId so caller can update mediaPaths if needed.
+    suspend fun uploadDiaryMedia(context: Context, mediaPaths: List<String>): Map<String, String> =
+        withContext(Dispatchers.IO) {
+            val result = mutableMapOf<String, String>()
+            try {
+                val drive    = buildDriveService(context) ?: return@withContext result
+                val folderId = getOrCreateFolderId(context, drive) ?: return@withContext result
+
+                // Get or create diary_media sub-folder
+                val subFolderQuery = "name='diary_media' and '$folderId' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+                val existing = drive.files().list().setQ(subFolderQuery).setSpaces("drive")
+                    .setFields("files(id)").execute().files?.firstOrNull()
+                val mediaFolderId = if (existing != null) {
+                    existing.id
+                } else {
+                    val folderMeta = DriveFile().apply {
+                        name = "diary_media"
+                        mimeType = "application/vnd.google-apps.folder"
+                        parents = listOf(folderId)
+                    }
+                    drive.files().create(folderMeta).setFields("id").execute().id
+                }
+
+                for (path in mediaPaths) {
+                    val stripped = when {
+                        path.startsWith("image:") -> path.removePrefix("image:")
+                        path.startsWith("voice:") -> path.removePrefix("voice:")
+                        else -> continue
+                    }
+                    val localFile = JFile(stripped)
+                    if (!localFile.exists()) continue
+
+                    // Check if already uploaded (same name)
+                    val fileQuery = "name='${localFile.name}' and '$mediaFolderId' in parents and trashed=false"
+                    val existingFile = drive.files().list().setQ(fileQuery).setSpaces("drive")
+                        .setFields("files(id)").execute().files?.firstOrNull()
+
+                    val driveFileId = if (existingFile != null) {
+                        // Update existing
+                        drive.files().update(existingFile.id, null, FileContent(null, localFile)).execute().id
+                        existingFile.id
+                    } else {
+                        // Create new
+                        val fileMeta = DriveFile().apply {
+                            name = localFile.name
+                            parents = listOf(mediaFolderId)
+                        }
+                        drive.files().create(fileMeta, FileContent(null, localFile)).setFields("id").execute().id
+                    }
+                    if (driveFileId != null) {
+                        result[stripped] = driveFileId
+                    }
+                }
+            } catch (e: Exception) {
+                recordFailure("uploadDiaryMedia", e)
+            }
+            result
+        }
+
+    // ── Public: download diary media files from Drive back to local ──────────────
+    // Downloads missing files to context.filesDir/diary_media/ based on their filenames.
+    suspend fun downloadDiaryMedia(context: Context, fileNames: List<String>): List<String> =
+        withContext(Dispatchers.IO) {
+            val downloaded = mutableListOf<String>()
+            try {
+                if (fileNames.isEmpty()) return@withContext downloaded
+                val drive = buildDriveService(context) ?: return@withContext downloaded
+                val folderId = getOrCreateFolderId(context, drive) ?: return@withContext downloaded
+                
+                // Get diary_media sub-folder ID
+                val subFolderQuery = "name='diary_media' and '$folderId' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+                val mediaFolderId = drive.files().list().setQ(subFolderQuery).setSpaces("drive")
+                    .setFields("files(id)").execute().files?.firstOrNull()?.id ?: return@withContext downloaded
+
+                val destDir = JFile(context.filesDir, "diary_media")
+                destDir.mkdirs()
+                
+                // List all files in the Drive media folder to match against requested fileNames
+                val filesQuery = "'$mediaFolderId' in parents and trashed=false"
+                val driveFiles = drive.files().list().setQ(filesQuery).setSpaces("drive")
+                    .setFields("files(id, name)").execute().files ?: emptyList()
+                    
+                val nameToId = driveFiles.associate { it.name to it.id }
+
+                for (fileName in fileNames) {
+                    val fileId = nameToId[fileName] ?: continue
+                    try {
+                        val destFile = JFile(destDir, fileName)
+                        if (!destFile.exists()) {
+                            destFile.outputStream().use { out ->
+                                drive.files().get(fileId).executeMediaAndDownloadTo(out)
+                            }
+                        }
+                        // Determine prefix
+                        val prefix = if (fileName.endsWith(".m4a") || fileName.endsWith(".mp3") || fileName.endsWith(".ogg")) "voice" else "image"
+                        downloaded.add("$prefix:${destFile.absolutePath}")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "downloadDiaryMedia: failed for $fileName: ${e.message}")
+                    }
+                }
+            } catch (e: Exception) {
+                recordFailure("downloadDiaryMedia", e)
+            }
+            downloaded
+        }
 }

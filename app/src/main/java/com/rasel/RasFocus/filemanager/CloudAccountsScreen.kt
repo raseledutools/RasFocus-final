@@ -74,12 +74,9 @@ fun CloudAccountsScreen(onAccountSelected: (String) -> Unit) {
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Placeholder for Drive icon, since we don't know if ic_drive exists, we'll use a text initial for now if it fails, but assuming user will add drawable.
-                    // Instead of painterResource which might crash if not found, we use Text or a built-in icon.
-                    // Wait, the user has Google Drive icon in screenshot. I'll use standard Icons.Default.Cloud for now.
                     Icon(
-                        imageVector = androidx.compose.material.icons.Icons.Default.Cloud,
-                        contentDescription = "Google Drive",
+                        imageVector = Icons.Default.CloudQueue,
+                        contentDescription = "Cloud location",
                         modifier = Modifier.size(40.dp),
                         tint = Color(0xFF1E88E5)
                     )

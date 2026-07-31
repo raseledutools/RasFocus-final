@@ -1012,6 +1012,11 @@ fun ProfessionalDiaryScreen(
                         val db   = DiaryDatabase.getDatabase(listExportContext)
                         val toInsert = (0 until arr.length()).map { i ->
                             val o = arr.getJSONObject(i)
+                            // Restore mediaPaths (photos + voice notes)
+                            val mediaJsonArr = o.optJSONArray("mediaPaths")
+                            val mediaPaths = if (mediaJsonArr != null) {
+                                (0 until mediaJsonArr.length()).map { mediaJsonArr.getString(it) }
+                            } else emptyList()
                             DiaryEntry(
                                 id        = o.optLong("id", System.currentTimeMillis() + i),
                                 title     = o.optString("title"),
@@ -1021,7 +1026,10 @@ fun ProfessionalDiaryScreen(
                                 folder    = o.optString("folder", "Personal"),
                                 tags      = o.optString("tags").split(",").filter { it.isNotBlank() },
                                 isLocked  = o.optBoolean("locked", false),
-                                timestamp = o.optLong("timestamp", System.currentTimeMillis())
+                                timestamp = o.optLong("timestamp", System.currentTimeMillis()),
+                                reminderTimeMillis = o.optLong("reminderTimeMillis", 0L),
+                                reminderLabel = o.optString("reminderLabel", ""),
+                                mediaPaths = mediaPaths
                             )
                         }
                         db.diaryDao().upsertAll(toInsert)
@@ -1064,6 +1072,10 @@ fun ProfessionalDiaryScreen(
                                                 put("tags", e.tags.joinToString(","))
                                                 put("locked", e.isLocked)
                                                 put("timestamp", e.timestamp)
+                                                put("reminderTimeMillis", e.reminderTimeMillis)
+                                                put("reminderLabel", e.reminderLabel)
+                                                // Include media paths so photos & voice notes survive export
+                                                put("mediaPaths", JSONArray(e.mediaPaths))
                                             })
                                         }
                                         val root = JSONObject().apply {
@@ -1535,6 +1547,10 @@ fun ProfessionalDiaryScreen(
                     val db      = DiaryDatabase.getDatabase(context)
                     val toInsert = (0 until arr.length()).map { i ->
                         val o = arr.getJSONObject(i)
+                        val mediaJsonArr = o.optJSONArray("mediaPaths")
+                        val mediaPaths = if (mediaJsonArr != null) {
+                            (0 until mediaJsonArr.length()).map { mediaJsonArr.getString(it) }
+                        } else emptyList()
                         DiaryEntry(
                             id        = o.optLong("id", System.currentTimeMillis() + i),
                             title     = o.optString("title"),
@@ -1545,8 +1561,10 @@ fun ProfessionalDiaryScreen(
                             tags      = o.optString("tags").split(",")
                                          .filter { it.isNotBlank() },
                             isLocked  = o.optBoolean("locked", false),
-                            timestamp = o.optLong("timestamp",
-                                System.currentTimeMillis())
+                            timestamp = o.optLong("timestamp", System.currentTimeMillis()),
+                            reminderTimeMillis = o.optLong("reminderTimeMillis", 0L),
+                            reminderLabel = o.optString("reminderLabel", ""),
+                            mediaPaths = mediaPaths
                         )
                     }
                     db.diaryDao().upsertAll(toInsert)
@@ -1612,6 +1630,9 @@ fun ProfessionalDiaryScreen(
                                             put("tags", e.tags.joinToString(","))
                                             put("locked", e.isLocked)
                                             put("timestamp", e.timestamp)
+                                            put("reminderTimeMillis", e.reminderTimeMillis)
+                                            put("reminderLabel", e.reminderLabel)
+                                            put("mediaPaths", JSONArray(e.mediaPaths))
                                         })
                                     }
                                     val root = JSONObject().apply {
@@ -1727,6 +1748,9 @@ fun ProfessionalDiaryScreen(
                                                     put("tags", e.tags.joinToString(","))
                                                     put("locked", e.isLocked)
                                                     put("timestamp", e.timestamp)
+                                                    put("reminderTimeMillis", e.reminderTimeMillis)
+                                                    put("reminderLabel", e.reminderLabel)
+                                                    put("mediaPaths", JSONArray(e.mediaPaths))
                                                 })
                                             }
                                             val root2 = JSONObject().apply {
@@ -1741,10 +1765,18 @@ fun ProfessionalDiaryScreen(
                                         }
                                         val ok = DriveBackupManager.uploadDiaryJson(context, file)
                                         file.delete()
+                                        // Also upload all media files (photos + voice notes)
+                                        if (ok) {
+                                            busyMsg = "Uploading photos & voice notes..."
+                                            val allMedia = allEntries.flatMap { it.mediaPaths }
+                                            if (allMedia.isNotEmpty()) {
+                                                DriveBackupManager.uploadDiaryMedia(context, allMedia)
+                                            }
+                                        }
                                         busyMsg = ""
                                         showFixDriveButton = DriveBackupManager.lastRecoveryIntent != null
                                         Toast.makeText(context,
-                                            if (ok) "✅ JSON saved to Drive"
+                                            if (ok) "✅ JSON + media saved to Drive"
                                             else "❌ ${DriveBackupManager.lastError ?: "Upload failed"}",
                                             Toast.LENGTH_LONG).show()
                                         if (!showFixDriveButton) showExportMenu = false
@@ -1794,6 +1826,10 @@ fun ProfessionalDiaryScreen(
                                                 val db      = DiaryDatabase.getDatabase(context)
                                                 val entries3 = (0 until arr3.length()).map { i ->
                                                     val o = arr3.getJSONObject(i)
+                                                    val mediaJsonArr = o.optJSONArray("mediaPaths")
+                                                    val mediaPaths = if (mediaJsonArr != null) {
+                                                        (0 until mediaJsonArr.length()).map { mediaJsonArr.getString(it) }
+                                                    } else emptyList()
                                                     DiaryEntry(
                                                         id        = o.optLong("id", System.currentTimeMillis() + i),
                                                         title     = o.optString("title"),
@@ -1804,11 +1840,27 @@ fun ProfessionalDiaryScreen(
                                                         tags      = o.optString("tags").split(",")
                                                                      .filter { it.isNotBlank() },
                                                         isLocked  = o.optBoolean("locked", false),
-                                                        timestamp = o.optLong("timestamp",
-                                                            System.currentTimeMillis())
+                                                        timestamp = o.optLong("timestamp", System.currentTimeMillis()),
+                                                        reminderTimeMillis = o.optLong("reminderTimeMillis", 0L),
+                                                        reminderLabel = o.optString("reminderLabel", ""),
+                                                        mediaPaths = mediaPaths
                                                     )
                                                 }
                                                 db.diaryDao().upsertAll(entries3)
+                                                
+                                                // Download media files (photos + voice notes)
+                                                val allMediaPaths = entries3.flatMap { it.mediaPaths }
+                                                val fileNamesToDownload = allMediaPaths.map { path ->
+                                                    val stripped = path.substringAfter(":")
+                                                    java.io.File(stripped).name
+                                                }.distinct()
+                                                if (fileNamesToDownload.isNotEmpty()) {
+                                                    withContext(Dispatchers.Main) {
+                                                        busyMsg = "Downloading photos & voice notes..."
+                                                    }
+                                                    DriveBackupManager.downloadDiaryMedia(context, fileNamesToDownload)
+                                                }
+                                                
                                                 withContext(Dispatchers.Main) {
                                                     Toast.makeText(context,
                                                         "✅ Imported ${entries3.size} entries from Drive",
@@ -2151,13 +2203,26 @@ fun DiaryEditorArea(
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) {
-            // persist read permission
-            try {
-                context.contentResolver.takePersistableUriPermission(
-                    uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            } catch (_: Exception) {}
-            val newPaths = entry.mediaPaths + "image:$uri"
-            onEntryChange(entry.copy(mediaPaths = newPaths))
+            // Copy image into app-private dir so path is persistent & exportable
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val destDir = java.io.File(context.filesDir, "diary_media")
+                    destDir.mkdirs()
+                    val ext = context.contentResolver.getType(uri)?.substringAfterLast("/") ?: "jpg"
+                    val destFile = java.io.File(destDir, "photo_${System.currentTimeMillis()}.$ext")
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        destFile.outputStream().use { output -> input.copyTo(output) }
+                    }
+                    val newPaths = entry.mediaPaths + "image:${destFile.absolutePath}"
+                    withContext(Dispatchers.Main) {
+                        onEntryChange(entry.copy(mediaPaths = newPaths))
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "Failed to save photo: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
         }
     }
 
@@ -2346,44 +2411,50 @@ fun DiaryEditorArea(
                         elevation = CardDefaults.cardElevation(4.dp)
                     ) {
                         Box {
-                            if (uri != null) {
-                                // Load bitmap from URI
-                                val bmp = remember(uri) {
-                                    runCatching {
-                                        val stream = context.contentResolver.openInputStream(uri)
-                                        android.graphics.BitmapFactory.decodeStream(stream)
-                                    }.getOrNull()
-                                }
-                                if (bmp != null) {
-                                    Image(
-                                        bitmap = bmp.asImageBitmap(),
-                                        contentDescription = "Diary photo",
-                                        contentScale = ContentScale.FillWidth,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .pointerInput(index) {
-                                                detectTransformGestures { _, pan, zoom, _ ->
-                                                    scale = (scale * zoom).coerceIn(1f, 5f)
-                                                    if (scale > 1f) {
-                                                        offset += pan
-                                                    } else {
-                                                        offset = androidx.compose.ui.geometry.Offset.Zero
-                                                    }
-                                                    imageScales[index] = scale
-                                                }
-                                            }
-                                            .graphicsLayer(
-                                                scaleX = scale,
-                                                scaleY = scale,
-                                                translationX = offset.x,
-                                                translationY = offset.y
-                                            )
-                                    )
-                                } else {
-                                    Box(Modifier.fillMaxWidth().height(80.dp).background(Color(0xFFF0F0F0)),
-                                        contentAlignment = Alignment.Center) {
-                                        Text("Image not found", color = Color.Gray)
+                            // Load bitmap: support both absolute file paths and content:// URIs
+                            val bmp = remember(uriStr) {
+                                runCatching {
+                                    if (uriStr.startsWith("/")) {
+                                        // Absolute file path
+                                        android.graphics.BitmapFactory.decodeFile(uriStr)
+                                    } else {
+                                        // content:// URI
+                                        val contentUri = android.net.Uri.parse(uriStr)
+                                        context.contentResolver.openInputStream(contentUri)?.use { stream ->
+                                            android.graphics.BitmapFactory.decodeStream(stream)
+                                        }
                                     }
+                                }.getOrNull()
+                            }
+                            if (bmp != null) {
+                                Image(
+                                    bitmap = bmp.asImageBitmap(),
+                                    contentDescription = "Diary photo",
+                                    contentScale = ContentScale.FillWidth,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .pointerInput(index) {
+                                            detectTransformGestures { _, pan, zoom, _ ->
+                                                scale = (scale * zoom).coerceIn(1f, 5f)
+                                                if (scale > 1f) {
+                                                    offset += pan
+                                                } else {
+                                                    offset = androidx.compose.ui.geometry.Offset.Zero
+                                                }
+                                                imageScales[index] = scale
+                                            }
+                                        }
+                                        .graphicsLayer(
+                                            scaleX = scale,
+                                            scaleY = scale,
+                                            translationX = offset.x,
+                                            translationY = offset.y
+                                        )
+                                )
+                            } else {
+                                Box(Modifier.fillMaxWidth().height(80.dp).background(Color(0xFFF0F0F0)),
+                                    contentAlignment = Alignment.Center) {
+                                    Text("Image not found", color = Color.Gray)
                                 }
                             }
                             // Delete button top-right

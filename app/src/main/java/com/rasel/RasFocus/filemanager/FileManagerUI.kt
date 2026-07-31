@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
@@ -163,11 +164,11 @@ fun LocalFileScreen(
     if (selectedFiles.isNotEmpty()) {
         SelectionBottomBar(
             onCopy = { 
-                onSetClipboard(ClipboardState("Local", selectedFiles.toList(), false))
+                onSetClipboard(ClipboardState("Local", selectedFiles.toList(), isCut = false))
                 selectedFiles = emptySet()
             },
             onMove = { 
-                onSetClipboard(ClipboardState("Local", selectedFiles.toList(), true))
+                onSetClipboard(ClipboardState("Local", selectedFiles.toList(), isCut = true))
                 selectedFiles = emptySet()
             },
             onDelete = { Toast.makeText(context, "Delete logic coming soon", Toast.LENGTH_SHORT).show() },
@@ -276,7 +277,9 @@ fun CloudFileScreen(
                                     } else {
                                         Toast.makeText(context, "Downloading...", Toast.LENGTH_SHORT).show()
                                         scope.launch {
-                                            DriveFileManager.downloadFile(context, file.id, file.name)
+                                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                                DriveFileManager.downloadFile(context, accountName, file.id, file.name)
+                                            }
                                             Toast.makeText(context, "Downloaded to Cache", Toast.LENGTH_SHORT).show()
                                         }
                                     }
@@ -344,12 +347,12 @@ fun CloudFileScreen(
         SelectionBottomBar(
             onCopy = { 
                 val names = selectedFiles.mapNotNull { id -> files.find { it.id == id }?.name }
-                onSetClipboard(ClipboardState("Cloud", selectedFiles.toList(), names, false, accountName))
+                onSetClipboard(ClipboardState("Cloud", selectedFiles.toList(), itemNames = names, isCut = false, accountName = accountName))
                 selectedFiles = emptySet()
             },
             onMove = { 
                 val names = selectedFiles.mapNotNull { id -> files.find { it.id == id }?.name }
-                onSetClipboard(ClipboardState("Cloud", selectedFiles.toList(), names, true, accountName))
+                onSetClipboard(ClipboardState("Cloud", selectedFiles.toList(), itemNames = names, isCut = true, accountName = accountName))
                 selectedFiles = emptySet()
             },
             onDelete = { Toast.makeText(context, "Delete logic coming soon", Toast.LENGTH_SHORT).show() },

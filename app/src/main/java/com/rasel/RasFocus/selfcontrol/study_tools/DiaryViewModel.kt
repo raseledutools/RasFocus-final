@@ -91,7 +91,11 @@ object DiaryCloudSync {
             "isLocked" to entry.isLocked,
             "pinHash" to entry.pinHash,
             "reminderTimeMillis" to entry.reminderTimeMillis,
-            "reminderLabel" to entry.reminderLabel
+            "reminderLabel" to entry.reminderLabel,
+            // Store mediaPaths as list - NOTE: actual media files (photos/voice) need
+            // separate upload via DriveFileManager for binary content.
+            // Paths stored here are local device paths, used for reference.
+            "mediaPaths" to entry.mediaPaths
         )
         col.document(entry.id.toString()).set(map, SetOptions.merge()).await()
     }
@@ -118,7 +122,8 @@ object DiaryCloudSync {
                     isLocked = doc.getBoolean("isLocked") ?: false,
                     pinHash = doc.getString("pinHash") ?: "",
                     reminderTimeMillis = doc.getLong("reminderTimeMillis") ?: 0L,
-                    reminderLabel = doc.getString("reminderLabel") ?: ""
+                    reminderLabel = doc.getString("reminderLabel") ?: "",
+                    mediaPaths = (doc.get("mediaPaths") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
                 )
             }.getOrNull()
         }

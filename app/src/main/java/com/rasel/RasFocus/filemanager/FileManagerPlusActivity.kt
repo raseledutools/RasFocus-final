@@ -483,6 +483,7 @@ fun GridItemView(item: GridItemData, iconColor: Color = Color(0xFF26A69A), onCli
 
 @Composable
 fun DrawerContent(onNavigate: (NavState) -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     Column(modifier = Modifier.fillMaxSize()) {
         // Drawer Tabs (Folder, Star, History)
         Row(
@@ -507,7 +508,7 @@ fun DrawerContent(onNavigate: (NavState) -> Unit) {
             
             // Main Storage with real Progress
             val extInfo = remember { getExternalStorageInfo() }
-            val sdCardInfo = remember { getSdCardStorageInfo() }
+            val sdCardInfo = remember { getSdCardStorageInfo(context) }
             DrawerStorageItem(
                 Icons.Default.PhoneAndroid, "Main storage",
                 if (extInfo.total > 0) "${(extInfo.progress * 100).toInt()}%" else "—",
@@ -527,7 +528,7 @@ fun DrawerContent(onNavigate: (NavState) -> Unit) {
             
             Divider()
             
-            DrawerMenuItem(Icons.Default.CloudQueue, "Google Drive", Color.Blue, isPinned = true, onClick = { onNavigate(NavState.Cloud("root", "My Drive")) })
+            DrawerMenuItem(Icons.Default.CloudQueue, "Google Drive", Color.Blue, isPinned = true, onClick = { onNavigate(NavState.CloudAccounts) })
             DrawerMenuItem(Icons.Default.FolderOpen, "Main storage /Download", Color.Gray, isPinned = true, onClick = { onNavigate(NavState.Local(LocalFileManager.mainStoragePath + "/Download")) })
             
             Divider()
