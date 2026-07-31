@@ -606,7 +606,7 @@ fun DiaryListScreen(
 ) {
     val context = LocalContext.current
     val magenta  = Color(0xFFE91E8C)
-    val calGreen = Color(0xFF3A8C3F)   // WriteDiary green badge
+    val calGreen = Color(0xFF3A8C3F)
     val bgColor  = Color(0xFFFFFFFF)
 
     // ── Home Screen Shortcut ────────────────────────────────────────────────
@@ -644,7 +644,6 @@ fun DiaryListScreen(
         }
     }
 
-    // Sort all entries newest first — flat list like WriteDiary
     val sorted = remember(entries) {
         entries.sortedByDescending { it.timestamp }
     }
@@ -666,9 +665,6 @@ fun DiaryListScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { addHomeShortcut() }) {
-                        Icon(Icons.Default.PhoneAndroid, contentDescription = "Home Shortcut", tint = Color.White)
-                    }
                     IconButton(onClick = { }) {
                         Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
                     }
@@ -677,13 +673,21 @@ fun DiaryListScreen(
             )
         },
         floatingActionButton = {
+            // 2nd image style: large magenta circle FAB
             FloatingActionButton(
                 onClick = onNewEntry,
                 containerColor = magenta,
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.size(60.dp)
+                shape = CircleShape,
+                modifier = Modifier.size(72.dp)
             ) {
-                Icon(Icons.Default.Edit, contentDescription = "New Entry", tint = Color.White, modifier = Modifier.size(26.dp))
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = "New Entry",
+                        tint = Color.White,
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
             }
         },
         containerColor = bgColor
@@ -706,11 +710,11 @@ fun DiaryListScreen(
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(bottom = 100.dp)
+                contentPadding = PaddingValues(bottom = 120.dp)
             ) {
                 items(sorted, key = { it.id }) { entry ->
 
-                    // ── parse date for calendar badge ──────────────────────
+                    // parse date for calendar badge
                     val cal = remember(entry.date) {
                         runCatching {
                             val sdf = SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.ENGLISH)
@@ -723,14 +727,12 @@ fun DiaryListScreen(
                     val dayNum = cal?.get(Calendar.DAY_OF_MONTH)?.toString() ?: "?"
                     val yearStr = cal?.get(Calendar.YEAR)?.toString() ?: ""
 
-                    // preview = first non-blank line of body
                     val preview = entry.body.lines()
                         .firstOrNull { it.isNotBlank() }
                         ?.trim()
-                        ?.take(60)
+                        ?.take(80)
                         ?: ""
 
-                    // ── delete confirm dialog ──────────────────────────────
                     var showDeleteConfirm by remember { mutableStateOf(false) }
                     if (showDeleteConfirm) {
                         AlertDialog(
@@ -749,7 +751,6 @@ fun DiaryListScreen(
                         )
                     }
 
-                    // ── swipe-to-delete ────────────────────────────────────
                     val dismissState = rememberSwipeToDismissBoxState(
                         confirmValueChange = { v ->
                             if (v != SwipeToDismissBoxValue.Settled) showDeleteConfirm = true
@@ -774,7 +775,7 @@ fun DiaryListScreen(
                             }
                         }
                     ) {
-                        // ── WriteDiary row ─────────────────────────────────
+                        // ── 2nd image style row ────────────────────────────
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -783,84 +784,99 @@ fun DiaryListScreen(
                                     onClick = { onEntryClick(entry) },
                                     onLongClick = { showDeleteConfirm = true }
                                 )
-                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // ── GREEN CALENDAR BADGE (exact WriteDiary style) ──
+                            // ── COMPACT CALENDAR BADGE (2nd image style) ──
+                            // Small rectangular badge, flush corners at right side
                             Box(
                                 modifier = Modifier
-                                    .width(62.dp)
-                                    .clip(RoundedCornerShape(8.dp))
+                                    .width(56.dp)
+                                    .clip(RoundedCornerShape(6.dp))
                                     .background(calGreen)
                             ) {
                                 Column(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    // Month header strip (darker green)
+                                    // Month strip (darker green top)
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .background(Color(0xFF2D6E32))
-                                            .padding(vertical = 3.dp),
+                                            .padding(vertical = 2.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
                                             monthStr,
                                             color = Color.White,
-                                            fontSize = 11.sp,
+                                            fontSize = 10.sp,
                                             fontWeight = FontWeight.Bold,
-                                            letterSpacing = 1.sp
+                                            letterSpacing = 0.5.sp
                                         )
                                     }
-                                    // Day number
+                                    // Day number — large
                                     Text(
                                         dayNum,
                                         color = Color.White,
-                                        fontSize = 26.sp,
+                                        fontSize = 24.sp,
                                         fontWeight = FontWeight.ExtraBold,
-                                        lineHeight = 30.sp,
-                                        modifier = Modifier.padding(top = 2.dp)
+                                        lineHeight = 28.sp,
+                                        modifier = Modifier.padding(top = 1.dp)
                                     )
-                                    // Year
+                                    // Year — small
                                     Text(
                                         yearStr,
-                                        color = Color.White.copy(alpha = 0.85f),
-                                        fontSize = 10.sp,
-                                        modifier = Modifier.padding(bottom = 4.dp)
+                                        color = Color.White.copy(alpha = 0.9f),
+                                        fontSize = 9.sp,
+                                        modifier = Modifier.padding(bottom = 3.dp)
                                     )
                                 }
                             }
 
-                            Spacer(Modifier.width(14.dp))
+                            // ── LEFT ACCENT LINE + content (2nd image: gray left border per entry) ──
+                            Spacer(Modifier.width(10.dp))
+
+                            // Subtle left gray line like 2nd image
+                            Box(
+                                modifier = Modifier
+                                    .width(3.dp)
+                                    .height(48.dp)
+                                    .background(
+                                        Color(0xFFCCCCCC),
+                                        RoundedCornerShape(2.dp)
+                                    )
+                            )
+
+                            Spacer(Modifier.width(10.dp))
 
                             // ── Title + preview ────────────────────────────
                             Column(modifier = Modifier.weight(1f)) {
-                                // Lock icon inline with title
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     if (entry.isLocked) {
                                         Icon(Icons.Default.Lock, null,
                                             tint = magenta, modifier = Modifier.size(13.dp))
                                         Spacer(Modifier.width(4.dp))
                                     }
+                                    // Title: bold dark (like 2nd image — not magenta)
                                     Text(
                                         entry.title.ifBlank { "Untitled" },
                                         color = magenta,
-                                        fontSize = 16.sp,
+                                        fontSize = 15.sp,
                                         fontWeight = FontWeight.Bold,
                                         maxLines = 1,
                                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                     )
                                     if (entry.mood.isNotBlank()) {
                                         Spacer(Modifier.width(6.dp))
-                                        Text(entry.mood.trim().take(2), fontSize = 13.sp)
+                                        Text(entry.mood.trim().take(2), fontSize = 12.sp)
                                     }
                                 }
-                                // First line of body (preview)
+                                // Preview: gray like 2nd image
                                 if (preview.isNotBlank()) {
                                     Text(
                                         preview,
-                                        color = magenta.copy(alpha = 0.75f),
+                                        color = Color(0xFF888888),
                                         fontSize = 13.sp,
                                         maxLines = 1,
                                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -868,16 +884,29 @@ fun DiaryListScreen(
                                     )
                                 }
                             }
+
+                            // Arrow indicator (2nd image has subtle right arrow)
+                            Icon(
+                                Icons.Default.ChevronRight,
+                                contentDescription = null,
+                                tint = Color(0xFFCCCCCC),
+                                modifier = Modifier.size(18.dp)
+                            )
                         }
                     }
 
-                    // full-width divider, no indent
-                    HorizontalDivider(color = Color(0xFFEEEEEE), thickness = 0.8.dp)
+                    // Subtle divider
+                    HorizontalDivider(
+                        color = Color(0xFFEEEEEE),
+                        thickness = 0.8.dp,
+                        modifier = Modifier.padding(start = 80.dp) // indent past badge
+                    )
                 }
             }
         }
     }
 }
+
 
 // ============================================================
 // MAIN SCREEN
@@ -1010,16 +1039,10 @@ fun ProfessionalDiaryScreen(
                         val root = JSONObject(text)
                         val arr  = root.optJSONArray("entries") ?: return@launch
                         val db   = DiaryDatabase.getDatabase(listExportContext)
-                        val baseTime = System.currentTimeMillis()
                         val toInsert = (0 until arr.length()).map { i ->
                             val o = arr.getJSONObject(i)
-                            // Restore original timestamp; if missing/duplicate use offset
-                            val origTs = o.optLong("timestamp", 0L)
-                            val safeTs = if (origTs > 0L) origTs else (baseTime - (arr.length() - i) * 1000L)
-                            // Use timestamp as id (same as original schema default)
-                            val safeId = if (origTs > 0L) origTs else (baseTime - (arr.length() - i) * 1000L)
                             DiaryEntry(
-                                id        = safeId,
+                                id        = 0,
                                 title     = o.optString("title"),
                                 body      = o.optString("body"),
                                 date      = o.optString("date"),
@@ -1027,7 +1050,7 @@ fun ProfessionalDiaryScreen(
                                 folder    = o.optString("folder", "Personal"),
                                 tags      = o.optString("tags").split(",").filter { it.isNotBlank() },
                                 isLocked  = o.optBoolean("locked", false),
-                                timestamp = safeTs
+                                timestamp = o.optLong("timestamp", System.currentTimeMillis())
                             )
                         }
                         db.diaryDao().upsertAll(toInsert)
@@ -1499,14 +1522,10 @@ fun ProfessionalDiaryScreen(
                     val root    = JSONObject(text)
                     val arr     = root.optJSONArray("entries") ?: return@launch
                     val db      = DiaryDatabase.getDatabase(context)
-                    val baseTime2 = System.currentTimeMillis()
                     val toInsert = (0 until arr.length()).map { i ->
                         val o = arr.getJSONObject(i)
-                        val origTs = o.optLong("timestamp", 0L)
-                        val safeTs = if (origTs > 0L) origTs else (baseTime2 - (arr.length() - i) * 1000L)
-                        val safeId = if (origTs > 0L) origTs else (baseTime2 - (arr.length() - i) * 1000L)
                         DiaryEntry(
-                            id        = safeId,
+                            id        = 0,   // let Room assign new id
                             title     = o.optString("title"),
                             body      = o.optString("body"),
                             date      = o.optString("date"),
@@ -1515,7 +1534,8 @@ fun ProfessionalDiaryScreen(
                             tags      = o.optString("tags").split(",")
                                          .filter { it.isNotBlank() },
                             isLocked  = o.optBoolean("locked", false),
-                            timestamp = safeTs
+                            timestamp = o.optLong("timestamp",
+                                System.currentTimeMillis())
                         )
                     }
                     db.diaryDao().upsertAll(toInsert)
@@ -1761,14 +1781,10 @@ fun ProfessionalDiaryScreen(
                                                 val arr3    = root3.optJSONArray("entries")
                                                     ?: return@withContext
                                                 val db      = DiaryDatabase.getDatabase(context)
-                                                val baseTime3 = System.currentTimeMillis()
                                                 val entries3 = (0 until arr3.length()).map { i ->
                                                     val o = arr3.getJSONObject(i)
-                                                    val origTs3 = o.optLong("timestamp", 0L)
-                                                    val safeTs3 = if (origTs3 > 0L) origTs3 else (baseTime3 - (arr3.length() - i) * 1000L)
-                                                    val safeId3 = if (origTs3 > 0L) origTs3 else (baseTime3 - (arr3.length() - i) * 1000L)
                                                     DiaryEntry(
-                                                        id        = safeId3,
+                                                        id        = 0,
                                                         title     = o.optString("title"),
                                                         body      = o.optString("body"),
                                                         date      = o.optString("date"),
@@ -1777,7 +1793,8 @@ fun ProfessionalDiaryScreen(
                                                         tags      = o.optString("tags").split(",")
                                                                      .filter { it.isNotBlank() },
                                                         isLocked  = o.optBoolean("locked", false),
-                                                        timestamp = safeTs3
+                                                        timestamp = o.optLong("timestamp",
+                                                            System.currentTimeMillis())
                                                     )
                                                 }
                                                 db.diaryDao().upsertAll(entries3)
