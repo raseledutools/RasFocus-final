@@ -117,7 +117,7 @@ fun QuickReminderDialog(
 
                 // Header
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.BoltOutlined ?: Icons.Default.FlashOn,
+                    Icon(Icons.Default.FlashOn,
                         contentDescription = null, tint = Color(0xFF80CBC4), modifier = Modifier.size(22.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(

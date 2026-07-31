@@ -1,11 +1,17 @@
 package com.rasel.RasFocus.filemanager
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material3.*
@@ -20,7 +26,6 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -112,7 +117,7 @@ fun LocalFileScreen(
                         },
                         modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
                     ) {
-                        Icon(androidx.compose.material.icons.Icons.Default.ContentPaste, contentDescription = "Paste")
+                        Icon(Icons.Default.ContentPaste, contentDescription = "Paste")
                     }
                 }
             }
@@ -175,8 +180,9 @@ fun CloudFileScreen(
             errorMsg = null
         } else {
             errorMsg = DriveFileManager.lastError
-            if (DriveFileManager.lastRecoveryIntent != null) {
-                fixDriveLauncher.launch(DriveFileManager.lastRecoveryIntent)
+            val recoveryIntent: Intent? = DriveFileManager.lastRecoveryIntent
+            if (recoveryIntent != null) {
+                fixDriveLauncher.launch(recoveryIntent)
             }
         }
         isLoading = false
@@ -220,7 +226,7 @@ fun CloudFileScreen(
                         FileListItem(
                             name = file.name,
                             isDirectory = isDir,
-                            size = if (isDir || file.size == null) "" else formatFileSize(file.size),
+                            size = if (isDir || file.size == null) "" else formatFileSize(file.size.toLong()),
                             date = file.modifiedTime?.value?.let { formatDate(it) } ?: "",
                             isSelected = isSelected,
                             onClick = {
@@ -253,7 +259,7 @@ fun CloudFileScreen(
                         },
                         modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
                     ) {
-                        Icon(androidx.compose.material.icons.Icons.Default.ContentPaste, contentDescription = "Paste")
+                        Icon(Icons.Default.ContentPaste, contentDescription = "Paste")
                     }
                 }
             }
@@ -332,6 +338,7 @@ fun formatFileSize(size: Long): String {
 
 fun formatDate(timestamp: Long): String {
     val sdf = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
+    return sdf.format(timestamp)
 }
 
 @Composable
@@ -353,25 +360,25 @@ fun SelectionBottomBar(
         ) {
             IconButton(onClick = onCopy) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(androidx.compose.material.icons.Icons.Default.ContentCopy, "Copy", tint = Color.White)
+                    Icon(Icons.Default.ContentCopy, "Copy", tint = Color.White)
                     Text("Copy", color = Color.White, fontSize = 10.sp)
                 }
             }
             IconButton(onClick = onMove) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(androidx.compose.material.icons.Icons.Default.DriveFileMove, "Move", tint = Color.White)
+                    Icon(Icons.Default.DriveFileMove, "Move", tint = Color.White)
                     Text("Move", color = Color.White, fontSize = 10.sp)
                 }
             }
             IconButton(onClick = onDelete) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(androidx.compose.material.icons.Icons.Default.Delete, "Delete", tint = Color.White)
+                    Icon(Icons.Default.Delete, "Delete", tint = Color.White)
                     Text("Delete", color = Color.White, fontSize = 10.sp)
                 }
             }
             IconButton(onClick = onClearSelection) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(androidx.compose.material.icons.Icons.Default.Close, "Cancel", tint = Color.White)
+                    Icon(Icons.Default.Close, "Cancel", tint = Color.White)
                     Text("Cancel", color = Color.White, fontSize = 10.sp)
                 }
             }
