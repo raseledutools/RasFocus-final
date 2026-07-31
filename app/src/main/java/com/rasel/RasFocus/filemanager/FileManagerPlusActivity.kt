@@ -67,7 +67,7 @@ fun HomeScreen() {
         drawerContent = {
             ModalDrawerSheet(
                 modifier = Modifier.width(300.dp),
-                drawerContainerColor = Color.White
+                drawerContainerColor = MaterialTheme.colorScheme.surface
             ) {
                 DrawerContent(
                     onNavigate = { newState ->
@@ -109,7 +109,7 @@ fun HomeScreen() {
                     }
                 )
             },
-            containerColor = Color.White
+            containerColor = MaterialTheme.colorScheme.background
         ) { paddingValues ->
             Box(modifier = Modifier.padding(paddingValues)) {
                 when (val state = currentNavState) {
@@ -150,16 +150,16 @@ fun HomeScreen() {
 @Composable
 fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Unit) {
     val gridItems = listOf(
-        GridItemData("Main storage", "31 GB / 32 GB", Icons.Default.PhoneAndroid),
-        GridItemData("SD card", "1.1 GB / 8 GB", Icons.Default.SdStorage),
-        GridItemData("Downloads", "35.2 MB (17)", Icons.Default.Download),
-        GridItemData("Images", "1.2 GB (1417)", Icons.Default.Image),
-        GridItemData("Audio", "717 kB (1)", Icons.Default.Audiotrack),
-        GridItemData("Videos", "210 MB (12)", Icons.Default.VideoLibrary),
-        GridItemData("Documents", "120 MB (66)", Icons.Default.Description),
-        GridItemData("Apps", "2.6 GB (66)", Icons.Default.Android),
-        GridItemData("New files", "189 MB (293)", Icons.Default.Schedule),
-        GridItemData("Cloud", "(5)", Icons.Default.Cloud),
+        GridItemData("Main storage", LocalFileManager.getMainStorageInfo(), Icons.Default.PhoneAndroid),
+        GridItemData("SD card", "", Icons.Default.SdStorage),
+        GridItemData("Downloads", "", Icons.Default.Download),
+        GridItemData("Images", "", Icons.Default.Image),
+        GridItemData("Audio", "", Icons.Default.Audiotrack),
+        GridItemData("Videos", "", Icons.Default.VideoLibrary),
+        GridItemData("Documents", "", Icons.Default.Description),
+        GridItemData("Apps", "", Icons.Default.Android),
+        GridItemData("New files", "", Icons.Default.Schedule),
+        GridItemData("Cloud", "", Icons.Default.Cloud),
         GridItemData("Remote", "", Icons.Default.Computer),
         GridItemData("Access from...", "", Icons.Default.PhonelinkRing)
     )

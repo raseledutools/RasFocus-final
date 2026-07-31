@@ -82,6 +82,7 @@ fun LocalFileScreen(
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("Folder is empty", color = Color.Gray)
             }
+        } else {
             Box(modifier = Modifier.fillMaxSize()) {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(files) { file ->
@@ -219,6 +220,7 @@ fun CloudFileScreen(
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("Folder is empty", color = Color.Gray)
             }
+        } else {
             Box(modifier = Modifier.fillMaxSize()) {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(files) { file ->
