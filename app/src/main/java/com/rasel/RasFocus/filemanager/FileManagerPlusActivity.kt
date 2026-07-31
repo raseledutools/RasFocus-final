@@ -56,11 +56,46 @@ data class ClipboardState(
 )
 
 class FileManagerPlusActivity : ComponentActivity() {
+
+    private val legacyPermLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { /* result handled in Compose via hasStorageAccess() recheck */ }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // App খুলতেই storage permission চাওয়া হবে যদি এখনো না দেওয়া থাকে
+        requestStoragePermissionIfNeeded()
         setContent {
             MaterialTheme {
                 HomeScreen()
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Settings থেকে ফিরে এলে permission recheck করা হয়
+        // Compose state LaunchedEffect(hasStorageAccess()) দিয়ে UI refresh হবে
+    }
+
+    private fun requestStoragePermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!Environment.isExternalStorageManager()) {
+                try {
+                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                }
+            }
+        } else {
+            if (checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                legacyPermLauncher.launch(arrayOf(
+                    Manifest.permission.READ_EXTERNAL_STORAGE,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE
+                ))
             }
         }
     }
@@ -196,7 +231,8 @@ data class StorageInfo(val used: Long, val total: Long) {
 
 fun getInternalStorageInfo(): StorageInfo {
     return try {
-        val path = Environment.getDataDirectory()
+        // Use ExternalStorageDirectory — this is the user-accessible "Internal Storage" (sdcard)
+        val path = Environment.getExternalStorageDirectory()
         val stat = StatFs(path.path)
         val total = stat.blockCountLong * stat.blockSizeLong
         val avail = stat.availableBlocksLong * stat.blockSizeLong
@@ -370,7 +406,9 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                         when (title) {
                             "Internal storage" -> {
                                 if (hasStorageAccess()) {
-                                    onNavigate(NavState.Local(Environment.getDataDirectory().absolutePath))
+                                    // ExternalStorageDirectory = user-visible "Internal Storage" (/storage/emulated/0)
+                                    // getDataDirectory() = /data (system, no user access) — বাদ দেওয়া হয়েছে
+                                    onNavigate(NavState.Local(Environment.getExternalStorageDirectory().absolutePath))
                                 } else {
                                     openStoragePermissionSettings()
                                 }

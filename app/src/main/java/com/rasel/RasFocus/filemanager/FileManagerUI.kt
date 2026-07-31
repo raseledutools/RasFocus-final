@@ -49,9 +49,21 @@ fun LocalFileScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var files by remember { mutableStateOf<List<File>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
+    var isLoading by remember { mutableStateOf(false) }
     var selectedFiles by remember { mutableStateOf<Set<String>>(emptySet()) }
     var hasPermission by remember { mutableStateOf(LocalFileManager.hasStorageAccess(context)) }
+
+    // Settings থেকে ফিরে এলে permission state refresh করা
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                hasPermission = LocalFileManager.hasStorageAccess(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -59,8 +71,13 @@ fun LocalFileScreen(
         hasPermission = LocalFileManager.hasStorageAccess(context)
         if (hasPermission) {
             isLoading = true
-            files = LocalFileManager.listFiles(path)
-            isLoading = false
+            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                val result = LocalFileManager.listFiles(path)
+                withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    files = result
+                    isLoading = false
+                }
+            }
         }
     }
     
@@ -70,15 +87,27 @@ fun LocalFileScreen(
         hasPermission = LocalFileManager.hasStorageAccess(context)
         if (hasPermission) {
             isLoading = true
-            files = LocalFileManager.listFiles(path)
-            isLoading = false
+            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                val result = LocalFileManager.listFiles(path)
+                withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    files = result
+                    isLoading = false
+                }
+            }
         }
     }
 
     LaunchedEffect(path, hasPermission) {
         if (hasPermission) {
             isLoading = true
-            files = LocalFileManager.listFiles(path)
+            withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val result = LocalFileManager.listFiles(path)
+                withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    files = result
+                    isLoading = false
+                }
+            }
+        } else {
             isLoading = false
         }
     }
