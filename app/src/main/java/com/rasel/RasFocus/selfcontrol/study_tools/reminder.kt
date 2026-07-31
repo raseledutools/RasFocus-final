@@ -10,7 +10,9 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
+import android.media.MediaPlayer
 import android.media.RingtoneManager
+import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
 import android.os.VibrationEffect
@@ -27,6 +29,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -42,6 +45,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -54,6 +58,8 @@ import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.graphics.drawable.IconCompat
 import java.text.SimpleDateFormat
 import java.util.*
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 private val RmTeal       = Color(0xFF00897B)
@@ -91,6 +97,21 @@ enum class RepeatType(val label: String) {
     CUSTOM("Custom")
 }
 
+// Custom unit for CUSTOM repeat
+enum class CustomRepeatUnit(val label: String, val millis: Long) {
+    MINUTES("Minutes", 60_000L),
+    HOURS("Hours", 3_600_000L),
+    DAYS("Days", 86_400_000L),
+    MONTHS("Months", 2_592_000_000L),   // ~30 days
+    YEARS("Years", 31_536_000_000L)     // ~365 days
+}
+
+// Duration for ringtone
+enum class RingtoneDuration(val label: String) {
+    ONE_MINUTE("1 Minute"),
+    CONTINUOUS("Continuous")
+}
+
 // ── Data model ─────────────────────────────────────────────────────────────────
 data class ReminderItem(
     val id: Int,
@@ -98,8 +119,12 @@ data class ReminderItem(
     val description: String = "",
     val triggerMillis: Long,
     val repeatType: RepeatType = RepeatType.NONE,
+    val customRepeatAmount: Int = 1,
+    val customRepeatUnit: CustomRepeatUnit = CustomRepeatUnit.DAYS,
     val priority: ReminderPriority = ReminderPriority.NORMAL,
     val withVibration: Boolean = true,
+    val ringtoneDuration: RingtoneDuration = RingtoneDuration.ONE_MINUTE,
+    val ringtoneUriString: String = "", // empty = system default alarm
     val isCompleted: Boolean = false
 )
 
@@ -124,17 +149,69 @@ private fun formatTime(hour: Int, minute: Int): String {
     return SimpleDateFormat("h:mm a", Locale.getDefault()).format(c.time)
 }
 
+/** Get interval millis for a repeat type */
+fun repeatIntervalMillis(item: ReminderItem): Long? {
+    return when (item.repeatType) {
+        RepeatType.NONE            -> null
+        RepeatType.EVERY_HOUR      -> 3_600_000L
+        RepeatType.EVERY_DAY       -> 86_400_000L
+        RepeatType.EVERY_WEEK      -> 7 * 86_400_000L
+        RepeatType.EVERY_MONTH     -> 30 * 86_400_000L
+        RepeatType.EVERY_YEAR      -> 365 * 86_400_000L
+        RepeatType.SELECTED_WEEKDAYS -> 86_400_000L // daily default, days filtered at schedule
+        RepeatType.MONTHLY_ON      -> 30 * 86_400_000L
+        RepeatType.CUSTOM          -> item.customRepeatAmount * item.customRepeatUnit.millis
+    }
+}
+
+// ── MediaPlayer singleton for alarm sound ─────────────────────────────────────
+object ReminderAlarmPlayer {
+    private var player: MediaPlayer? = null
+    private var stopTimer: java.util.Timer? = null
+
+    fun play(context: Context, ringtoneUri: Uri, durationEnum: RingtoneDuration) {
+        stop()
+        try {
+            player = MediaPlayer().apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+                setDataSource(context, ringtoneUri)
+                isLooping = (durationEnum == RingtoneDuration.CONTINUOUS)
+                prepare()
+                start()
+            }
+            if (durationEnum == RingtoneDuration.ONE_MINUTE) {
+                stopTimer = java.util.Timer()
+                stopTimer?.schedule(object : java.util.TimerTask() {
+                    override fun run() { stop() }
+                }, 60_000L)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun stop() {
+        stopTimer?.cancel()
+        stopTimer = null
+        try {
+            player?.run { if (isPlaying) stop(); release() }
+        } catch (_: Exception) {}
+        player = null
+    }
+}
+
 // ── Notification channel ───────────────────────────────────────────────────────
 fun ensureReminderChannel(context: Context) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         val ch = NotificationChannel(RM_CHANNEL_ID, RM_CHANNEL_NAME, NotificationManager.IMPORTANCE_HIGH).apply {
             enableVibration(true)
             vibrationPattern = longArrayOf(0, 500, 200, 500)
-            setSound(
-                RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
-                AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
-            )
+            // Sound is played via MediaPlayer in receiver, not through channel
         }
         (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(ch)
     }
@@ -143,10 +220,31 @@ fun ensureReminderChannel(context: Context) {
 // ── BroadcastReceiver ──────────────────────────────────────────────────────────
 class ReminderAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        val label   = intent.getStringExtra("label") ?: "Reminder"
-        val withVib = intent.getBooleanExtra("withVibration", true)
-        val notifId = intent.getIntExtra("notifId", System.currentTimeMillis().toInt())
+        val label            = intent.getStringExtra("label") ?: "Reminder"
+        val withVib          = intent.getBooleanExtra("withVibration", true)
+        val notifId          = intent.getIntExtra("notifId", System.currentTimeMillis().toInt())
+        val ringtoneUriStr   = intent.getStringExtra("ringtoneUri") ?: ""
+        val durationStr      = intent.getStringExtra("ringtoneDuration") ?: RingtoneDuration.ONE_MINUTE.name
+        val repeatTypeStr    = intent.getStringExtra("repeatType") ?: RepeatType.NONE.name
+        val customAmount     = intent.getIntExtra("customAmount", 1)
+        val customUnitStr    = intent.getStringExtra("customUnit") ?: CustomRepeatUnit.DAYS.name
+        val triggerMillis    = intent.getLongExtra("triggerMillis", System.currentTimeMillis())
+
+        val duration  = try { RingtoneDuration.valueOf(durationStr) } catch (_: Exception) { RingtoneDuration.ONE_MINUTE }
+        val repeatType = try { RepeatType.valueOf(repeatTypeStr) } catch (_: Exception) { RepeatType.NONE }
+        val customUnit = try { CustomRepeatUnit.valueOf(customUnitStr) } catch (_: Exception) { CustomRepeatUnit.DAYS }
+
         ensureReminderChannel(context)
+
+        // 1. Play ringtone via MediaPlayer
+        val ringtoneUri = when {
+            ringtoneUriStr.isNotEmpty() -> Uri.parse(ringtoneUriStr)
+            else -> RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        }
+        ReminderAlarmPlayer.play(context, ringtoneUri, duration)
+
+        // 2. Vibrate
         if (withVib) {
             try {
                 val pattern = longArrayOf(0, 700, 200, 700, 200, 700)
@@ -163,6 +261,12 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
                 }
             } catch (_: Exception) {}
         }
+
+        // 3. Show notification with STOP action
+        val stopIntent = Intent(context, StopRingtoneReceiver::class.java).let {
+            PendingIntent.getBroadcast(context, notifId + 10000, it, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        }
+
         (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
             .notify(notifId, NotificationCompat.Builder(context, RM_CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
@@ -170,21 +274,64 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
                 .setContentText(label)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
-                .setAutoCancel(true).build())
+                .setSound(null)  // sound from MediaPlayer, not notification
+                .addAction(android.R.drawable.ic_media_pause, "Stop", stopIntent)
+                .setAutoCancel(true)
+                .build())
+
+        // 4. Schedule next repeat alarm if needed
+        val fakeItem = ReminderItem(
+            id = notifId,
+            title = label,
+            triggerMillis = triggerMillis,
+            repeatType = repeatType,
+            customRepeatAmount = customAmount,
+            customRepeatUnit = customUnit,
+            withVibration = withVib,
+            ringtoneDuration = duration,
+            ringtoneUriString = ringtoneUriStr
+        )
+        val interval = repeatIntervalMillis(fakeItem)
+        if (interval != null && interval > 0) {
+            val nextTrigger = triggerMillis + interval
+            scheduleReminderAlarmFull(context, fakeItem.copy(triggerMillis = nextTrigger))
+        }
+    }
+}
+
+// Stop ringtone receiver
+class StopRingtoneReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        ReminderAlarmPlayer.stop()
     }
 }
 
 // ── AlarmManager helpers ───────────────────────────────────────────────────────
 fun scheduleReminderAlarm(context: Context, reminderId: Int, label: String, triggerMillis: Long, withVibration: Boolean) {
+    // Minimal overload kept for compatibility
+    scheduleReminderAlarmFull(context, ReminderItem(
+        id = reminderId, title = label, triggerMillis = triggerMillis, withVibration = withVibration
+    ))
+}
+
+fun scheduleReminderAlarmFull(context: Context, item: ReminderItem) {
     val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+    val intent = Intent(context, ReminderAlarmReceiver::class.java).apply {
+        putExtra("label", item.title)
+        putExtra("withVibration", item.withVibration)
+        putExtra("notifId", item.id)
+        putExtra("ringtoneUri", item.ringtoneUriString)
+        putExtra("ringtoneDuration", item.ringtoneDuration.name)
+        putExtra("repeatType", item.repeatType.name)
+        putExtra("customAmount", item.customRepeatAmount)
+        putExtra("customUnit", item.customRepeatUnit.name)
+        putExtra("triggerMillis", item.triggerMillis)
+    }
     val pi = PendingIntent.getBroadcast(
-        context, reminderId,
-        Intent(context, ReminderAlarmReceiver::class.java).apply {
-            putExtra("label", label); putExtra("withVibration", withVibration); putExtra("notifId", reminderId)
-        },
+        context, item.id, intent,
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
-    val triggerAt = SystemClock.elapsedRealtime() + (triggerMillis - System.currentTimeMillis()).coerceAtLeast(1000L)
+    val triggerAt = SystemClock.elapsedRealtime() + (item.triggerMillis - System.currentTimeMillis()).coerceAtLeast(1000L)
     try {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
             am.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pi)
@@ -263,10 +410,10 @@ fun ReminderEntryCard(onClick: () -> Unit) {
 fun ReminderScreen(onBack: () -> Unit) {
     val context = LocalContext.current
 
-    val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
     ) {}
-    
+
     LaunchedEffect(Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
@@ -417,10 +564,11 @@ fun ReminderScreen(onBack: () -> Unit) {
                 if (editItem != null) {
                     cancelReminderAlarm(context, item.id)
                     reminders = reminders.map { if (it.id == item.id) item else it }
+                    scheduleReminderAlarmFull(context, item)
                 } else {
                     val newItem = item.copy(id = nextId++)
                     reminders = reminders + newItem
-                    scheduleReminderAlarm(context, newItem.id, newItem.title, newItem.triggerMillis, newItem.withVibration)
+                    scheduleReminderAlarmFull(context, newItem)
                 }
                 showAddDialog = false
             }
@@ -468,8 +616,12 @@ private fun ReminderListItem(
                 Spacer(Modifier.height(3.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(formatDateTime(reminder.triggerMillis), fontSize = 12.sp, color = RmTextSub)
-                    if (reminder.repeatType != RepeatType.NONE)
-                        Text("  \u2022  ${reminder.repeatType.label}", fontSize = 12.sp, color = RmTextSub)
+                    if (reminder.repeatType != RepeatType.NONE) {
+                        val repeatLabel = if (reminder.repeatType == RepeatType.CUSTOM) {
+                            "Every ${reminder.customRepeatAmount} ${reminder.customRepeatUnit.label}"
+                        } else reminder.repeatType.label
+                        Text("  •  $repeatLabel", fontSize = 12.sp, color = RmTextSub)
+                    }
                 }
             }
             Spacer(Modifier.width(8.dp))
@@ -528,6 +680,41 @@ fun ReminderAddDialog(
     var repeatType  by remember { mutableStateOf(initial?.repeatType ?: RepeatType.NONE) }
     var withVib     by remember { mutableStateOf(initial?.withVibration ?: true) }
     var showRepeat  by remember { mutableStateOf(false) }
+
+    // Custom repeat
+    var customAmount by remember { mutableStateOf(initial?.customRepeatAmount?.toString() ?: "1") }
+    var customUnit   by remember { mutableStateOf(initial?.customRepeatUnit ?: CustomRepeatUnit.DAYS) }
+    var unitExpanded by remember { mutableStateOf(false) }
+
+    // Ringtone
+    var ringtoneDuration by remember { mutableStateOf(initial?.ringtoneDuration ?: RingtoneDuration.ONE_MINUTE) }
+    var ringtoneUriStr   by remember { mutableStateOf(initial?.ringtoneUriString ?: "") }
+    var ringtoneName     by remember {
+        val defaultLabel = "Default Alarm"
+        mutableStateOf(
+            if (initial?.ringtoneUriString.isNullOrEmpty()) defaultLabel
+            else {
+                try {
+                    val rm = RingtoneManager.getRingtone(context, Uri.parse(initial!!.ringtoneUriString))
+                    rm?.getTitle(context) ?: defaultLabel
+                } catch (_: Exception) { defaultLabel }
+            }
+        )
+    }
+
+    // Ringtone picker launcher
+    val ringtoneLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val uri = result.data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+        if (uri != null) {
+            ringtoneUriStr = uri.toString()
+            try {
+                val rm = RingtoneManager.getRingtone(context, uri)
+                ringtoneName = rm?.getTitle(context) ?: "Custom"
+            } catch (_: Exception) { ringtoneName = "Custom" }
+        }
+    }
 
     val initCal = remember {
         Calendar.getInstance().also { c ->
@@ -653,41 +840,46 @@ fun ReminderAddDialog(
                     RmFormRow(Icons.Default.Repeat, "Repeat", repeatType.label) { showRepeat = true }
                     Divider(color = RmDivider, modifier = Modifier.padding(start = 52.dp))
 
+                    // Custom repeat sub-row (only when CUSTOM is selected)
                     if (repeatType == RepeatType.CUSTOM) {
-                        var customAmount by remember { mutableStateOf("1") }
-                        var customUnit by remember { mutableStateOf("Days") }
-                        var unitExpanded by remember { mutableStateOf(false) }
-                        
-                        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Spacer(Modifier.width(36.dp))
-                            Text("Repeat every:", modifier = Modifier.weight(1f), color = RmText, fontSize = 14.sp)
-                            TextField(
-                                value = customAmount, 
-                                onValueChange = { customAmount = it }, 
-                                modifier = Modifier.width(60.dp),
-                                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center),
-                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
-                                colors = TextFieldDefaults.colors(
-                                    focusedContainerColor = RmBg,
-                                    unfocusedContainerColor = RmBg,
-                                    focusedIndicatorColor = Color.Transparent,
-                                    unfocusedIndicatorColor = Color.Transparent
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(RmTeal.copy(.04f))
+                                .padding(start = 52.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Every:", color = RmText, fontSize = 14.sp, modifier = Modifier.padding(end = 8.dp))
+                            OutlinedTextField(
+                                value = customAmount,
+                                onValueChange = { if (it.all(Char::isDigit) && it.length <= 4) customAmount = it },
+                                modifier = Modifier.width(72.dp),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                textStyle = androidx.compose.ui.text.TextStyle(
+                                    fontSize = 14.sp,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                ),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = RmTeal,
+                                    unfocusedBorderColor = RmDivider
                                 )
                             )
                             Spacer(Modifier.width(8.dp))
+                            // Unit picker
                             Box {
-                                Row(
-                                    modifier = Modifier.clickable { unitExpanded = true }.padding(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                OutlinedButton(
+                                    onClick = { unitExpanded = true },
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, RmTeal)
                                 ) {
-                                    Text(customUnit, color = RmTeal, fontSize = 14.sp)
-                                    Icon(androidx.compose.material.icons.Icons.Default.ArrowDropDown, contentDescription = null, tint = RmTeal)
+                                    Text(customUnit.label, color = RmTeal, fontSize = 14.sp)
+                                    Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = RmTeal)
                                 }
                                 DropdownMenu(expanded = unitExpanded, onDismissRequest = { unitExpanded = false }) {
-                                    listOf("Minutes", "Hours", "Days", "Months", "Years").forEach { unit ->
+                                    CustomRepeatUnit.values().forEach { u ->
                                         DropdownMenuItem(
-                                            text = { Text(unit) },
-                                            onClick = { customUnit = unit; unitExpanded = false }
+                                            text = { Text(u.label) },
+                                            onClick = { customUnit = u; unitExpanded = false }
                                         )
                                     }
                                 }
@@ -696,14 +888,56 @@ fun ReminderAddDialog(
                         Divider(color = RmDivider, modifier = Modifier.padding(start = 52.dp))
                     }
 
-                    // Ringtone duration
-                    var ringDuration by remember { mutableStateOf("1 Minute") }
-                    RmFormRow(androidx.compose.material.icons.Icons.Default.MusicNote, "Ringtone Duration", ringDuration) {
-                        ringDuration = if (ringDuration == "1 Minute") "Continuous" else "1 Minute"
+                    // ── Ringtone row ──
+                    RmFormRow(Icons.Default.MusicNote, "Ringtone", ringtoneName) {
+                        val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+                            putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALL)
+                            putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                            putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+                            putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Select Ringtone")
+                            if (ringtoneUriStr.isNotEmpty()) {
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, Uri.parse(ringtoneUriStr))
+                            } else {
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI,
+                                    RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM))
+                            }
+                        }
+                        ringtoneLauncher.launch(intent)
                     }
                     Divider(color = RmDivider, modifier = Modifier.padding(start = 52.dp))
 
-                    // End Date (display only for now)
+                    // ── Ringtone Duration row ──
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Timer, contentDescription = null, tint = RmTextSub, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(16.dp))
+                        Text("Ringtone Duration", fontSize = 15.sp, color = RmText, modifier = Modifier.weight(1f))
+                        // Toggle chips
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            RingtoneDuration.values().forEach { dur ->
+                                val sel = ringtoneDuration == dur
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(if (sel) RmTeal else RmBg)
+                                        .border(1.dp, if (sel) RmTeal else RmDivider, RoundedCornerShape(16.dp))
+                                        .clickable { ringtoneDuration = dur }
+                                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Text(dur.label, fontSize = 12.sp,
+                                        color = if (sel) RmWhite else RmTextSub,
+                                        fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal)
+                                }
+                            }
+                        }
+                    }
+                    Divider(color = RmDivider, modifier = Modifier.padding(start = 52.dp))
+
+                    // End Date
                     RmFormRow(Icons.Default.Event, "End Date", "Forever") {}
                     Divider(color = RmDivider, modifier = Modifier.padding(start = 52.dp))
 
@@ -777,6 +1011,7 @@ fun ReminderAddDialog(
                     Button(
                         onClick = {
                             if (title.isBlank()) return@Button
+                            val parsedAmount = customAmount.toIntOrNull()?.coerceAtLeast(1) ?: 1
                             onSave(
                                 ReminderItem(
                                     id = initial?.id ?: 0,
@@ -784,8 +1019,12 @@ fun ReminderAddDialog(
                                     description = description.trim(),
                                     triggerMillis = buildTrigger(),
                                     repeatType = repeatType,
+                                    customRepeatAmount = parsedAmount,
+                                    customRepeatUnit = customUnit,
                                     priority = priority,
-                                    withVibration = withVib
+                                    withVibration = withVib,
+                                    ringtoneDuration = ringtoneDuration,
+                                    ringtoneUriString = ringtoneUriStr
                                 )
                             )
                         },
@@ -828,7 +1067,9 @@ private fun RmFormRow(
         Icon(icon, contentDescription = null, tint = RmTextSub, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(16.dp))
         Text(label, fontSize = 15.sp, color = RmText, modifier = Modifier.weight(1f))
-        Text(value, fontSize = 14.sp, color = valueColor, fontWeight = FontWeight.Medium)
+        Text(value, fontSize = 14.sp, color = valueColor, fontWeight = FontWeight.Medium,
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 160.dp))
     }
 }
 

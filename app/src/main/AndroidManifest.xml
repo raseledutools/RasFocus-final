@@ -573,6 +573,11 @@
         </intent-filter>
     </receiver>
 
+    <!-- ✅ Stop Ringtone Receiver — stops MediaPlayer alarm on notification action tap -->
+    <receiver
+        android:name=".selfcontrol.study_tools.StopRingtoneReceiver"
+        android:exported="false" />
+
     <!-- ✅ Unified Blocker Service (UnifiedBlockerService.kt) — adult, website, reels, shorts, app block -->
     <!-- FIX: foregroundServiceType added — without it, onServiceConnected()'s startForeground()
          call throws MissingForegroundServiceTypeException on Android 14+ the moment the user
