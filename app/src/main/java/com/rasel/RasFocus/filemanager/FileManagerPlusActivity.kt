@@ -102,8 +102,10 @@ class FileManagerPlusActivity : ComponentActivity() {
 fun HomeScreen() {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     var currentNavState by remember { mutableStateOf<NavState>(NavState.Home) }
     var clipboard by remember { mutableStateOf<ClipboardState?>(null) }
+    var showMoreMenu by remember { mutableStateOf(false) }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -154,11 +156,49 @@ fun HomeScreen() {
                         }
                     },
                     actions = {
-                        IconButton(onClick = { /* Premium Action */ }) {
+                        IconButton(onClick = {
+                            android.widget.Toast.makeText(context, "Premium features coming soon", android.widget.Toast.LENGTH_SHORT).show()
+                        }) {
                             Icon(Icons.Default.Star, contentDescription = "Premium", tint = Color(0xFFFFA500))
                         }
-                        IconButton(onClick = { /* More Options */ }) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "More", tint = Color.White)
+                        Box {
+                            IconButton(onClick = { showMoreMenu = true }) {
+                                Icon(Icons.Default.MoreVert, contentDescription = "More", tint = Color.White)
+                            }
+                            DropdownMenu(
+                                expanded = showMoreMenu,
+                                onDismissRequest = { showMoreMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Sort by name") },
+                                    onClick = {
+                                        showMoreMenu = false
+                                        android.widget.Toast.makeText(context, "Sort by name", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Sort by date") },
+                                    onClick = {
+                                        showMoreMenu = false
+                                        android.widget.Toast.makeText(context, "Sort by date", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Sort by size") },
+                                    onClick = {
+                                        showMoreMenu = false
+                                        android.widget.Toast.makeText(context, "Sort by size", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                )
+                                Divider()
+                                DropdownMenuItem(
+                                    text = { Text("Settings") },
+                                    onClick = {
+                                        showMoreMenu = false
+                                        android.widget.Toast.makeText(context, "Settings coming soon", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                )
+                            }
                         }
                     }
                 )
@@ -707,15 +747,27 @@ fun DrawerContent(onNavigate: (NavState) -> Unit) {
                 onClick = { onNavigate(NavState.Local(LocalFileManager.mainStoragePath)) }
             )
             
-            // SD Card with real Progress
+            // SD Card with real navigate
             DrawerStorageItem(
                 Icons.Default.SdStorage, "SD card",
                 if (sdCardInfo.total > 0) "${(sdCardInfo.progress * 100).toInt()}%" else "—",
                 sdCardInfo.progress,
-                onClick = { /* Handle SD Card */ }
+                onClick = {
+                    val sdPath = LocalFileManager.getSdCardPath(context)
+                    if (sdPath != null) {
+                        onNavigate(NavState.Local(sdPath))
+                    } else {
+                        android.widget.Toast.makeText(context, "SD card not found", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }
             )
             
-            DrawerMenuItem(Icons.Default.Delete, "Recycle Bin", Color.Gray, trailingText = "0 B", onClick = {})
+            // Recycle Bin — folder navigate (Android এ .Trash বা .RecycleBin)
+            DrawerMenuItem(Icons.Default.Delete, "Recycle Bin", Color.Gray, trailingText = "0 B", onClick = {
+                val trash = java.io.File(LocalFileManager.mainStoragePath + "/.RecycleBin")
+                if (!trash.exists()) trash.mkdirs()
+                onNavigate(NavState.Local(trash.absolutePath))
+            })
             
             Divider()
             
@@ -724,8 +776,12 @@ fun DrawerContent(onNavigate: (NavState) -> Unit) {
             
             Divider()
             
-            DrawerMenuItem(Icons.Default.Schedule, "New files", Color.Gray, hasMoreVert = true)
-            DrawerMenuItem(Icons.Default.Download, "Downloads", Color(0xFFFFA500), hasMoreVert = true)
+            DrawerMenuItem(Icons.Default.Schedule, "New files", Color.Gray, hasMoreVert = true, onClick = {
+                android.widget.Toast.makeText(context, "New files coming soon", android.widget.Toast.LENGTH_SHORT).show()
+            })
+            DrawerMenuItem(Icons.Default.Download, "Downloads", Color(0xFFFFA500), hasMoreVert = true, onClick = {
+                onNavigate(NavState.Local(LocalFileManager.mainStoragePath + "/Download"))
+            })
         }
 
         // Upgrade Banner
