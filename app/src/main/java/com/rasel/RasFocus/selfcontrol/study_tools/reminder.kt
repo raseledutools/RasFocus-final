@@ -262,6 +262,18 @@ fun ReminderEntryCard(onClick: () -> Unit) {
 @Composable
 fun ReminderScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+
+    val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) {}
+    
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
     var activeTab      by remember { mutableStateOf(0) }
     var selectedFilter by remember { mutableStateOf("All") }
     var reminders      by remember { mutableStateOf(listOf<ReminderItem>()) }
