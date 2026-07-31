@@ -674,6 +674,70 @@ fun TopHeader(navController: NavController? = null, onMenuClick: () -> Unit = {}
             ) {
                 StudyToolsCard(context)
             }
+            Spacer(Modifier.height(16.dp))
+            PremiumFeatureWrapper(
+                featureName = "Drive File Manager",
+                onClick = { val intent = Intent(context, com.rasel.RasFocus.drivebackup.DriveFileManagerActivity::class.java); intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); context.startActivity(intent) }
+            ) {
+                DriveFileManagerCard(context)
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UI: DriveFileManagerCard
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+fun DriveFileManagerCard(context: Context) {
+    com.rasel.RasFocus.ui.theme.PremiumCard(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+        onClick = {
+            val intent = Intent(context, com.rasel.RasFocus.drivebackup.DriveFileManagerActivity::class.java)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+        }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    brush = Brush.horizontalGradient(listOf(Color(0xFF0D0D1A), Color(0xFF1A1A35))),
+                    shape = RoundedCornerShape(20.dp)
+                )
+                .padding(horizontal = 16.dp, vertical = 13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .background(
+                        brush = Brush.linearGradient(listOf(Color(0xFF4A90D9), Color(0xFF00B4DB))),
+                        shape = RoundedCornerShape(11.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Cloud, contentDescription = null, tint = White, modifier = Modifier.size(20.dp))
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Google Drive Files",
+                    color = White,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 15.sp,
+                    letterSpacing = 0.5.sp
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    "Browse all files on your Drive",
+                    color = White.copy(alpha = 0.6f),
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Icon(Icons.Default.ArrowForwardIos, contentDescription = null, tint = White.copy(alpha = 0.4f), modifier = Modifier.size(14.dp))
         }
     }
 }

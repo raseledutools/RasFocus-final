@@ -745,7 +745,10 @@
             <action android:name="com.rasel.RasFocus.ACTION_INSTALL_UPDATE" />
         </intent-filter>
     </receiver>
-
-</application>
+        <activity
+            android:name=".drivebackup.DriveFileManagerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.RasFocus" />
+    </application>
 
 </manifest>
