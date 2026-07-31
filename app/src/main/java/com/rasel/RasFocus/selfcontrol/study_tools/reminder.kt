@@ -653,6 +653,56 @@ fun ReminderAddDialog(
                     RmFormRow(Icons.Default.Repeat, "Repeat", repeatType.label) { showRepeat = true }
                     Divider(color = RmDivider, modifier = Modifier.padding(start = 52.dp))
 
+                    if (repeatType == RepeatType.CUSTOM) {
+                        var customAmount by remember { mutableStateOf("1") }
+                        var customUnit by remember { mutableStateOf("Days") }
+                        var unitExpanded by remember { mutableStateOf(false) }
+                        
+                        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Spacer(Modifier.width(36.dp))
+                            Text("Repeat every:", modifier = Modifier.weight(1f), color = RmText, fontSize = 14.sp)
+                            TextField(
+                                value = customAmount, 
+                                onValueChange = { customAmount = it }, 
+                                modifier = Modifier.width(60.dp),
+                                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center),
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                                colors = TextFieldDefaults.colors(
+                                    focusedContainerColor = RmBg,
+                                    unfocusedContainerColor = RmBg,
+                                    focusedIndicatorColor = Color.Transparent,
+                                    unfocusedIndicatorColor = Color.Transparent
+                                )
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Box {
+                                Row(
+                                    modifier = Modifier.clickable { unitExpanded = true }.padding(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(customUnit, color = RmTeal, fontSize = 14.sp)
+                                    Icon(androidx.compose.material.icons.Icons.Default.ArrowDropDown, contentDescription = null, tint = RmTeal)
+                                }
+                                DropdownMenu(expanded = unitExpanded, onDismissRequest = { unitExpanded = false }) {
+                                    listOf("Minutes", "Hours", "Days", "Months", "Years").forEach { unit ->
+                                        DropdownMenuItem(
+                                            text = { Text(unit) },
+                                            onClick = { customUnit = unit; unitExpanded = false }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        Divider(color = RmDivider, modifier = Modifier.padding(start = 52.dp))
+                    }
+
+                    // Ringtone duration
+                    var ringDuration by remember { mutableStateOf("1 Minute") }
+                    RmFormRow(androidx.compose.material.icons.Icons.Default.MusicNote, "Ringtone Duration", ringDuration) {
+                        ringDuration = if (ringDuration == "1 Minute") "Continuous" else "1 Minute"
+                    }
+                    Divider(color = RmDivider, modifier = Modifier.padding(start = 52.dp))
+
                     // End Date (display only for now)
                     RmFormRow(Icons.Default.Event, "End Date", "Forever") {}
                     Divider(color = RmDivider, modifier = Modifier.padding(start = 52.dp))
