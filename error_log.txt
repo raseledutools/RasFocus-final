@@ -1,55 +1,101 @@
 === KOTLIN ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/reminder.kt:209:40 Unresolved reference: StudyToolsActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/reminder.kt:314:45 Unresolved reference: tabIndicatorOffset
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/drivebackup/DriveBackupManager.kt:26:9 Conflicting declarations: public final var lastError: String?, public final var lastError: String?
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/drivebackup/DriveBackupManager.kt:27:9 Conflicting declarations: public final var lastRecoveryIntent: Intent?, public final var lastRecoveryIntent: Intent?
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/drivebackup/DriveBackupManager.kt:46:9 Conflicting declarations: public final var lastError: String?, public final var lastError: String?
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/drivebackup/DriveBackupManager.kt:53:9 Conflicting declarations: public final var lastRecoveryIntent: Intent?, public final var lastRecoveryIntent: Intent?
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/drivebackup/DriveBackupManager.kt:58:13 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/drivebackup/DriveBackupManager.kt:59:13 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/drivebackup/DriveBackupManager.kt:62:13 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/drivebackup/DriveBackupManager.kt:63:13 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/drivebackup/DriveBackupManager.kt:94:17 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/drivebackup/DriveBackupManager.kt:100:17 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/drivebackup/DriveBackupManager.kt:160:9 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/drivebackup/DriveBackupManager.kt:161:9 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/drivebackup/DriveBackupManager.kt:272:9 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/drivebackup/DriveBackupManager.kt:273:9 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1176:79 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1179:74 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1190:60 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1191:73 Unresolved reference: it
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1705:81 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1708:74 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1729:81 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1732:74 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1788:81 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1789:70 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1790:57 Unresolved reference: it
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1812:56 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1813:65 Unresolved reference: it
 
 === UNRESOLVED / TYPE ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/reminder.kt:209:40 Unresolved reference: StudyToolsActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/reminder.kt:314:45 Unresolved reference: tabIndicatorOffset
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/drivebackup/DriveBackupManager.kt:58:13 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/drivebackup/DriveBackupManager.kt:59:13 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/drivebackup/DriveBackupManager.kt:62:13 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/drivebackup/DriveBackupManager.kt:63:13 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/drivebackup/DriveBackupManager.kt:94:17 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/drivebackup/DriveBackupManager.kt:100:17 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/drivebackup/DriveBackupManager.kt:160:9 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/drivebackup/DriveBackupManager.kt:161:9 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/drivebackup/DriveBackupManager.kt:272:9 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/drivebackup/DriveBackupManager.kt:273:9 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1176:79 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1179:74 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1190:60 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1191:73 Unresolved reference: it
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1705:81 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1708:74 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1729:81 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1732:74 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1788:81 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1789:70 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1790:57 Unresolved reference: it
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1812:56 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1813:65 Unresolved reference: it
 
 === BUILD FAILURE ===
 > Task :app:compileFullReleaseKotlin FAILED
 * What went wrong:
 Execution failed for task ':app:compileFullReleaseKotlin'.
-BUILD FAILED in 3m 16s
+BUILD FAILED in 3m 27s
 
 === LAST 60 LINES ===
-> Task :app:extractDeepLinksFullRelease FROM-CACHE
-> Task :app:packageFullReleaseResources FROM-CACHE
-> Task :app:parseFullReleaseLocalResources FROM-CACHE
-> Task :app:mapFullReleaseSourceSetPaths
-> Task :app:mergeFullReleaseAssets FROM-CACHE
-> Task :app:checkFullReleaseDuplicateClasses
-> Task :app:validateSigningFullRelease
-> Task :app:writeFullReleaseAppMetadata
-> Task :app:compressFullReleaseAssets FROM-CACHE
-> Task :app:writeFullReleaseSigningConfigVersions
-> Task :app:mergeFullReleaseNativeLibs
-> Task :app:mergeFullReleaseArtProfile
-> Task :app:checkFullReleaseAarMetadata
-> Task :app:collectFullReleaseDependencies
-
-> Task :app:stripFullReleaseDebugSymbols
-Unable to strip the following libraries, packaging them as they are: libbarhopper_v3.so, libimage_processing_util_jni.so, libpdfium.so, libpdfiumandroid.so.
-
-> Task :app:extractFullReleaseNativeSymbolTables FROM-CACHE
-> Task :app:mergeFullReleaseNativeDebugMetadata NO-SOURCE
-> Task :app:sdkFullReleaseDependencyData
-> Task :app:mergeFullReleaseResources FROM-CACHE
-> Task :app:processFullReleaseMainManifest
-> Task :app:processFullReleaseManifest
-> Task :app:processFullReleaseManifestForPackage
-note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
-
-note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
-
-> Task :app:processFullReleaseResources
-> Task :app:kspFullReleaseKotlin
-> Task :app:compileFullReleaseKotlin
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/reminder.kt:209:40 Unresolved reference: StudyToolsActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/reminder.kt:314:45 Unresolved reference: tabIndicatorOffset
+public final var lastRecoveryIntent: Intent? defined in com.rasel.RasFocus.drivebackup.DriveBackupManager
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1176:79 Overload resolution ambiguity: 
+public final var lastRecoveryIntent: Intent? defined in com.rasel.RasFocus.drivebackup.DriveBackupManager
+public final var lastRecoveryIntent: Intent? defined in com.rasel.RasFocus.drivebackup.DriveBackupManager
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1179:74 Overload resolution ambiguity: 
+public final var lastError: String? defined in com.rasel.RasFocus.drivebackup.DriveBackupManager
+public final var lastError: String? defined in com.rasel.RasFocus.drivebackup.DriveBackupManager
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1190:60 Overload resolution ambiguity: 
+public final var lastRecoveryIntent: Intent? defined in com.rasel.RasFocus.drivebackup.DriveBackupManager
+public final var lastRecoveryIntent: Intent? defined in com.rasel.RasFocus.drivebackup.DriveBackupManager
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1191:73 Unresolved reference: it
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1705:81 Overload resolution ambiguity: 
+public final var lastRecoveryIntent: Intent? defined in com.rasel.RasFocus.drivebackup.DriveBackupManager
+public final var lastRecoveryIntent: Intent? defined in com.rasel.RasFocus.drivebackup.DriveBackupManager
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1708:74 Overload resolution ambiguity: 
+public final var lastError: String? defined in com.rasel.RasFocus.drivebackup.DriveBackupManager
+public final var lastError: String? defined in com.rasel.RasFocus.drivebackup.DriveBackupManager
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1729:81 Overload resolution ambiguity: 
+public final var lastRecoveryIntent: Intent? defined in com.rasel.RasFocus.drivebackup.DriveBackupManager
+public final var lastRecoveryIntent: Intent? defined in com.rasel.RasFocus.drivebackup.DriveBackupManager
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1732:74 Overload resolution ambiguity: 
+public final var lastError: String? defined in com.rasel.RasFocus.drivebackup.DriveBackupManager
+public final var lastError: String? defined in com.rasel.RasFocus.drivebackup.DriveBackupManager
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1788:81 Overload resolution ambiguity: 
+public final var lastRecoveryIntent: Intent? defined in com.rasel.RasFocus.drivebackup.DriveBackupManager
+public final var lastRecoveryIntent: Intent? defined in com.rasel.RasFocus.drivebackup.DriveBackupManager
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1789:70 Overload resolution ambiguity: 
+public final var lastError: String? defined in com.rasel.RasFocus.drivebackup.DriveBackupManager
+public final var lastError: String? defined in com.rasel.RasFocus.drivebackup.DriveBackupManager
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1790:57 Unresolved reference: it
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1812:56 Overload resolution ambiguity: 
+public final var lastRecoveryIntent: Intent? defined in com.rasel.RasFocus.drivebackup.DriveBackupManager
+public final var lastRecoveryIntent: Intent? defined in com.rasel.RasFocus.drivebackup.DriveBackupManager
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:1813:65 Unresolved reference: it
 
 > Task :app:compileFullReleaseKotlin FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785431318940.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785476219242.json
 
 FAILURE: Build failed with an exception.
 
@@ -70,6 +116,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 3m 16s
+BUILD FAILED in 3m 27s
 32 actionable tasks: 22 executed, 10 from cache
 Configuration cache entry stored.
