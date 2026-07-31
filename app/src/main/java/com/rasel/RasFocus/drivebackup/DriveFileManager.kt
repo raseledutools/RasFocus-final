@@ -28,7 +28,7 @@ object DriveFileManager {
             lastRecoveryIntent = e.intent
             Log.w(TAG, "$tag: UserRecoverableAuthIOException", e)
         } else {
-            lastError = e.message ?: e.javaClass.simpleName
+            lastError = e.toString() // Show full exception class and message
             lastRecoveryIntent = null
             Log.e(TAG, "$tag failed: ${e.message}", e)
         }
