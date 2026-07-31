@@ -385,10 +385,41 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                 if (hasStorageAccess()) onNavigate(NavState.Local("$base/Download"))
                 else openStoragePermissionSettings()
             }
-            "Images"    -> { if (hasStorageAccess()) onNavigate(NavState.Local("$base/DCIM")) else openStoragePermissionSettings() }
+            "Images"    -> {
+                if (hasStorageAccess()) {
+                    // DCIM (camera) → Pictures (saved) → base fallback
+                    val dcim = java.io.File("$base/DCIM")
+                    val pics = java.io.File("$base/Pictures")
+                    val path = when {
+                        dcim.exists() -> "$base/DCIM"
+                        pics.exists() -> "$base/Pictures"
+                        else          -> base
+                    }
+                    onNavigate(NavState.Local(path))
+                } else openStoragePermissionSettings()
+            }
             "Audio"     -> { if (hasStorageAccess()) onNavigate(NavState.Local("$base/Music")) else openStoragePermissionSettings() }
-            "Videos"    -> { if (hasStorageAccess()) onNavigate(NavState.Local("$base/Movies")) else openStoragePermissionSettings() }
-            "Documents" -> { if (hasStorageAccess()) onNavigate(NavState.Local("$base/Documents")) else openStoragePermissionSettings() }
+            "Videos"    -> {
+                if (hasStorageAccess()) {
+                    // Movies → Video → base fallback (manufacturer dependent)
+                    val movies = java.io.File("$base/Movies")
+                    val video  = java.io.File("$base/Video")
+                    val path = when {
+                        movies.exists() -> "$base/Movies"
+                        video.exists()  -> "$base/Video"
+                        else            -> base
+                    }
+                    onNavigate(NavState.Local(path))
+                } else openStoragePermissionSettings()
+            }
+            "Documents" -> {
+                if (hasStorageAccess()) {
+                    // Documents folder না থাকলে create করে navigate করা
+                    val docs = java.io.File("$base/Documents")
+                    if (!docs.exists()) docs.mkdirs()
+                    onNavigate(NavState.Local(docs.absolutePath))
+                } else openStoragePermissionSettings()
+            }
             "Apps"      -> android.widget.Toast.makeText(context, "Apps coming soon", android.widget.Toast.LENGTH_SHORT).show()
             "New files" -> android.widget.Toast.makeText(context, "New files coming soon", android.widget.Toast.LENGTH_SHORT).show()
             "Cloud"     -> onNavigate(NavState.CloudAccounts)
