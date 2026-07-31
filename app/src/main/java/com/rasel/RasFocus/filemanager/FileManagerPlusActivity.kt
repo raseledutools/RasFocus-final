@@ -29,7 +29,16 @@ import androidx.compose.ui.unit.sp
 import android.content.Intent
 import android.provider.Settings
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.os.StatFs
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 sealed class NavState {
     object Home : NavState()
@@ -147,73 +156,270 @@ fun HomeScreen() {
     }
 }
 
+data class StorageInfo(val used: Long, val total: Long) {
+    val usedText: String get() {
+        if (total <= 0) return ""
+        return "${fmtBytes(used)} / ${fmtBytes(total)}"
+    }
+    val progress: Float get() = if (total <= 0) 0f else (used.toFloat() / total).coerceIn(0f, 1f)
+    private fun fmtBytes(b: Long): String {
+        if (b <= 0) return "0 B"
+        val u = arrayOf("B", "KB", "MB", "GB")
+        val i = (Math.log10(b.toDouble()) / Math.log10(1024.0)).toInt().coerceIn(0, 3)
+        return String.format("%.1f %s", b / Math.pow(1024.0, i.toDouble()), u[i])
+    }
+}
+
+fun getInternalStorageInfo(): StorageInfo {
+    return try {
+        val path = Environment.getDataDirectory()
+        val stat = StatFs(path.path)
+        val total = stat.blockCountLong * stat.blockSizeLong
+        val avail = stat.availableBlocksLong * stat.blockSizeLong
+        StorageInfo(used = total - avail, total = total)
+    } catch (e: Exception) { StorageInfo(0, 0) }
+}
+
+fun getExternalStorageInfo(): StorageInfo {
+    return try {
+        val path = Environment.getExternalStorageDirectory()
+        val stat = StatFs(path.path)
+        val total = stat.blockCountLong * stat.blockSizeLong
+        val avail = stat.availableBlocksLong * stat.blockSizeLong
+        StorageInfo(used = total - avail, total = total)
+    } catch (e: Exception) { StorageInfo(0, 0) }
+}
+
+fun getSdCardStorageInfo(): StorageInfo {
+    return try {
+        val externalDirs = System.getenv("SECONDARY_STORAGE")?.split(":") ?: emptyList()
+        if (externalDirs.isNotEmpty()) {
+            val path = java.io.File(externalDirs[0])
+            val stat = StatFs(path.path)
+            val total = stat.blockCountLong * stat.blockSizeLong
+            val avail = stat.availableBlocksLong * stat.blockSizeLong
+            StorageInfo(used = total - avail, total = total)
+        } else StorageInfo(0, 0)
+    } catch (e: Exception) { StorageInfo(0, 0) }
+}
+
 @Composable
 fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Unit) {
+    val context = LocalContext.current
+    var internalInfo by remember { mutableStateOf(StorageInfo(0, 0)) }
+    var externalInfo by remember { mutableStateOf(StorageInfo(0, 0)) }
+    var sdInfo by remember { mutableStateOf(StorageInfo(0, 0)) }
+    val scope = rememberCoroutineScope()
+
+    // Load real storage info on first composition
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            internalInfo = getInternalStorageInfo()
+            externalInfo = getExternalStorageInfo()
+            sdInfo = getSdCardStorageInfo()
+        }
+    }
+
+    // Permission launcher for MANAGE_EXTERNAL_STORAGE (Android 11+)
+    val manageStorageLauncher = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        androidx.activity.compose.rememberLauncherForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+        ) {
+            // Re-check after returning from settings
+            scope.launch(Dispatchers.IO) {
+                internalInfo = getInternalStorageInfo()
+                externalInfo = getExternalStorageInfo()
+            }
+        }
+    } else null
+
+    fun openStoragePermissionSettings() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                data = Uri.parse("package:${context.packageName}")
+            }
+            manageStorageLauncher?.launch(intent)
+        }
+    }
+
+    fun hasStorageAccess(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Environment.isExternalStorageManager()
+        } else {
+            context.checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    // Colored icons matching common file managers
     val gridItems = listOf(
-        GridItemData("Main storage", LocalFileManager.getMainStorageInfo(), Icons.Default.PhoneAndroid),
-        GridItemData("SD card", "", Icons.Default.SdStorage),
-        GridItemData("Downloads", "", Icons.Default.Download),
-        GridItemData("Images", "", Icons.Default.Image),
-        GridItemData("Audio", "", Icons.Default.Audiotrack),
-        GridItemData("Videos", "", Icons.Default.VideoLibrary),
-        GridItemData("Documents", "", Icons.Default.Description),
-        GridItemData("Apps", "", Icons.Default.Android),
-        GridItemData("New files", "", Icons.Default.Schedule),
-        GridItemData("Cloud", "", Icons.Default.Cloud),
-        GridItemData("Remote", "", Icons.Default.Computer),
-        GridItemData("Access from...", "", Icons.Default.PhonelinkRing)
+        Triple("Internal storage", internalInfo.usedText, Icons.Default.PhoneAndroid),
+        Triple("Main storage", externalInfo.usedText, Icons.Default.Storage),
+        Triple("SD card", sdInfo.usedText, Icons.Default.SdStorage),
+        Triple("Downloads", "", Icons.Default.Download),
+        Triple("Images", "", Icons.Default.Image),
+        Triple("Audio", "", Icons.Default.Audiotrack),
+        Triple("Videos", "", Icons.Default.VideoLibrary),
+        Triple("Documents", "", Icons.Default.Description),
+        Triple("Apps", "", Icons.Default.Android),
+        Triple("New files", "", Icons.Default.Schedule),
+        Triple("Cloud", "", Icons.Default.Cloud),
+        Triple("Remote", "", Icons.Default.Computer)
     )
 
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(3),
-        modifier = modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        items(gridItems) { item ->
-            GridItemView(item, onClick = {
-                when (item.title) {
-                    "Main storage" -> onNavigate(NavState.Local(LocalFileManager.mainStoragePath))
-                    "Cloud" -> onNavigate(NavState.Cloud("root", "My Drive"))
+    val iconColors = listOf(
+        Color(0xFF5C6BC0), // Internal storage — indigo
+        Color(0xFF26A69A), // Main storage — teal
+        Color(0xFF66BB6A), // SD card — green
+        Color(0xFFFFA726), // Downloads — orange
+        Color(0xFFEC407A), // Images — pink
+        Color(0xFF42A5F5), // Audio — blue
+        Color(0xFFAB47BC), // Videos — purple
+        Color(0xFF78909C), // Documents — blue-grey
+        Color(0xFF26C6DA), // Apps — cyan
+        Color(0xFF8D6E63), // New files — brown
+        Color(0xFF1E88E5), // Cloud — bright blue
+        Color(0xFF546E7A), // Remote — slate
+    )
+
+    Column(modifier = modifier.fillMaxSize()) {
+        // Storage summary cards at top
+        if (internalInfo.total > 0 || externalInfo.total > 0) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                if (internalInfo.total > 0) {
+                    StorageSummaryCard(
+                        label = "Internal storage",
+                        info = internalInfo,
+                        color = Color(0xFF5C6BC0)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
-            })
+                if (externalInfo.total > 0 && externalInfo.total != internalInfo.total) {
+                    StorageSummaryCard(
+                        label = "Main storage (External)",
+                        info = externalInfo,
+                        color = Color(0xFF26A69A)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+            }
+        }
+
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(3),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            items(gridItems.size) { index ->
+                val (title, subtitle, icon) = gridItems[index]
+                val color = iconColors[index]
+                GridItemView(
+                    item = GridItemData(title, subtitle, icon),
+                    iconColor = color,
+                    onClick = {
+                        when (title) {
+                            "Internal storage" -> {
+                                if (hasStorageAccess()) {
+                                    onNavigate(NavState.Local(Environment.getDataDirectory().absolutePath))
+                                } else {
+                                    openStoragePermissionSettings()
+                                }
+                            }
+                            "Main storage" -> {
+                                if (hasStorageAccess()) {
+                                    onNavigate(NavState.Local(LocalFileManager.mainStoragePath))
+                                } else {
+                                    openStoragePermissionSettings()
+                                }
+                            }
+                            "Downloads" -> onNavigate(NavState.Local(LocalFileManager.mainStoragePath + "/Download"))
+                            "Cloud" -> onNavigate(NavState.Cloud("root", "My Drive"))
+                        }
+                    }
+                )
+            }
         }
     }
 }
 
 @Composable
-fun GridItemView(item: GridItemData, onClick: () -> Unit) {
+fun StorageSummaryCard(label: String, info: StorageInfo, color: Color) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = label, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Text(
+                    text = "${(info.progress * 100).toInt()}% used",
+                    fontSize = 12.sp,
+                    color = if (info.progress > 0.9f) Color(0xFFE53935) else color
+                )
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            LinearProgressIndicator(
+                progress = { info.progress },
+                modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                color = if (info.progress > 0.9f) Color(0xFFE53935) else color,
+                trackColor = color.copy(alpha = 0.2f)
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(text = info.usedText, fontSize = 11.sp, color = Color.Gray)
+        }
+    }
+}
+
+@Composable
+fun GridItemView(item: GridItemData, iconColor: Color = Color(0xFF26A69A), onClick: () -> Unit) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .clickable { onClick() }
             .padding(8.dp)
     ) {
-        Icon(
-            imageVector = item.icon,
-            contentDescription = item.title,
+        Box(
             modifier = Modifier
                 .size(64.dp)
-                .padding(bottom = 8.dp),
-            tint = Color.Gray // Change to specific colors based on your app's theme
-        )
+                .clip(RoundedCornerShape(16.dp))
+                .background(iconColor.copy(alpha = 0.12f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = item.icon,
+                contentDescription = item.title,
+                modifier = Modifier.size(34.dp),
+                tint = iconColor
+            )
+        }
+        Spacer(modifier = Modifier.height(6.dp))
         Text(
             text = item.title,
-            fontSize = 14.sp,
+            fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
             textAlign = TextAlign.Center,
-            maxLines = 1,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
         if (item.subtitle.isNotEmpty()) {
             Text(
                 text = item.subtitle,
-                fontSize = 11.sp,
+                fontSize = 10.sp,
                 color = Color.Gray,
                 textAlign = TextAlign.Center,
-                maxLines = 1
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
@@ -243,15 +449,21 @@ fun DrawerContent(onNavigate: (NavState) -> Unit) {
         ) {
             DrawerMenuItem(Icons.Default.Home, "Home", Color.Red, onClick = { onNavigate(NavState.Home) })
             
-            // Main Storage with Progress
+            // Main Storage with real Progress
+            val extInfo = remember { getExternalStorageInfo() }
+            val sdCardInfo = remember { getSdCardStorageInfo() }
             DrawerStorageItem(
-                Icons.Default.PhoneAndroid, "Main storage", "96%", 0.96f,
+                Icons.Default.PhoneAndroid, "Main storage",
+                if (extInfo.total > 0) "${(extInfo.progress * 100).toInt()}%" else "—",
+                extInfo.progress,
                 onClick = { onNavigate(NavState.Local(LocalFileManager.mainStoragePath)) }
             )
             
-            // SD Card with Progress
+            // SD Card with real Progress
             DrawerStorageItem(
-                Icons.Default.SdStorage, "SD card", "13%", 0.13f,
+                Icons.Default.SdStorage, "SD card",
+                if (sdCardInfo.total > 0) "${(sdCardInfo.progress * 100).toInt()}%" else "—",
+                sdCardInfo.progress,
                 onClick = { /* Handle SD Card */ }
             )
             
