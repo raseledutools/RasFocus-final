@@ -221,6 +221,7 @@ fun ensureReminderChannel(context: Context) {
 class ReminderAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val label            = intent.getStringExtra("label") ?: "Reminder"
+        val description      = intent.getStringExtra("description") ?: ""
         val withVib          = intent.getBooleanExtra("withVibration", true)
         val notifId          = intent.getIntExtra("notifId", System.currentTimeMillis().toInt())
         val ringtoneUriStr   = intent.getStringExtra("ringtoneUri") ?: ""
@@ -229,8 +230,9 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         val customAmount     = intent.getIntExtra("customAmount", 1)
         val customUnitStr    = intent.getStringExtra("customUnit") ?: CustomRepeatUnit.DAYS.name
         val triggerMillis    = intent.getLongExtra("triggerMillis", System.currentTimeMillis())
+        val priorityStr      = intent.getStringExtra("priority") ?: "NORMAL"
 
-        val duration  = try { RingtoneDuration.valueOf(durationStr) } catch (_: Exception) { RingtoneDuration.ONE_MINUTE }
+        val duration   = try { RingtoneDuration.valueOf(durationStr) } catch (_: Exception) { RingtoneDuration.ONE_MINUTE }
         val repeatType = try { RepeatType.valueOf(repeatTypeStr) } catch (_: Exception) { RepeatType.NONE }
         val customUnit = try { CustomRepeatUnit.valueOf(customUnitStr) } catch (_: Exception) { CustomRepeatUnit.DAYS }
 
@@ -238,7 +240,7 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
 
         // 1. Play ringtone via MediaPlayer
         val ringtoneUri = when {
-            ringtoneUriStr.isNotEmpty() -> Uri.parse(ringtoneUriStr)
+            ringtoneUriStr.isNotEmpty() -> android.net.Uri.parse(ringtoneUriStr)
             else -> RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
                 ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
         }
@@ -262,7 +264,30 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
             } catch (_: Exception) {}
         }
 
-        // 3. Show notification with STOP action
+        // 3. Build repeat label for popup
+        val repeatLabel = when (repeatType) {
+            RepeatType.NONE    -> ""
+            RepeatType.CUSTOM  -> "Every $customAmount ${customUnit.label}"
+            else               -> repeatType.label
+        }
+
+        // 4. Launch full-screen alarm popup Activity
+        val popupIntent = Intent(context, ReminderAlarmActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            putExtra("title", label)
+            putExtra("description", description)
+            putExtra("repeatLabel", repeatLabel)
+            putExtra("priority", priorityStr)
+            putExtra("notifId", notifId)
+            putExtra("withVibration", withVib)
+            putExtra("ringtoneUri", ringtoneUriStr)
+            putExtra("ringtoneDuration", durationStr)
+        }
+        context.startActivity(popupIntent)
+
+        // 5. Also show a notification (for when screen is off / app killed)
         val stopIntent = Intent(context, StopRingtoneReceiver::class.java).let {
             PendingIntent.getBroadcast(context, notifId + 10000, it, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         }
@@ -270,26 +295,44 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
             .notify(notifId, NotificationCompat.Builder(context, RM_CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-                .setContentTitle("⏰ RasFocus Reminder")
-                .setContentText(label)
+                .setContentTitle("⏰ $label")
+                .setContentText(if (description.isNotBlank()) description else "Tap to view")
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
-                .setSound(null)  // sound from MediaPlayer, not notification
-                .addAction(android.R.drawable.ic_media_pause, "Stop", stopIntent)
+                .setFullScreenIntent(
+                    PendingIntent.getActivity(
+                        context, notifId + 20000, popupIntent,
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    ), true
+                )
+                .setSound(null)
+                .addAction(android.R.drawable.ic_media_pause, "Snooze 5 min",
+                    PendingIntent.getBroadcast(context, notifId + 30000,
+                        Intent(context, SnoozeReminderReceiver::class.java).apply {
+                            putExtra("notifId", notifId)
+                            putExtra("label", label)
+                            putExtra("withVibration", withVib)
+                            putExtra("ringtoneUri", ringtoneUriStr)
+                            putExtra("ringtoneDuration", durationStr)
+                        },
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
+                .addAction(android.R.drawable.ic_delete, "Dismiss", stopIntent)
                 .setAutoCancel(true)
                 .build())
 
-        // 4. Schedule next repeat alarm if needed
+        // 6. Schedule next repeat alarm if needed
         val fakeItem = ReminderItem(
             id = notifId,
             title = label,
+            description = description,
             triggerMillis = triggerMillis,
             repeatType = repeatType,
             customRepeatAmount = customAmount,
             customRepeatUnit = customUnit,
             withVibration = withVib,
             ringtoneDuration = duration,
-            ringtoneUriString = ringtoneUriStr
+            ringtoneUriString = ringtoneUriStr,
+            priority = try { ReminderPriority.valueOf(priorityStr) } catch (_: Exception) { ReminderPriority.NORMAL }
         )
         val interval = repeatIntervalMillis(fakeItem)
         if (interval != null && interval > 0) {
@@ -306,6 +349,32 @@ class StopRingtoneReceiver : BroadcastReceiver() {
     }
 }
 
+// Snooze reminder receiver (from notification action)
+class SnoozeReminderReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        ReminderAlarmPlayer.stop()
+        val notifId     = intent.getIntExtra("notifId", 0)
+        val label       = intent.getStringExtra("label") ?: "Reminder"
+        val withVib     = intent.getBooleanExtra("withVibration", true)
+        val ringtoneUri = intent.getStringExtra("ringtoneUri") ?: ""
+        val durationStr = intent.getStringExtra("ringtoneDuration") ?: RingtoneDuration.ONE_MINUTE.name
+        val duration    = try { RingtoneDuration.valueOf(durationStr) } catch (_: Exception) { RingtoneDuration.ONE_MINUTE }
+        // Cancel existing notification
+        (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(notifId)
+        // Schedule snooze 5 min later
+        val snoozeItem = ReminderItem(
+            id = notifId + 50000,
+            title = "\uD83D\uDD14 $label (Snoozed)",
+            triggerMillis = System.currentTimeMillis() + 5 * 60_000L,
+            repeatType = RepeatType.NONE,
+            withVibration = withVib,
+            ringtoneDuration = duration,
+            ringtoneUriString = ringtoneUri
+        )
+        scheduleReminderAlarmFull(context, snoozeItem)
+    }
+}
+
 // ── AlarmManager helpers ───────────────────────────────────────────────────────
 fun scheduleReminderAlarm(context: Context, reminderId: Int, label: String, triggerMillis: Long, withVibration: Boolean) {
     // Minimal overload kept for compatibility
@@ -318,6 +387,8 @@ fun scheduleReminderAlarmFull(context: Context, item: ReminderItem) {
     val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
     val intent = Intent(context, ReminderAlarmReceiver::class.java).apply {
         putExtra("label", item.title)
+        putExtra("description", item.description)
+        putExtra("priority", item.priority.name)
         putExtra("withVibration", item.withVibration)
         putExtra("notifId", item.id)
         putExtra("ringtoneUri", item.ringtoneUriString)
@@ -427,6 +498,8 @@ fun ReminderScreen(onBack: () -> Unit) {
     var nextId         by remember { mutableStateOf(9200) }
     var showAddDialog  by remember { mutableStateOf(false) }
     var editItem       by remember { mutableStateOf<ReminderItem?>(null) }
+    var showSettings   by remember { mutableStateOf(false) }
+    var showQuickDlg   by remember { mutableStateOf(false) }
 
     val filters = listOf("All", "Critical", "Important", "Favorites")
     val displayed = reminders.filter { r ->
@@ -456,11 +529,15 @@ fun ReminderScreen(onBack: () -> Unit) {
                         "Reminder", fontSize = 20.sp, fontWeight = FontWeight.SemiBold,
                         color = RmWhite, modifier = Modifier.weight(1f)
                     )
+                    // Quick Reminder shortcut
+                    IconButton(onClick = { showQuickDlg = true }) {
+                        Icon(Icons.Default.Bolt, contentDescription = "Quick Reminder", tint = RmWhite)
+                    }
                     IconButton(onClick = { addReminderHomeShortcut(context) }) {
                         Icon(Icons.Default.AddToHomeScreen, contentDescription = "Shortcut", tint = RmWhite)
                     }
-                    IconButton(onClick = {}) {
-                        Icon(Icons.Default.FilterList, contentDescription = "Filter", tint = RmWhite)
+                    IconButton(onClick = { showSettings = true }) {
+                        Icon(Icons.Default.Settings, contentDescription = "Settings", tint = RmWhite)
                     }
                 }
             }
@@ -571,6 +648,25 @@ fun ReminderScreen(onBack: () -> Unit) {
                     scheduleReminderAlarmFull(context, newItem)
                 }
                 showAddDialog = false
+            }
+        )
+    }
+
+    if (showSettings) {
+        ReminderSettingsDialog(onDismiss = { showSettings = false })
+    }
+
+    if (showQuickDlg) {
+        QuickReminderDialog(
+            onDismiss = { showQuickDlg = false },
+            onSet = { minutes, label ->
+                scheduleQuickReminder(context, minutes, label)
+                android.widget.Toast.makeText(
+                    context,
+                    "⏰ Reminder set for ${if (minutes < 60) "$minutes min" else "${minutes / 60}h ${minutes % 60}min"}",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+                showQuickDlg = false
             }
         )
     }
@@ -1103,6 +1199,279 @@ private fun RepeatSelectionDialog(
                         Divider(color = RmDivider, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 20.dp))
                 }
             }
+        }
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Reminder Settings Dialog
+// ═════════════════════════════════════════════════════════════════════════════
+@Composable
+fun ReminderSettingsDialog(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+
+    // Persisted settings via SharedPreferences
+    val prefs = remember { context.getSharedPreferences("reminder_settings", Context.MODE_PRIVATE) }
+    var popupEnabled       by remember { mutableStateOf(prefs.getBoolean("popup_enabled", true)) }
+    var snoozeDuration     by remember { mutableStateOf(prefs.getInt("snooze_duration", 5)) }
+    var defaultRingDuration by remember { mutableStateOf(
+        try { RingtoneDuration.valueOf(prefs.getString("ring_duration", "ONE_MINUTE")!!) }
+        catch (_: Exception) { RingtoneDuration.ONE_MINUTE }
+    ) }
+    var vibrationDefault   by remember { mutableStateOf(prefs.getBoolean("vib_default", true)) }
+    var showSnoozeMenu     by remember { mutableStateOf(false) }
+
+    fun save() {
+        prefs.edit()
+            .putBoolean("popup_enabled", popupEnabled)
+            .putInt("snooze_duration", snoozeDuration)
+            .putString("ring_duration", defaultRingDuration.name)
+            .putBoolean("vib_default", vibrationDefault)
+            .apply()
+    }
+
+    Dialog(
+        onDismissRequest = { save(); onDismiss() },
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.96f)
+                .fillMaxHeight(0.85f)
+                .clip(RoundedCornerShape(16.dp))
+                .background(RmWhite)
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+
+                // Header
+                Box(
+                    modifier = Modifier.fillMaxWidth().background(RmTeal)
+                        .padding(horizontal = 4.dp, vertical = 4.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { save(); onDismiss() }) {
+                            Icon(Icons.Default.ArrowBack, contentDescription = null, tint = RmWhite)
+                        }
+                        Text(
+                            "Settings", color = RmWhite,
+                            fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+
+                    // Section: Notifications
+                    SettingsSectionHeader("Sounds & Notifications")
+
+                    SettingsRowSwitch(
+                        icon = Icons.Default.NotificationsActive,
+                        title = "Popup notification",
+                        subtitle = "Show full-screen alarm when reminder fires",
+                        checked = popupEnabled,
+                        onCheckedChange = { popupEnabled = it }
+                    )
+                    Divider(color = RmDivider, modifier = Modifier.padding(start = 56.dp))
+
+                    SettingsRowSwitch(
+                        icon = Icons.Default.Vibration,
+                        title = "Vibration (default)",
+                        subtitle = "Default vibration for new reminders",
+                        checked = vibrationDefault,
+                        onCheckedChange = { vibrationDefault = it }
+                    )
+                    Divider(color = RmDivider, modifier = Modifier.padding(start = 56.dp))
+
+                    // Ring duration default
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Timer, contentDescription = null,
+                            tint = RmTextSub, modifier = Modifier.size(22.dp))
+                        Spacer(Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Default ring duration", fontSize = 15.sp, color = RmText)
+                            Text("How long ringtone plays by default", fontSize = 12.sp, color = RmTextSub)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            RingtoneDuration.values().forEach { dur ->
+                                val sel = defaultRingDuration == dur
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(if (sel) RmTeal else RmBg)
+                                        .border(1.dp, if (sel) RmTeal else RmDivider, RoundedCornerShape(12.dp))
+                                        .clickable { defaultRingDuration = dur }
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Text(dur.label, fontSize = 11.sp,
+                                        color = if (sel) RmWhite else RmTextSub,
+                                        fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal)
+                                }
+                            }
+                        }
+                    }
+                    Divider(color = RmDivider, modifier = Modifier.padding(start = 56.dp))
+
+                    // Section: Behaviour
+                    SettingsSectionHeader("Behaviour")
+
+                    // Snooze duration
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Snooze, contentDescription = null,
+                            tint = RmTextSub, modifier = Modifier.size(22.dp))
+                        Spacer(Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Default snooze duration", fontSize = 15.sp, color = RmText)
+                            Text("How many minutes to snooze", fontSize = 12.sp, color = RmTextSub)
+                        }
+                        Box {
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(RmBg)
+                                    .clickable { showSnoozeMenu = true }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("$snoozeDuration min", color = RmTeal, fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold)
+                                Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = RmTeal)
+                            }
+                            DropdownMenu(expanded = showSnoozeMenu, onDismissRequest = { showSnoozeMenu = false }) {
+                                listOf(1, 2, 5, 10, 15, 20, 30).forEach { mins ->
+                                    DropdownMenuItem(
+                                        text = { Text("$mins minutes") },
+                                        onClick = { snoozeDuration = mins; showSnoozeMenu = false }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Divider(color = RmDivider, modifier = Modifier.padding(start = 56.dp))
+
+                    // Section: Info
+                    SettingsSectionHeader("Help")
+
+                    SettingsRowInfo(
+                        icon = Icons.Default.Info,
+                        title = "Reminders not working?",
+                        subtitle = "Grant exact alarm & notification permissions",
+                        actionLabel = "Permissions",
+                        onAction = {
+                            try {
+                                val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                    data = android.net.Uri.fromParts("package", context.packageName, null)
+                                }
+                                context.startActivity(intent)
+                            } catch (_: Exception) {}
+                        }
+                    )
+                    Divider(color = RmDivider, modifier = Modifier.padding(start = 56.dp))
+
+                    SettingsRowInfo(
+                        icon = Icons.Default.Bolt,
+                        title = "Quick Reminder tile",
+                        subtitle = "Add 'Quick Reminder' to notification shade (action centre)",
+                        actionLabel = "Guide",
+                        onAction = {
+                            android.widget.Toast.makeText(
+                                context,
+                                "Pull down notification shade → Edit → find 'Quick Reminder' → drag to top",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    )
+                    Spacer(Modifier.height(24.dp))
+                }
+
+                // Save button
+                Box(modifier = Modifier.fillMaxWidth().background(RmWhite)
+                    .padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    Button(
+                        onClick = { save(); onDismiss() },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = RmTeal)
+                    ) {
+                        Icon(Icons.Default.Check, contentDescription = null, tint = RmWhite)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Save Settings", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = RmWhite)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsSectionHeader(title: String) {
+    Text(
+        title,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Bold,
+        color = RmTeal,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(RmBg)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    )
+}
+
+@Composable
+private fun SettingsRowSwitch(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .clickable { onCheckedChange(!checked) }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = RmTextSub, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, fontSize = 15.sp, color = RmText)
+            Text(subtitle, fontSize = 12.sp, color = RmTextSub)
+        }
+        Switch(
+            checked = checked, onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(checkedThumbColor = RmTeal, checkedTrackColor = RmTeal.copy(0.3f))
+        )
+    }
+}
+
+@Composable
+private fun SettingsRowInfo(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    actionLabel: String,
+    onAction: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = RmTextSub, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, fontSize = 15.sp, color = RmText)
+            Text(subtitle, fontSize = 12.sp, color = RmTextSub)
+        }
+        TextButton(onClick = onAction) {
+            Text(actionLabel, color = RmTeal, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         }
     }
 }

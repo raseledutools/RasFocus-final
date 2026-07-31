@@ -578,6 +578,50 @@
         android:name=".selfcontrol.study_tools.StopRingtoneReceiver"
         android:exported="false" />
 
+    <!-- ✅ Snooze Reminder Receiver — reschedules alarm 5 min later from notification -->
+    <receiver
+        android:name=".selfcontrol.study_tools.SnoozeReminderReceiver"
+        android:exported="false" />
+
+    <!-- ✅ Full-screen Alarm Popup Activity (shown over lock screen when alarm fires) -->
+    <activity
+        android:name=".selfcontrol.study_tools.ReminderAlarmActivity"
+        android:exported="false"
+        android:showOnLockScreen="true"
+        android:turnScreenOn="true"
+        android:showWhenLocked="true"
+        android:theme="@style/Theme.AppCompat.NoActionBar"
+        android:launchMode="singleTop"
+        android:excludeFromRecents="true" />
+
+    <!-- ✅ Quick Reminder Dialog Activity — opened from QS tile or shortcut -->
+    <activity
+        android:name=".selfcontrol.study_tools.QuickReminderActivity"
+        android:exported="true"
+        android:theme="@style/Theme.AppCompat.Translucent"
+        android:launchMode="singleTop"
+        android:excludeFromRecents="true">
+        <intent-filter>
+            <action android:name="com.rasel.RasFocus.QUICK_REMINDER" />
+            <category android:name="android.intent.category.DEFAULT" />
+        </intent-filter>
+    </activity>
+
+    <!-- ✅ Quick Settings Tile Service (notification shade quick action) — Android 7.0+ -->
+    <service
+        android:name=".selfcontrol.study_tools.QuickReminderTileService"
+        android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+        android:exported="true"
+        android:icon="@drawable/ic_launcher_foreground"
+        android:label="Quick Reminder">
+        <intent-filter>
+            <action android:name="android.service.quicksettings.action.QS_TILE" />
+        </intent-filter>
+        <meta-data
+            android:name="android.service.quicksettings.ACTIVE_TILE"
+            android:value="false" />
+    </service>
+
     <!-- ✅ Unified Blocker Service (UnifiedBlockerService.kt) — adult, website, reels, shorts, app block -->
     <!-- FIX: foregroundServiceType added — without it, onServiceConnected()'s startForeground()
          call throws MissingForegroundServiceTypeException on Android 14+ the moment the user
