@@ -103,6 +103,8 @@ object DriveFileManager {
             recordFailure("uploadFile", e)
             null
         }
+    }
+
     suspend fun createFolder(context: Context, accountName: String, folderName: String, parentFolderId: String = "root"): File? = withContext(Dispatchers.IO) {
         val driveService = buildDriveService(context, accountName) ?: return@withContext null
         try {
