@@ -23,8 +23,12 @@ data class DiaryEntry(
     val pinHash: String = "",          // SHA-256 of PIN (empty = no PIN lock)
 
     // Reminder
-    val reminderTimeMillis: Long = 0L, // 0 = no reminder
+    val reminderTimeMillis: Long = 0L,
     val reminderLabel: String = "",
+
+    // Media: stored as "|||"-separated "image:/path" or "voice:/path" strings
+    @ColumnInfo(name = "media_paths")
+    val mediaPaths: List<String> = emptyList(),
 )
 
 // ============================================================
@@ -81,7 +85,7 @@ interface DiaryDao {
 // ============================================================
 @Database(
     entities = [DiaryEntry::class],
-    version = 2,
+    version = 4,
     exportSchema = false
 )
 @TypeConverters(Converters::class)

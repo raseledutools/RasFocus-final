@@ -33,10 +33,10 @@ object DiaryPdfExporter {
     private val C_DATE_TEXT  = Color.parseColor("#4A148C")
 
     // ── PUBLIC API ──────────────────────────────────────────
-    fun exportSingleEntry(context: Context, entry: DiaryEntry): File? =
+    fun exportSingleEntry(context: Context, entry: DiaryEntry, password: String? = null): File? =
         exportEntries(context, listOf(entry), "diary_entry")
 
-    fun exportAllEntries(context: Context, entries: List<DiaryEntry>): File? =
+    fun exportAllEntries(context: Context, entries: List<DiaryEntry>, password: String? = null): File? =
         exportEntries(context, entries, "diary_export")
 
     // ── MAIN EXPORT ─────────────────────────────────────────

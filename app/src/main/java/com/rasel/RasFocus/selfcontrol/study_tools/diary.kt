@@ -2127,14 +2127,6 @@ fun DiaryEditorArea(
     var mediaRecorder by remember { mutableStateOf<android.media.MediaRecorder?>(null) }
     var audioPath by remember { mutableStateOf<String?>(null) }
 
-    // ── current media list (mutable for drag/resize state) ────────────────────
-    // image scale state per index
-    val imageScales = remember(entry.mediaPaths) {
-        mutableStateMapOf<Int, Float>().also { map ->
-            entry.mediaPaths.forEachIndexed { i, _ -> map[i] = 1f }
-        }
-    }
-
     // ── Photo from Gallery ────────────────────────────────────────────────────
     val galleryLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
