@@ -98,3 +98,8 @@
     java.lang.Object writeReplace();
     java.lang.Object readResolve();
 }
+
+# -- Google API Client & Drive SDK ---------------------------------------------
+-keep class com.google.api.** { *; }
+-keep class com.google.api.services.drive.** { *; }
+-dontwarn com.google.api.**
