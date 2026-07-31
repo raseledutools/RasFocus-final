@@ -15,6 +15,28 @@ import android.provider.MediaStore
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.core.content.pm.ShortcutManagerCompat
+import androidx.core.content.pm.ShortcutInfoCompat
+import androidx.core.graphics.drawable.IconCompat
+import android.content.Intent
+import android.provider.AlarmClock
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.material.icons.filled.Minimize
+import androidx.compose.material.icons.filled.AddBox
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.NoteAdd
+import androidx.compose.material.icons.filled.DragIndicator
+import org.json.JSONArray
+import org.json.JSONObject
+import androidx.compose.ui.geometry.Offset
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -22,7 +44,6 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -50,15 +71,14 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.*
-import android.content.Intent
 import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // Color tokens
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 private val BgDeep       = Color(0xFF0D0D1A)
 private val BgCard       = Color(0xFF1A1A2E)
 private val BgCard2      = Color(0xFF16213E)
@@ -75,9 +95,9 @@ private val AccentLime   = Color(0xFFA8E063)
 private val TextWhite    = Color(0xFFFFFFFF)
 private val TextMuted    = Color(0xFF8888AA)
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // Nav state
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 private sealed class StudyNav {
     object Home       : StudyNav()
     data class Web(val url: String, val title: String) : StudyNav()
@@ -89,14 +109,16 @@ private sealed class StudyNav {
     object QuickNotes : StudyNav()
     object GraphCalculator : StudyNav()
     object DocScanner : StudyNav()  // 📷 CamScanner-style document scanner
+    object Reminder   : StudyNav()  // ⏰ Reminder & Alarm
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // Entry composable
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun StudyToolsScreen(onBack: () -> Unit = {}, onOpenDiary: () -> Unit) {
+    // Note: Reminder screen is handled as nav state inside
     var nav by remember { mutableStateOf<StudyNav>(StudyNav.Home) }
 
     BackHandler {
@@ -122,6 +144,7 @@ fun StudyToolsScreen(onBack: () -> Unit = {}, onOpenDiary: () -> Unit) {
                 onQuickNotes = { nav = StudyNav.QuickNotes },
                 onGraphCalculator = { nav = StudyNav.GraphCalculator },
                 onDocScanner = { nav = StudyNav.DocScanner },
+                onReminder   = { nav = StudyNav.Reminder },
                 onOpenDiary  = onOpenDiary
             )
             is StudyNav.Web        -> StudyWebView(url = current.url, title = current.title, onBack = { nav = StudyNav.Home })
@@ -133,13 +156,15 @@ fun StudyToolsScreen(onBack: () -> Unit = {}, onOpenDiary: () -> Unit) {
             is StudyNav.QuickNotes -> QuickNotesScreen(onBack = { nav = StudyNav.Home })
             is StudyNav.GraphCalculator -> GraphicCalculatorScreen(onBack = { nav = StudyNav.Home })
             is StudyNav.DocScanner -> ScanToPdfScreen(onBack = { nav = StudyNav.Home })
+            is StudyNav.Reminder   -> ReminderScreen(onBack = { nav = StudyNav.Home })
+            else -> {}
         }
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // Main scrollable screen
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 @Composable
 private fun StudyToolsMain(
     onOpenUrl:    (String, String) -> Unit,
@@ -151,6 +176,7 @@ private fun StudyToolsMain(
     onQuickNotes: () -> Unit,
     onGraphCalculator: () -> Unit,
     onDocScanner: () -> Unit,
+    onReminder:   () -> Unit,
     onOpenDiary:  () -> Unit
 ) {
     val scroll = rememberScrollState()
@@ -162,7 +188,7 @@ private fun StudyToolsMain(
             .verticalScroll(scroll)
             .padding(bottom = 40.dp)
     ) {
-        // ── Header ──────────────────────────────────────────────────────
+        // -- Header ------------------------------------------------------
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -172,7 +198,7 @@ private fun StudyToolsMain(
             Column {
                 Text("📚 Study Tools", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = TextWhite)
                 Spacer(Modifier.height(6.dp))
-                Text("সব কিছু এক জায়গায়", fontSize = 14.sp, color = TextMuted)
+                Text("আজকের পড়াশোনা শুরু করো", fontSize = 14.sp, color = TextMuted)
                 Spacer(Modifier.height(8.dp))
                 Text(
                     SimpleDateFormat("EEEE, dd MMMM yyyy", Locale.getDefault()).format(Date()),
@@ -181,17 +207,25 @@ private fun StudyToolsMain(
             }
         }
 
-        // ── Doc Scanner (CamScanner-style) ──────────────────────────────
+        // -- Personal Diary ----------------------------------------------
+        SectionTitle("📔 Personal Diary", AccentPurple, AccentPink)
+        PersonalDiaryCard(onClick = onOpenDiary)
+
+        // -- ⏰ Reminder -------------------------------------------------
+        SectionTitle("⏰ Reminder & Alarm", AccentOrange, AccentRed)
+        ReminderEntryCard(onClick = onReminder)
+
+        // -- Doc Scanner (CamScanner-style) ------------------------------
         SectionTitle("📷 Doc Scanner", AccentCyan, AccentBlue)
         DocScannerCard(onClick = onDocScanner)
 
-        // ── PDF Tools ───────────────────────────────────────────────────
+        // -- PDF Tools ---------------------------------------------------
         SectionTitle("📄 PDF Tools", AccentRed, AccentOrange)
         NativePdfMergeCard(onClick = onPdfMerge)
         NativePdfToolsCard(onClick = onPdfTools)
 
-        // ── Native Tools ────────────────────────────────────────────────
-        SectionTitle("⚡ Native Tools (Offline)", AccentYellow, AccentOrange)
+        // -- Native Tools ------------------------------------------------
+        SectionTitle("? Native Tools (Offline)", AccentYellow, AccentOrange)
         NativeToolsGrid(
             onCalculator = onCalculator,
             onUnitConv   = onUnitConv,
@@ -200,57 +234,54 @@ private fun StudyToolsMain(
             onGraphCalculator = onGraphCalculator
         )
 
-        // ── Math & Reference ────────────────────────────────────────────
-        SectionTitle("📐 Math & Reference", AccentGreen, AccentTeal)
+        // -- Math & Reference --------------------------------------------
+        SectionTitle("🔢 Math & Reference", AccentGreen, AccentTeal)
         ToolGrid(
             items = listOf(
-                ToolItem("∞",  "Wolfram Alpha", AccentGreen,        "https://www.wolframalpha.com"),
+                ToolItem("8",  "Wolfram Alpha", AccentGreen,        "https://www.wolframalpha.com"),
                 ToolItem("📈", "Desmos Graph",  AccentTeal,         "https://www.desmos.com/calculator"),
-                ToolItem("📊", "GeoGebra",      Color(0xFF56AB2F),  "https://www.geogebra.org/calculator"),
+                ToolItem("📐", "GeoGebra",      Color(0xFF56AB2F),  "https://www.geogebra.org/calculator"),
                 ToolItem("🔢", "Matrix Calc",   Color(0xFF11998E),  "https://matrix.reshish.com")
             ),
             onOpenUrl = onOpenUrl
         )
 
-        // ── Dictionary & Translation ────────────────────────────────────
+        // -- Dictionary & Translation ------------------------------------
         SectionTitle("📖 Dictionary & Translation", AccentBlue, AccentCyan)
         ToolGrid(
             items = listOf(
                 ToolItem("🇧🇩", "Bangla Dict",    AccentBlue,          "https://www.bdword.com"),
                 ToolItem("🌐", "Google Translate", Color(0xFF4285F4),   "https://translate.google.com"),
-                ToolItem("📚", "Oxford Dict",      Color(0xFF0078D7),   "https://www.oxfordlearnersdictionaries.com"),
-                ToolItem("🗣️", "Cambridge Dict",   Color(0xFF003087),   "https://dictionary.cambridge.org")
+                ToolItem("📖", "Oxford Dict",      Color(0xFF0078D7),   "https://www.oxfordlearnersdictionaries.com"),
+                ToolItem("📚", "Cambridge Dict",   Color(0xFF003087),   "https://dictionary.cambridge.org")
             ),
             onOpenUrl = onOpenUrl
         )
 
-        // ── AI Section ──────────────────────────────────────────────────
+        // -- AI Section --------------------------------------------------
         SectionTitle("🤖 AI Section", AccentPurple, AccentPink)
         ToolGrid(
             items = listOf(
                 ToolItem("🤖", "Claude AI",   AccentBlue,          "https://claude.ai"),
-                ToolItem("♊",  "Gemini",      Color(0xFF00C853),   "https://gemini.google.com"),
+                ToolItem("?",  "Gemini",      Color(0xFF00C853),   "https://gemini.google.com"),
                 ToolItem("💬", "ChatGPT",     Color(0xFF74B9FF),   "https://chat.openai.com"),
-                ToolItem("🧠", "DeepSeek",    Color(0xFF6C63FF),   "https://chat.deepseek.com"),
-                ToolItem("🔍", "Perplexity",  Color(0xFF00CEC9),   "https://www.perplexity.ai"),
-                ToolItem("✨", "Gamma AI",    Color(0xFFA29BFE),   "https://gamma.app")
+                ToolItem("🔍", "DeepSeek",    Color(0xFF6C63FF),   "https://chat.deepseek.com"),
+                ToolItem("🔮", "Perplexity",  Color(0xFF00CEC9),   "https://www.perplexity.ai"),
+                ToolItem("?", "Gamma AI",    Color(0xFFA29BFE),   "https://gamma.app")
             ),
             onOpenUrl = onOpenUrl
         )
 
-        // ── Personal Diary ──────────────────────────────────────────────
-        SectionTitle("📓 Personal Diary", AccentPurple, AccentPink)
-        PersonalDiaryCard(onClick = onOpenDiary)
-
-        // ── Tomorrow's Tasks ────────────────────────────────────────────
+        // -- Tomorrow's Tasks --------------------------------------------
         SectionTitle("✅ Tomorrow's Tasks", AccentGreen, AccentTeal)
-        TaskSection()
+        TomorrowTasksCard()
+        
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Native Tools 2×2 grid
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
+// Native Tools 2�2 grid
+// -----------------------------------------------------------------------------
 @Composable
 private fun NativeToolsGrid(
     onCalculator: () -> Unit,
@@ -262,9 +293,9 @@ private fun NativeToolsGrid(
     val tools = listOf(
         Triple("🧮", "Calculator",   onCalculator) to Pair(AccentYellow, Color(0xFFFF8E00)),
         Triple("📏", "Unit Converter", onUnitConv) to Pair(AccentLime,   Color(0xFF38F9D7)),
-        Triple("🍅", "Pomodoro",     onPomodoro)   to Pair(AccentRed,    AccentOrange),
+        Triple("⏱️", "Pomodoro",     onPomodoro)   to Pair(AccentRed,    AccentOrange),
         Triple("📝", "Quick Notes",  onQuickNotes) to Pair(AccentPurple, AccentPink),
-        Triple("📈", "Graph Calculator", onGraphCalculator) to Pair(AccentBlue, AccentCyan)
+        Triple("📊", "Graph Calculator", onGraphCalculator) to Pair(AccentBlue, AccentCyan)
     )
     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
         tools.chunked(2).forEach { row ->
@@ -297,8 +328,8 @@ private fun NativeToolCard(
     onClick: () -> Unit, modifier: Modifier
 ) {
     Card(
-        modifier = modifier.height(110.dp).clickable { onClick() },
-        shape = RoundedCornerShape(20.dp),
+        modifier = modifier.height(90.dp).clickable { onClick() },
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color.Transparent),
         elevation = CardDefaults.cardElevation(8.dp)
     ) {
@@ -307,9 +338,9 @@ private fun NativeToolCard(
                 .fillMaxSize()
                 .background(
                     Brush.linearGradient(listOf(BgCard, Color(0xFF252540))),
-                    RoundedCornerShape(20.dp)
+                    RoundedCornerShape(16.dp)
                 )
-                .padding(16.dp)
+                .padding(12.dp)
         ) {
             Box(
                 modifier = Modifier.size(36.dp).align(Alignment.TopEnd)
@@ -331,8 +362,8 @@ private fun NativeToolCard(
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.Start
             ) {
-                Text(emoji, fontSize = 26.sp)
-                Spacer(Modifier.height(6.dp))
+                Text(emoji, fontSize = 22.sp)
+                Spacer(Modifier.height(4.dp))
                 Text(label, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                     color = colorA)
                 Spacer(Modifier.height(4.dp))
@@ -348,9 +379,9 @@ private fun NativeToolCard(
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // Native PDF Merge card (full-width)
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 @Composable
 private fun NativePdfMergeCard(onClick: () -> Unit) {
     Card(
@@ -369,11 +400,11 @@ private fun NativePdfMergeCard(onClick: () -> Unit) {
                 .padding(horizontal = 20.dp, vertical = 18.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("🔀", fontSize = 28.sp)
+                Text("📄", fontSize = 28.sp)
                 Spacer(Modifier.width(16.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text("PDF Merge", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = AccentRed)
-                    Text("সরাসরি ফোনে — ইন্টারনেট ছাড়াই", fontSize = 11.sp, color = TextMuted)
+                    Text("পেজ মার্জ করো • একটি ফাইলে আনো", fontSize = 11.sp, color = TextMuted)
                 }
                 Box(
                     modifier = Modifier
@@ -387,9 +418,9 @@ private fun NativePdfMergeCard(onClick: () -> Unit) {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // Native PDF Tools card (full-width)
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 @Composable
 private fun NativePdfToolsCard(onClick: () -> Unit) {
     Card(
@@ -408,11 +439,11 @@ private fun NativePdfToolsCard(onClick: () -> Unit) {
                 .padding(horizontal = 20.dp, vertical = 18.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("🖼️", fontSize = 28.sp)
+                Text("🗂️", fontSize = 28.sp)
                 Spacer(Modifier.width(16.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text("PDF & Image Tools", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = AccentOrange)
-                    Text("Convert · Split · Compress — ইন্টারনেট ছাড়াই", fontSize = 11.sp, color = TextMuted)
+                    Text("Convert • Split • Compress • সব ধরনের কাজ", fontSize = 11.sp, color = TextMuted)
                 }
                 Box(
                     modifier = Modifier
@@ -426,9 +457,9 @@ private fun NativePdfToolsCard(onClick: () -> Unit) {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Doc Scanner card (CamScanner-style) — full-width hero card
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
+// Doc Scanner card (CamScanner-style) � full-width hero card
+// -----------------------------------------------------------------------------
 @Composable
 private fun DocScannerCard(onClick: () -> Unit) {
     Card(
@@ -473,7 +504,7 @@ private fun DocScannerCard(onClick: () -> Unit) {
                         ),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("📷", fontSize = 28.sp)
+                    Text("📄", fontSize = 28.sp)
                 }
                 Spacer(Modifier.width(16.dp))
                 Column(modifier = Modifier.weight(1f)) {
@@ -485,7 +516,7 @@ private fun DocScannerCard(onClick: () -> Unit) {
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "CamScanner-এর মতো — Auto edge detect, Magic Color, PDF export",
+                        "CamScanner-এর মতো • � Auto edge detect, Magic Color, PDF export",
                         fontSize = 11.sp,
                         color = TextMuted,
                         lineHeight = 16.sp
@@ -520,9 +551,9 @@ private fun DocScannerCard(onClick: () -> Unit) {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // Section title
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 @Composable
 private fun SectionTitle(title: String, colorA: Color, colorB: Color) {
     Row(
@@ -538,9 +569,9 @@ private fun SectionTitle(title: String, colorA: Color, colorB: Color) {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // Tool item & grid (WebView tools)
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 private data class ToolItem(val emoji: String, val label: String, val color: Color, val url: String)
 
 @Composable
@@ -564,16 +595,16 @@ private fun ToolGrid(items: List<ToolItem>, onOpenUrl: (String, String) -> Unit)
 @Composable
 private fun ToolCard(item: ToolItem, modifier: Modifier, onOpenUrl: (String, String) -> Unit) {
     Card(
-        modifier = modifier.height(110.dp).clickable { onOpenUrl(item.url, "${item.emoji} ${item.label}") },
-        shape = RoundedCornerShape(20.dp),
+        modifier = modifier.height(90.dp).clickable { onOpenUrl(item.url, "${item.emoji} ${item.label}") },
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color.Transparent),
         elevation = CardDefaults.cardElevation(8.dp)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Brush.linearGradient(listOf(BgCard, Color(0xFF252540))), RoundedCornerShape(20.dp))
-                .padding(16.dp)
+                .background(Brush.linearGradient(listOf(BgCard, Color(0xFF252540))), RoundedCornerShape(16.dp))
+                .padding(12.dp)
         ) {
             Box(
                 modifier = Modifier.size(36.dp).align(Alignment.TopEnd)
@@ -587,8 +618,8 @@ private fun ToolCard(item: ToolItem, modifier: Modifier, onOpenUrl: (String, Str
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.Start
             ) {
-                Text(item.emoji, fontSize = 26.sp)
-                Spacer(Modifier.height(8.dp))
+                Text(item.emoji, fontSize = 22.sp)
+                Spacer(Modifier.height(4.dp))
                 Text(item.label, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = item.color)
                 Spacer(Modifier.height(4.dp))
                 Box(
@@ -603,9 +634,9 @@ private fun ToolCard(item: ToolItem, modifier: Modifier, onOpenUrl: (String, Str
     }
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-//  NATIVE SCREEN 1 — Scientific Calculator
-// ═════════════════════════════════════════════════════════════════════════════
+// -----------------------------------------------------------------------------
+//  NATIVE SCREEN 1 � Scientific Calculator
+// -----------------------------------------------------------------------------
 @Composable
 private fun ScientificCalculatorScreen(onBack: () -> Unit) {
     var display   by remember { mutableStateOf("0") }
@@ -619,15 +650,15 @@ private fun ScientificCalculatorScreen(onBack: () -> Unit) {
         return try {
             // Replace display symbols
             var e = expr
-                .replace("×", "*").replace("÷", "/")
-                .replace("π", Math.PI.toString())
+                .replace("�", "*").replace("�", "/")
+                .replace("p", Math.PI.toString())
                 .replace("e", Math.E.toString())
             // Simple recursive descent is complex; use stack-based approach
             // For trig/log we parse manually
             fun parseFull(s: String): Double {
                 var str = s.trim()
                 // trig / log functions
-                val funcRegex = Regex("(sin|cos|tan|log|ln|√)\\(([^)]+)\\)")
+                val funcRegex = Regex("(sin|cos|tan|log|ln|v)\\(([^)]+)\\)")
                 str = funcRegex.replace(str) { m ->
                     val fn  = m.groupValues[1]
                     val arg = parseFull(m.groupValues[2])
@@ -637,7 +668,7 @@ private fun ScientificCalculatorScreen(onBack: () -> Unit) {
                         "tan" -> tan(toRad(arg))
                         "log" -> log10(arg)
                         "ln"  -> ln(arg)
-                        "√"   -> sqrt(arg)
+                        "v"   -> sqrt(arg)
                         else  -> arg
                     }.toString()
                 }
@@ -658,7 +689,7 @@ private fun ScientificCalculatorScreen(onBack: () -> Unit) {
     fun onBtn(btn: String) {
         when (btn) {
             "C"   -> { display = "0"; expression = ""; justEvaled = false }
-            "⌫"  -> {
+            "?"  -> {
                 if (justEvaled) { display = "0"; expression = ""; justEvaled = false }
                 else {
                     expression = if (expression.length <= 1) "" else expression.dropLast(1)
@@ -671,7 +702,7 @@ private fun ScientificCalculatorScreen(onBack: () -> Unit) {
                 expression = if (result == "Error") "" else result
                 justEvaled = true
             }
-            "±"   -> {
+            "�"   -> {
                 if (display != "0" && display != "Error") {
                     if (display.startsWith("-")) { display = display.drop(1); expression = display }
                     else { display = "-$display"; expression = display }
@@ -685,18 +716,18 @@ private fun ScientificCalculatorScreen(onBack: () -> Unit) {
                     expression = display
                 }
             }
-            "sin(", "cos(", "tan(", "log(", "ln(", "√(" -> {
+            "sin(", "cos(", "tan(", "log(", "ln(", "v(" -> {
                 if (justEvaled) { expression = btn; justEvaled = false }
                 else expression += btn
                 display = expression
             }
             ")" -> { expression += ")"; display = expression }
-            "π", "e" -> {
+            "p", "e" -> {
                 if (justEvaled) { expression = btn; justEvaled = false }
                 else expression += btn
                 display = expression
             }
-            "x²" -> {
+            "x�" -> {
                 val v = display.toDoubleOrNull()
                 if (v != null) {
                     val r = v * v
@@ -704,7 +735,7 @@ private fun ScientificCalculatorScreen(onBack: () -> Unit) {
                     display = expression; justEvaled = true
                 }
             }
-            "x³" -> {
+            "x�" -> {
                 val v = display.toDoubleOrNull()
                 if (v != null) {
                     val r = v * v * v
@@ -728,21 +759,21 @@ private fun ScientificCalculatorScreen(onBack: () -> Unit) {
     }
 
     // Button layout
-    val scientificRow = listOf("sin(", "cos(", "tan(", "log(", "ln(", "√(")
-    val row2 = listOf("x²", "x³", "1/x", "^", "π", "e")
+    val scientificRow = listOf("sin(", "cos(", "tan(", "log(", "ln(", "v(")
+    val row2 = listOf("x�", "x�", "1/x", "^", "p", "e")
     val mainRows = listOf(
-        listOf("C", "⌫", "%", "÷"),
-        listOf("7", "8", "9", "×"),
+        listOf("C", "?", "%", "�"),
+        listOf("7", "8", "9", "�"),
         listOf("4", "5", "6", "-"),
         listOf("1", "2", "3", "+"),
-        listOf("±", "0", ".", "=")
+        listOf("�", "0", ".", "=")
     )
 
     fun btnColor(btn: String): Color = when {
         btn == "=" -> AccentGreen
-        btn in listOf("÷", "×", "-", "+", "^") -> AccentOrange
-        btn in listOf("C", "⌫") -> AccentRed
-        btn in listOf("%", "±") -> Color(0xFF3A3A5A)
+        btn in listOf("�", "�", "-", "+", "^") -> AccentOrange
+        btn in listOf("C", "?") -> AccentRed
+        btn in listOf("%", "�") -> Color(0xFF3A3A5A)
         btn in scientificRow || btn in row2 -> Color(0xFF2A2A4A)
         else -> Color(0xFF1E1E38)
     }
@@ -884,25 +915,25 @@ private fun evalArithmetic(expr: String): Double {
     return result
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-//  NATIVE SCREEN 2 — Unit Converter
-// ═════════════════════════════════════════════════════════════════════════════
+// -----------------------------------------------------------------------------
+//  NATIVE SCREEN 2 � Unit Converter
+// -----------------------------------------------------------------------------
 private enum class UnitCategory(val label: String, val emoji: String) {
     LENGTH("Length", "📏"), MASS("Mass", "⚖️"),
-    TEMP("Temperature", "🌡️"), AREA("Area", "🗺️"),
-    SPEED("Speed", "🚀"), TIME("Time", "⏱️"),
+    TEMP("Temperature", "🌡️"), AREA("Area", "📐"),
+    SPEED("Speed", "💨"), TIME("Time", "⏱️"),
     VOLUME("Volume", "🧪"), DATA("Data", "💾")
 }
 
 private val unitData: Map<UnitCategory, List<Pair<String, Double>>> = mapOf(
     UnitCategory.LENGTH to listOf("mm" to 1e-3, "cm" to 1e-2, "m" to 1.0, "km" to 1e3, "inch" to 0.0254, "ft" to 0.3048, "yard" to 0.9144, "mile" to 1609.344),
     UnitCategory.MASS   to listOf("mg" to 1e-6, "g" to 1e-3, "kg" to 1.0, "ton" to 1e3, "lb" to 0.453592, "oz" to 0.0283495),
-    UnitCategory.AREA   to listOf("mm²" to 1e-6, "cm²" to 1e-4, "m²" to 1.0, "km²" to 1e6, "acre" to 4046.86, "hectare" to 1e4, "ft²" to 0.092903),
+    UnitCategory.AREA   to listOf("mm�" to 1e-6, "cm�" to 1e-4, "m�" to 1.0, "km�" to 1e6, "acre" to 4046.86, "hectare" to 1e4, "ft�" to 0.092903),
     UnitCategory.SPEED  to listOf("m/s" to 1.0, "km/h" to 0.277778, "mph" to 0.44704, "knot" to 0.514444, "ft/s" to 0.3048),
     UnitCategory.TIME   to listOf("ms" to 1e-3, "s" to 1.0, "min" to 60.0, "hr" to 3600.0, "day" to 86400.0, "week" to 604800.0, "month" to 2.628e6, "year" to 3.156e7),
-    UnitCategory.VOLUME to listOf("ml" to 1e-3, "L" to 1.0, "m³" to 1e3, "cup" to 0.236588, "fl oz" to 0.0295735, "pint" to 0.473176, "gallon" to 3.78541),
+    UnitCategory.VOLUME to listOf("ml" to 1e-3, "L" to 1.0, "m�" to 1e3, "cup" to 0.236588, "fl oz" to 0.0295735, "pint" to 0.473176, "gallon" to 3.78541),
     UnitCategory.DATA   to listOf("bit" to 1.0, "byte" to 8.0, "KB" to 8192.0, "MB" to 8388608.0, "GB" to 8589934592.0, "TB" to 8.796e12),
-    UnitCategory.TEMP   to listOf("°C" to 0.0, "°F" to 0.0, "K" to 0.0)   // handled specially
+    UnitCategory.TEMP   to listOf("�C" to 0.0, "�F" to 0.0, "K" to 0.0)   // handled specially
 )
 
 @Composable
@@ -917,19 +948,19 @@ private fun UnitConverterScreen(onBack: () -> Unit) {
     LaunchedEffect(category) { fromIdx = 0; toIdx = 1; inputVal = "1" }
 
     fun convert(): String {
-        val v = inputVal.toDoubleOrNull() ?: return "—"
+        val v = inputVal.toDoubleOrNull() ?: return "�"
         if (category == UnitCategory.TEMP) {
             val fromU = units[fromIdx].first
             val toU   = units[toIdx].first
             val celsius = when (fromU) {
-                "°C" -> v
-                "°F" -> (v - 32) * 5 / 9
+                "�C" -> v
+                "�F" -> (v - 32) * 5 / 9
                 "K"  -> v - 273.15
                 else -> v
             }
             val result = when (toU) {
-                "°C" -> celsius
-                "°F" -> celsius * 9 / 5 + 32
+                "�C" -> celsius
+                "�F" -> celsius * 9 / 5 + 32
                 "K"  -> celsius + 273.15
                 else -> celsius
             }
@@ -1011,7 +1042,7 @@ private fun UnitConverterScreen(onBack: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 shape    = RoundedCornerShape(14.dp),
                 colors   = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A2A4A))
-            ) { Text("⇅ Swap", color = AccentYellow, fontWeight = FontWeight.Bold) }
+            ) { Text("? Swap", color = AccentYellow, fontWeight = FontWeight.Bold) }
 
             // Number pad
             OutlinedTextField(
@@ -1046,7 +1077,7 @@ private fun UnitDropdown(label: String, units: List<Pair<String, Double>>, selec
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(label, fontSize = 10.sp, color = TextMuted)
-                Text(units.getOrNull(selectedIdx)?.first ?: "—", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text(units.getOrNull(selectedIdx)?.first ?: "�", fontSize = 14.sp, fontWeight = FontWeight.Bold)
             }
         }
         DropdownMenu(
@@ -1064,9 +1095,9 @@ private fun UnitDropdown(label: String, units: List<Pair<String, Double>>, selec
     }
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-//  NATIVE SCREEN 3 — Pomodoro Timer
-// ═════════════════════════════════════════════════════════════════════════════
+// -----------------------------------------------------------------------------
+//  NATIVE SCREEN 3 � Pomodoro Timer
+// -----------------------------------------------------------------------------
 private enum class PomodoroPhase(val label: String, val color: Color, val defaultMin: Int) {
     FOCUS("Focus", AccentRed, 25),
     SHORT_BREAK("Short Break", AccentGreen, 5),
@@ -1106,7 +1137,7 @@ private fun PomodoroScreen(onBack: () -> Unit) {
     val timeStr = "%02d:%02d".format(mins, secs)
 
     Column(modifier = Modifier.fillMaxSize().background(BgDeep)) {
-        TopBar("🍅 Pomodoro", onBack)
+        TopBar("⏱️ Pomodoro", onBack)
 
         Column(
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -1155,7 +1186,7 @@ private fun PomodoroScreen(onBack: () -> Unit) {
                     shape  = RoundedCornerShape(50.dp),
                     border = androidx.compose.foundation.BorderStroke(1.dp, phase.color),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = phase.color)
-                ) { Text("↺ Reset") }
+                ) { Text("? Reset") }
 
                 // Play / Pause
                 Button(
@@ -1164,7 +1195,7 @@ private fun PomodoroScreen(onBack: () -> Unit) {
                     colors = ButtonDefaults.buttonColors(containerColor = phase.color),
                     modifier = Modifier.width(140.dp).height(48.dp)
                 ) {
-                    Text(if (running) "⏸ Pause" else "▶ Start",
+                    Text(if (running) "? Pause" else "? Start",
                         color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
             }
@@ -1186,9 +1217,9 @@ private fun PomodoroScreen(onBack: () -> Unit) {
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         repeat(minOf(sessions, 8)) {
-                            Text("🍅", fontSize = 20.sp)
+                            Text("🎯", fontSize = 20.sp)
                         }
-                        if (sessions == 0) Text("—", color = TextMuted, fontSize = 16.sp)
+                        if (sessions == 0) Text("�", color = TextMuted, fontSize = 16.sp)
                         if (sessions > 8) Text("+${sessions-8}", color = AccentRed, fontSize = 14.sp)
                     }
                     TextButton(onClick = { sessions = 0 }) {
@@ -1205,8 +1236,8 @@ private fun PomodoroScreen(onBack: () -> Unit) {
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("💡 Pomodoro Tips", fontSize = 13.sp, color = AccentGreen, fontWeight = FontWeight.Bold)
-                    Text("• ২৫ মিনিট focus → ৫ মিনিট break", fontSize = 12.sp, color = TextMuted)
-                    Text("• ৪টি session শেষে ১৫ মিনিট long break", fontSize = 12.sp, color = TextMuted)
+                    Text("• ২৫ মিনিট focus, ৫ মিনিট break", fontSize = 12.sp, color = TextMuted)
+                    Text("• ৪টি session পরে ১৫ মিনিট long break", fontSize = 12.sp, color = TextMuted)
                     Text("• Phone down রাখো, notification বন্ধ করো", fontSize = 12.sp, color = TextMuted)
                 }
             }
@@ -1214,9 +1245,9 @@ private fun PomodoroScreen(onBack: () -> Unit) {
     }
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-//  NATIVE SCREEN 4 — Quick Notes (multi-note, SharedPrefs)
-// ═════════════════════════════════════════════════════════════════════════════
+// -----------------------------------------------------------------------------
+//  NATIVE SCREEN 4 � Quick Notes (multi-note, SharedPrefs)
+// -----------------------------------------------------------------------------
 @Composable
 private fun QuickNotesScreen(onBack: () -> Unit) {
     val context = LocalContext.current
@@ -1336,7 +1367,7 @@ private fun QuickNotesScreen(onBack: () -> Unit) {
                         Text("কোনো note নেই", color = TextMuted, fontSize = 16.sp)
                         Spacer(Modifier.height(8.dp))
                         TextButton(onClick = { titleTf = ""; bodyTf = ""; showNew = true }) {
-                            Text("+ নতুন note যোগ করো", color = AccentYellow)
+                            Text("+ নতুন note লেখা শুরু করো", color = AccentYellow)
                         }
                     }
                 }
@@ -1377,9 +1408,9 @@ private fun QuickNotesScreen(onBack: () -> Unit) {
     }
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-//  NATIVE SCREEN 5 — PDF Merge
-// ═════════════════════════════════════════════════════════════════════════════
+// -----------------------------------------------------------------------------
+//  NATIVE SCREEN 5 � PDF Merge
+// -----------------------------------------------------------------------------
 @Composable
 private fun NativePdfMergeScreen(onBack: () -> Unit) {
     val context = LocalContext.current
@@ -1393,7 +1424,7 @@ private fun NativePdfMergeScreen(onBack: () -> Unit) {
     }
 
     Column(modifier = Modifier.fillMaxSize().background(BgDeep)) {
-        TopBar("🔀 PDF Merge", onBack)
+        TopBar("📄 PDF Merge", onBack)
 
         Column(
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -1406,7 +1437,7 @@ private fun NativePdfMergeScreen(onBack: () -> Unit) {
             ) {
                 Icon(Icons.Default.Add, contentDescription = null, tint = Color.White)
                 Spacer(Modifier.width(8.dp))
-                Text("PDF ফাইল যোগ করো", color = Color.White, fontWeight = FontWeight.Bold)
+                Text("PDF ফাইল যোগ করুন", color = Color.White, fontWeight = FontWeight.Bold)
             }
 
             if (selectedUris.isEmpty()) {
@@ -1414,7 +1445,7 @@ private fun NativePdfMergeScreen(onBack: () -> Unit) {
                     modifier = Modifier.fillMaxWidth().height(140.dp)
                         .background(BgCard, RoundedCornerShape(16.dp)),
                     contentAlignment = Alignment.Center
-                ) { Text("কোনো ফাইল বাছাই হয়নি", color = TextMuted) }
+                ) { Text("কোনো ফাইল যোগ করা হয়নি", color = TextMuted) }
             } else {
                 Card(shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = BgCard),
@@ -1434,12 +1465,12 @@ private fun NativePdfMergeScreen(onBack: () -> Unit) {
                             Row(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically) {
                                 Text("${index+1}.", fontSize = 13.sp, color = AccentBlue, modifier = Modifier.width(28.dp))
-                                Text("📄", fontSize = 14.sp)
+                                Text("✕", fontSize = 14.sp)
                                 Spacer(Modifier.width(8.dp))
                                 Text(name, fontSize = 13.sp, color = TextWhite, modifier = Modifier.weight(1f), maxLines = 1)
                                 IconButton(onClick = { selectedUris = selectedUris.toMutableList().also { it.removeAt(index) } },
                                     modifier = Modifier.size(28.dp)) {
-                                    Text("✕", color = AccentRed, fontSize = 13.sp)
+                                    Text("?", color = AccentRed, fontSize = 13.sp)
                                 }
                             }
                             if (index < selectedUris.lastIndex) HorizontalDivider(color = Color(0xFF2A2A4A), thickness = 1.dp)
@@ -1447,18 +1478,18 @@ private fun NativePdfMergeScreen(onBack: () -> Unit) {
                     }
                 }
                 TextButton(onClick = { selectedUris = emptyList(); status = "" }, modifier = Modifier.align(Alignment.End)) {
-                    Text("🗑️ সব মুছো", color = AccentRed, fontSize = 13.sp)
+                    Text("এরর হয়েছে", color = AccentRed, fontSize = 13.sp)
                 }
             }
 
             if (selectedUris.size >= 2) {
                 Button(
                     onClick = {
-                        isMerging = true; status = "⏳ Merge হচ্ছে..."
+                    isMerging = true; status = "⏳ Merge হচ্ছে..."
                         scope.launch {
                             status = mergePdfs(context, selectedUris)
                             isMerging = false
-                            if (status.startsWith("✅")) selectedUris = emptyList()
+                            if (status.startsWith("?")) selectedUris = emptyList()
                         }
                     },
                     modifier = Modifier.fillMaxWidth(), enabled = !isMerging,
@@ -1466,23 +1497,23 @@ private fun NativePdfMergeScreen(onBack: () -> Unit) {
                     colors = ButtonDefaults.buttonColors(containerColor = AccentGreen)
                 ) {
                     if (isMerging) { CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp); Spacer(Modifier.width(10.dp)) }
-                    Text("🔀 Merge করো (${selectedUris.size}টি PDF)", color = Color(0xFF0D1F0D), fontWeight = FontWeight.Bold)
+                    Text("🔗 Merge করো (${selectedUris.size}টি PDF)", color = Color(0xFF0D1F0D), fontWeight = FontWeight.Bold)
                 }
             }
 
             if (status.isNotEmpty()) {
                 Card(shape = RoundedCornerShape(14.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = if (status.startsWith("✅")) Color(0xFF0D2A15) else Color(0xFF2A0D0D)
+                        containerColor = if (status.startsWith("?")) Color(0xFF0D2A15) else Color(0xFF2A0D0D)
                     ), modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(status, modifier = Modifier.padding(14.dp), fontSize = 13.sp,
-                        color = if (status.startsWith("✅")) AccentGreen else AccentRed)
+                        color = if (status.startsWith("?")) AccentGreen else AccentRed)
                 }
             }
 
             Text(
-                "• ইন্টারনেট ছাড়াই কাজ করে\n• Merged ফাইল Downloads-এ সেভ হবে\n• কমপক্ষে ২টি PDF দরকার",
+                "• একাধিক ফাইল সিলেক্ট করো\n• Merged ফাইল Downloads-এ যাবে\n• যেকোনো সাইজের PDF সাপোর্ট",
                 fontSize = 12.sp, color = TextMuted, lineHeight = 20.sp
             )
         }
@@ -1495,7 +1526,7 @@ private suspend fun mergePdfs(context: Context, uris: List<Uri>): String =
             val outputDoc = PdfDocument(); var globalPage = 1
             for (uri in uris) {
                 val pfd: ParcelFileDescriptor = context.contentResolver.openFileDescriptor(uri, "r")
-                    ?: return@withContext "❌ ফাইল খোলা যায়নি"
+                    ?: return@withContext "❌ ফাইল খুলতে পারছে না"
                 pfd.use { desc ->
                     PdfRenderer(desc).use { r ->
                         for (i in 0 until r.pageCount) {
@@ -1520,7 +1551,7 @@ private suspend fun mergePdfs(context: Context, uris: List<Uri>): String =
                     put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
                 }
                 val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv)
-                    ?: return@withContext "❌ সেভ করা যায়নি"
+                    ?: return@withContext "❌ লেখা যাচ্ছে না"
                 context.contentResolver.openOutputStream(uri)?.use { outputDoc.writeTo(it) }
             } else {
                 @Suppress("DEPRECATION")
@@ -1528,13 +1559,13 @@ private suspend fun mergePdfs(context: Context, uris: List<Uri>): String =
                 dir.mkdirs(); File(dir, fileName).outputStream().use { outputDoc.writeTo(it) }
             }
             outputDoc.close()
-            "✅ Merge সফল! Downloads/$fileName"
-        } catch (e: Exception) { "❌ Error: ${e.message}" }
+            "✅ Merge সম্পন্ন! Downloads/$fileName"
+        } catch (e: Exception) { "? Error: ${e.message}" }
     }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // Shared TopBar
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 @Composable
 private fun TopBar(title: String, onBack: () -> Unit) {
     Row(
@@ -1550,9 +1581,9 @@ private fun TopBar(title: String, onBack: () -> Unit) {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // Personal Diary Card (navigates to diary.kt)
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 @Composable
 private fun PersonalDiaryCard(onClick: () -> Unit) {
     Card(
@@ -1594,7 +1625,7 @@ private fun PersonalDiaryCard(onClick: () -> Unit) {
                         ),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("📓", fontSize = 26.sp)
+                    Text("📔", fontSize = 26.sp)
                 }
                 Spacer(Modifier.width(16.dp))
                 Column(modifier = Modifier.weight(1f)) {
@@ -1606,13 +1637,13 @@ private fun PersonalDiaryCard(onClick: () -> Unit) {
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        SimpleDateFormat("dd MMM yyyy — EEEE", Locale.getDefault()).format(Date()),
+                        SimpleDateFormat("dd MMM yyyy � EEEE", Locale.getDefault()).format(Date()),
                         fontSize = 11.sp,
                         color = AccentPurple
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "আজকের অনুভূতি, চিন্তা ও স্মৃতি লিখে রাখো",
+                        "আজকের ভাবনা, স্বপ্ন ও অনুভূতি লিখে রাখো",
                         fontSize = 12.sp,
                         color = TextMuted
                     )
@@ -1649,11 +1680,11 @@ private fun PersonalDiaryCard(onClick: () -> Unit) {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // Tomorrow's Tasks
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 @Composable
-private fun TaskSection() {
+private fun TomorrowTasksCard() {
     val context  = LocalContext.current
     val prefs    = remember { context.getSharedPreferences("study_tools_prefs", Context.MODE_PRIVATE) }
     var taskList by remember { mutableStateOf(prefs.getStringSet("tasks", emptySet())?.toMutableList() ?: mutableListOf()) }
@@ -1673,17 +1704,17 @@ private fun TaskSection() {
             .padding(20.dp)
         ) {
             Column {
-                Text("📅 আগামীকাল — ${SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(cal.time)}",
+                Text("✅ আগামীকালের কাজ � ${SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(cal.time)}",
                     fontSize = 13.sp, color = AccentGreen, modifier = Modifier.padding(bottom = 16.dp))
                 if (taskList.isEmpty()) {
-                    Text("এখনো কোনো কাজ নেই। নিচে যোগ করুন!", fontSize = 13.sp, color = TextMuted, modifier = Modifier.padding(bottom = 12.dp))
+                    Text("আজকের ভাবনা লিখে রাখো। এটা তোমার নিজের জায়গা!", fontSize = 13.sp, color = TextMuted, modifier = Modifier.padding(bottom = 12.dp))
                 } else {
                     taskList.forEachIndexed { index, task ->
                         Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("✅", fontSize = 16.sp); Spacer(Modifier.width(12.dp))
+                            Text("?", fontSize = 16.sp); Spacer(Modifier.width(12.dp))
                             Text(task, fontSize = 14.sp, color = TextWhite, modifier = Modifier.weight(1f))
                             IconButton(onClick = { val u = taskList.toMutableList().also { it.removeAt(index) }; saveTasks(u) },
-                                modifier = Modifier.size(28.dp)) { Text("✕", color = AccentRed, fontSize = 14.sp) }
+                                modifier = Modifier.size(28.dp)) { Text("?", color = AccentRed, fontSize = 14.sp) }
                         }
                         if (index < taskList.lastIndex) HorizontalDivider(color = Color(0xFF1A3A4A), thickness = 1.dp)
                     }
@@ -1692,7 +1723,7 @@ private fun TaskSection() {
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedTextField(
                         value = newTask, onValueChange = { newTask = it },
-                        modifier = Modifier.weight(1f), placeholder = { Text("নতুন কাজ...", color = Color(0xFF44666A)) },
+                        modifier = Modifier.weight(1f), placeholder = { Text("নতুন নোট...", color = Color(0xFF44666A)) },
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = TextWhite, unfocusedTextColor = TextWhite,
                             focusedBorderColor = AccentGreen.copy(alpha = 0.7f),
@@ -1714,9 +1745,9 @@ private fun TaskSection() {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // WebView screen
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 private fun StudyWebView(url: String, title: String, onBack: () -> Unit) {
@@ -1755,4 +1786,170 @@ private fun StudyWebView(url: String, title: String, onBack: () -> Unit) {
         )
     }
 }
-// ═════════════════════════════════════════════════════════════════════════════
+// -----------------------------------------------------------------------------
+
+
+// Data class for canvas items
+data class CanvasItem(val id: String, val type: String, val content: String, var offset: Offset, var scale: Float = 1f)
+
+@Composable
+private fun FloatingTaskCanvas() {
+    val context = LocalContext.current
+    val prefs = context.getSharedPreferences("canvas_prefs", Context.MODE_PRIVATE)
+    
+    var isMinimized by remember { mutableStateOf(prefs.getBoolean("is_minimized", true)) }
+    var items by remember { mutableStateOf<List<CanvasItem>>(emptyList()) }
+    
+    // Load
+    LaunchedEffect(Unit) {
+        val saved = prefs.getString("canvas_items", "[]") ?: "[]"
+        try {
+            val arr = JSONArray(saved)
+            val list = mutableListOf<CanvasItem>()
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                list.add(CanvasItem(
+                    id = obj.getString("id"),
+                    type = obj.getString("type"),
+                    content = obj.getString("content"),
+                    offset = Offset(obj.getDouble("x").toFloat(), obj.getDouble("y").toFloat()),
+                    scale = obj.optDouble("scale", 1.0).toFloat()
+                ))
+            }
+            items = list
+        } catch (e: Exception) {}
+    }
+    
+    // Save helper
+    fun saveItems() {
+        val arr = JSONArray()
+        items.forEach { 
+            val obj = JSONObject()
+            obj.put("id", it.id)
+            obj.put("type", it.type)
+            obj.put("content", it.content)
+            obj.put("x", it.offset.x.toDouble())
+            obj.put("y", it.offset.y.toDouble())
+            obj.put("scale", it.scale.toDouble())
+            arr.put(obj)
+        }
+        prefs.edit().putString("canvas_items", arr.toString()).putBoolean("is_minimized", isMinimized).apply()
+    }
+    
+    val imgLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            val newItems = items.toMutableList()
+            newItems.add(CanvasItem(System.currentTimeMillis().toString(), "image", uri.toString(), Offset(100f, 100f)))
+            items = newItems
+            saveItems()
+        }
+    }
+    
+    val pdfLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            val newItems = items.toMutableList()
+            newItems.add(CanvasItem(System.currentTimeMillis().toString(), "pdf", uri.toString(), Offset(150f, 150f)))
+            items = newItems
+            saveItems()
+        }
+    }
+
+    if (isMinimized) {
+        Box(modifier = Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.BottomEnd) {
+            FloatingActionButton(onClick = { isMinimized = false; saveItems() }, containerColor = AccentPurple, contentColor = Color.White) {
+                Icon(Icons.Default.AddBox, "Open Canvas")
+            }
+        }
+    } else {
+        Box(modifier = Modifier.fillMaxSize().background(Color(0xD90A0A1A)).zIndex(10f)) {
+            // Toolbar
+            Row(modifier = Modifier.fillMaxWidth().background(Color(0xFF151525)).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Floating Canvas", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                IconButton(onClick = {
+                    val newItems = items.toMutableList()
+                    newItems.add(CanvasItem(System.currentTimeMillis().toString(), "text", "New Note", Offset(200f, 200f)))
+                    items = newItems
+                    saveItems()
+                }) { Icon(Icons.Default.NoteAdd, "Add Text", tint = AccentGreen) }
+                IconButton(onClick = { imgLauncher.launch("image/*") }) { Icon(Icons.Default.Image, "Add Image", tint = AccentCyan) }
+                IconButton(onClick = { pdfLauncher.launch("application/pdf") }) { Icon(Icons.Default.PictureAsPdf, "Add PDF", tint = AccentRed) }
+                IconButton(onClick = { isMinimized = true; saveItems() }) { Icon(Icons.Default.Minimize, "Minimize", tint = Color.White) }
+            }
+            
+            // Canvas Area
+            Box(modifier = Modifier.fillMaxSize().padding(top = 60.dp)) {
+                items.forEach { item ->
+                    var offset by remember { mutableStateOf(item.offset) }
+                    var scale by remember { mutableStateOf(item.scale) }
+                    
+                    Box(modifier = Modifier
+                        .offset(x = offset.x.dp, y = offset.y.dp)
+                        .graphicsLayer(scaleX = scale, scaleY = scale)
+                        .pointerInput(Unit) {
+                            detectTransformGestures { _, pan, zoom, _ ->
+                                offset += Offset(pan.x / density, pan.y / density)
+                                scale *= zoom
+                                item.offset = offset
+                                item.scale = scale
+                                saveItems()
+                            }
+                        }
+                    ) {
+                        when (item.type) {
+                            "text" -> {
+                                Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A40)), elevation = CardDefaults.cardElevation(8.dp)) {
+                                    Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.DragIndicator, "Drag", tint = Color.Gray, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        var text by remember { mutableStateOf(item.content) }
+                                        androidx.compose.foundation.text.BasicTextField(
+                                            value = text,
+                                            onValueChange = { text = it; item.copy(content = it).also { updated -> val newItems = items.toMutableList(); newItems[newItems.indexOf(item)] = updated; items = newItems; saveItems() } },
+                                            textStyle = androidx.compose.ui.text.TextStyle(color = Color.White)
+                                        )
+                                    }
+                                }
+                            }
+                            "image" -> {
+                                Card(colors = CardDefaults.cardColors(containerColor = Color.Transparent)) {
+                                    AsyncImageOrBitmap(uri = Uri.parse(item.content), context = context, modifier = Modifier.size(150.dp))
+                                }
+                            }
+                            "pdf" -> {
+                                Card(colors = CardDefaults.cardColors(containerColor = AccentRed), elevation = CardDefaults.cardElevation(8.dp), modifier = Modifier.clickable {
+                                    val i = Intent(Intent.ACTION_VIEW).apply {
+                                        setDataAndType(Uri.parse(item.content), "application/pdf")
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+                                    try { context.startActivity(i) } catch (e:Exception){}
+                                }) {
+                                    Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.PictureAsPdf, "PDF", tint = Color.White)
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("Open PDF", color = Color.White, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AsyncImageOrBitmap(uri: Uri, context: Context, modifier: Modifier) {
+    var bitmap by remember { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(uri) {
+        try {
+            val src = android.graphics.ImageDecoder.createSource(context.contentResolver, uri)
+            bitmap = android.graphics.ImageDecoder.decodeBitmap(src)
+        } catch (e: Exception) {}
+    }
+    bitmap?.let {
+        Image(bitmap = it.asImageBitmap(), contentDescription = null, modifier = modifier, contentScale = ContentScale.Crop)
+    } ?: Box(modifier.background(Color.Gray))
+}
+
+
