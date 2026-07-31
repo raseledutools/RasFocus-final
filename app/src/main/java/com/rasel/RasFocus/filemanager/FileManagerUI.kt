@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
+import kotlinx.coroutines.withContext
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Folder
@@ -273,7 +274,7 @@ fun CloudFileScreen(
                                     selectedFiles = if (isSelected) selectedFiles - file.id else selectedFiles + file.id
                                 } else {
                                     if (isDir) {
-                                        onNavigate(NavState.Cloud(file.id, file.name))
+                                        onNavigate(NavState.Cloud(accountName, file.id, file.name))
                                     } else {
                                         Toast.makeText(context, "Downloading...", Toast.LENGTH_SHORT).show()
                                         scope.launch {
