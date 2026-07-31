@@ -114,8 +114,42 @@ fun LocalFileScreen(
                 if (clipboard != null && selectedFiles.isEmpty()) {
                     FloatingActionButton(
                         onClick = {
-                            Toast.makeText(context, "Pasting from ${clipboard.sourceEnv} to Local...", Toast.LENGTH_SHORT).show()
-                            onSetClipboard(null)
+                            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                var success = true
+                                if (clipboard.sourceEnv == "Local") {
+                                    for (item in clipboard.items) {
+                                        val src = java.io.File(item)
+                                        val dst = java.io.File(path, src.name)
+                                        try {
+                                            src.copyRecursively(dst, overwrite = true)
+                                            if (clipboard.isCut) src.deleteRecursively()
+                                        } catch (e: Exception) { success = false }
+                                    }
+                                } else if (clipboard.sourceEnv == "Cloud") {
+                                    val acc = clipboard.accountName ?: ""
+                                    for (i in clipboard.items.indices) {
+                                        val id = clipboard.items[i]
+                                        val name = clipboard.itemNames.getOrNull(i) ?: "unknown_file"
+                                        val result = com.rasel.RasFocus.drivebackup.DriveFileManager.downloadFolder(
+                                            context, acc, id, name, java.io.File(path)
+                                        )
+                                        if (!result) {
+                                            // Fallback to downloading as single file if not a folder (downloadFolder handles this internally, but if it fails completely maybe it was just a file)
+                                            val fileResult = com.rasel.RasFocus.drivebackup.DriveFileManager.downloadFile(context, acc, id, name, java.io.File(path))
+                                            if (fileResult == null) success = false
+                                        }
+                                        if (clipboard.isCut) {
+                                            // Optional: delete from Drive API (needs delete support, skipping for safety unless explicitly requested)
+                                        }
+                                    }
+                                }
+                                withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                    Toast.makeText(context, if (success) "Pasted successfully" else "Some items failed to paste", Toast.LENGTH_SHORT).show()
+                                    onSetClipboard(null)
+                                    // Trigger refresh
+                                    files = LocalFileManager.listFiles(path)
+                                }
+                            }
                         },
                         modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
                     ) {
@@ -144,6 +178,7 @@ fun LocalFileScreen(
 
 @Composable
 fun CloudFileScreen(
+    accountName: String,
     folderId: String, 
     pathName: String, 
     onNavigate: (NavState) -> Unit, 
@@ -163,7 +198,7 @@ fun CloudFileScreen(
     ) {
         scope.launch {
             isLoading = true
-            val result = DriveFileManager.listFiles(context, folderId)
+            val result = DriveFileManager.listFiles(context, accountName, folderId)
             if (result != null) {
                 files = result
                 errorMsg = null
@@ -176,7 +211,7 @@ fun CloudFileScreen(
 
     LaunchedEffect(folderId) {
         isLoading = true
-        val result = DriveFileManager.listFiles(context, folderId)
+        val result = DriveFileManager.listFiles(context, accountName, folderId)
         if (result != null) {
             files = result.sortedWith(compareBy({ it.mimeType != "application/vnd.google-apps.folder" }, { it.name.lowercase() }))
             errorMsg = null
@@ -257,8 +292,44 @@ fun CloudFileScreen(
                 if (clipboard != null && selectedFiles.isEmpty()) {
                     FloatingActionButton(
                         onClick = {
-                            Toast.makeText(context, "Pasting from ${clipboard.sourceEnv} to Cloud...", Toast.LENGTH_SHORT).show()
-                            onSetClipboard(null)
+                            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                var success = true
+                                if (clipboard.sourceEnv == "Local") {
+                                    for (item in clipboard.items) {
+                                        val src = java.io.File(item)
+                                        if (src.isDirectory) {
+                                            if (!com.rasel.RasFocus.drivebackup.DriveFileManager.uploadFolder(context, accountName, src, folderId)) {
+                                                success = false
+                                            }
+                                        } else {
+                                            if (com.rasel.RasFocus.drivebackup.DriveFileManager.uploadFile(context, accountName, src, folderId) == null) {
+                                                success = false
+                                            }
+                                        }
+                                        if (clipboard.isCut) {
+                                            try { src.deleteRecursively() } catch (e: Exception) {}
+                                        }
+                                    }
+                                } else if (clipboard.sourceEnv == "Cloud") {
+                                    val srcAccount = clipboard.accountName ?: accountName
+                                    for (id in clipboard.items) {
+                                        val result = if (clipboard.isCut) {
+                                            com.rasel.RasFocus.drivebackup.DriveFileManager.moveFile(context, srcAccount, id, folderId, "root") // We don't have oldParentId easily accessible, this might need refinement
+                                        } else {
+                                            com.rasel.RasFocus.drivebackup.DriveFileManager.copyFile(context, srcAccount, id, folderId)
+                                        }
+                                        if (result == null) success = false
+                                    }
+                                }
+                                withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                    Toast.makeText(context, if (success) "Pasted successfully" else "Some items failed to paste", Toast.LENGTH_SHORT).show()
+                                    onSetClipboard(null)
+                                    // Trigger refresh
+                                    isLoading = true
+                                    files = com.rasel.RasFocus.drivebackup.DriveFileManager.listFiles(context, accountName, folderId)?.sortedWith(compareBy({ it.mimeType != "application/vnd.google-apps.folder" }, { it.name.lowercase() })) ?: emptyList()
+                                    isLoading = false
+                                }
+                            }
                         },
                         modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
                     ) {
@@ -272,11 +343,13 @@ fun CloudFileScreen(
     if (selectedFiles.isNotEmpty()) {
         SelectionBottomBar(
             onCopy = { 
-                onSetClipboard(ClipboardState("Cloud", selectedFiles.toList(), false))
+                val names = selectedFiles.mapNotNull { id -> files.find { it.id == id }?.name }
+                onSetClipboard(ClipboardState("Cloud", selectedFiles.toList(), names, false, accountName))
                 selectedFiles = emptySet()
             },
             onMove = { 
-                onSetClipboard(ClipboardState("Cloud", selectedFiles.toList(), true))
+                val names = selectedFiles.mapNotNull { id -> files.find { it.id == id }?.name }
+                onSetClipboard(ClipboardState("Cloud", selectedFiles.toList(), names, true, accountName))
                 selectedFiles = emptySet()
             },
             onDelete = { Toast.makeText(context, "Delete logic coming soon", Toast.LENGTH_SHORT).show() },

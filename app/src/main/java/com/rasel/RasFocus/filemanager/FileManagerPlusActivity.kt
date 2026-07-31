@@ -43,13 +43,16 @@ import kotlinx.coroutines.withContext
 sealed class NavState {
     object Home : NavState()
     data class Local(val path: String) : NavState()
-    data class Cloud(val folderId: String, val pathName: String) : NavState()
+    object CloudAccounts : NavState()
+    data class Cloud(val accountName: String, val folderId: String, val pathName: String) : NavState()
 }
 
 data class ClipboardState(
     val sourceEnv: String, // "Local" or "Cloud"
     val items: List<String>, // paths or fileIds
-    val isCut: Boolean = false
+    val itemNames: List<String> = emptyList(), // For Cloud files
+    val isCut: Boolean = false,
+    val accountName: String? = null
 )
 
 class FileManagerPlusActivity : ComponentActivity() {
@@ -95,6 +98,7 @@ fun HomeScreen() {
                             text = when (val state = currentNavState) {
                                 is NavState.Home -> "File Manager +"
                                 is NavState.Local -> state.path.substringAfterLast("/")
+                                is NavState.CloudAccounts -> "Cloud Locations"
                                 is NavState.Cloud -> state.pathName
                             }, 
                             color = Color.White
@@ -104,8 +108,18 @@ fun HomeScreen() {
                         containerColor = Color(0xFF1E1E1E) // Dark background from image_5b8f74.jpg
                     ),
                     navigationIcon = {
-                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(Icons.Default.Menu, contentDescription = "Menu", tint = Color.White)
+                        IconButton(onClick = { 
+                            if (currentNavState != NavState.Home) {
+                                currentNavState = NavState.Home
+                            } else {
+                                scope.launch { drawerState.open() }
+                            }
+                        }) {
+                            Icon(
+                                imageVector = if (currentNavState == NavState.Home) Icons.Default.Menu else Icons.Default.ArrowBack, 
+                                contentDescription = "Menu/Back", 
+                                tint = Color.White
+                            )
                         }
                     },
                     actions = {
@@ -123,11 +137,11 @@ fun HomeScreen() {
             Box(modifier = Modifier.padding(paddingValues)) {
                 when (val state = currentNavState) {
                     is NavState.Home -> MainGridContent(
-                        onNavigate = { newState -> currentNavState = newState }
+                        onNavigate = { currentNavState = it }
                     )
                     is NavState.Local -> LocalFileScreen(
                         path = state.path, 
-                        onNavigate = { newState -> currentNavState = newState },
+                        onNavigate = { currentNavState = it },
                         onBack = { 
                             val parent = java.io.File(state.path).parent
                             if (parent != null && parent.contains("0")) { // very basic check
@@ -139,13 +153,23 @@ fun HomeScreen() {
                         clipboard = clipboard,
                         onSetClipboard = { clipboard = it }
                     )
+                    is NavState.CloudAccounts -> CloudAccountsScreen(
+                        onAccountSelected = { accountName ->
+                            currentNavState = NavState.Cloud(accountName, "root", "My Drive")
+                        }
+                    )
                     is NavState.Cloud -> CloudFileScreen(
+                        accountName = state.accountName,
                         folderId = state.folderId,
                         pathName = state.pathName,
                         onNavigate = { newState -> currentNavState = newState },
                         onBack = { 
-                            // simplistic back, ideally we'd have a stack
-                            currentNavState = NavState.Home 
+                            if (state.folderId == "root") {
+                                currentNavState = NavState.CloudAccounts
+                            } else {
+                                // Ideally we'd maintain a backstack of folderIds. For now, go back to root or Accounts.
+                                currentNavState = NavState.Cloud(state.accountName, "root", "My Drive")
+                            }
                         },
                         clipboard = clipboard,
                         onSetClipboard = { clipboard = it }
@@ -371,7 +395,7 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                                 }
                             }
                             "Downloads" -> onNavigate(NavState.Local(LocalFileManager.mainStoragePath + "/Download"))
-                            "Cloud" -> onNavigate(NavState.Cloud("root", "My Drive"))
+                            "Cloud" -> onNavigate(NavState.CloudAccounts)
                         }
                     }
                 )
