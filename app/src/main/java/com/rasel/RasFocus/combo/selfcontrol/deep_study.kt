@@ -16,6 +16,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -36,22 +37,37 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.rasel.RasFocus.DataManager
+import android.content.pm.PackageManager
+import android.content.pm.ApplicationInfo
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.core.graphics.drawable.toBitmap
+import androidx.compose.foundation.Image
 import kotlinx.coroutines.*
 import kotlin.math.*
 
 // ─────────────────────────────────────────
-// PREMIUM COLORS
+// DEEP STUDY — Color System (Dark Theme)
+// Background: Deep Navy  |  Text: Crisp White
 // ─────────────────────────────────────────
-val DClrTeal     = Color(0xFF0EA5E9) // Sky Blue
-val DClrTealDark = Color(0xFF0284C7)
-val DClrWhite = Color(0xFFF8FAFC)
-val DClrDark = Color(0xFF1E293B) // Slate 900
-val DClrGray     = Color(0xFF64748B) // Slate 500
-val DClrBg = Color(0xFFF8FAFC) // Slate 50
-val DClrSurface  = Color(0xFFFFFFFF)
-val DClrRed      = Color(0xFFEF4444)
-val DClrGreen = Color(0xFF0096B4) // Emerald
-val DClrAmber    = Color(0xFFF59E0B)
+val DClrBg           = Color(0xFF0B1220)                    // Deep navy background
+val DClrSurface      = Color(0xFF141E30)                    // Card surface — distinct from bg
+val DClrSurface2     = Color(0xFF1C2840)                    // Slightly lighter card variant
+val DClrTeal         = Color(0xFF00C6B2)                    // Primary accent — vibrant teal
+val DClrTealDark     = Color(0xFF009E8C)                    // Pressed / darker teal
+val DClrWhite        = Color(0xFFFFFFFF)                    // Pure white for timer digits
+val DClrDark         = Color(0xFFF0F4FF)                    // Primary text — bright near-white
+val DClrGray         = Color(0xFF8090A8)                    // Secondary / hint text
+val DClrBorderMuted  = Color(0xFF2A3A52)                    // Card borders
+val DClrPillBg       = Color(0xFF1C2840)                    // Pill / toggle track bg
+val DClrPillSelectedBg = Color(0xFF253350)                  // Selected pill state
+val DClrGlassBorder  = Color(0xFF2E4060)                    // Glass card border
+val DClrBadgeTeal    = Color(0xFF00C6B2).copy(alpha = 0.18f) // Teal icon badge bg
+val DClrBadgeGreen   = Color(0xFF22C55E).copy(alpha = 0.18f) // Green icon badge bg
+val DClrBadgePurple  = Color(0xFF8B5CF6).copy(alpha = 0.18f) // Purple icon badge bg
+val DClrBadgeAmber   = Color(0xFFF59E0B).copy(alpha = 0.18f) // Amber icon badge bg
+val DClrRed          = Color(0xFFFF4E4E)                    // Error / stop
+val DClrGreen        = Color(0xFF22C55E)                    // Success / break
+val DClrAmber        = Color(0xFFF59E0B)                    // Warning / strict
 
 data class BlockItem(val name: String)
 
@@ -70,10 +86,192 @@ fun hasOverlayPermission(context: Context): Boolean =
 // ─────────────────────────────────────────
 // ALLOW-LIST BLOCKER (USAGE STATS)
 // ─────────────────────────────────────────
+// FIX: this section header existed with NO implementation under it at all —
+// isFocusMode only ran a countdown timer, nothing ever actually enforced the
+// allow-list against other apps. That's the reported bug ("everything
+// except the allow list is supposed to auto-block, but it doesn't") — there
+// was simply nothing here to do the blocking. Implemented below: a
+// foreground Service that polls UsageStatsManager for the current
+// foreground app while a focus session is active, and shows a full-screen
+// overlay (WindowManager, same general mechanism as FloatingStopwatch
+// above, but full-screen and touch-capturing rather than a small draggable
+// widget) whenever that app isn't RasFocus itself, the device launcher, the
+// default dialer (emergency calls must never be blockable), or in
+// DataManager.dsAllowAppList.
+class DeepStudyBlockerService : android.app.Service() {
 
+    companion object {
+        private const val CHANNEL_ID = "deep_study_blocker"
+        private const val NOTIF_ID = 8891
+        @Volatile private var running = false
 
+        fun start(context: Context) {
+            if (running) return
+            val intent = Intent(context, DeepStudyBlockerService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent)
+            else context.startService(intent)
+        }
 
-// ─────────────────────────────────────────
+        fun stop(context: Context) {
+            context.stopService(Intent(context, DeepStudyBlockerService::class.java))
+        }
+    }
+
+    private var pollJob: Job? = null
+    private var wm: WindowManager? = null
+    private var overlayView: android.view.View? = null
+    private var lastBlockedPkg: String? = null
+
+    override fun onBind(intent: Intent?): android.os.IBinder? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        running = true
+        val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            mgr.createNotificationChannel(
+                android.app.NotificationChannel(CHANNEL_ID, "Deep Study Blocker", android.app.NotificationManager.IMPORTANCE_MIN)
+            )
+        }
+        val notif = androidx.core.app.NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Deep Study focus session active")
+            .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
+            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_MIN)
+            .setOngoing(true)
+            .build()
+        startForeground(NOTIF_ID, notif)
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (pollJob == null) {
+            pollJob = CoroutineScope(Dispatchers.Default).launch {
+                while (isActive) {
+                    checkForegroundApp()
+                    delay(1500)
+                }
+            }
+        }
+        return android.app.Service.START_STICKY
+    }
+
+    private fun homePackage(): String? {
+        val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+        return packageManager.resolveActivity(homeIntent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
+            ?.activityInfo?.packageName
+    }
+
+    private fun dialerPackage(): String? = try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            (getSystemService(Context.TELECOM_SERVICE) as? android.telecom.TelecomManager)?.defaultDialerPackage
+        } else null
+    } catch (_: Exception) { null }
+
+    private fun currentForegroundPackage(): String? {
+        if (!hasUsageStatsPermission(this)) return null
+        val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        val end = System.currentTimeMillis()
+        val events = usm.queryEvents(end - 10_000, end)
+        val event = android.app.usage.UsageEvents.Event()
+        var lastPkg: String? = null
+        while (events.hasNextEvent()) {
+            events.getNextEvent(event)
+            if (event.eventType == android.app.usage.UsageEvents.Event.MOVE_TO_FOREGROUND) lastPkg = event.packageName
+        }
+        return lastPkg
+    }
+
+    private suspend fun checkForegroundApp() {
+        val fg = currentForegroundPackage() ?: return
+        val allowed = DataManager.dsAllowAppList.toSet()
+        // Always-exempt: this app itself, the launcher, the dialer (emergency
+        // calls), and core system UI — never trap the user with no way out.
+        val exempt = setOfNotNull(packageName, homePackage(), dialerPackage(), "com.android.systemui", "android")
+        val isOk = fg in allowed || fg in exempt
+        withContext(Dispatchers.Main) {
+            if (!isOk) showOverlay(fg) else hideOverlay()
+        }
+    }
+
+    private fun showOverlay(blockedPkg: String) {
+        if (overlayView != null && lastBlockedPkg == blockedPkg) return // already showing for this app
+        hideOverlay()
+        lastBlockedPkg = blockedPkg
+        if (!hasOverlayPermission(this)) return // can't show without permission, silently skip rather than crash
+
+        val mgr = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        wm = mgr
+
+        val label = try {
+            packageManager.getApplicationLabel(packageManager.getApplicationInfo(blockedPkg, 0)).toString()
+        } catch (_: Exception) { blockedPkg }
+
+        val root = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(android.graphics.Color.parseColor("#F00B1220"))
+            isClickable = true; isFocusable = true
+        }
+        val icon = android.widget.TextView(this).apply {
+            text = "🔒"; textSize = 56f; gravity = Gravity.CENTER
+        }
+        val title = android.widget.TextView(this).apply {
+            text = "Deep Study চলছে"
+            textSize = 22f; setTextColor(android.graphics.Color.WHITE)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER; setPadding(0, 32, 0, 8)
+        }
+        val subtitle = android.widget.TextView(this).apply {
+            text = "$label allow-list এ নেই — focus session চলাকালীন ব্লক করা আছে"
+            textSize = 15f; setTextColor(android.graphics.Color.parseColor("#94A3B8"))
+            gravity = Gravity.CENTER; setPadding(64, 0, 64, 32)
+        }
+        val backBtn = android.widget.TextView(this).apply {
+            text = "  ← Deep Study তে ফিরে যান  "
+            textSize = 15f; setTextColor(android.graphics.Color.WHITE)
+            setBackgroundColor(android.graphics.Color.parseColor("#0EA5E9"))
+            setPadding(32, 20, 32, 20)
+            setOnClickListener {
+                val i = packageManager.getLaunchIntentForPackage(packageName)
+                i?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                i?.let { startActivity(it) }
+            }
+        }
+        root.addView(icon); root.addView(title); root.addView(subtitle); root.addView(backBtn)
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE,
+            // Deliberately NOT FLAG_NOT_FOCUSABLE — this must capture touches
+            // and fully block interaction with whatever's underneath, unlike
+            // FloatingStopwatch's small pass-through widget above.
+            // 0 = no flags: focusable and touch-modal, so this actually
+            // captures input instead of passing touches through underneath
+            // (unlike FloatingStopwatch's FLAG_NOT_FOCUSABLE widget above).
+            0,
+            PixelFormat.TRANSLUCENT
+        )
+        try {
+            mgr.addView(root, params)
+            overlayView = root
+        } catch (_: Exception) { overlayView = null }
+    }
+
+    private fun hideOverlay() {
+        overlayView?.let { try { wm?.removeView(it) } catch (_: Exception) {} }
+        overlayView = null
+        lastBlockedPkg = null
+    }
+
+    override fun onDestroy() {
+        pollJob?.cancel(); pollJob = null
+        hideOverlay()
+        running = false
+        super.onDestroy()
+    }
+}// ─────────────────────────────────────────
 // FLOATING STOPWATCH
 // ─────────────────────────────────────────
 
@@ -264,85 +462,143 @@ object AmbientSoundEngine {
 fun Deep_study() {
     val context = LocalContext.current
 
-    var activeSubTab      by remember { mutableIntStateOf(0) }
-    var isFocusMode       by remember { mutableStateOf(false) }
-    var isBreak           by remember { mutableStateOf(false) }
-    var focusMin          by remember { mutableIntStateOf(25) }
-    var restMin           by remember { mutableIntStateOf(5) }
-    var totalSessions     by remember { mutableIntStateOf(4) }
-    var currentSession    by remember { mutableIntStateOf(1) }
-    var timeLeftMillis    by remember { mutableLongStateOf(25 * 60 * 1000L) }
-    var isStrict          by remember { mutableStateOf(com.rasel.RasFocus.DataManager.isDeepStudyStrict) }
-    
-    var chkSound          by remember { mutableStateOf(false) }
-    var chkFloat          by remember { mutableStateOf(false) }
-    var soundType         by remember { mutableStateOf(SoundType.WHITE_NOISE) }
+    // ── Session state ────────────────────────────────────────────────────
+    var isFocusMode    by remember { mutableStateOf(false) }
+    var isBreak        by remember { mutableStateOf(false) }
+    var focusMin       by remember { mutableIntStateOf(25) }
+    var restMin        by remember { mutableIntStateOf(5) }
+    var totalSessions  by remember { mutableIntStateOf(4) }
+    var currentSession by remember { mutableIntStateOf(1) }
+    var timeLeftMillis by remember { mutableLongStateOf(25 * 60 * 1000L) }
+    var isStrict       by remember { mutableStateOf(com.rasel.RasFocus.DataManager.isDeepStudyStrict) }
+    var sessionDone    by remember { mutableStateOf(false) }  // all sessions complete flag
+
+    var chkSound  by remember { mutableStateOf(false) }
+    var chkFloat  by remember { mutableStateOf(false) }
+    var soundType by remember { mutableStateOf(SoundType.WHITE_NOISE) }
 
     val allowWebs = remember { mutableStateListOf<BlockItem>().apply { addAll(DataManager.dsAllowWebList.map { BlockItem(it) }) } }
     val allowApps = remember { mutableStateListOf<BlockItem>().apply { addAll(DataManager.dsAllowAppList.map { BlockItem(it) }) } }
 
-    var showBottomSheet   by remember { mutableStateOf(false) }
+    var showBottomSheet by remember { mutableStateOf(false) }
 
-    // Sync timer logic
+    // ── Helpers ──────────────────────────────────────────────────────────
+    fun stopEverything() {
+        AmbientSoundEngine.stop()
+        FloatingStopwatch.dismiss()
+        DeepStudyBlockerService.stop(context)
+    }
+
+    // Reset timer when focusMin changes (only when idle)
     LaunchedEffect(focusMin) {
         if (!isFocusMode && !isBreak) {
             timeLeftMillis = focusMin * 60 * 1000L
         }
     }
 
-    LaunchedEffect(isFocusMode, isBreak) {
-        if (isFocusMode) {
-            val targetTime = System.currentTimeMillis() + timeLeftMillis
-            while (timeLeftMillis > 0 && isFocusMode) {
-                delay(10)
-                timeLeftMillis = maxOf(0L, targetTime - System.currentTimeMillis())
+    // ── Master timer coroutine — single loop, no LaunchedEffect races ────
+    // Runs once. Reads mutable state via snapshot reads inside the loop.
+    // Avoids the bug where LaunchedEffect(isFocusMode, isBreak) restarts
+    // after setting isBreak=true while timeLeftMillis is already 0, causing
+    // the break timer to skip immediately.
+    LaunchedEffect(Unit) {
+        while (true) {
+            // Wait until a session or break starts
+            if (!isFocusMode && !isBreak) {
+                delay(100)
+                continue
             }
-            if (timeLeftMillis <= 0 && isFocusMode) {
-                com.rasel.RasFocus.DataManager.totalFocusTimeMillis += (focusMin * 60 * 1000L)
-                com.rasel.RasFocus.DataManager.totalSessions++
-                if (currentSession < totalSessions) {
-                    isFocusMode = false
-                    isBreak = true
-                    timeLeftMillis = restMin * 60 * 1000L
-                } else {
-                    isFocusMode = false
-                    isBreak = false
-                    timeLeftMillis = focusMin * 60 * 1000L
-                    currentSession = 1
+
+            val isCurrentlyBreak = isBreak
+            val durationMillis   = if (isCurrentlyBreak) restMin * 60 * 1000L else focusMin * 60 * 1000L
+            val targetTime       = System.currentTimeMillis() + timeLeftMillis
+
+            // Tick until time runs out OR session is manually stopped
+            while (true) {
+                delay(16) // ~60fps tick
+                val remaining = targetTime - System.currentTimeMillis()
+                if (remaining <= 0) {
+                    timeLeftMillis = 0L
+                    break
                 }
+                // Manual stop check
+                if (!isFocusMode && !isBreak) {
+                    timeLeftMillis = focusMin * 60 * 1000L
+                    break
+                }
+                timeLeftMillis = remaining
             }
-        } else if (isBreak) {
-            val targetTime = System.currentTimeMillis() + timeLeftMillis
-            while (timeLeftMillis > 0 && isBreak) {
-                delay(10)
-                timeLeftMillis = maxOf(0L, targetTime - System.currentTimeMillis())
-            }
-            if (timeLeftMillis <= 0 && isBreak) {
+
+            // Only process auto-advance if session wasn't manually stopped
+            val stillActive = if (isCurrentlyBreak) isBreak else isFocusMode
+            if (!stillActive) continue  // manual stop — loop back to wait
+
+            if (isCurrentlyBreak) {
+                // Break finished → next focus session
                 isBreak = false
                 isFocusMode = true
                 currentSession++
                 timeLeftMillis = focusMin * 60 * 1000L
+            } else {
+                // Focus session finished
+                com.rasel.RasFocus.DataManager.totalFocusTimeMillis += (focusMin * 60 * 1000L)
+                com.rasel.RasFocus.DataManager.totalSessions++
+
+                if (currentSession < totalSessions) {
+                    // More sessions → start break
+                    isFocusMode = false
+                    isBreak = true
+                    timeLeftMillis = restMin * 60 * 1000L
+                } else {
+                    // ALL SESSIONS DONE — auto stop everything
+                    isFocusMode = false
+                    isBreak = false
+                    timeLeftMillis = focusMin * 60 * 1000L
+                    currentSession = 1
+                    sessionDone = true
+                    stopEverything()
+                    android.widget.Toast.makeText(
+                        context,
+                        "🎉 All sessions complete! Great work!",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                }
             }
         }
     }
 
-    // Sync floating stopwatch
-    LaunchedEffect(chkFloat, isFocusMode) {
+    // ── Side effects — start/stop services when session state changes ────
+    LaunchedEffect(isFocusMode, isBreak) {
         when {
-            !chkFloat -> FloatingStopwatch.dismiss()
+            isFocusMode -> DeepStudyBlockerService.start(context)
+            !isFocusMode && !isBreak -> DeepStudyBlockerService.stop(context)
+        }
+        when {
+            chkSound && (isFocusMode || isBreak) -> AmbientSoundEngine.play(context, soundType)
+            !isFocusMode && !isBreak -> AmbientSoundEngine.stop()
+        }
+        when {
             chkFloat && (isFocusMode || isBreak) && hasOverlayPermission(context) ->
                 FloatingStopwatch.show(context) { chkFloat = false }
+            !isFocusMode && !isBreak -> FloatingStopwatch.dismiss()
         }
     }
 
-    // Sync sound engine
-    LaunchedEffect(chkSound, soundType, isFocusMode, isBreak) {
-        if (chkSound && (isFocusMode || isBreak)) AmbientSoundEngine.play(context, soundType)
-        else AmbientSoundEngine.stop()
+    // Restart sound if user changes type mid-session
+    LaunchedEffect(soundType) {
+        if (chkSound && (isFocusMode || isBreak)) {
+            AmbientSoundEngine.play(context, soundType)
+        }
+    }
+
+    // Session complete celebration toast already shown above;
+    // reset the flag so it doesn't re-trigger on recompose
+    LaunchedEffect(sessionDone) {
+        if (sessionDone) sessionDone = false
     }
 
     DisposableEffect(Unit) {
-        onDispose { AmbientSoundEngine.stop(); FloatingStopwatch.dismiss() }
+        onDispose { stopEverything() }
     }
 
     val scrollState = rememberScrollState()
@@ -350,14 +606,9 @@ fun Deep_study() {
     Column(
         Modifier
             .fillMaxSize()
-            .background(DClrBg)
+            .background(Brush.verticalGradient(listOf(Color(0xFF0B1220), Color(0xFF0F1B33))))
             .windowInsetsPadding(WindowInsets.statusBars)
     ) {
-        // Tab Bar
-        TabBar(activeSubTab) { activeSubTab = it }
-
-        com.rasel.RasFocus.ui.theme.AnimatedSwapContainer(targetState = activeSubTab) { tabIndex ->
-        if (tabIndex == 0) {
             Column(
                 Modifier
                     .fillMaxSize()
@@ -434,7 +685,7 @@ fun Deep_study() {
                 // Show basic requirement warning if missing Usage Stats
                 if (!hasUsageStatsPermission(context)) {
                     PermBanner(
-                        color = Color(0xFFEFF6FF), tint = DClrTeal,
+                        color = DClrBadgeTeal, tint = DClrTeal,
                         text = "Allow-list blocking requires Usage Stats permission.",
                         btnText = "Enable", onClick = { context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
                     )
@@ -446,19 +697,13 @@ fun Deep_study() {
                 )
                 Spacer(Modifier.height(40.dp))
             }
-        } else {
-            androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize(), androidx.compose.ui.Alignment.Center) {
-                androidx.compose.material3.Text("Coming soon...", color = DClrGray, fontSize = 16.sp, fontWeight = FontWeight.Medium)
-            }
-        }
-        } // close AnimatedSwapContainer
     }
 
     if (showBottomSheet) {
         ModalBottomSheet(
             onDismissRequest = { showBottomSheet = false },
             modifier = Modifier.fillMaxHeight(0.9f),
-            containerColor = DClrBg,
+            containerColor = Color(0xFF0F1B33),
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
         ) {
             BlocklistPickerSheet(
@@ -479,41 +724,6 @@ fun Deep_study() {
 // ─────────────────────────────────────────
 // SUB-COMPOSABLES
 // ─────────────────────────────────────────
-
-@Composable
-private fun TabBar(active: Int, onSelect: (Int) -> Unit) {
-    Surface(
-        color = Color(0xFFF1F5F9), // Slight inset look
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            listOf("Pomodoro", "Active Recall", "Spaced Rep.").forEachIndexed { i, title ->
-                val selected = active == i
-                Box(
-                    Modifier
-                        .weight(1f)
-                        .height(42.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(if (selected) DClrSurface else Color.Transparent)
-                        .clickable { onSelect(i) },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        title,
-                        fontSize = 13.sp,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                        color = if (selected) DClrDark else DClrGray,
-                        maxLines = 1
-                    )
-                }
-            }
-        }
-    }
-}
 
 @Composable
 private fun TimerHeroCard(
@@ -609,18 +819,18 @@ private fun TimerHeroCard(
 @Composable
 private fun StartStopButton(isActive: Boolean, onClick: () -> Unit) {
     val bg = when {
-        isActive     -> DClrDark
-        else         -> DClrTeal
+        isActive -> DClrRed
+        else     -> DClrTeal
     }
     val label = when {
-        isActive     -> "STOP POMODORO"
-        else         -> "START POMODORO"
+        isActive -> "STOP POMODORO"
+        else     -> "START POMODORO"
     }
     val icon = when {
-        isActive     -> Icons.Default.Stop
-        else         -> Icons.Default.PlayArrow
+        isActive -> Icons.Default.Stop
+        else     -> Icons.Default.PlayArrow
     }
-    
+
     Button(
         onClick = onClick,
         colors = ButtonDefaults.buttonColors(containerColor = bg),
@@ -646,7 +856,7 @@ private fun SectionCard(title: String, icon: ImageVector, content: @Composable C
         Column(Modifier.padding(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 16.dp)) {
                 Box(
-                    modifier = Modifier.size(38.dp).clip(CircleShape).background(Color(0xFFF0F9FF)),
+                    modifier = Modifier.size(38.dp).clip(CircleShape).background(DClrBadgeTeal),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(icon, null, tint = DClrTeal, modifier = Modifier.size(20.dp))
@@ -699,7 +909,7 @@ private fun SoundRow(
             ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { if (enabled) expanded = it }) {
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFFF1F5F9),
+                    color = DClrPillBg,
                     modifier = Modifier.menuAnchor()
                 ) {
                     Row(
@@ -789,7 +999,7 @@ private fun AllowListCard(appCount: Int, siteCount: Int, enabled: Boolean, onCli
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
-                modifier = Modifier.size(44.dp).clip(CircleShape).background(Color(0xFFECFDF5)),
+                modifier = Modifier.size(44.dp).clip(CircleShape).background(DClrBadgeGreen),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Default.CheckCircle, null, tint = DClrGreen, modifier = Modifier.size(24.dp))
@@ -816,110 +1026,317 @@ fun BlocklistPickerSheet(
     initialApps: List<String>,
     initialSites: List<String>
 ) {
-    var searchQuery by remember { mutableStateOf("") }
-    var selectedTab by remember { mutableIntStateOf(1) }
-    val tempApps  = remember { mutableStateListOf<String>().apply { addAll(initialApps) } }
-    val tempSites = remember { mutableStateListOf<String>().apply { addAll(initialSites) } }
+    val context = LocalContext.current
+    val tempApps = remember { mutableStateListOf<String>().apply { addAll(initialApps) } }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
-        // Header
-        Row(Modifier.fillMaxWidth().padding(vertical = 16.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-            Text("Manage Allow List", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = DClrDark)
-            IconButton(onClick = onClose, modifier = Modifier.size(36.dp).clip(CircleShape).background(Color(0xFFF1F5F9))) {
-                Icon(Icons.Default.Close, null, tint = DClrDark, modifier = Modifier.size(18.dp))
+    // ── App loading — system + user apps, fast ───────────────────────────
+    data class AppInfo(val name: String, val pkg: String, val icon: android.graphics.drawable.Drawable)
+
+    var allApps by remember { mutableStateOf<List<AppInfo>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+    var searchQuery by remember { mutableStateOf("") }
+
+    // Popular system/google apps to always include
+    val PRIORITY_PKGS = setOf(
+        "com.android.chrome",
+        "com.google.android.youtube",
+        "com.google.android.gm",
+        "com.google.android.googlequicksearchbox",
+        "com.google.android.apps.maps",
+        "com.google.android.apps.photos",
+        "com.google.android.dialer",
+        "com.android.dialer",
+        "com.samsung.android.dialer",
+        "com.android.messaging",
+        "com.samsung.android.messaging",
+        "com.google.android.apps.messaging",
+        "com.android.settings",
+        "com.samsung.android.settings",
+        "com.facebook.katana",
+        "com.facebook.lite",
+        "com.instagram.android",
+        "com.whatsapp",
+        "com.twitter.android",
+        "org.telegram.messenger",
+        "com.snapchat.android",
+        "com.tiktok.musically",
+        "com.spotify.music",
+        "com.netflix.mediaclient",
+        "com.amazon.mShop.android.shopping",
+        "com.google.android.apps.youtube.music",
+        "com.microsoft.teams",
+        "com.slack",
+        "com.discord",
+        "com.zhiliaoapp.musically",
+        "com.ss.android.ugc.trill"
+    )
+
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            val pm = context.packageManager
+            val allInstalled = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+
+            // Separate user apps + priority system apps
+            val userApps = allInstalled
+                .filter { (it.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0 }
+
+            val systemApps = allInstalled
+                .filter { (it.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
+                    && it.packageName in PRIORITY_PKGS }
+
+            val combined = (systemApps + userApps)
+                .distinctBy { it.packageName }
+                .mapNotNull { info ->
+                    try {
+                        AppInfo(
+                            name = pm.getApplicationLabel(info).toString(),
+                            pkg  = info.packageName,
+                            icon = pm.getApplicationIcon(info.packageName)
+                        )
+                    } catch (_: Exception) { null }
+                }
+                .sortedWith(compareBy(
+                    { it.pkg !in PRIORITY_PKGS }, // priority apps first
+                    { it.name.lowercase() }
+                ))
+
+            withContext(Dispatchers.Main) {
+                allApps = combined
+                isLoading = false
             }
         }
-        
-        if (selectedTab != 0) {
-            OutlinedTextField(
-                value = searchQuery, onValueChange = { searchQuery = it },
-                placeholder = { Text("Search or add new website…", color = DClrGray, fontSize = 14.sp) },
-                leadingIcon = { Icon(Icons.Default.Search, null, tint = DClrGray, modifier = Modifier.size(20.dp)) },
-                shape = RoundedCornerShape(16.dp), singleLine = true,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = DClrSurface, unfocusedContainerColor = DClrSurface,
-                    focusedBorderColor = DClrTeal, unfocusedBorderColor = Color(0xFFE2E8F0)
-                ),
-                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
-            )
+    }
+
+    val filtered = remember(allApps, searchQuery) {
+        if (searchQuery.isEmpty()) allApps
+        else allApps.filter {
+            it.name.contains(searchQuery, ignoreCase = true) ||
+            it.pkg.contains(searchQuery, ignoreCase = true)
         }
-        
-        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color(0xFFF1F5F9)).padding(4.dp)) {
-            listOf("Apps", "Sites", "Keywords").forEachIndexed { i, t ->
-                Box(
-                    Modifier.weight(1f).height(40.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(if (selectedTab == i) DClrSurface else Color.Transparent)
-                        .clickable { selectedTab = i },
-                    Alignment.Center
-                ) { Text(t, color = if (selectedTab == i) DClrDark else DClrGray, fontWeight = FontWeight.Bold, fontSize = 14.sp) }
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-        
-        if (selectedTab == 0) {
-            Box(Modifier.weight(1f)) {
-                InstalledAppPicker(
-                    selectedPackages = tempApps.toList(),
-                    onSelectionChanged = { 
-                        tempApps.clear()
-                        tempApps.addAll(it)
-                    },
-                    profileType = "Allow"
+    }
+
+    Column(Modifier.fillMaxSize().background(DClrBg)) {
+
+        // ── Header ───────────────────────────────────────────────────────
+        Row(
+            Modifier.fillMaxWidth().background(DClrSurface).padding(horizontal = 20.dp, vertical = 14.dp),
+            Arrangement.SpaceBetween, Alignment.CenterVertically
+        ) {
+            Column {
+                Text("Allow List", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = DClrDark)
+                Text(
+                    "${tempApps.size} app${if (tempApps.size != 1) "s" else ""} selected",
+                    fontSize = 13.sp, color = DClrTeal
                 )
             }
-        } else {
-            LazyColumn(Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).background(DClrSurface).padding(8.dp)) {
-                if (selectedTab == 1 && searchQuery.isNotEmpty()) {
-                    if (!tempSites.any { it.contains(searchQuery, ignoreCase = true) }) {
-                        val url = if (searchQuery.contains(".")) searchQuery else "$searchQuery.com"
-                        item {
-                            Row(Modifier.fillMaxWidth().padding(vertical = 10.dp, horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Box(Modifier.size(42.dp).clip(CircleShape).background(Color(0xFFF0F9FF)), Alignment.Center) {
-                                    Text(url.first().uppercase(), fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = DClrTeal)
-                                }
-                                Spacer(Modifier.width(12.dp))
-                                Text(url, modifier = Modifier.weight(1f), color = DClrDark, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                                FilledTonalButton(
-                                    onClick = { tempSites.add(url); searchQuery = "" },
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFFF0F9FF), contentColor = DClrTeal),
-                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
-                                ) { Text("Add", fontSize = 14.sp, fontWeight = FontWeight.Bold) }
-                            }
-                            HorizontalDivider(color = com.rasel.RasFocus.ui.theme.RasFocusTheme.colors.onBackground)
-                        }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (tempApps.isNotEmpty()) {
+                    TextButton(
+                        onClick = { tempApps.clear() },
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text("Clear", fontSize = 13.sp, color = DClrRed, fontWeight = FontWeight.Bold)
                     }
                 }
-                if (selectedTab == 1) {
-                    items(tempSites.size) { i ->
-                        val site = tempSites[i]
-                        Row(Modifier.fillMaxWidth().padding(vertical = 10.dp, horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            AsyncImage("https://www.google.com/s2/favicons?domain=$site&sz=128", null, Modifier.size(42.dp).clip(CircleShape))
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(site, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = DClrDark)
-                                Text("Website allowed", color = DClrGray, fontSize = 12.sp)
+                IconButton(
+                    onClick = onClose,
+                    modifier = Modifier.size(36.dp).clip(CircleShape).background(DClrPillBg)
+                ) {
+                    Icon(Icons.Default.Close, null, tint = DClrDark, modifier = Modifier.size(18.dp))
+                }
+            }
+        }
+
+        // ── Search bar ───────────────────────────────────────────────────
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            placeholder = { Text("Search apps…", color = DClrGray, fontSize = 14.sp) },
+            leadingIcon = { Icon(Icons.Default.Search, null, tint = DClrGray, modifier = Modifier.size(20.dp)) },
+            trailingIcon = {
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(onClick = { searchQuery = "" }) {
+                        Icon(Icons.Default.Close, null, tint = DClrGray, modifier = Modifier.size(18.dp))
+                    }
+                }
+            },
+            shape = RoundedCornerShape(14.dp),
+            singleLine = true,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = DClrDark,
+                unfocusedTextColor = DClrDark,
+                focusedContainerColor = DClrSurface,
+                unfocusedContainerColor = DClrSurface,
+                focusedBorderColor = DClrTeal,
+                unfocusedBorderColor = DClrBorderMuted
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+        )
+
+        // ── Launcher always-allowed banner ───────────────────────────────
+        val defaultLauncher = remember {
+            val intent = android.content.Intent(android.content.Intent.ACTION_MAIN)
+                .apply { addCategory(android.content.Intent.CATEGORY_HOME) }
+            context.packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)
+                ?.activityInfo?.packageName ?: ""
+        }
+        if (defaultLauncher.isNotEmpty()) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(DClrTeal.copy(alpha = 0.1f))
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Home, null, tint = DClrTeal, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "Launcher সবসময় allow থাকবে",
+                    fontSize = 12.sp, color = DClrTeal, fontWeight = FontWeight.SemiBold
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+
+        // ── App list ──────────────────────────────────────────────────────
+        if (isLoading) {
+            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(color = DClrTeal, modifier = Modifier.size(36.dp))
+                    Spacer(Modifier.height(12.dp))
+                    Text("Loading apps…", color = DClrGray, fontSize = 14.sp)
+                }
+            }
+        } else {
+            LazyColumn(
+                Modifier.weight(1f),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                items(
+                    items = filtered,
+                    key = { it.pkg }
+                ) { app ->
+                    val isLauncher = app.pkg == defaultLauncher
+                    val isSelected = tempApps.contains(app.pkg) || isLauncher
+                    val isPriority = app.pkg in PRIORITY_PKGS
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(
+                                when {
+                                    isSelected -> DClrTeal.copy(alpha = 0.12f)
+                                    else       -> DClrSurface
+                                }
+                            )
+                            .border(
+                                width = if (isSelected) 1.5.dp else 0.dp,
+                                color = if (isSelected) DClrTeal.copy(alpha = 0.5f) else Color.Transparent,
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .clickable(enabled = !isLauncher) {
+                                if (isSelected) tempApps.remove(app.pkg)
+                                else tempApps.add(app.pkg)
                             }
-                            IconButton(onClick = { tempSites.remove(site) }, modifier = Modifier.size(36.dp)) {
-                                Icon(Icons.Default.RemoveCircleOutline, null, tint = DClrRed, modifier = Modifier.size(20.dp))
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // App icon
+                        Image(
+                            bitmap = app.icon.toBitmap().asImageBitmap(),
+                            contentDescription = app.name,
+                            modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp))
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    app.name,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = DClrDark,
+                                    maxLines = 1
+                                )
+                                if (isLauncher) {
+                                    Spacer(Modifier.width(6.dp))
+                                    Box(
+                                        Modifier
+                                            .background(DClrTeal.copy(alpha = 0.18f), RoundedCornerShape(4.dp))
+                                            .padding(horizontal = 5.dp, vertical = 1.dp)
+                                    ) {
+                                        Text("Launcher", fontSize = 9.sp, color = DClrTeal, fontWeight = FontWeight.Bold)
+                                    }
+                                } else if (isPriority && (app.pkg.startsWith("com.android") || app.pkg.startsWith("com.google") || app.pkg.startsWith("com.samsung"))) {
+                                    Spacer(Modifier.width(6.dp))
+                                    Box(
+                                        Modifier
+                                            .background(DClrBadgePurple, RoundedCornerShape(4.dp))
+                                            .padding(horizontal = 5.dp, vertical = 1.dp)
+                                    ) {
+                                        Text("System", fontSize = 9.sp, color = Color(0xFF8B5CF6), fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                            Text(
+                                app.pkg,
+                                fontSize = 11.sp,
+                                color = DClrGray,
+                                maxLines = 1
+                            )
+                        }
+                        // Checkbox
+                        Box(
+                            Modifier
+                                .size(24.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(
+                                    if (isSelected) DClrTeal else DClrPillBg
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (isSelected) {
+                                Icon(
+                                    Icons.Default.Check,
+                                    null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(14.dp)
+                                )
                             }
                         }
-                        HorizontalDivider(color = com.rasel.RasFocus.ui.theme.RasFocusTheme.colors.onBackground)
                     }
                 }
             }
         }
-        
+
+        // ── Save button ──────────────────────────────────────────────────
         Button(
-            onClick = { onSave(tempApps, tempSites) },
-            modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp).height(56.dp),
+            onClick = { onSave(tempApps.toList(), emptyList()) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp)
+                .height(54.dp),
             colors = ButtonDefaults.buttonColors(containerColor = DClrTeal),
             shape = RoundedCornerShape(16.dp),
             elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
-        ) { Text("Save Changes", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.5.sp) }
+        ) {
+            Icon(Icons.Default.Check, null, tint = Color.White, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "Save  •  ${tempApps.size} apps",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color.White
+            )
+        }
     }
 }
+
 
 // ─────────────────────────────────────────
 // HELPER COMPOSABLES
@@ -931,7 +1348,7 @@ fun TimerSetupRow(label: String, value: Int, minVal: Int, maxVal: Int, step: Int
         Text(label, fontSize = 15.sp, color = if (enabled) DClrDark else DClrGray, modifier = Modifier.weight(1f), fontWeight = FontWeight.Medium)
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(Color(0xFFF1F5F9)).padding(2.dp)
+            modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(DClrPillBg).padding(2.dp)
         ) {
             IconButton(
                 onClick = { if (enabled && value > minVal) onValueChange(value - step) },

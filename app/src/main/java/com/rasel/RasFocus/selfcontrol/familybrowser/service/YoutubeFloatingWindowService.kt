@@ -14,9 +14,60 @@ import android.view.*
 import android.webkit.*
 import androidx.core.app.NotificationCompat
 import com.rasel.RasFocus.selfcontrol.familybrowser.FamilyBrowserActivity
+import java.io.ByteArrayInputStream
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.abs
+
+// ✅ FIX: এই WebView এ আগে কোনো network-level ad-blocking ছিলই না (শুধু
+// adult-content block ছিল) — main YoutubeActivity এর shouldInterceptRequest
+// এ থাকা AD_SERVERS/endpoint/pattern list এখানে কখনো port করা হয়নি। ফলে
+// floating-window mode এ ads একদমই block হতো না। নিচের ৩টা list হুবহু
+// youtubeactivity.kt এর companion object থেকে আনা — same domains, same
+// patterns, যাতে দুই জায়গাতেই একই protection থাকে।
+private object YtFloatingAdBlockLists {
+    val AD_SERVERS = setOf(
+        "googleads.g.doubleclick.net",
+        "pagead2.googlesyndication.com",
+        "pubads.g.doubleclick.net",
+        "adservice.google.com",
+        "googleadservices.com",
+        "ad.doubleclick.net",
+        "amazon-adsystem.com",
+        "adsystem.amazon.com",
+        "moatads.com",
+        "adsafeprotected.com",
+        "securepubads.g.doubleclick.net"
+    )
+
+    val YT_AD_ENDPOINTS = listOf(
+        "/api/stats/ads",
+        "/pagead/adview",
+        "/ptracking",
+        "/api/stats/qoe?",
+        "/pagead/paralleladload",
+        "/pagead/viewthroughconversion",
+        "/pagead/interaction",
+        "/pagead/adformat",
+        "/annotations_auth",
+        "/get_midroll_info",
+        "/api/stats/delayplay",
+        "/api/stats/atr",
+        "youtubei/v1/player/ad_break",
+        "youtubei/v1/ad_break",
+        "youtubei/v1/log_event",
+        "imasdk.googleapis.com/js/sdkloader",
+        "imasdk.googleapis.com/admob"
+    )
+
+    val AD_URL_PATTERNS = listOf(
+        "/pagead/", "/ads/", "/adview/", "adformat=",
+        "//ad.", "//ads.", "//adserver.", "//adservice.",
+        "tracking_pixel", "track/click", "ad_impression",
+        "affiliates/", "click.php?aff", "bannerfarm",
+        "adrotate", "sponsored_links"
+    )
+}
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
@@ -76,6 +127,14 @@ class YoutubeFloatingWindowService : Service() {
         // Floating tap করলে এই broadcast যাবে → YoutubeActivity resume
         const val ACTION_RETURN_TO_ACTIVITY = "com.rasel.yt_float.RETURN_TO_ACTIVITY"
         const val ACTION_ACTIVITY_RESUMED   = "com.rasel.yt_float.ACTIVITY_RESUMED"
+
+        // ★ নতুন: Mini Player → Full Floating convert (Home press এ)
+        // Mini player চলাকালীন home button চাপলে — mini window সরিয়ে
+        // full floating window দেখাও, WebView reload নেই, audio/video অব্যাহত।
+        const val ACTION_EXPAND_MINI_TO_FULL    = "com.rasel.yt_float.EXPAND_MINI_TO_FULL"
+        // Service → Activity broadcast: mini successfully expanded to full floating.
+        // Activity এ isMiniPlayerActive = false করতে হবে।
+        const val ACTION_MINI_EXPANDED_TO_FULL  = "com.rasel.yt_float.MINI_EXPANDED_TO_FULL"
 
         const val EXTRA_URL       = "yt_url"
         const val EXTRA_TITLE     = "yt_title"
@@ -171,6 +230,21 @@ class YoutubeFloatingWindowService : Service() {
                 context.startService(i)
         }
 
+        /**
+         * expandMiniToFull — Mini Player চলাকালীন Home button চাপলে call হয়।
+         * Mini player window সরিয়ে full floating window দেখায়।
+         * WebView একই থাকে — reload নেই, audio/video অব্যাহত।
+         */
+        fun expandMiniToFull(context: Context) {
+            val i = Intent(context, YoutubeFloatingWindowService::class.java).apply {
+                action = ACTION_EXPAND_MINI_TO_FULL
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                context.startForegroundService(i)
+            else
+                context.startService(i)
+        }
+
         fun dismiss(context: Context) {
             context.startService(Intent(context, YoutubeFloatingWindowService::class.java)
                 .apply { action = ACTION_DISMISS })
@@ -184,6 +258,71 @@ class YoutubeFloatingWindowService : Service() {
         fun restore(context: Context) {
             context.startService(Intent(context, YoutubeFloatingWindowService::class.java)
                 .apply { action = ACTION_RESTORE })
+        }
+
+        /**
+         * ★ FIX: Mini Player Mode CSS Injector
+         * Mini player এ থাকার সময় YouTube mobile web এর header bar, comments, recommendations hide করে দেয়
+         * এবং <video> element কে viewport এর 100vw x 100vh এ fixed করে দেয়।
+         * ফলে miniplayer এ কোনো black color বা অর্ধেক কালো দেখায় না।
+         * enable = false দিলে আবার normal watch page layout এ ফিরে আসে।
+         */
+        fun injectMiniPlayerCss(view: WebView?, enable: Boolean) {
+            if (view == null) return
+            val js = if (enable) {
+                """
+                (function() {
+                    try {
+                        var style = document.getElementById('ras-mini-player-style');
+                        if (!style) {
+                            style = document.createElement('style');
+                            style.id = 'ras-mini-player-style';
+                            document.head.appendChild(style);
+                        }
+                        style.innerHTML = `
+                            ytm-mobile-topbar-renderer, ytm-pivot-bar-renderer, #header-bar, .mobile-topbar-header-content,
+                            ytm-watch-next-secondary-results-renderer, ytm-item-section-renderer, ytm-comment-section-renderer,
+                            .watch-below-the-player, ytm-single-column-watch-next-results-renderer > :not(.player-container),
+                            ytm-watch-metadata-app-bundle-slot-renderer, ytm-paid-content-overlay, ytm-ad-slot-renderer {
+                                display: none !important;
+                            }
+                            .player-container, #player, ytm-player, #player-container-id, .html5-video-container, video {
+                                position: fixed !important;
+                                top: 0 !important;
+                                left: 0 !important;
+                                width: 100vw !important;
+                                height: 100vh !important;
+                                max-height: 100vh !important;
+                                margin: 0 !important;
+                                padding: 0 !important;
+                                z-index: 9999999 !important;
+                                background: #000 !important;
+                                object-fit: contain !important;
+                            }
+                            body, html, ytm-app, ytm-watch {
+                                overflow: hidden !important;
+                                margin: 0 !important;
+                                padding: 0 !important;
+                                background: #000 !important;
+                            }
+                        `;
+                        window.scrollTo(0, 0);
+                    } catch(e) {}
+                })();
+                """.trimIndent()
+            } else {
+                """
+                (function() {
+                    try {
+                        var style = document.getElementById('ras-mini-player-style');
+                        if (style) style.innerHTML = '';
+                        document.body.style.overflow = '';
+                        document.documentElement.style.overflow = '';
+                    } catch(e) {}
+                })();
+                """.trimIndent()
+            }
+            view.evaluateJavascript(js, null)
         }
     }
 
@@ -455,6 +594,47 @@ class YoutubeFloatingWindowService : Service() {
             }
 
             // ══════════════════════════════════════════════════════════════════
+            // ★ নতুন: ACTION_EXPAND_MINI_TO_FULL
+            // Mini player চলাকালীন Home button চাপলে YoutubeActivity এই action
+            // পাঠায়। Mini window সরিয়ে full floating window দেখানো হয়।
+            // WebView একই থাকে — পুনরায় load করা হয় না, audio/video চলতে থাকে।
+            // YoutubeActivity এর isMiniPlayerActive = false করা হয় না কারণ
+            // full floating এ থাকলে Activity "aware" থাকে যে service চলছে।
+            // ══════════════════════════════════════════════════════════════════
+            ACTION_EXPAND_MINI_TO_FULL -> {
+                if (isMiniPlayer) {
+                    isMiniPlayer = false
+
+                    // Mini window সরাও
+                    removeMiniWindow()
+
+                    // WebView ghost container এ সরিয়ে রাখো (audio live রাখতে)
+                    val wv = webView
+                    if (wv != null && ghostContainer != null) {
+                        (wv.parent as? ViewGroup)?.removeView(wv)
+                        ghostContainer?.addView(
+                            wv,
+                            android.widget.FrameLayout.LayoutParams(
+                                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                                android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+                            )
+                        )
+                        injectVisibilitySpoof(wv)
+                    }
+
+                    // Full floating window তৈরি করো (WebView re-use হবে)
+                    showFull()
+
+                    // ★ YoutubeActivity কে জানাও যে mini → full হয়ে গেছে।
+                    // Activity তে isMiniPlayerActive = false করতে হবে যাতে
+                    // onResume() এ সে ভুলে returnFromMiniPlayer() call না করে।
+                    val broadcastIntent = android.content.Intent(ACTION_MINI_EXPANDED_TO_FULL)
+                    broadcastIntent.setPackage(packageName)
+                    sendBroadcast(broadcastIntent)
+                }
+            }
+
+            // ══════════════════════════════════════════════════════════════════
             // ★ Recent apps থেকে ফিরলে MainActivity.onResume() এই action পাঠাবে।
             // Mini bubble/player যেমন আছে তেমনই থাকবে (user experience অপরিবর্তিত)।
             // শুধু window layout params refresh করা হয় যাতে নতুন Activity window
@@ -603,13 +783,21 @@ class YoutubeFloatingWindowService : Service() {
         val screenW = dm.widthPixels
         val screenH = dm.heightPixels
 
-        // Mini player size: 240×135 dp (16:9 ratio, corner তে বসার মতো)
+        // Mini player final size: 240×135 dp (16:9 ratio, corner তে বসার মতো)
         val miniW = dp(240)
         val miniH = dp(135)
 
+        // ★ Native YouTube animation:
+        // শুরুতে full-screen size এ শুরু করো, তারপর corner এ shrink করো।
+        // এটাই native YouTube এর "pinch to corner" effect।
+        val startW = screenW
+        val startH = (screenW * 9f / 16f).toInt()  // 16:9 full-width
+        val startX = 0
+        val startY = miniPosY - (startH - miniH) / 2  // center vertically
+
         val params = WindowManager.LayoutParams(
-            miniW, miniH,
-            miniPosX, miniPosY,
+            startW, startH,  // শুরুতে বড়
+            startX, startY.coerceAtLeast(0),
             overlayWindowType(),
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
@@ -633,11 +821,25 @@ class YoutubeFloatingWindowService : Service() {
         // ── WebView (video area) ──────────────────────────────────────────────
         val wv = getOrBuildWebView()
         webView = wv
+
+        // ★ FIX: Mini player এ video black হওয়া রোধ করো।
+        // WebView কে overlay window এ attach করার আগে LAYER_TYPE_NONE নিশ্চিত করো।
+        // LAYER_TYPE_HARDWARE floating overlay এ video compositor কে block করে।
+        wv.setLayerType(android.view.View.LAYER_TYPE_NONE, null)
+
         (wv.parent as? ViewGroup)?.removeView(wv)
         root.addView(wv, android.widget.FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
         ))
+
+        // ★ FIX: Audio — window এ attach এর পরে 200ms দেরিতে force inject।
+        // WebView re-parenting এর পরে YouTube নিজে থেকে pause করে দেয়।
+        injectMiniPlayerCss(wv, true)
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            injectStrongAudioKeepAlive(wv)
+            injectMiniPlayerCss(wv, true)
+        }, 200L)
 
         // ── Overlay controls (video এর উপরে) ────────────────────────────────
         val overlay = android.widget.FrameLayout(this)
@@ -732,9 +934,36 @@ class YoutubeFloatingWindowService : Service() {
             // Overlay permission নেই — teardown
             tearDown()
             stopSelf()
+            return
         }
 
         updateNotification("▶ $currentTitle")
+
+        // ★ Native YouTube এর মতো shrink + slide-to-corner animation
+        // Full-screen → corner এ ছোট হয়ে যাওয়ার smooth animation।
+        // ValueAnimator দিয়ে 320ms এ window size ও position interpolate করো।
+        val finalX = miniPosX
+        val finalY = miniPosY
+        val finalW = miniW
+        val finalH = miniH
+
+        val animator = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration    = 320L
+            interpolator = android.view.animation.DecelerateInterpolator(1.8f)
+            addUpdateListener { anim ->
+                val t = anim.animatedValue as Float
+                // Linear interpolation: start → final
+                params.width  = (startW  + (finalW - startW)  * t).toInt()
+                params.height = (startH  + (finalH - startH)  * t).toInt()
+                params.x      = (startX  + (finalX - startX)  * t).toInt()
+                params.y      = ((startY.coerceAtLeast(0)) + (finalY - startY.coerceAtLeast(0)) * t).toInt()
+                runCatching { windowManager.updateViewLayout(miniWindow, params) }
+            }
+        }
+        // Main thread এ run করো — Looper দরকার
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            animator.start()
+        }
     }
 
     /**
@@ -743,6 +972,7 @@ class YoutubeFloatingWindowService : Service() {
      * Activity.onResume() → stopService() → onDestroy() → pendingWebView set।
      */
     private fun returnToActivity() {
+        injectMiniPlayerCss(webView, false)
         // YoutubeActivity কে FLAG_ACTIVITY_REORDER_TO_FRONT দিয়ে resume করো
         val resumeIntent = Intent(
             this,
@@ -1013,6 +1243,7 @@ class YoutubeFloatingWindowService : Service() {
 
     private fun showFull() {
         removeBubble()
+        injectMiniPlayerCss(webView, false)
         webView?.evaluateJavascript("""
             (function() {
                 try {
@@ -1043,13 +1274,100 @@ class YoutubeFloatingWindowService : Service() {
         if (pending != null) {
             pendingWebView = null
             (pending.parent as? ViewGroup)?.removeView(pending)
+
+            // ★ FIX: Mini player এ video black হওয়ার মূল কারণ হল WebView কে
+            // floating overlay window এ attach করার সময় SurfaceView / TextureView
+            // based video compositor হারিয়ে ফেলে। LAYER_TYPE_HARDWARE floating window
+            // এ conflict করে। এখানে force করে LAYER_TYPE_NONE দিলে WebView নিজেই
+            // সঠিক compositing বেছে নেয় এবং video frame দেখা যায়।
+            pending.setLayerType(android.view.View.LAYER_TYPE_NONE, null)
+
             injectVisibilitySpoof(pending)
+
+            // ★ FIX: Audio — WebView parent change এর পরে YouTube নিজে থেকে
+            // pause করে ফেলতে পারে। pause() interceptor আবার inject করো।
+            injectStrongAudioKeepAlive(pending)
+
             return pending
         }
 
         return buildYoutubeWebView().also {
             it.loadUrl(normalizeYoutubeUrl(currentUrl))
         }
+    }
+
+    /**
+     * ★ নতুন: Strong Audio Keep-Alive Injector
+     * Mini player এ WebView re-parent হওয়ার পরে YouTube pause করে দেয়।
+     * এই JS: pause() override করে, visibility spoof করে, 500ms এ একবার
+     * video play() force করে — audio যাতে নিশ্চিতভাবে চলে।
+     */
+    private fun injectStrongAudioKeepAlive(view: WebView) {
+        view.evaluateJavascript("""
+            (function() {
+                // Visibility fully spoof — YouTube ভাবুক page সবসময় visible
+                try {
+                    Object.defineProperty(document, 'hidden',
+                        { get: function(){ return false; }, configurable: true });
+                    Object.defineProperty(document, 'visibilityState',
+                        { get: function(){ return 'visible'; }, configurable: true });
+                    Object.defineProperty(document, 'webkitHidden',
+                        { get: function(){ return false; }, configurable: true });
+                    Object.defineProperty(document, 'webkitVisibilityState',
+                        { get: function(){ return 'visible'; }, configurable: true });
+                } catch(e) {}
+
+                // pause() ব্লক করো — YouTube যখনই pause করতে চাইবে, আমরা আটকাবো
+                try {
+                    var _origPause = HTMLMediaElement.prototype.pause;
+                    HTMLMediaElement.prototype.pause = function() {
+                        // শুধু user-intent pause allow করো না — সব system/visibility pause block
+                        // (user notification থেকে pause করলে এটা mediasession callback দিয়ে আসে, এখানে না)
+                        return;
+                    };
+                } catch(e) {}
+
+                // dispatchEvent visibilitychange block করো
+                try {
+                    var _origDispatch = document.dispatchEvent.bind(document);
+                    document.dispatchEvent = function(event) {
+                        if (event && event.type &&
+                            (event.type === 'visibilitychange' ||
+                             event.type === 'webkitvisibilitychange')) return true;
+                        return _origDispatch(event);
+                    };
+                } catch(e) {}
+
+                // একবার force play করো (500ms delay — YouTube JS settle হওয়ার পরে)
+                setTimeout(function() {
+                    try {
+                        var videos = document.querySelectorAll('video');
+                        for (var i = 0; i < videos.length; i++) {
+                            try {
+                                videos[i].muted = false;
+                                if (videos[i].paused && !videos[i].ended) {
+                                    videos[i].play().catch(function(){});
+                                }
+                            } catch(e) {}
+                        }
+                    } catch(e) {}
+                }, 500);
+
+                // 1.5s পরে আবার — কিছু device এ একটু দেরিতে YouTube pause inject করে
+                setTimeout(function() {
+                    try {
+                        var videos = document.querySelectorAll('video');
+                        for (var i = 0; i < videos.length; i++) {
+                            try {
+                                if (videos[i].paused && !videos[i].ended) {
+                                    videos[i].play().catch(function(){});
+                                }
+                            } catch(e) {}
+                        }
+                    } catch(e) {}
+                }, 1500);
+            })();
+        """.trimIndent(), null)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -1090,6 +1408,56 @@ class YoutubeFloatingWindowService : Service() {
                     request: android.webkit.WebResourceRequest
                 ): android.webkit.WebResourceResponse? {
                     val reqUrl = request.url.toString()
+                    val reqHost = request.url?.host?.lowercase() ?: ""
+
+                    // ✅ FIX: এই WebView এ আগে শুধু adult-content block ছিল, কোনো
+                    // ad-blocking layer ছিলই না — main YoutubeActivity তে থাকা
+                    // network-level ad block এখানে কখনো port করা হয়নি। ফলে user
+                    // floating-window mode এ (যেমন Home button চেপে Full Floating
+                    // Mode এ) থাকলে ads একদমই block হতো না, যদিও main activity তে
+                    // ঠিকই কাজ করত। নিচের ৫ layer ঠিক main YoutubeActivity এর
+                    // shouldInterceptRequest থেকে হুবহু আনা — একই AD_SERVERS,
+                    // একই endpoint/pattern list।
+                    if (YtFloatingAdBlockLists.AD_SERVERS.any { reqHost == it || reqHost.endsWith(".$it") }) {
+                        return android.webkit.WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream(ByteArray(0)))
+                    }
+                    if (reqHost.contains("youtube.com") || reqHost.contains("imasdk.googleapis.com")) {
+                        if (YtFloatingAdBlockLists.YT_AD_ENDPOINTS.any { reqUrl.contains(it) }) {
+                            return android.webkit.WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream(ByteArray(0)))
+                        }
+                    }
+                    if (reqUrl.contains("googlevideo.com/videoplayback")) {
+                        val isAdStream =
+                            reqUrl.contains("&oad=")         ||
+                            reqUrl.contains("ctier=A")        ||
+                            reqUrl.contains("&adformat=")     ||
+                            reqUrl.contains("&ad_type=")      ||
+                            reqUrl.contains("&source=ytads")  ||
+                            reqUrl.contains("&adsid=")        ||
+                            (reqUrl.contains("&pot=") && reqUrl.contains("&c=WEB") && !reqUrl.contains("&id="))
+                        if (isAdStream) {
+                            return android.webkit.WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream(ByteArray(0)))
+                        }
+                    }
+                    if (YtFloatingAdBlockLists.AD_URL_PATTERNS.any { reqUrl.contains(it) } &&
+                        !reqUrl.contains("youtube.com/watch") &&
+                        !reqUrl.contains("googleapis.com/youtube") &&
+                        !reqUrl.contains("youtube.com/results")) {
+                        return android.webkit.WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream(ByteArray(0)))
+                    }
+                    if (reqHost.contains("googlevideo.com")) {
+                        val isGvAdUrl =
+                            reqUrl.contains("initplayback")      ||
+                            reqUrl.contains("generate_204")      ||
+                            reqUrl.contains("/pcs/activeview")   ||
+                            reqUrl.contains("ctier=SA")          ||
+                            reqUrl.contains("ctier=SR")          ||
+                            (reqUrl.contains("initplayback") && reqUrl.contains("adformat"))
+                        if (isGvAdUrl) {
+                            return android.webkit.WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream(ByteArray(0)))
+                        }
+                    }
+
                     val isDomainBlocked  = com.rasel.RasFocus.selfcontrol.familybrowser.AdBlocker.isAdultSite(reqUrl)
                     val isKeywordBlocked = com.rasel.RasFocus.selfcontrol.FirebaseKeywordSync.containsAdultKeyword(reqUrl)
                     if (isDomainBlocked || isKeywordBlocked) {

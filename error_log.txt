@@ -1,91 +1,55 @@
 === KOTLIN ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:53:11 Unresolved reference: legere
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:54:11 Unresolved reference: legere
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:55:11 Unresolved reference: legere
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:89:20 Unresolved reference: PdfTextPage
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:243:31 Unresolved reference: PdfiumCore
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:244:21 Property delegate must have a 'getValue(Nothing?, KProperty<*>)' method. None of the following functions is suitable: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:244:21 Property delegate must have a 'setValue(Nothing?, KProperty<*>, [Error type: Error delegation type for remember { mutableStateOf<PdfDocument?>(null) }])' method. None of the following functions is suitable: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:244:47 Unresolved reference: PdfDocument
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:277:35 Unresolved reference: newDocument
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:295:51 Overload resolution ambiguity: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:298:35 Unresolved reference: PdfTextPage
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:319:32 Unresolved reference: openPage
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:323:51 Overload resolution ambiguity: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:386:35 Unresolved reference: closeDocument
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:386:49 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:615:32 Unresolved reference: textPageCountChars
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:621:31 Unresolved reference: textPageGetCharBox
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:637:33 Unresolved reference: textPageGetText
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2320:67 Unresolved reference: imageScales
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2353:53 Unresolved reference: imageScales
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/reminder.kt:209:40 Unresolved reference: StudyToolsActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/reminder.kt:314:45 Unresolved reference: tabIndicatorOffset
 
 === UNRESOLVED / TYPE ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:53:11 Unresolved reference: legere
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:54:11 Unresolved reference: legere
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:55:11 Unresolved reference: legere
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:89:20 Unresolved reference: PdfTextPage
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:243:31 Unresolved reference: PdfiumCore
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:244:21 Property delegate must have a 'getValue(Nothing?, KProperty<*>)' method. None of the following functions is suitable: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:244:21 Property delegate must have a 'setValue(Nothing?, KProperty<*>, [Error type: Error delegation type for remember { mutableStateOf<PdfDocument?>(null) }])' method. None of the following functions is suitable: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:244:47 Unresolved reference: PdfDocument
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:277:35 Unresolved reference: newDocument
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:295:51 Overload resolution ambiguity: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:298:35 Unresolved reference: PdfTextPage
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:319:32 Unresolved reference: openPage
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:323:51 Overload resolution ambiguity: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:386:35 Unresolved reference: closeDocument
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:386:49 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:615:32 Unresolved reference: textPageCountChars
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:621:31 Unresolved reference: textPageGetCharBox
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:637:33 Unresolved reference: textPageGetText
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2320:67 Unresolved reference: imageScales
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2353:53 Unresolved reference: imageScales
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/reminder.kt:209:40 Unresolved reference: StudyToolsActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/reminder.kt:314:45 Unresolved reference: tabIndicatorOffset
 
 === BUILD FAILURE ===
 > Task :app:compileFullReleaseKotlin FAILED
 * What went wrong:
 Execution failed for task ':app:compileFullReleaseKotlin'.
-BUILD FAILED in 2m 54s
+BUILD FAILED in 3m 16s
 
 === LAST 60 LINES ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:53:11 Unresolved reference: legere
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:54:11 Unresolved reference: legere
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:55:11 Unresolved reference: legere
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:89:20 Unresolved reference: PdfTextPage
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:243:31 Unresolved reference: PdfiumCore
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:244:21 Property delegate must have a 'getValue(Nothing?, KProperty<*>)' method. None of the following functions is suitable: 
-public inline operator fun <T> State<Nothing?>.getValue(thisObj: Any?, property: KProperty<*>): Nothing? defined in androidx.compose.runtime
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:244:21 Property delegate must have a 'setValue(Nothing?, KProperty<*>, [Error type: Error delegation type for remember { mutableStateOf<PdfDocument?>(null) }])' method. None of the following functions is suitable: 
-public inline operator fun <T> MutableState<Nothing?>.setValue(thisObj: Any?, property: KProperty<*>, value: Nothing?): Unit defined in androidx.compose.runtime
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:244:47 Unresolved reference: PdfDocument
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:277:35 Unresolved reference: newDocument
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:295:51 Overload resolution ambiguity: 
-public final operator fun div(other: Byte): Float defined in kotlin.Float
-public final operator fun div(other: Double): Double defined in kotlin.Float
-public final operator fun div(other: Float): Float defined in kotlin.Float
-public final operator fun div(other: Int): Float defined in kotlin.Float
-public final operator fun div(other: Long): Float defined in kotlin.Float
-public final operator fun div(other: Short): Float defined in kotlin.Float
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:298:35 Unresolved reference: PdfTextPage
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:319:32 Unresolved reference: openPage
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:323:51 Overload resolution ambiguity: 
-public final operator fun div(other: Byte): Float defined in kotlin.Float
-public final operator fun div(other: Double): Double defined in kotlin.Float
-public final operator fun div(other: Float): Float defined in kotlin.Float
-public final operator fun div(other: Int): Float defined in kotlin.Float
-public final operator fun div(other: Long): Float defined in kotlin.Float
-public final operator fun div(other: Short): Float defined in kotlin.Float
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:386:35 Unresolved reference: closeDocument
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:386:49 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:615:32 Unresolved reference: textPageCountChars
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:621:31 Unresolved reference: textPageGetCharBox
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:637:33 Unresolved reference: textPageGetText
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2320:67 Unresolved reference: imageScales
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/diary.kt:2353:53 Unresolved reference: imageScales
+> Task :app:extractDeepLinksFullRelease FROM-CACHE
+> Task :app:packageFullReleaseResources FROM-CACHE
+> Task :app:parseFullReleaseLocalResources FROM-CACHE
+> Task :app:mapFullReleaseSourceSetPaths
+> Task :app:mergeFullReleaseAssets FROM-CACHE
+> Task :app:checkFullReleaseDuplicateClasses
+> Task :app:validateSigningFullRelease
+> Task :app:writeFullReleaseAppMetadata
+> Task :app:compressFullReleaseAssets FROM-CACHE
+> Task :app:writeFullReleaseSigningConfigVersions
+> Task :app:mergeFullReleaseNativeLibs
+> Task :app:mergeFullReleaseArtProfile
+> Task :app:checkFullReleaseAarMetadata
+> Task :app:collectFullReleaseDependencies
+
+> Task :app:stripFullReleaseDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libbarhopper_v3.so, libimage_processing_util_jni.so, libpdfium.so, libpdfiumandroid.so.
+
+> Task :app:extractFullReleaseNativeSymbolTables FROM-CACHE
+> Task :app:mergeFullReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:sdkFullReleaseDependencyData
+> Task :app:mergeFullReleaseResources FROM-CACHE
+> Task :app:processFullReleaseMainManifest
+> Task :app:processFullReleaseManifest
+> Task :app:processFullReleaseManifestForPackage
+note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
+
+note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
+
+> Task :app:processFullReleaseResources
+> Task :app:kspFullReleaseKotlin
+> Task :app:compileFullReleaseKotlin
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/reminder.kt:209:40 Unresolved reference: StudyToolsActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/reminder.kt:314:45 Unresolved reference: tabIndicatorOffset
 
 > Task :app:compileFullReleaseKotlin FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785457033175.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785431318940.json
 
 FAILURE: Build failed with an exception.
 
@@ -106,6 +70,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 2m 54s
+BUILD FAILED in 3m 16s
 32 actionable tasks: 22 executed, 10 from cache
 Configuration cache entry stored.

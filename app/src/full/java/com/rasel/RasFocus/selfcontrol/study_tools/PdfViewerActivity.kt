@@ -197,7 +197,7 @@ fun NativePdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
     // Pages
     val pages         = remember { mutableStateListOf<PageData?>() }
     val bitmapCache   = remember {
-        object : android.util.LruCache<Int, Bitmap>(4) { // 4 pages max in memory
+        object : android.util.LruCache<Int, Bitmap>(8) { // 8 pages max in memory
             override fun entryRemoved(evicted: Boolean, key: Int, oldBitmap: Bitmap, newBitmap: Bitmap?) {
                 if (evicted) {
                     scope.launch(Dispatchers.Main) {
@@ -266,16 +266,60 @@ fun NativePdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
         }
     }
 
-    // ── Load PDF ────────────────────────────────────────────────────────────
+    // ── Render job tracker — prevents duplicate renders for same page ────────
+    val renderJobs = remember { mutableMapOf<Int, Job>() }
+
+    // ── Render a single page on-demand (called from viewport watcher) ────────
+    fun renderPage(doc: PdfDocument, i: Int) {
+        if (i < 0 || i >= pages.size) return
+        val existing = pages.getOrNull(i)
+        if (existing?.bitmap != null) return           // already rendered
+        if (renderJobs[i]?.isActive == true) return    // already in progress
+
+        renderJobs[i] = scope.launch(Dispatchers.IO) {
+            try {
+                val page      = doc.openPage(i)
+                val screenDpi = context.resources.displayMetrics.densityDpi
+                val origW = page.getPageWidth(screenDpi).coerceAtLeast(1)
+                val origH = page.getPageHeight(screenDpi).coerceAtLeast(1)
+                val baseScale = screenW.toFloat() / origW
+                val bmpW  = screenW
+                val bmpH  = (origH * baseScale).roundToInt().coerceAtLeast(1)
+                val textPage: PdfTextPage? = try { page.openTextPage() } catch (_: Exception) { null }
+
+                val bmp = try {
+                    val b = Bitmap.createBitmap(bmpW, bmpH, Bitmap.Config.RGB_565) // RGB_565 = half memory vs ARGB_8888
+                    b.eraseColor(AColor.WHITE)
+                    page.renderPageBitmap(b, 0, 0, bmpW, bmpH, true)
+                    b
+                } catch (_: Exception) { null }
+
+                page.close()
+
+                withContext(Dispatchers.Main) {
+                    if (i < pages.size) {
+                        pages[i] = PageData(textPage, i, bmpW, bmpH, renderedAtScale = 1f, bitmap = bmp)
+                        if (bmp != null) bitmapCache.put(i, bmp)
+                    }
+                }
+            } catch (_: Exception) { /* page stays as placeholder */ }
+        }
+    }
+
+    // ── Load PDF — open doc & build page skeleton (NO bitmaps yet) ──────────
     LaunchedEffect(uri) {
         if (uri == null) { isLoading = false; errorMsg = "PDF পাওয়া যায়নি"; return@LaunchedEffect }
         isLoading = true
+        // Cancel any in-flight renders from a previous PDF
+        renderJobs.values.forEach { it.cancel() }
+        renderJobs.clear()
+
         withContext(Dispatchers.IO) {
             try {
                 val pfd = context.contentResolver.openFileDescriptor(uri, "r")
                     ?: throw IllegalStateException("File খুলতে পারিনি")
-                val doc = pdfCore.newDocument(pfd)
-                pdfDoc  = doc
+                val doc   = pdfCore.newDocument(pfd)
+                pdfDoc    = doc
                 val count = doc.getPageCount()
 
                 withContext(Dispatchers.Main) {
@@ -284,23 +328,13 @@ fun NativePdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
                     totalPages  = count
                     currentPage = 1
                     isLoading   = false
-                }
 
-                // Render pages one by one
-                for (i in 0 until count) {
-                    val page     = doc.openPage(i)
-                    val screenDpi = context.resources.displayMetrics.densityDpi
-                    val origW = page.getPageWidth(screenDpi).coerceAtLeast(1)
-                    val origH = page.getPageHeight(screenDpi).coerceAtLeast(1)
-                    val scale = screenW.toFloat() / origW
-                    val bmpW  = screenW
-                    val bmpH  = (origH * scale).roundToInt().coerceAtLeast(1)
-                    val textPage: PdfTextPage? = try { page.openTextPage() } catch (_: Exception) { null }
-                    withContext(Dispatchers.Main) {
-                        if (i < pages.size)
-                            pages[i] = PageData(textPage, i, bmpW, bmpH)
+                    // Render only the first 3 pages immediately so the reader
+                    // feels instant — the rest are rendered on-demand as the
+                    // user scrolls (see viewport watcher below).
+                    for (i in 0 until minOf(3, count)) {
+                        renderPage(doc, i)
                     }
-                    page.close()
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -310,6 +344,8 @@ fun NativePdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
             }
         }
     }
+
+
 
     // ── Re-render a page at higher resolution for sharp zoom ────────────────
     suspend fun reRenderPageSharper(pageIndex: Int, targetScale: Float) {
@@ -365,22 +401,47 @@ fun NativePdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
         if (totalPages > 0) currentPage = visibleIdx + 1
     }
 
-    // Debounced: waits for pinch/zoom to actually settle before re-rendering,
-    // so a live two-finger gesture doesn't trigger a re-render on every tiny
-    // scale change (would be expensive and janky mid-gesture).
-    LaunchedEffect(scale, visibleIdx) {
+    // ── Viewport watcher — render pages near the visible area ───────────────
+    // Watches the scroll position and pre-renders pages in a window around
+    // the currently visible page: 2 ahead + 1 behind = snappy scrolling
+    // without ever holding the whole document in memory.
+    LaunchedEffect(visibleIdx, pdfDoc) {
+        val doc = pdfDoc ?: return@LaunchedEffect
+        val preload = 2  // pages to render ahead of current
+        val behind  = 1  // pages to keep behind current
+        for (i in (visibleIdx - behind).coerceAtLeast(0)
+                  ..(visibleIdx + preload).coerceAtMost(totalPages - 1)) {
+            renderPage(doc, i)
+        }
+    }
+
+    // FIX: was LaunchedEffect(scale, visibleIdx) — scrolling changes visibleIdx
+    // which restarted the effect and cancelled the delay(350), so zoom + scroll
+    // never triggered a re-render. Now keyed only on scale: the delay fires
+    // after the pinch settles, then captures visibleIdx at that moment.
+    LaunchedEffect(scale) {
         delay(350)
-        val current = pages.getOrNull(visibleIdx) ?: return@LaunchedEffect
-        // Only upgrade once real headroom is used up, and only bother past
-        // roughly 1x — avoids needless re-render churn for small pinches.
+        val currentIdx = visibleIdx   // snapshot after gesture settles
+        val current = pages.getOrNull(currentIdx) ?: return@LaunchedEffect
         if (scale > 1.05f && scale > current.renderedAtScale * 1.4f) {
-            reRenderPageSharper(visibleIdx, scale)
+            reRenderPageSharper(currentIdx, scale)
+        }
+        // Also re-render adjacent visible pages for sharp zoom
+        val doc = pdfDoc ?: return@LaunchedEffect
+        for (i in (currentIdx - 1).coerceAtLeast(0)
+                  ..(currentIdx + 1).coerceAtMost(totalPages - 1)) {
+            val pg = pages.getOrNull(i) ?: continue
+            if (scale > 1.05f && scale > pg.renderedAtScale * 1.4f) {
+                reRenderPageSharper(i, scale)
+            }
         }
     }
 
     // Cleanup
     DisposableEffect(Unit) {
         onDispose {
+            renderJobs.values.forEach { it.cancel() }
+            renderJobs.clear()
             bitmapCache.evictAll()
             pages.forEach { it?.textPage?.close() }
             pdfDoc?.let { pdfCore.closeDocument(it) }
@@ -435,6 +496,10 @@ fun NativePdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
                 // scroll is frozen (userScrollEnabled = false) so the two
                 // gesture systems don't fight — pinch back out (or double-tap)
                 // to resume normal page-by-page scrolling.
+                // FIX: use wrapContentSize(unbounded=true) on the inner Box so
+                // graphicsLayer translation can move content outside the screen
+                // bounds without clipping. The outer fillMaxSize Box still
+                // receives all touch events via the pointerInput on the inner Box.
                 Box(
                     Modifier
                         .fillMaxSize()
@@ -446,11 +511,6 @@ fun NativePdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
                                     if (event.changes.size >= 2) {
                                         val zoomChange = event.calculateZoom()
                                         val panChange  = event.calculatePan()
-                                        // FIX: was capped at 5x — now that pages
-                                        // re-render at higher resolution when
-                                        // zoomed (see reRenderPageSharper above),
-                                        // a genuinely useful "zoom in a lot" ceiling
-                                        // of 10x stays sharp instead of blurry.
                                         val newScale = (scale * zoomChange).coerceIn(1f, 10f)
                                         offsetX = if (newScale > 1f) offsetX + panChange.x else 0f
                                         offsetY = if (newScale > 1f) offsetY + panChange.y else 0f
@@ -465,8 +525,6 @@ fun NativePdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
                         .pointerInput(Unit) {
                             detectTapGestures(
                                 onTap = {
-                                    // Plain tap — toggle the top bar, and dismiss
-                                    // any active selection toolbar too.
                                     toggleControls()
                                     if (showToolbar) { selection = null; showToolbar = false }
                                 },
@@ -484,14 +542,23 @@ fun NativePdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
                                 }
                             )
                         }
-                        .graphicsLayer(
-                            scaleX       = scale,
-                            scaleY       = scale,
-                            translationX = offsetX,
-                            translationY = offsetY,
-                            clip         = false
-                        )
                 ) {
+                    // FIX: wrapContentSize(unbounded=true) + graphicsLayer here —
+                    // NOT on the outer Box — so the scaled/translated content can
+                    // extend beyond screen edges without being clipped by the
+                    // parent fillMaxSize Box. This gives true horizontal pan when
+                    // zoomed in (content slides left/right freely).
+                    Box(
+                        Modifier
+                            .wrapContentSize(Alignment.Center, unbounded = true)
+                            .graphicsLayer(
+                                scaleX       = scale,
+                                scaleY       = scale,
+                                translationX = offsetX,
+                                translationY = offsetY,
+                                clip         = false
+                            )
+                    ) {
                     LazyColumn(
                         state               = listState,
                         modifier            = Modifier.fillMaxSize(),
@@ -517,6 +584,7 @@ fun NativePdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
                             }
                         }
                     }
+                    } // close inner graphicsLayer Box
                 }
 
                 // ── Selection toolbar ────────────────────────────────────────
@@ -686,15 +754,11 @@ private fun PdfPageItem(
             }
     ) {
         // ── Render page bitmap ─────────────────────────────────────────────
+        // Bitmap is pre-rendered in the load loop; onLoadBitmap is only triggered
+        // by the zoom debounce for a higher-resolution re-render.
         androidx.compose.foundation.layout.Box(
             Modifier.fillMaxWidth().height(with(density) { imgHeightPx.toDp() }).background(Color.White)
         ) {
-            LaunchedEffect(pageData.pageIndex) {
-                if (pageData.bitmap == null) {
-                    onLoadBitmap(1f)
-                }
-            }
-
             if (pageData.bitmap != null) {
                 Image(
                     bitmap             = pageData.bitmap.asImageBitmap(),

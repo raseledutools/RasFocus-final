@@ -103,6 +103,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
@@ -918,9 +919,14 @@ fun BrowserScaffold(vm: BrowserViewModel) {
 
     Column(modifier = Modifier.fillMaxSize()) {
 
-
         if (!vm.isFullscreen) {
-            TopBrowserBar(vm)
+            AnimatedVisibility(
+                visible = vm.showNavButtons,
+                enter   = slideInVertically { -it } + fadeIn(),
+                exit    = slideOutVertically { -it } + fadeOut()
+            ) {
+                TopBrowserBar(vm)
+            }
         }
 
         // ── Find In Page Bar ──────────────────────────────────────────
@@ -1051,6 +1057,7 @@ fun BrowserScaffold(vm: BrowserViewModel) {
     if (vm.showDownloads) {
         DownloadPanel(vm = vm, onDismiss = { vm.showDownloads = false })
     }
+
     }
 }
 
@@ -1085,14 +1092,8 @@ fun TopBrowserBar(vm: BrowserViewModel) {
                 verticalAlignment     = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // ── Home / Back / Forward — তিনটা icon ──────────────────
+                // ── Home only — Back/Forward removed ─────────────────────
                 if (!vm.isAddressBarFocused) {
-                    val canGoBack    = vm.activeWebView?.canGoBack()  ?: false
-                    val canGoForward = vm.activeWebView?.canGoForward() ?: false
-                    val iconDisabled = Color.White.copy(0.28f)
-                    val iconEnabled  = Color.White.copy(0.85f)
-
-                    // Home
                     IconButton(
                         onClick  = { vm.goHome() },
                         modifier = Modifier.size(32.dp)
@@ -1100,36 +1101,8 @@ fun TopBrowserBar(vm: BrowserViewModel) {
                         Icon(
                             Icons.Default.Home, null,
                             modifier = Modifier.size(19.dp),
-                            tint     = iconEnabled
+                            tint     = Color.White.copy(0.85f)
                         )
-                    }
-
-                    // Back
-                    if (!vm.currentUrl.startsWith("about:")) {
-                        IconButton(
-                            onClick  = { if (canGoBack) vm.goBack() },
-                            modifier = Modifier.size(32.dp),
-                            enabled  = canGoBack
-                        ) {
-                            Icon(
-                                Icons.Default.ArrowBack, null,
-                                modifier = Modifier.size(19.dp),
-                                tint     = if (canGoBack) iconEnabled else iconDisabled
-                            )
-                        }
-
-                        // Forward
-                        IconButton(
-                            onClick  = { if (canGoForward) vm.goForward() },
-                            modifier = Modifier.size(32.dp),
-                            enabled  = canGoForward
-                        ) {
-                            Icon(
-                                Icons.Default.ArrowForward, null,
-                                modifier = Modifier.size(19.dp),
-                                tint     = if (canGoForward) iconEnabled else iconDisabled
-                            )
-                        }
                     }
                 }
 
@@ -1142,7 +1115,7 @@ fun TopBrowserBar(vm: BrowserViewModel) {
                 Surface(
                     modifier = Modifier
                         .weight(1f)
-                        .height(40.dp),
+                        .height(56.dp),
                     shape           = RoundedCornerShape(20.dp),
                     color           = barBg,
                     border          = if (vm.isAddressBarFocused)
@@ -1237,7 +1210,7 @@ fun TopBrowserBar(vm: BrowserViewModel) {
                     }
                 }
 
-                // ── Cancel / Tab count + Menu ──────────────────────────────
+                // ── Cancel / Tab count + Float ────────────────────────────
                 if (vm.isAddressBarFocused) {
                     TextButton(
                         onClick        = { keyboardCtrl?.hide(); focusMgr.clearFocus(); vm.onAddressBarDismissed() },
@@ -1246,81 +1219,7 @@ fun TopBrowserBar(vm: BrowserViewModel) {
                         Text("Cancel", fontSize = 13.sp, color = FxPurple)
                     }
                 } else {
-                    // ── Float-to-window icon ───────────────────────────────
-                    // Click করলে active tab টি floating window এ যাবে।
-                    // YouTube হলে reload ছাড়াই YoutubeFloatingWindowService দিয়ে,
-                    // অন্য যেকোনো tab হলে FloatingWindowService দিয়ে।
-                    IconButton(
-                        onClick = {
-                            val activeUrl   = vm.currentUrl
-                            val activeTitle = vm.pageTitle
-                            val isYouTube   = activeUrl.contains("youtube.com") ||
-                                              activeUrl.contains("youtu.be")
-                            val hasOverlay  = activity?.hasOverlayPermission() ?: false
-
-                            if (!hasOverlay) {
-                                activity?.requestOverlayPermission()
-                                return@IconButton
-                            }
-
-                            if (isYouTube) {
-                                // visibility spoof — pause না হোক
-                                vm.activeWebView?.evaluateJavascript("""
-                                    (function() {
-                                        try {
-                                            Object.defineProperty(document, 'hidden', { get: function(){ return false; }, configurable: true });
-                                            Object.defineProperty(document, 'visibilityState', { get: function(){ return 'visible'; }, configurable: true });
-                                            Object.defineProperty(document, 'webkitHidden', { get: function(){ return false; }, configurable: true });
-                                            Object.defineProperty(document, 'webkitVisibilityState', { get: function(){ return 'visible'; }, configurable: true });
-                                        } catch(e) {}
-                                    })();
-                                """.trimIndent(), null)
-                                // actual WebView pass করো → service reload করবে না
-                                vm.activeWebView?.let {
-                                    com.rasel.RasFocus.selfcontrol.familybrowser.service.YoutubeFloatingWindowService
-                                        .pendingWebView = it
-                                }
-                                com.rasel.RasFocus.selfcontrol.familybrowser.service.YoutubeFloatingWindowService
-                                    .launchNoReload(context, activeUrl, activeTitle.ifEmpty { "YouTube" })
-                                // FIX: WebView টা floating window এ চলে গেছে —
-                                // browser এ এই tab এর জায়গায় placeholder inject করো
-                                // নাহলে screen সম্পূর্ণ সাদা হয়ে যায়।
-                                vm.activeWebView?.loadDataWithBaseURL(null, """
-                                    <!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
-                                    <style>
-                                        body{margin:0;background:#0f0f0f;display:flex;flex-direction:column;
-                                             align-items:center;justify-content:center;height:100vh;
-                                             font-family:-apple-system,sans-serif;color:#aaa;text-align:center;gap:16px;}
-                                        .icon{font-size:64px;opacity:.6;}
-                                        .title{font-size:18px;font-weight:600;color:#fff;}
-                                        .sub{font-size:14px;color:#888;max-width:260px;line-height:1.5;}
-                                    </style></head><body>
-                                    <div class="icon">▶️</div>
-                                    <div class="title">Playing in floating window</div>
-                                    <div class="sub">YouTube is running in the floating player.<br>Tap the floating window to return.</div>
-                                    </body></html>
-                                """.trimIndent(), "text/html", "UTF-8", null)
-                            } else {
-                                // non-YouTube tab → FloatingWindowService
-                                val activeTab = vm.tabManager.activeTab
-                                if (activeTab != null) {
-                                    com.rasel.RasFocus.selfcontrol.familybrowser.service.FloatingWindowService.launch(
-                                        context, activeTab.url, activeTab.title.ifEmpty { "Tab" }
-                                    )
-                                }
-                            }
-                        },
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.OpenInNew,
-                            contentDescription = "Float tab",
-                            modifier = Modifier.size(18.dp),
-                            tint = Color.White.copy(0.75f)
-                        )
-                    }
-
-                    // Tab count box — Firefox style
+                    // ── Tab count box ──────────────────────────────────────
                     Box(
                         modifier = Modifier
                             .size(32.dp)
@@ -1340,11 +1239,70 @@ fun TopBrowserBar(vm: BrowserViewModel) {
                             color      = Color.White
                         )
                     }
-                    // Menu (3-dot)
-                    IconButton(onClick = { vm.showMenu = !vm.showMenu }, modifier = Modifier.size(36.dp)) {
-                        Icon(Icons.Default.MoreVert, null,
-                            modifier = Modifier.size(20.dp),
-                            tint = Color.White)
+
+                    // ── Float-to-window button (Tab count এর পাশে) ────────
+                    IconButton(
+                        onClick = {
+                            val activeUrl   = vm.currentUrl
+                            val activeTitle = vm.pageTitle
+                            val isYouTube   = activeUrl.contains("youtube.com") ||
+                                              activeUrl.contains("youtu.be")
+                            val hasOverlay  = activity?.hasOverlayPermission() ?: false
+
+                            if (!hasOverlay) {
+                                activity?.requestOverlayPermission()
+                                return@IconButton
+                            }
+
+                            if (isYouTube) {
+                                vm.activeWebView?.evaluateJavascript("""
+                                    (function() {
+                                        try {
+                                            Object.defineProperty(document, 'hidden', { get: function(){ return false; }, configurable: true });
+                                            Object.defineProperty(document, 'visibilityState', { get: function(){ return 'visible'; }, configurable: true });
+                                            Object.defineProperty(document, 'webkitHidden', { get: function(){ return false; }, configurable: true });
+                                            Object.defineProperty(document, 'webkitVisibilityState', { get: function(){ return 'visible'; }, configurable: true });
+                                        } catch(e) {}
+                                    })();
+                                """.trimIndent(), null)
+                                vm.activeWebView?.let {
+                                    com.rasel.RasFocus.selfcontrol.familybrowser.service.YoutubeFloatingWindowService
+                                        .pendingWebView = it
+                                }
+                                com.rasel.RasFocus.selfcontrol.familybrowser.service.YoutubeFloatingWindowService
+                                    .launchNoReload(context, activeUrl, activeTitle.ifEmpty { "YouTube" })
+                                vm.activeWebView?.loadDataWithBaseURL(null, """
+                                    <!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+                                    <style>
+                                        body{margin:0;background:#0f0f0f;display:flex;flex-direction:column;
+                                             align-items:center;justify-content:center;height:100vh;
+                                             font-family:-apple-system,sans-serif;color:#aaa;text-align:center;gap:16px;}
+                                        .icon{font-size:64px;opacity:.6;}
+                                        .title{font-size:18px;font-weight:600;color:#fff;}
+                                        .sub{font-size:14px;color:#888;max-width:260px;line-height:1.5;}
+                                    </style></head><body>
+                                    <div class="icon">▶️</div>
+                                    <div class="title">Playing in floating window</div>
+                                    <div class="sub">YouTube is running in the floating player.<br>Tap the floating window to return.</div>
+                                    </body></html>
+                                """.trimIndent(), "text/html", "UTF-8", null)
+                            } else {
+                                val activeTab = vm.tabManager.activeTab
+                                if (activeTab != null) {
+                                    com.rasel.RasFocus.selfcontrol.familybrowser.service.FloatingWindowService.launch(
+                                        context, activeTab.url, activeTab.title.ifEmpty { "Tab" }
+                                    )
+                                }
+                            }
+                        },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.OpenInNew,
+                            contentDescription = "Float tab",
+                            modifier = Modifier.size(18.dp),
+                            tint = Color.White.copy(0.75f)
+                        )
                     }
                 }
             }
@@ -1576,6 +1534,18 @@ fun BrowserWebView(
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
 
+                // ── Chrome-style scroll: nav buttons hide/show ─────────────
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                    setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
+                        val delta = scrollY - oldScrollY
+                        when {
+                            scrollY <= 80 -> vm.showNavButtons = true  // top এ আছে — সবসময় দেখাও
+                            delta > 8     -> vm.showNavButtons = false // নিচে scroll — লুকাও
+                            delta < -8    -> vm.showNavButtons = true  // উপরে scroll — দেখাও
+                        }
+                    }
+                }
+
                 // ── Hardware Acceleration ──────────────────────────────────
                 setLayerType(View.LAYER_TYPE_HARDWARE, null)
 
@@ -1755,6 +1725,53 @@ fun BrowserWebView(
                             view.evaluateJavascript(
                                 YouTubeAdPruner.getJsInjectScript(), null
                             )
+
+                            // ── CSS/JS fallback — network block miss করলে এটা ধরবে ──
+                            // Native YouTubeActivity-তে শুধু network level (user নির্দেশ অনুযায়ী)।
+                            // Browser YouTube WebView-এ network fail হলে CSS hide + skip-click
+                            // fallback — video render pipeline এ হাত দেওয়া হচ্ছে না।
+                            view.evaluateJavascript("""
+                                (function() {
+                                    if (window.__rasBrowserYtAdCss__) return;
+                                    window.__rasBrowserYtAdCss__ = true;
+
+                                    // CSS inject — ad elements hide করো
+                                    var style = document.createElement('style');
+                                    style.id = 'ras-yt-ad-css';
+                                    style.textContent = `
+                                        .ytp-ad-overlay-container,
+                                        .ytp-ad-text-overlay,
+                                        .ytp-ad-image-overlay,
+                                        .ytp-ad-overlay-slot,
+                                        ytm-promoted-video-renderer,
+                                        ytm-in-read-ad-renderer,
+                                        ytm-companion-ad-renderer,
+                                        ytm-ads-renderer,
+                                        .ytm-promoted-sparkles-web-renderer,
+                                        [class*="ad-div"],
+                                        [id*="ad_slot"] { display: none !important; }
+                                    `;
+                                    if (!document.getElementById('ras-yt-ad-css')) {
+                                        document.head && document.head.appendChild(style);
+                                    }
+
+                                    // Skip button click fallback
+                                    function trySkip() {
+                                        var skipSel = [
+                                            '.ytp-ad-skip-button',
+                                            '.ytp-ad-skip-button-modern',
+                                            '.ytp-skip-ad-button',
+                                            '[class*="skip-ad"]',
+                                            'button.ytp-ad-skip-button-container'
+                                        ];
+                                        for (var i = 0; i < skipSel.length; i++) {
+                                            var btn = document.querySelector(skipSel[i]);
+                                            if (btn && btn.offsetParent !== null) { btn.click(); return; }
+                                        }
+                                    }
+                                    setInterval(trySkip, 250);
+                                })();
+                            """.trimIndent(), null)
                         }
 
                         // ── YouTube search box adult block (SPA navigation safe) ──
@@ -2363,8 +2380,8 @@ fun BottomNavigationBar(vm: BrowserViewModel) {
     val canGoForward = activeTab?.canGoForward ?: false
     val context      = LocalContext.current
     val isDark       = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    val bgColor      = if (isDark) FxSurface else FxSurfaceL
-    val iconTint     = if (isDark) FxTextDark else FxTextLight
+    val bgColor      = if (isDark) Color(0xFF1A1A1A) else Color(0xFFFFFFFF)
+    val iconTint     = if (isDark) Color.White.copy(0.85f) else Color(0xFF3C3C43).copy(0.75f)
     val iconDisabled = iconTint.copy(alpha = 0.28f)
 
     Surface(

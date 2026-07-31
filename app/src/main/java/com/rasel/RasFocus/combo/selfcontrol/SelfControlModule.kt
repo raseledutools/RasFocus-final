@@ -2042,6 +2042,7 @@ fun BrowserSettingsDialog(context: Context, appType: String, onDismiss: () -> Un
     var fbHideVideo by remember { mutableStateOf(prefs.getBoolean("fb_hide_videos", false)) }
     var fbHideReels by remember { mutableStateOf(prefs.getBoolean("fb_hide_reels", false)) }
     var fbHideNewsfeed by remember { mutableStateOf(prefs.getBoolean("fb_hide_newsfeed", false)) }
+    var fbHideMarketplace by remember { mutableStateOf(prefs.getBoolean("fb_hide_marketplace", false)) }
     var fbGrayscale by remember { mutableStateOf(prefs.getBoolean("fb_grayscale", false)) }
     var fbTextOnly by remember { mutableStateOf(prefs.getBoolean("fb_text_only", false)) }
 
@@ -2049,6 +2050,9 @@ fun BrowserSettingsDialog(context: Context, appType: String, onDismiss: () -> Un
     var ytHideShorts by remember { mutableStateOf(prefs.getBoolean("yt_hide_shorts", false)) }
     var ytHideComments by remember { mutableStateOf(prefs.getBoolean("yt_hide_comments", false)) }
     var ytGrayscale by remember { mutableStateOf(prefs.getBoolean("yt_grayscale", false)) }
+    var ytAdLayer1 by remember { mutableStateOf(prefs.getBoolean("yt_ad_layer1", true)) }
+    var ytAdLayer2 by remember { mutableStateOf(prefs.getBoolean("yt_ad_layer2", true)) }
+    var ytAdLayer3 by remember { mutableStateOf(prefs.getBoolean("yt_ad_layer3", true)) }
 
     // RasBrowser
     var rbBlockAds by remember { mutableStateOf(prefs.getBoolean("rb_block_ads", true)) }
@@ -2151,6 +2155,11 @@ fun BrowserSettingsDialog(context: Context, appType: String, onDismiss: () -> Un
                                 }
                             }
                             item {
+                                SettingToggleRow("Hide Marketplace", fbHideMarketplace, onSettingsClick = { showLockConfigFor = "fb_hide_marketplace" }) { newValue ->
+                                    handleToggle("fb_hide_marketplace", newValue) { fbHideMarketplace = it; prefs.edit().putBoolean("fb_hide_marketplace", it).apply() }
+                                }
+                            }
+                            item {
                                 SettingToggleRow("Hide Newsfeed", fbHideNewsfeed, onSettingsClick = { showLockConfigFor = "fb_hide_newsfeed" }) { newValue ->
                                     handleToggle("fb_hide_newsfeed", newValue) { fbHideNewsfeed = it; prefs.edit().putBoolean("fb_hide_newsfeed", it).apply() }
                                 }
@@ -2180,6 +2189,21 @@ fun BrowserSettingsDialog(context: Context, appType: String, onDismiss: () -> Un
                             item {
                                 SettingToggleRow("Grayscale Mode", ytGrayscale, onSettingsClick = { showLockConfigFor = "yt_grayscale" }) { newValue ->
                                     handleToggle("yt_grayscale", newValue) { ytGrayscale = it; prefs.edit().putBoolean("yt_grayscale", it).apply() }
+                                }
+                            }
+                            item {
+                                SettingToggleRow("Ad Block L1 — Network (AD_SERVERS)", ytAdLayer1, onSettingsClick = { showLockConfigFor = "yt_ad_layer1" }) { newValue ->
+                                    handleToggle("yt_ad_layer1", newValue) { ytAdLayer1 = it; prefs.edit().putBoolean("yt_ad_layer1", it).apply() }
+                                }
+                            }
+                            item {
+                                SettingToggleRow("Ad Block L2 — JS Skip Button", ytAdLayer2, onSettingsClick = { showLockConfigFor = "yt_ad_layer2" }) { newValue ->
+                                    handleToggle("yt_ad_layer2", newValue) { ytAdLayer2 = it; prefs.edit().putBoolean("yt_ad_layer2", it).apply() }
+                                }
+                            }
+                            item {
+                                SettingToggleRow("Ad Block L3 — Content Scan (black screen risk)", ytAdLayer3, onSettingsClick = { showLockConfigFor = "yt_ad_layer3" }) { newValue ->
+                                    handleToggle("yt_ad_layer3", newValue) { ytAdLayer3 = it; prefs.edit().putBoolean("yt_ad_layer3", it).apply() }
                                 }
                             }
                         }
@@ -2285,14 +2309,49 @@ fun BrowserAppRow(
 fun UpdateCenterSection(context: Context) {
     var releaseInfo by remember { mutableStateOf<com.rasel.RasFocus.ReleaseInfo?>(null) }
     var checking by remember { mutableStateOf(true) }
-    
-    val prefs = context.getSharedPreferences("AutoUpdaterPrefs", Context.MODE_PRIVATE)
-    val lastTag = prefs.getString(com.rasel.RasFocus.AutoUpdater.LAST_TAG_KEY, "") ?: ""
+
+    // ★ FIX: downloadedFile কে state এ রাখো যাতে download complete হলে UI আপডেট হয়
+    var downloadedFile by remember { mutableStateOf<java.io.File?>(null) }
+
+    // Download progress state
+    var cDl  by remember { mutableStateOf(false) }
+    var cPct by remember { mutableStateOf(0) }
+    var cId  by remember { mutableStateOf(-1L) }
+    var cDone by remember { mutableStateOf(false) }
+    var dlFailed by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        com.rasel.RasFocus.AutoUpdater.fetchLatestReleaseInfo { info ->
+        com.rasel.RasFocus.AutoUpdater.fetchLatestReleaseInfo(context) { info ->
             releaseInfo = info
             checking = false
+            if (info != null) {
+                // ★ FIX: screen খোলার সময়ই চেক করো background download হয়ে আছে কিনা
+                downloadedFile = com.rasel.RasFocus.AutoUpdater.getDownloadedUpdateFile(context, info.tagName)
+            }
+        }
+    }
+
+    // ★ FIX: progress polling — download শেষ হলে downloadedFile state আপডেট করো
+    LaunchedEffect(cId, cDl) {
+        if (!cDl || cId < 0L) return@LaunchedEffect
+        while (cDl) {
+            kotlinx.coroutines.delay(400)
+            val (p, s) = com.rasel.RasFocus.AutoUpdater.queryProgress(context, cId)
+            cPct = p
+            when (s) {
+                android.app.DownloadManager.STATUS_SUCCESSFUL -> {
+                    cDl = false
+                    cDone = true
+                    // ★ FIX: download শেষ হলে file reference রিফ্রেশ করো
+                    releaseInfo?.let {
+                        downloadedFile = com.rasel.RasFocus.AutoUpdater.getDownloadedFile(context, it.tagName)
+                    }
+                }
+                android.app.DownloadManager.STATUS_FAILED -> {
+                    cDl = false
+                    dlFailed = true
+                }
+            }
         }
     }
 
@@ -2309,7 +2368,7 @@ fun UpdateCenterSection(context: Context) {
                 Text("Update Center", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = SoftWhite)
             }
             Spacer(Modifier.height(16.dp))
-            
+
             if (checking) {
                 Text("Checking for updates...", color = Color.LightGray, fontSize = 14.sp)
             } else if (releaseInfo != null) {
@@ -2324,45 +2383,73 @@ fun UpdateCenterSection(context: Context) {
                     Text("New version: ${releaseInfo!!.tagName}", color = SoftWhite, fontSize = 14.sp)
                     Text("Released: ${releaseInfo!!.publishedAt}", color = Color.LightGray, fontSize = 12.sp)
                     Spacer(Modifier.height(16.dp))
-                    
-                    val downloadedFile = com.rasel.RasFocus.AutoUpdater.getDownloadedUpdateFile(context, releaseInfo!!.tagName)
-                    
-                    if (downloadedFile != null) {
-                        Button(
-                            onClick = { com.rasel.RasFocus.AutoUpdater.installDownloadedUpdate(context, downloadedFile) },
-                            modifier = Modifier.fillMaxWidth().height(50.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(Icons.Default.DownloadDone, contentDescription = null, tint = SoftWhite)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Install Update Now", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = SoftWhite)
+
+                    when {
+                        // ★ Case 1: ফাইল ready — install করো (background বা manual download উভয় ক্ষেত্রে)
+                        downloadedFile != null -> {
+                            Text(
+                                "✅ ডাউনলোড সম্পন্ন হয়েছে। Install করুন।",
+                                color = Color(0xFF69F0AE), fontSize = 13.sp,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                            Button(
+                                onClick = {
+                                    com.rasel.RasFocus.AutoUpdater.installApk(context, downloadedFile!!)
+                                    // ★ FIX: install শুরু হলে saveTag করো
+                                    com.rasel.RasFocus.AutoUpdater.saveTag(context, releaseInfo!!.tagName)
+                                },
+                                modifier = Modifier.fillMaxWidth().height(52.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B5E20)),
+                                shape = RoundedCornerShape(14.dp)
+                            ) {
+                                Icon(Icons.Default.DownloadDone, contentDescription = null, tint = Color(0xFF69F0AE), modifier = Modifier.size(20.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Install Update Now ✓", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF69F0AE))
+                            }
                         }
-                    } else {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                            Button(
-                                onClick = { com.rasel.RasFocus.AutoUpdater.downloadAndInstallUpdate(context, com.rasel.RasFocus.AutoUpdater.APK_UNIVERSAL, releaseInfo!!.tagName) },
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4FACFE)),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("Universal", fontSize = 12.sp, maxLines = 1)
+
+                        // ★ Case 2: downloading in progress
+                        cDl -> {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                                androidx.compose.material3.CircularProgressIndicator(
+                                    progress = { cPct / 100f },
+                                    color = Color(0xFF4FACFE),
+                                    trackColor = Color(0xFF2A2D3E)
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                Text("Downloading... $cPct%", color = SoftWhite, fontSize = 13.sp)
                             }
+                        }
+
+                        // ★ Case 3: download failed — retry option
+                        dlFailed -> {
+                            Text("❌ ডাউনলোড ব্যর্থ হয়েছে।", color = Color(0xFFFF3B30), fontSize = 13.sp)
+                            Spacer(Modifier.height(8.dp))
                             Button(
-                                onClick = { com.rasel.RasFocus.AutoUpdater.downloadAndInstallUpdate(context, com.rasel.RasFocus.AutoUpdater.APK_LIGHT, releaseInfo!!.tagName) },
-                                modifier = Modifier.weight(1f),
+                                onClick = {
+                                    dlFailed = false; cDl = true; cPct = 0; cDone = false
+                                    com.rasel.RasFocus.AutoUpdater.downloadWithProgress(context, releaseInfo!!) { id -> cId = id }
+                                },
+                                modifier = Modifier.fillMaxWidth().height(48.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4FACFE)),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("Light", fontSize = 12.sp, maxLines = 1)
-                            }
+                                shape = RoundedCornerShape(14.dp)
+                            ) { Text("আবার চেষ্টা করুন", fontWeight = FontWeight.Bold, color = SoftWhite) }
+                        }
+
+                        // ★ Case 4: not yet downloaded — download button
+                        else -> {
                             Button(
-                                onClick = { com.rasel.RasFocus.AutoUpdater.downloadAndInstallUpdate(context, com.rasel.RasFocus.AutoUpdater.APK_FULL_SPLIT, releaseInfo!!.tagName) },
-                                modifier = Modifier.weight(1f),
+                                onClick = {
+                                    cDl = true; cPct = 0; cDone = false; dlFailed = false
+                                    com.rasel.RasFocus.AutoUpdater.downloadWithProgress(context, releaseInfo!!) { id -> cId = id }
+                                },
+                                modifier = Modifier.fillMaxWidth().height(48.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4FACFE)),
-                                shape = RoundedCornerShape(12.dp)
+                                shape = RoundedCornerShape(14.dp)
                             ) {
-                                Text("Split", fontSize = 12.sp, maxLines = 1)
+                                Icon(Icons.Default.Download, null, tint = SoftWhite, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Download & Install", fontWeight = FontWeight.Bold, color = SoftWhite)
                             }
                         }
                     }

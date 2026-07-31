@@ -8,6 +8,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import android.content.Context
+import com.rasel.RasFocus.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -53,15 +54,14 @@ class BpAppBlockerService : Service() {
     private fun buildNotification(): Notification {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, CHANNEL_ID)
-                .setContentTitle("Focus Lock Active")
-                .setContentText("App blocking is running.")
+                .setContentTitle("RasFocus")
                 .setSmallIcon(android.R.drawable.ic_lock_lock)
+                .setVisibility(Notification.VISIBILITY_SECRET)
                 .build()
         } else {
             @Suppress("DEPRECATION")
             Notification.Builder(this)
-                .setContentTitle("Focus Lock Active")
-                .setContentText("App blocking is running.")
+                .setContentTitle("RasFocus")
                 .setSmallIcon(android.R.drawable.ic_lock_lock)
                 .build()
         }
@@ -93,15 +93,14 @@ class BlockerForegroundService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val notif = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, CHANNEL_ID)
-                .setContentTitle("RasFocus Blocker Active")
-                .setContentText("App blocking is running.")
+                .setContentTitle("RasFocus")
                 .setSmallIcon(android.R.drawable.ic_lock_lock)
+                .setVisibility(Notification.VISIBILITY_SECRET)
                 .build()
         } else {
             @Suppress("DEPRECATION")
             Notification.Builder(this)
-                .setContentTitle("RasFocus Blocker Active")
-                .setContentText("App blocking is running.")
+                .setContentTitle("RasFocus")
                 .setSmallIcon(android.R.drawable.ic_lock_lock)
                 .build()
         }
@@ -150,22 +149,30 @@ class UsageNotificationService : Service() {
             while (isActive) {
                 try {
                     val prefs = this@UsageNotificationService.getSharedPreferences("AutoUpdaterPrefs", Context.MODE_PRIVATE)
-                    val lastTag = prefs.getString(com.rasel.RasFocus.AutoUpdater.LAST_TAG_KEY, "") ?: ""
-                    
-                    com.rasel.RasFocus.AutoUpdater.fetchLatestReleaseInfo { info ->
-                        if (info != null && info.tagName != lastTag) {
-                            // Found a new update, silently download it
-                            com.rasel.RasFocus.AutoUpdater.silentDownloadUpdate(
-                                this@UsageNotificationService, 
-                                com.rasel.RasFocus.AutoUpdater.APK_UNIVERSAL, 
-                                info.tagName
+                    val lastInstalledTag = prefs.getString(com.rasel.RasFocus.AutoUpdater.LAST_TAG_KEY, "") ?: ""
+                    val lastNotifiedTag  = prefs.getString(com.rasel.RasFocus.AutoUpdater.LAST_NOTIFIED_TAG_KEY, "") ?: ""
+
+                    com.rasel.RasFocus.AutoUpdater.fetchLatestReleaseInfo(this@UsageNotificationService) { info ->
+                        // ★ FIX: শুধু নতুন version এর জন্য, এবং শুধু একবার download + notification
+                        if (info != null
+                            && info.tagName != lastInstalledTag
+                            && info.tagName != lastNotifiedTag
+                        ) {
+                            // Silent background download
+                            com.rasel.RasFocus.AutoUpdater.downloadWithProgress(
+                                this@UsageNotificationService, info
+                            ) { /* downloadId tracked by DownloadManager */ }
+
+                            // Notification (showUpdateAvailableNotification saves lastNotifiedTag)
+                            com.rasel.RasFocus.AutoUpdater.showUpdateAvailableNotification(
+                                this@UsageNotificationService, info
                             )
                         }
                     }
                 } catch (e: Exception) {
                     // Ignore exceptions in background loop
                 }
-                
+
                 // Wait 12 hours before checking again
                 kotlinx.coroutines.delay(12 * 60 * 60 * 1000L)
             }
@@ -173,16 +180,21 @@ class UsageNotificationService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val isProtecting = com.rasel.RasFocus.combo.selfcontrol.UnifiedBlockerService.instance != null
+        val iconRes = if (isProtecting) R.drawable.ic_notif_lock_locked else R.drawable.ic_notif_lock_unlocked
         val notif = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, CHANNEL_ID)
-                .setContentTitle("RasFocus Usage Tracker")
-                .setSmallIcon(android.R.drawable.ic_menu_info_details)
+                .setContentTitle("RasFocus Protection")
+                .setContentText(if (isProtecting) "Blocking active" else "Service inactive")
+                .setSmallIcon(iconRes as Int)
+                .setOngoing(true)
                 .build()
         } else {
             @Suppress("DEPRECATION")
             Notification.Builder(this)
-                .setContentTitle("RasFocus Usage Tracker")
-                .setSmallIcon(android.R.drawable.ic_menu_info_details)
+                .setContentTitle("RasFocus Protection")
+                .setContentText(if (isProtecting) "Blocking active" else "Service inactive")
+                .setSmallIcon(iconRes as Int)
                 .build()
         }
         startForeground(NOTIF_ID, notif)

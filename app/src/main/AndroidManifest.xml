@@ -43,6 +43,7 @@
     android:maxSdkVersion="32" />
 <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
 <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+<uses-permission android:name="android.permission.READ_MEDIA_DOCUMENTS" />
 <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
 <uses-permission android:name="android.permission.VIBRATE" />
 <uses-permission android:name="android.permission.CAMERA" />
@@ -100,10 +101,15 @@
             android:resource="@xml/shortcuts" />
     </activity>
 
-    <!-- ✅ PDF Viewer Activity — default PDF viewer + home screen shortcut -->
+    <!-- ════════════════════════════════════════════════════════════════════
+         ✅ RasFocus Universal Viewer — ONE "Open with" entry for ALL types
+         Handles: PDF · DOCX · PPTX · XLSX/XLS · JPG/PNG/WEBP · TXT/MD/code
+         Android shows "RasFocus" exactly ONCE in the picker regardless of
+         file type. UniversalViewerActivity detects type and dispatches.
+         ════════════════════════════════════════════════════════════════════ -->
     <activity
-        android:name=".selfcontrol.study_tools.PdfViewerActivity"
-        android:label="RasFocus PDF"
+        android:name=".selfcontrol.study_tools.UniversalViewerActivity"
+        android:label="RasFocus"
         android:exported="true"
         android:launchMode="singleTask"
         android:taskAffinity=""
@@ -111,71 +117,85 @@
         android:theme="@style/Theme.RasFocus"
         android:configChanges="orientation|screenSize|keyboardHidden">
 
-        <!-- content:// URI — MediaStore, Drive, Downloads -->
+        <!-- PDF -->
         <intent-filter android:priority="100">
             <action android:name="android.intent.action.VIEW" />
             <category android:name="android.intent.category.DEFAULT" />
             <category android:name="android.intent.category.BROWSABLE" />
             <data android:scheme="content" android:mimeType="application/pdf" />
         </intent-filter>
-
-        <!-- file:// URI — older apps -->
         <intent-filter android:priority="100">
             <action android:name="android.intent.action.VIEW" />
             <category android:name="android.intent.category.DEFAULT" />
             <data android:scheme="file" android:mimeType="application/pdf" />
         </intent-filter>
 
-        <!-- .pdf extension fallback -->
-        <intent-filter android:priority="90">
+        <!-- DOCX / DOC -->
+        <intent-filter android:priority="100">
             <action android:name="android.intent.action.VIEW" />
             <category android:name="android.intent.category.DEFAULT" />
-            <data android:scheme="content" android:pathPattern=".*\.pdf" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="content"
+                android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+        </intent-filter>
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="application/msword" />
         </intent-filter>
 
-    </activity>
+        <!-- PPTX / PPT -->
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="content"
+                android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
+        </intent-filter>
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="application/vnd.ms-powerpoint" />
+        </intent-filter>
 
-    <!-- Combo module PDF Viewer — explicit in-app launch only, no system intent-filter -->
-    <activity
-        android:name=".combo.selfcontrol.study_tools.PdfViewerActivity"
-        android:label="RasFocus PDF"
-        android:exported="false"
-        android:launchMode="singleTask"
-        android:taskAffinity=""
-        android:hardwareAccelerated="true"
-        android:theme="@style/Theme.RasFocus"
-        android:configChanges="orientation|screenSize|keyboardHidden" />
+        <!-- XLSX / XLS -->
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="content"
+                android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+        </intent-filter>
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="application/vnd.ms-excel" />
+        </intent-filter>
 
-    <!-- Combo PPTX/DOCX Viewers — in-app launch only -->
-    <activity
-        android:name=".combo.selfcontrol.study_tools.PptxViewerActivity"
-        android:label="RasFocus Presentation"
-        android:exported="false"
-        android:launchMode="singleTask"
-        android:hardwareAccelerated="true"
-        android:theme="@style/Theme.RasFocus"
-        android:configChanges="orientation|screenSize|keyboardHidden" />
-    <activity
-        android:name=".combo.selfcontrol.study_tools.DocxViewerActivity"
-        android:label="RasFocus Document"
-        android:exported="false"
-        android:launchMode="singleTask"
-        android:hardwareAccelerated="true"
-        android:theme="@style/Theme.RasFocus"
-        android:configChanges="orientation|screenSize|keyboardHidden" />
+        <!-- Images -->
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="content" android:mimeType="image/jpeg" />
+        </intent-filter>
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="image/png" />
+        </intent-filter>
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="image/webp" />
+        </intent-filter>
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="image/gif" />
+        </intent-filter>
 
-    <!-- Text/Code/Markdown Viewer -->
-    <activity
-        android:name=".selfcontrol.study_tools.TextViewerActivity"
-        android:label="RasFocus Viewer"
-        android:exported="true"
-        android:launchMode="singleTask"
-        android:taskAffinity=""
-        android:hardwareAccelerated="true"
-        android:theme="@style/Theme.RasFocus"
-        android:configChanges="orientation|screenSize|keyboardHidden">
-
-        <!-- Plain text — text/plain covers .txt, .log, .csv etc -->
+        <!-- Text / Markdown / Code -->
         <intent-filter android:priority="100">
             <action android:name="android.intent.action.VIEW" />
             <category android:name="android.intent.category.DEFAULT" />
@@ -187,106 +207,146 @@
             <category android:name="android.intent.category.DEFAULT" />
             <data android:scheme="file" android:mimeType="text/plain" />
         </intent-filter>
-
-        <!-- Markdown — text/markdown -->
         <intent-filter android:priority="100">
             <action android:name="android.intent.action.VIEW" />
             <category android:name="android.intent.category.DEFAULT" />
-            <category android:name="android.intent.category.BROWSABLE" />
             <data android:scheme="content" android:mimeType="text/markdown" />
         </intent-filter>
-
-        <!-- Kotlin source — text/x-kotlin -->
         <intent-filter android:priority="100">
             <action android:name="android.intent.action.VIEW" />
             <category android:name="android.intent.category.DEFAULT" />
-            <category android:name="android.intent.category.BROWSABLE" />
             <data android:scheme="content" android:mimeType="text/x-kotlin" />
         </intent-filter>
 
-        <!-- Extension-based fallback for .kt (file managers send mimeType "*/*") -->
+        <!-- Extension-based fallbacks for file managers that send */* -->
         <intent-filter android:priority="90">
             <action android:name="android.intent.action.VIEW" />
             <category android:name="android.intent.category.DEFAULT" />
             <data android:scheme="content" android:mimeType="*/*"
-                android:pathPattern=".*\\.kt" />
+                android:pathPattern=".*\\.pdf" />
         </intent-filter>
-
-        <!-- Extension-based fallback for .md -->
-        <intent-filter android:priority="90">
-            <action android:name="android.intent.action.VIEW" />
-            <category android:name="android.intent.category.DEFAULT" />
-            <data android:scheme="content" android:mimeType="*/*"
-                android:pathPattern=".*\\.md" />
-        </intent-filter>
-
-    </activity>
-
-    <!-- ✅ PPTX Viewer — PowerPoint files opened from file managers -->
-    <activity
-        android:name=".selfcontrol.study_tools.PptxViewerActivity"
-        android:label="RasFocus Presentation"
-        android:exported="true"
-        android:launchMode="singleTask"
-        android:taskAffinity=""
-        android:hardwareAccelerated="true"
-        android:theme="@style/Theme.RasFocus"
-        android:configChanges="orientation|screenSize|keyboardHidden">
-
-        <intent-filter android:priority="100">
-            <action android:name="android.intent.action.VIEW" />
-            <category android:name="android.intent.category.DEFAULT" />
-            <category android:name="android.intent.category.BROWSABLE" />
-            <data android:scheme="content"
-                android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
-        </intent-filter>
-        <intent-filter android:priority="100">
-            <action android:name="android.intent.action.VIEW" />
-            <category android:name="android.intent.category.DEFAULT" />
-            <data android:scheme="file"
-                android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
-        </intent-filter>
-        <!-- .pptx extension fallback for file managers that send */* -->
-        <intent-filter android:priority="90">
-            <action android:name="android.intent.action.VIEW" />
-            <category android:name="android.intent.category.DEFAULT" />
-            <data android:scheme="content" android:mimeType="*/*"
-                android:pathPattern=".*\\.pptx" />
-        </intent-filter>
-    </activity>
-
-    <!-- ✅ DOCX Viewer — Word documents opened from file managers -->
-    <activity
-        android:name=".selfcontrol.study_tools.DocxViewerActivity"
-        android:label="RasFocus Document"
-        android:exported="true"
-        android:launchMode="singleTask"
-        android:taskAffinity=""
-        android:hardwareAccelerated="true"
-        android:theme="@style/Theme.RasFocus"
-        android:configChanges="orientation|screenSize|keyboardHidden">
-
-        <intent-filter android:priority="100">
-            <action android:name="android.intent.action.VIEW" />
-            <category android:name="android.intent.category.DEFAULT" />
-            <category android:name="android.intent.category.BROWSABLE" />
-            <data android:scheme="content"
-                android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
-        </intent-filter>
-        <intent-filter android:priority="100">
-            <action android:name="android.intent.action.VIEW" />
-            <category android:name="android.intent.category.DEFAULT" />
-            <data android:scheme="file"
-                android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
-        </intent-filter>
-        <!-- .docx extension fallback -->
         <intent-filter android:priority="90">
             <action android:name="android.intent.action.VIEW" />
             <category android:name="android.intent.category.DEFAULT" />
             <data android:scheme="content" android:mimeType="*/*"
                 android:pathPattern=".*\\.docx" />
         </intent-filter>
+        <intent-filter android:priority="90">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="*/*"
+                android:pathPattern=".*\\.pptx" />
+        </intent-filter>
+        <intent-filter android:priority="90">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="*/*"
+                android:pathPattern=".*\\.xlsx" />
+        </intent-filter>
+        <intent-filter android:priority="90">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="*/*"
+                android:pathPattern=".*\\.xls" />
+        </intent-filter>
+        <intent-filter android:priority="90">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="*/*"
+                android:pathPattern=".*\\.md" />
+        </intent-filter>
+        <intent-filter android:priority="90">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="*/*"
+                android:pathPattern=".*\\.kt" />
+        </intent-filter>
     </activity>
+
+    <!-- Internal-only activities (no intent-filters = not shown in picker) -->
+    <!-- FIX: singleTask+taskAffinity="" caused crash when launched from
+         UniversalViewerActivity (also singleTask) — Android tried to route
+         to the task root but the content URI grant didn't transfer, causing
+         SecurityException / instant crash. singleTop is correct: one instance
+         per task, reuses via onNewIntent when the same PDF is reopened. -->
+    <activity
+        android:name=".selfcontrol.study_tools.PdfViewerActivity"
+        android:label="RasFocus PDF"
+        android:exported="false"
+        android:launchMode="singleTop"
+        android:hardwareAccelerated="true"
+        android:theme="@style/Theme.RasFocus"
+        android:configChanges="orientation|screenSize|keyboardHidden" />
+
+    <activity
+        android:name=".selfcontrol.study_tools.PptxViewerActivity"
+        android:label="RasFocus Presentation"
+        android:exported="false"
+        android:launchMode="singleTop"
+        android:hardwareAccelerated="true"
+        android:theme="@style/Theme.RasFocus"
+        android:configChanges="orientation|screenSize|keyboardHidden" />
+
+    <activity
+        android:name=".selfcontrol.study_tools.DocxViewerActivity"
+        android:label="RasFocus Document"
+        android:exported="false"
+        android:launchMode="singleTop"
+        android:hardwareAccelerated="true"
+        android:theme="@style/Theme.RasFocus"
+        android:configChanges="orientation|screenSize|keyboardHidden" />
+
+    <activity
+        android:name=".selfcontrol.study_tools.XlsxViewerActivity"
+        android:label="RasFocus Spreadsheet"
+        android:exported="false"
+        android:launchMode="singleTop"
+        android:hardwareAccelerated="true"
+        android:theme="@style/Theme.RasFocus"
+        android:configChanges="orientation|screenSize|keyboardHidden" />
+
+    <activity
+        android:name=".selfcontrol.study_tools.TextViewerActivity"
+        android:label="RasFocus Text"
+        android:exported="false"
+        android:launchMode="singleTop"
+        android:hardwareAccelerated="true"
+        android:theme="@style/Theme.RasFocus"
+        android:configChanges="orientation|screenSize|keyboardHidden" />
+
+    <!-- Combo module viewers — internal only -->
+    <activity
+        android:name=".combo.selfcontrol.study_tools.PdfViewerActivity"
+        android:label="RasFocus PDF"
+        android:exported="false"
+        android:launchMode="singleTop"
+        android:hardwareAccelerated="true"
+        android:theme="@style/Theme.RasFocus"
+        android:configChanges="orientation|screenSize|keyboardHidden" />
+    <activity
+        android:name=".combo.selfcontrol.study_tools.PptxViewerActivity"
+        android:label="RasFocus Presentation"
+        android:exported="false"
+        android:launchMode="singleTop"
+        android:hardwareAccelerated="true"
+        android:theme="@style/Theme.RasFocus"
+        android:configChanges="orientation|screenSize|keyboardHidden" />
+    <activity
+        android:name=".combo.selfcontrol.study_tools.DocxViewerActivity"
+        android:label="RasFocus Document"
+        android:exported="false"
+        android:launchMode="singleTop"
+        android:hardwareAccelerated="true"
+        android:theme="@style/Theme.RasFocus"
+        android:configChanges="orientation|screenSize|keyboardHidden" />
+    <activity
+        android:name=".combo.selfcontrol.study_tools.XlsxViewerActivity"
+        android:label="RasFocus Spreadsheet"
+        android:exported="false"
+        android:launchMode="singleTop"
+        android:hardwareAccelerated="true"
+        android:theme="@style/Theme.RasFocus"
+        android:configChanges="orientation|screenSize|keyboardHidden" />
 
     <!-- ✅ Credential Manager — Google Sign-In এর জন্য required -->
     <activity
@@ -505,6 +565,15 @@
         </intent-filter>
     </receiver>
 
+    <!-- ✅ Reminder Alarm Receiver (study_tools/reminder.kt) -->
+    <receiver
+        android:name=".selfcontrol.study_tools.ReminderAlarmReceiver"
+        android:exported="false">
+        <intent-filter>
+            <action android:name="com.rasel.RasFocus.REMINDER_ALARM" />
+        </intent-filter>
+    </receiver>
+
     <!-- ✅ Unified Blocker Service (UnifiedBlockerService.kt) — adult, website, reels, shorts, app block -->
     <!-- FIX: foregroundServiceType added — without it, onServiceConnected()'s startForeground()
          call throws MissingForegroundServiceTypeException on Android 14+ the moment the user
@@ -567,6 +636,21 @@
         <property
             android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
             android:value="RasFocus Button Phone Mode — focus-session app blocking overlay" />
+    </service>
+
+    <!-- New: Deep Study's allow-list enforcement service. Same
+         foregroundServiceType pattern as BpBlockingService above —
+         "specialUse" (permission already declared elsewhere in this
+         manifest) rather than any type needing a permission that isn't
+         present, to avoid the same startForeground() SecurityException
+         crash that was already found and fixed for BpBlockingService. -->
+    <service
+        android:name=".selfcontrol.DeepStudyBlockerService"
+        android:exported="false"
+        android:foregroundServiceType="specialUse">
+        <property
+            android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+            android:value="RasFocus Deep Study — allow-list app blocking during focus sessions" />
     </service>
 
     <!-- STREAMING_CHUNK:Finalizing receivers and child modules... -->
@@ -650,6 +734,15 @@
         android:exported="false">
         <intent-filter>
             <action android:name="com.rasel.RasFocus.RESTART_SERVICE" />
+        </intent-filter>
+    </receiver>
+
+    <!-- Auto-update install receiver: handles notification tap safely with permission check -->
+    <receiver
+        android:name=".InstallUpdateReceiver"
+        android:exported="false">
+        <intent-filter>
+            <action android:name="com.rasel.RasFocus.ACTION_INSTALL_UPDATE" />
         </intent-filter>
     </receiver>
 

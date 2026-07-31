@@ -36,6 +36,7 @@ import java.io.ByteArrayInputStream
 class FacebookActivity : ComponentActivity() {
 
     private var webView: WebView? = null
+    private var rootFrame: FrameLayout? = null
     private var customView: View? = null
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
 
@@ -137,6 +138,7 @@ class FacebookActivity : ComponentActivity() {
                 insets
             }
         }
+        this.rootFrame = rootFrame
         setContentView(rootFrame)
 
         // ── আগের floating session থেকে ফেরত আসা WebView থাকলে সেটাই ব্যবহার করো ──
@@ -168,7 +170,13 @@ class FacebookActivity : ComponentActivity() {
                 recoveryPrefs.edit().putBoolean("was_open", false).apply()
                 webView?.loadUrl(recoveredUrl)
             } else {
-                webView?.loadUrl("https://m.facebook.com/")
+                // ★ FIX: Activity recreate (rotate) এ savedInstanceState থেকে URL restore
+                val savedUrl = savedInstanceState?.getString("fb_saved_url")
+                if (savedUrl != null) {
+                    webView?.loadUrl(savedUrl)
+                } else {
+                    webView?.loadUrl("https://m.facebook.com/")
+                }
             }
         }
     }
@@ -220,15 +228,56 @@ class FacebookActivity : ComponentActivity() {
             webViewClient = object : WebViewClient() {
                 override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                     super.onPageStarted(view, url, favicon)
-                    // Navigation এর সময় white flash বন্ধ করো
+                    // Navigation এর সময় white flash বন্ধ করো — WebView কে সবসময় opaque রাখো
                     view.setBackgroundColor(Color.parseColor("#f0f2f5"))
                     view.alpha = 1f
+                    // ★ FIX: page load শুরুতে rootFrame bg enforce করো — এর ফলে
+                    // page এর নিজস্ব white background render হওয়ার আগেই container টা
+                    // fb-gray দেখায়, white flash হয় না।
+                    rootFrame?.setBackgroundColor(Color.parseColor("#f0f2f5"))
                 }
 
                 override fun onPageFinished(view: WebView, url: String) {
                     super.onPageFinished(view, url)
                     view.alpha = 1f
+                    // ★ FIX: page finish এ bg transparent করো — WebView নিজেই
+                    // content এর bg দেখাবে। Container টা fb-gray রাখো fallback হিসেবে।
+                    view.setBackgroundColor(Color.parseColor("#f0f2f5"))
+                    rootFrame?.setBackgroundColor(Color.parseColor("#f0f2f5"))
                     flushCookies()
+
+                    // ★ Adult keyword block — Facebook SPA তে shouldOverrideUrlLoading
+                    // fire করে না, তাই onPageFinished এও check করতে হবে
+                    val adultHtml = checkAdultSearchKeyword(url)
+                    if (adultHtml != null) {
+                        view.loadDataWithBaseURL(null, adultHtml, "text/html", "UTF-8", null)
+                        return
+                    }
+
+                    // ★ Settings toggles — hide reels, hide videos, text-only, grayscale
+                    injectSettingsRemover(view)
+                    injectRemoveOpenInAppButton(view)
+                    injectFooterRemover(view)
+                    adBlocker.injectContentScanner(view)
+
+                    // ★ Facebook SPA navigation — URL change ধরো MutationObserver দিয়ে
+                    // যাতে page navigate হলেও settings আবার apply হয়
+                    view.evaluateJavascript("""
+                        (function() {
+                            if (window.__rasFbUrlWatcher__) return;
+                            window.__rasFbUrlWatcher__ = true;
+                            var lastUrl = location.href;
+                            new MutationObserver(function() {
+                                if (location.href !== lastUrl) {
+                                    lastUrl = location.href;
+                                    // নতুন URL এ adult check এর জন্য Android কে জানাও
+                                    if (window.RasFbBlockBridge) {
+                                        RasFbBlockBridge.onUrlChanged(location.href);
+                                    }
+                                }
+                            }).observe(document, {subtree: true, childList: true});
+                        })();
+                    """.trimIndent(), null)
                 }
 
                 override fun shouldInterceptRequest(
@@ -321,6 +370,22 @@ class FacebookActivity : ComponentActivity() {
             this, currentUrl, currentTitle
         )
 
+        // ★ FIX: Start BackgroundAudioService so Facebook video/audio keeps
+        // playing after home/lock. Capture title before webView=null because
+        // evaluateJavascript won't work on a detached WebView.
+        val capturedTitle = wv.title?.trim()?.takeIf { it.isNotBlank() } ?: "Facebook"
+        val svcFb = Intent(
+            this,
+            com.rasel.RasFocus.selfcontrol.familybrowser.service.BackgroundAudioService::class.java
+        ).apply {
+            putExtra(com.rasel.RasFocus.selfcontrol.familybrowser.service.BackgroundAudioService.EXTRA_TITLE, capturedTitle)
+        }
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O)
+                startForegroundService(svcFb)
+            else startService(svcFb)
+        } catch (_: Exception) {}
+
         webView = null
         isFloatingActive = true
 
@@ -362,6 +427,11 @@ class FacebookActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        // Stop background audio service — user is back in the app, WebView plays directly
+        try {
+            stopService(Intent(this,
+                com.rasel.RasFocus.selfcontrol.familybrowser.service.BackgroundAudioService::class.java))
+        } catch (_: Exception) {}
         if (isFloatingActive) {
             // Floating থেকে ফিরে এলে service বন্ধ করো — WebView pendingWebView এ চলে আসবে,
             // পরের onCreate/recreate এ সেটাই re-attach হবে। যদি activity ইতিমধ্যে
@@ -375,33 +445,103 @@ class FacebookActivity : ComponentActivity() {
             } catch (_: Exception) {}
 
             if (webView == null) {
-                val rootFrame = getRootFrame()
-                // Floating থেকে ফেরার আগেই bg set করো যাতে 200ms গ্যাপে white না দেখায়
-                rootFrame?.setBackgroundColor(Color.parseColor("#f0f2f5"))
-                rootFrame?.postDelayed({
+                // ★ FIX: sync re-attach — postDelayed বাদ দেওয়া হয়েছে কারণ
+                // 200ms delay এ Activity টা white দেখায়। rootFrame field থেকে
+                // সরাসরি নেওয়া হচ্ছে — getRootFrame() inflate timing এ miss করতো।
+                val frame = rootFrame
+                if (frame != null) {
+                    frame.setBackgroundColor(Color.parseColor("#f0f2f5"))
                     val pendingWv = com.rasel.RasFocus.selfcontrol.familybrowser.service.FacebookFloatingWindowService.pendingWebView
-                    if (pendingWv != null && webView == null) {
+                    if (pendingWv != null) {
                         com.rasel.RasFocus.selfcontrol.familybrowser.service.FacebookFloatingWindowService.pendingWebView = null
                         webView = pendingWv
                         (pendingWv.parent as? ViewGroup)?.removeView(pendingWv)
                         pendingWv.setBackgroundColor(Color.parseColor("#f0f2f5"))
-                        rootFrame.addView(pendingWv, FrameLayout.LayoutParams(
+                        frame.addView(pendingWv, FrameLayout.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
                         ))
                         pendingWv.resumeTimers()
                         pendingWv.onResume()
+                    } else {
+                        // pendingWebView নেই — process kill হয়েছিল, নতুন WebView বানাও
+                        val newWv = buildFacebookWebView(frame)
+                        webView = newWv
+                        frame.addView(newWv, FrameLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+                        ))
+                        val recoveryPrefs = getSharedPreferences("fb_float_recovery", Context.MODE_PRIVATE)
+                        val recoveredUrl = if (recoveryPrefs.getBoolean("was_open", false))
+                            recoveryPrefs.getString("last_url", null) else null
+                        if (recoveredUrl != null) {
+                            recoveryPrefs.edit().putBoolean("was_open", false).apply()
+                            newWv.loadUrl(recoveredUrl)
+                        } else {
+                            newWv.loadUrl("https://m.facebook.com/")
+                        }
                     }
-                }, 200)
+                }
             }
         } else {
-            webView?.resumeTimers()
-            webView?.onResume()
+            val frame = rootFrame
+            if (frame != null) frame.setBackgroundColor(Color.parseColor("#f0f2f5"))
+            val wv = webView
+            if (wv != null) {
+                // ★ FIX: webView কে frame তে re-attach করো যদি detach হয়ে থাকে
+                // (system resource pressure এ Android মাঝে মাঝে View টা detach করে)
+                if (!wv.isAttachedToWindow && frame != null) {
+                    (wv.parent as? ViewGroup)?.removeView(wv)
+                    frame.addView(wv, FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+                    ))
+                }
+                wv.resumeTimers()
+                wv.onResume()
+            } else if (frame != null) {
+                // ★ FIX: webView null মানে Activity recreate হয়েছে কিন্তু
+                // isFloatingActive ছিল না — নতুন WebView বানাও
+                val pending = com.rasel.RasFocus.selfcontrol.familybrowser.service.FacebookFloatingWindowService.pendingWebView
+                if (pending != null) {
+                    com.rasel.RasFocus.selfcontrol.familybrowser.service.FacebookFloatingWindowService.pendingWebView = null
+                    webView = pending
+                    (pending.parent as? ViewGroup)?.removeView(pending)
+                    pending.setBackgroundColor(Color.parseColor("#f0f2f5"))
+                    frame.addView(pending, FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+                    ))
+                    pending.resumeTimers()
+                    pending.onResume()
+                } else {
+                    val newWv = buildFacebookWebView(frame)
+                    webView = newWv
+                    frame.addView(newWv, FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+                    ))
+                    val recoveryPrefs = getSharedPreferences("fb_float_recovery", Context.MODE_PRIVATE)
+                    val recoveredUrl = if (recoveryPrefs.getBoolean("was_open", false))
+                        recoveryPrefs.getString("last_url", null) else null
+                    if (recoveredUrl != null) {
+                        recoveryPrefs.edit().putBoolean("was_open", false).apply()
+                        newWv.loadUrl(recoveredUrl)
+                    } else {
+                        newWv.loadUrl("https://m.facebook.com/")
+                    }
+                }
+            }
         }
     }
 
     private fun getRootFrame(): FrameLayout? {
         val contentView = window.decorView.findViewById<ViewGroup>(android.R.id.content)
         return contentView?.getChildAt(0) as? FrameLayout ?: contentView as? FrameLayout
+    }
+
+    // ★ FIX: Activity recreate (rotate, system kill) এ URL save করো
+    override fun onSaveInstanceState(outState: android.os.Bundle) {
+        super.onSaveInstanceState(outState)
+        val url = webView?.url
+        if (!url.isNullOrEmpty() && url.startsWith("http")) {
+            outState.putString("fb_saved_url", url)
+        }
     }
 
     override fun onPause() {
@@ -470,69 +610,88 @@ class FacebookActivity : ComponentActivity() {
     }
 
     private fun injectSettingsRemover(view: WebView) {
-        val prefs = getSharedPreferences("browser_settings", Context.MODE_PRIVATE)
-        val hideVideo = prefs.getBoolean("fb_hide_videos", false)
-        val hideReels = prefs.getBoolean("fb_hide_reels", false)
-        val hideNewsfeed = prefs.getBoolean("fb_hide_newsfeed", false)
-        val grayscale = prefs.getBoolean("fb_grayscale", false)
-        val textOnly = prefs.getBoolean("fb_text_only", false)
-        
-        if (!hideVideo && !hideReels && !hideNewsfeed && !grayscale && !textOnly) return
-        
+        val prefs           = getSharedPreferences("browser_settings", Context.MODE_PRIVATE)
+        val hideVideo       = prefs.getBoolean("fb_hide_videos",      false)
+        val hideReels       = prefs.getBoolean("fb_hide_reels",       false)
+        val hideNewsfeed    = prefs.getBoolean("fb_hide_newsfeed",    false)
+        val hideMarketplace = prefs.getBoolean("fb_hide_marketplace", false)
+        val grayscale       = prefs.getBoolean("fb_grayscale",        false)
+        val textOnly        = prefs.getBoolean("fb_text_only",        false)
+
         val js = """
             (function() {
-                if (window.__rasFbSettingsRemover__) return;
-                window.__rasFbSettingsRemover__ = true;
-                
-                if ($grayscale) {
-                    document.documentElement.style.filter = 'grayscale(100%)';
+                if (window.__rasFbSettingsInterval__) {
+                    clearInterval(window.__rasFbSettingsInterval__);
+                    window.__rasFbSettingsInterval__ = null;
                 }
-                
-                if ($textOnly) {
-                    var style = document.createElement('style');
-                    style.innerHTML = 'img, video, svg, i { display: none !important; }';
-                    document.head.appendChild(style);
-                }
-                
+
+                document.documentElement.style.filter = ${if (grayscale) "'grayscale(100%)'" else "''"};
+
                 function applySettings() {
                     try {
-                        var hideVideo = $hideVideo;
-                        var hideReels = $hideReels;
-                        var hideNewsfeed = $hideNewsfeed;
-                        
-                        if (hideVideo || hideReels) {
-                            var tabBars = document.querySelectorAll('[role="tablist"] [role="tab"]');
-                            tabBars.forEach(function(tab) {
-                                var href = tab.getAttribute('href') || '';
-                                if (hideVideo && href.indexOf('/watch') !== -1) tab.style.display = 'none';
-                                if (hideReels && href.indexOf('/reels') !== -1) tab.style.display = 'none';
+                        // Text-only CSS
+                        var styleId = '__ras_fb_css__';
+                        var existing = document.getElementById(styleId);
+                        if (existing) existing.remove();
+                        var css = '';
+                        if ($textOnly) css += 'img,video,source,svg,canvas,[role="img"]{display:none!important;}';
+                        if (css) { var s=document.createElement('style'); s.id=styleId; s.textContent=css; (document.head||document.documentElement).appendChild(s); }
+
+                        // Top nav + bottom nav buttons — target by href + aria-label
+                        document.querySelectorAll('a[href],[role="tab"],[role="button"]').forEach(function(el) {
+                            try {
+                                var href  = (el.getAttribute('href') || '').toLowerCase();
+                                var label = (el.getAttribute('aria-label') || el.title || '').toLowerCase();
+                                var txt   = (el.innerText || '').toLowerCase().trim();
+                                var all   = href + ' ' + label + ' ' + txt;
+
+                                var isWatch  = /\/watch/.test(href) || /^watch$|^video$|ভিডিও/.test(label) || /^watch$/.test(txt);
+                                var isReels  = /\/reel/.test(href)  || /^reels?$|রিলস/.test(label) || /^reels?$/.test(txt);
+                                var isMarket = /\/marketplace/.test(href) || /marketplace|মার্কেটপ্লেস/.test(label);
+
+                                var navItem = el.closest('li,[role="listitem"],[role="tab"],._1ild') || el;
+
+                                if (isWatch)  navItem.style.setProperty('display', $hideVideo  ? 'none' : '', 'important');
+                                if (isReels)  navItem.style.setProperty('display', $hideReels  ? 'none' : '', 'important');
+                                if (isMarket) navItem.style.setProperty('display', $hideMarketplace ? 'none' : '', 'important');
+                            } catch(e2) {}
+                        });
+
+                        // Feed: Reels horizontal strip
+                        if ($hideReels) {
+                            document.querySelectorAll('[data-mcomponent="MHorizontalScrollSection"],[data-sigil="scroll-area"]').forEach(function(el) {
+                                if ((el.innerText||'').toLowerCase().indexOf('reel') !== -1)
+                                    el.style.setProperty('display','none','important');
                             });
                         }
-                        
-                        if (hideReels) {
-                            // Hide Reels section in feed by finding the text "Reels"
-                            document.querySelectorAll('span, div').forEach(function(el) {
-                                var txt = (el.innerText || '').toLowerCase();
-                                if (txt.trim() === 'reels' && el.childElementCount === 0) {
-                                    var parent = el.closest('[data-mcomponent]') || el.closest('div[style*="background"]');
-                                    if (parent) parent.style.display = 'none';
-                                }
+
+                        // Feed: video posts
+                        if ($hideVideo) {
+                            document.querySelectorAll('video').forEach(function(v) {
+                                var post = v.closest('[role="article"],[data-mcomponent="MStory"],[data-mcomponent="MContainer"]');
+                                if (post) post.style.setProperty('display','none','important');
                             });
                         }
-                        
-                        if (hideNewsfeed) {
-                            // Hide main feed articles
-                            document.querySelectorAll('div[data-mcomponent="MContainer"], article, [role="article"]').forEach(function(el) {
-                                // Exclude header/nav elements
-                                if (!el.closest('header') && !el.closest('[role="banner"]')) {
-                                    el.style.display = 'none';
-                                }
+
+                        // Feed: all articles
+                        if ($hideNewsfeed) {
+                            document.querySelectorAll('[role="article"],[data-mcomponent="MStory"]').forEach(function(el) {
+                                if (!el.closest('header,[role="banner"]'))
+                                    el.style.setProperty('display','none','important');
                             });
                         }
+
+                        // Redirect if on blocked page
+                        var url = window.location.href.toLowerCase();
+                        if ($hideReels  && url.indexOf('/reel') !== -1) window.location.replace('https://m.facebook.com/');
+                        if ($hideVideo  && url.indexOf('/watch') !== -1) window.location.replace('https://m.facebook.com/');
+                        if ($hideMarketplace && url.indexOf('/marketplace') !== -1) window.location.replace('https://m.facebook.com/');
+
                     } catch(e) {}
                 }
+
                 applySettings();
-                setInterval(applySettings, 1000);
+                window.__rasFbSettingsInterval__ = setInterval(applySettings, 800);
             })();
         """.trimIndent()
         view.evaluateJavascript(js, null)
@@ -620,6 +779,17 @@ class FacebookActivity : ComponentActivity() {
         @android.webkit.JavascriptInterface
         fun onGoHome() {
             runOnUiThread { wv.loadUrl("https://m.facebook.com/") }
+        }
+
+        // ★ Facebook SPA navigation এ URL change detect করে adult keyword check
+        @android.webkit.JavascriptInterface
+        fun onUrlChanged(url: String) {
+            val adultHtml = checkAdultSearchKeyword(url)
+            if (adultHtml != null) {
+                runOnUiThread {
+                    wv.loadDataWithBaseURL(null, adultHtml, "text/html", "UTF-8", null)
+                }
+            }
         }
     }
 }

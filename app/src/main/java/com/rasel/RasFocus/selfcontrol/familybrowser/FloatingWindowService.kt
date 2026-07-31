@@ -154,13 +154,13 @@ class FloatingWindowService : Service() {
         windows[windowId] = fw
 
         val dm = resources.displayMetrics
-        fw.winW = (dm.widthPixels  * 0.60f).toInt()
-        fw.winH = (dm.heightPixels * 0.50f).toInt()
+        fw.winW = dm.widthPixels                          // full width
+        fw.winH = (dm.heightPixels * 0.50f).toInt()       // upper half
 
-        // নতুন window গুলো একটু একটু করে cascade (সরিয়ে) বসাও, যাতে একে অপরকে পুরোপুরি না ঢাকে
-        val cascadeOffset = (windows.size - 1) * dp(28)
-        fw.posX = 60 + cascadeOffset
-        fw.posY = 140 + cascadeOffset
+        // সবসময় screen top-left থেকে শুরু (full-width, snap to top)
+        val cascadeOffset = 0
+        fw.posX = 0
+        fw.posY = 0
 
         val overlayType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -200,46 +200,42 @@ class FloatingWindowService : Service() {
             clipToOutline = true
         }
 
-        // ── Title bar ──────────────────────────────────────────────────────────
+        // ── Chrome-style dark header bar ───────────────────────────────────────
         val titleBar = android.widget.LinearLayout(this).apply {
             orientation  = android.widget.LinearLayout.HORIZONTAL
-            setPadding(dp(8), dp(6), dp(8), dp(6))
-            setBackgroundColor(0xFF2563EB.toInt()) // BrandBlue
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            setBackgroundColor(0xFF1A1A1A.toInt()) // Chrome dark toolbar
             gravity = Gravity.CENTER_VERTICAL
         }
 
+        // URL pill (address bar style)
         val titleTv = android.widget.TextView(this).apply {
-            text      = fw.title.take(30)
+            text      = try {
+                android.net.Uri.parse(fw.url).host?.removePrefix("www.") ?: fw.title.take(30)
+            } catch (e: Exception) { fw.title.take(30) }
             textSize  = 13f
             setTextColor(0xFFFFFFFF.toInt())
-            layoutParams = android.widget.LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            setBackgroundColor(0xFF2C2C2E.toInt())
+            setPadding(dp(12), dp(6), dp(12), dp(6))
+            layoutParams = android.widget.LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                setMargins(dp(6), 0, dp(6), 0)
+            }
             maxLines  = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
-        }
-
-        // Size toggle button (small ↔ large)
-        val btnSize = buildIconButton("⊡") {
-            val newW: Int
-            val newH: Int
-            if (fw.winW < screenW * 0.85f) {
-                newW = (screenW * 0.90f).toInt()
-                newH = (screenH * 0.80f).toInt()
-            } else {
-                newW = (screenW * 0.60f).toInt()
-                newH = (screenH * 0.50f).toInt()
+            // pill shape
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+                cornerRadius = dp(16).toFloat()
+                setColor(0xFF2C2C2E.toInt())
             }
-            fw.winW = newW; fw.winH = newH
-            params.width = fw.winW; params.height = fw.winH
-            clampPosition(screenW, screenH, params, fw)
-            windowManager.updateViewLayout(fw.floatRoot, params)
         }
 
-        // Minimize button — WebView destroy না করে ছোট bubble এ shrink করে
+        // Minimize button
         val btnMinimize = buildIconButton("▬") {
             showMinimized(fw)
         }
 
-        // Open in main browser — এই window বন্ধ করে main app এ ঐ page চালু করে
+        // Open in main browser
         val btnOpen = buildIconButton("⤤") {
             val i = Intent(this@FloatingWindowService, FamilyBrowserActivity::class.java).apply {
                 data  = android.net.Uri.parse(fw.url)
@@ -250,7 +246,7 @@ class FloatingWindowService : Service() {
             if (windows.isEmpty()) stopSelf()
         }
 
-        // Close button — শুধু এই windowId টাই বন্ধ হবে, বাকিগুলো থাকবে
+        // Close button
         val btnClose = buildIconButton("✕") {
             removeWindow(fw.id)
             if (windows.isEmpty()) stopSelf()
@@ -258,7 +254,6 @@ class FloatingWindowService : Service() {
 
         titleBar.addView(titleTv)
         titleBar.addView(btnMinimize)
-        titleBar.addView(btnSize)
         titleBar.addView(btnOpen)
         titleBar.addView(btnClose)
 

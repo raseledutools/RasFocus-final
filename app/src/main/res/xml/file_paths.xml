@@ -1,14 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
+    <!-- General cache root — needed for PPTX/DOCX temp files -->
+    <cache-path
+        name="cache_root"
+        path="." />
     <cache-path
         name="shared_pdfs"
         path="shared_pdfs/" />
     <cache-path
         name="captures"
         path="captures/" />
+    <!-- converted_pdfs: used by PptxViewerActivity, DocxViewerActivity,
+         XlsxViewerActivity, and UniversalViewerActivity (image→PDF).
+         Missing this was causing FileProvider crash on "Open with RasFocus". -->
+    <cache-path
+        name="converted_pdfs"
+        path="converted_pdfs/" />
     <external-files-path
         name="external_files"
         path="Documents/" />
+    <external-files-path
+        name="external_pictures"
+        path="Pictures/" />
     <external-path
         name="external_downloads"
         path="Download/" />
@@ -19,3 +32,4 @@
         name="internal_files"
         path="." />
 </paths>
+

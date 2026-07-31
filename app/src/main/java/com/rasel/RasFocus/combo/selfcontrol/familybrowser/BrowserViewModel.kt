@@ -108,6 +108,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     var showBookmarkDialog by mutableStateOf(false)
     var showDownloads by mutableStateOf(false)
     var isFullscreen by mutableStateOf(false)
+    // Chrome-style: scroll down → header hide, scroll up → show
+    var showNavButtons by mutableStateOf(true)
     var isReaderMode by mutableStateOf(false)
     var isFindInPage by mutableStateOf(false)
     var isPipMode    by mutableStateOf(false)      // PiP mode active কিনা

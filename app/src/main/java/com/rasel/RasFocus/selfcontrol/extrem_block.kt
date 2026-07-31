@@ -266,11 +266,11 @@ class RasFocusBlockingService : AccessibilityService() {
 
     private var lastPopupTime = 0L
 
-    private fun blockWithMessage(featureTitle: String, reason: String) {
+    private fun blockWithMessage(featureTitle: String, reason: String, detectedKeyword: String? = null) {
         val now = System.currentTimeMillis()
         if (now - lastPopupTime > 1500L) {
             lastPopupTime = now
-            mainHandler.post { showBlockOverlay(featureTitle, reason) }
+            showBlockOverlay(featureTitle, reason, detectedKeyword)
             mainHandler.postDelayed({ performGlobalAction(GLOBAL_ACTION_HOME) }, 80L)
         }
     }
@@ -281,13 +281,13 @@ class RasFocusBlockingService : AccessibilityService() {
      * ২. GLOBAL_ACTION_BACK ফায়ার করে current tab/screen destroy করো।
      * ৩. FLAG_ACTIVITY_CLEAR_TASK সহ HOME Intent দিয়ে অ্যাপটি পুরোপুরি kill করো।
      */
-    private fun forceKillAppAndGoHome(pkg: String, featureTitle: String, reason: String) {
+    private fun forceKillAppAndGoHome(pkg: String, featureTitle: String, reason: String, detectedKeyword: String? = null) {
         val now = System.currentTimeMillis()
         if (now - lastPopupTime > 1000L) {
             lastPopupTime = now
 
             // ১. সবার আগে blocking overlay দেখাও (Instant Cover)
-            mainHandler.post { showBlockOverlay(featureTitle, reason) }
+            showBlockOverlay(featureTitle, reason, detectedKeyword)
 
             // ২. Current screen / tab destroy করতে BACK press
             mainHandler.postDelayed({
@@ -312,7 +312,7 @@ class RasFocusBlockingService : AccessibilityService() {
 
 
     // ── Block UI delegated to BlockPage.kt ──────────────────────────
-    private fun showBlockOverlay(featureTitle: String, reason: String) {
+    private fun showBlockOverlay(featureTitle: String, reason: String, detectedKeyword: String? = null) {
         val type = when {
             featureTitle.contains("Short", true)  -> BlockPage.Type.SHORTS
             featureTitle.contains("Reel", true)   -> BlockPage.Type.REELS
@@ -323,7 +323,7 @@ class RasFocusBlockingService : AccessibilityService() {
             featureTitle.contains("DENIED", true) || featureTitle.contains("LOCK", true) -> BlockPage.Type.SYSTEM
             else -> BlockPage.Type.FOCUS
         }
-        BlockPage.show(this, type, featureTitle, reason)
+        BlockPage.show(this, type, featureTitle, reason, detectedKeyword)
     }
 
     private fun removeOverlay() { BlockPage.dismiss(this) }
@@ -677,111 +677,23 @@ class RasFocusBlockingService : AccessibilityService() {
         return _adultDomainList!!
     }
 
-    private val adultSiteKeywords = listOf(
-        // EN
-        "porn video", "porn site", "porn watch", "free porn", "watch porn",
-        "xxx video", "xxx site", "xxx watch", "hd xxx",
-        "nude video", "nude photo", "nude pic", "nude girl", "nude scene",
-        "nsfw video", "nsfw content", "sexy video", "sexy girl", "sexy photo", "sexy scene",
-        "hentai video", "hentai anime", "hentai watch", "rule34", "milf video", "milf porn",
-        "blowjob video", "blowjob scene", "tits video", "boobs video", "boobs photo",
-        "pussy video", "pussy photo", "cock video", "dick video", "dick photo",
-        "escort service", "escort girl", "bdsm video", "bdsm porn", "fetish video", "fetish porn",
-        "erotica video", "erotic video", "erotic scene", "dildo video", "camgirls live", "cam girls",
-        "onlyfans video", "onlyfans content", "onlyfans leak", "chaturbate live",
-        "mia khalifa", "sunny leone", "dani daniels", "johnny sins", "kendra lust",
-        // Bangla
-        "চটি গল্প", "চটি পড়", "পর্ণ ভিডিও", "পর্ণ দেখ", "পর্ণগ্রাফি দেখ", "সেক্স ভিডিও", "সেক্স করা", "সেক্স দেখ",
-        "নগ্ন ভিডিও", "নগ্ন ছবি", "নগ্ন মেয়ে", "উলঙ্গ ভিডিও", "উলঙ্গ ছবি", "বেশ্যা ভিডিও", "মাগি ভিডিও",
-        "খানকি ভিডিও", "খানকি ছবি", "যৌন ভিডিও", "যৌন মিলন ভিডিও", "যৌনাঙ্গ ভিডিও", "রেন্ডি ভিডিও", "চোদাচুতি ভিডিও",
-        "গরম ভিডিও", "খারাপ ছবি দেখ", "খারাপ ভিডিও", "চুদো ভিডিও", "নগ্নতা ভিডিও",
-        // Banglish
-        "bangla choti", "bangla chuda", "bangla xxx", "desi sex video", "desi bhabi sex", "desi nude",
-        "bhabi sex", "bhabi nude", "bhabi video", "chudai video", "chudai scene", "panu video", "panu bd",
-        "desi mms", "mms leak video", "khanki video", "magi video", "choda video", "chodachudi video",
-        "randi video", "randi sex", "nengta video", "nangta video", "vodai video", "vodai photo",
-        "bokachoda video", "kharap video", "kharap ছবি",
-        // Site names
-        "pornhub", "xvideos", "xnxx", "xhamster", "redtube", "youporn", "tube8", "spankbang",
-        "eporner", "drtuber", "txxx", "tnaflix", "brazzers", "realitykings", "bangbros",
-        "onlyfans", "chaturbate", "stripchat", "slutload", "motherless", "redgifs",
-        "hentaihaven", "gelbooru", "rule34", "javhd", "japanhdv", "playboy video", "playboy nude",
-        "beeg video", "pornmd", "pornhd", "pornotube", "fakehub", "fakku", "hentaigasm",
-        "camhub", "imlive", "luckycrush", "jerkmate", "jizzhut", "tubegalore", "cliphunter",
-        "wankzvr", "vrporn", "vrcock", "watchmygf", "watchmyexgf", "hotsouthindiansex", "viewdesisex",
-        "tranny video", "tranny porn", "twistysnetwork", "digitalplayground", "teamskeet", "nubiles",
-        "theporndude", "toppornsites",
-        // Single/Short
-        "porn", "xxx", "sex", "nude", "nsfw", "sexy", "hentai", "milf", "blowjob", "tits", "boobs", "pussy", "dick", "cock",
-        "escort", "bdsm", "fetish", "erotica", "dildo", "webcam", "camgirls", "webcam girl",
-        "চটি", "পর্ণ", "সেক্স", "নগ্ন", "উলঙ্গ", "বেশ্যা", "মাগি", "খানকি", "যৌন", "পর্ণগ্রাফি",
-        "রেন্ডি", "চোদাচুতি", "গরম ভিডিও", "খারাপ ছবি", "যৌন মিলন", "যৌনাঙ্গ", "চুদো", "নগ্নতা",
-        "bhabi", "chudai", "bangla choti", "panu", "desi bhabi", "mms", "magi", "choda", "chodachudi", "khanki", "besha",
-        "randi", "nengta", "nangta", "baal", "vodai", "bokachoda", "kuttar bacha", "shuarer bacha"
-    )
+    // ── HARDCODED KEYWORDS REMOVED — সব কিছু Firebase Realtime DB থেকে আসে ──
+    // FirebaseKeywordSync.getAdultKeywords() → adult_keywords
+    // FirebaseKeywordSync.getAdultDomains()  → adult_domains
+    // romantic keywords ও Firebase-এ adult_keywords এর অংশ হিসেবে রাখো
 
-    private val romanticKeywords = listOf(
-        // EN
-        "love story", "love quotes", "romantic status", "romantic shayari",
-        "love letter", "i love you", "miss you love", "girlfriend boyfriend",
-        "couple goals", "crush quotes", "propose video", "love proposal",
-        "romantic song", "love song", "dating tips", "how to impress girl",
-        "how to impress boy", "secret relationship", "love chat", "flirting tips",
-        "romantic message", "valentine gift", "love poem", "romantic movie scene",
-        "hot dance", "seductive dance", "item song", "belly dance",
-        "kissing scene", "bikini", "swimsuit", "sexy dance",
-        "cleavage", "hot scene", "romantic kiss", "bedroom scene",
-        "bath scene", "rain dance", "bold scene", "semi nude",
-        "lingerie", "erotic", "hot song", "romantic video hot",
-        "navel show", "deep neck", "short dress sexy", "unfaithful scene",
-        // Bangla
-        "প্রেমের গল্প", "প্রেমের কবিতা", "রোমান্টিক স্ট্যাটাস", "রোমান্টিক শায়েরি",
-        "প্রেম পত্র", "ভালোবাসি তোমায়", "গার্লফ্রেন্ড বয়ফ্রেন্ড", "প্রেমের গান",
-        "প্রপোজ ভিডিও", "প্রেমের মেসেজ", "গোপন প্রেম", "প্রেমিকা",
-        "প্রেমিক", "ভালোবাসার গান", "রোমান্টিক চ্যাট",
-        // Banglish
-        "love kobita", "valobashi", "prem kahini", "romantic shayari bangla",
-        "bf gf chat", "love message bangla", "propose korbo"
-    )
+    // ── ROMANTIC KEYWORDS REMOVED — Firebase-এ adult_keywords node-এ রাখো ──
 
     private fun activeExtremeKeywords(): List<String> {
-        val list = mutableListOf<String>()
-        if (prefs.blockNormalLoading) {
-            list.addAll(adultSiteKeywords)
-            list.addAll(romanticKeywords)
-        }
-        return list
+        // সম্পূর্ণ Firebase-only — কোনো hardcoded keyword নেই
+        // FirebaseKeywordSync.init() service start-এ call হয়ে যায়,
+        // তাই এখানে শুধু in-memory set পড়লেই হয়
+        if (!prefs.blockNormalLoading) return emptyList()
+        return FirebaseKeywordSync.getAdultKeywords().toList()
     }
 
-    private val adultDomains = setOf(
-        "18videosz.com", "24porn.com", "3movs.com", "4tube.com", "adulttime.com", "allofgfs.com", "alohatube.com", "alotporn.com",
-        "alphaporno.com", "anon-v.com", "anyshemale.com", "arabianchicks.com", "avn.com", "baberotica.com", "babes.com", "badoinkvr.com",
-        "bang.com", "bangbrosnetwork.com", "bdsmstreak.com", "beeg.com", "bestpornbabes.com", "besttrannypornsites.com", "bestxxxsites.com", "bigtits.com",
-        "blacked.com", "bobs-tube.com", "boysfood.com", "braincash.com", "brazzers.com", "brokestraightboys.com", "camhub.cc", "cams.com",
-        "cliphunter.com", "clips4sale.com", "czechvr.com", "dansmovies.com", "daredorm.com", "ddfnetwork.com", "deviantclip.com", "digitalplayground.com",
-        "dorcelclub.com", "drtuber.com", "eggporncomics.com", "empflix.com", "eporner.com", "eroxia.com", "evilangel.com", "extremetube.com",
-        "fakehub.com", "fakku.net", "fantasti.cc", "fapster.xxx", "forhertube.com", "free18.net", "freepornfull.com", "fuq.com",
-        "fux.com", "gayfuror.com", "gaymaletube.com", "gaytube.com", "gelbooru.com", "gfrevenge.com", "girlsway.com", "gotgayporn.com",
-        "h2porn.com", "handjobhub.com", "hardsextube.com", "hclips.com", "helixstudios.net", "hentai-foundry.com", "hentaicore.org", "hentaigasm.com",
-        "hentaihaven.org", "hentaipulse.com", "hotgoo.com", "hotsouthindiansex.com", "hustler.com", "iknowthatgirl.com", "imlive.com", "ixxx.com",
-        "iyalc.com", "japanhdv.com", "javhd.com", "jerkmate.com", "jizzhut.com", "jizzonline.com", "justusboys.com", "keezmovies.com",
-        "kinkyfamily.com", "kporno.com", "lesbian8.com", "letsjerk.is", "lovehomeporn.com", "lubetube.com", "luckycrush.live", "madthumbs.com",
-        "manporn.xxx", "maxim.com", "maxiporn.com", "metaporn.com", "mofosex.com", "mogosnetwork.com", "motherless.com", "moviefap.com",
-        "myporngay.com", "mythav.com", "netfapx.com", "newsensations.com", "nonktube.com", "nubiles.net", "nuvid.com", "orgasm.com",
-        "perfectgirls.net", "perfectgonzo.com", "pervclips.com", "playboy.com", "porcore.com", "porn.com", "porn300.xxx", "porn7.xxx",
-        "porndroids.com", "pornerbros.com", "pornfuror.com", "pornhd.com", "pornheed.com", "pornhost.com", "pornhub.com", "pornhubselect.com",
-        "pornmate.com", "pornmd.com", "pornmilo.com", "pornotube.com", "pornoxo.com", "pornprosnetwork.com", "pornrabbit.com", "pornrox.com",
-        "pornstarnetwork.com", "porntube.com", "pornxio.com", "proporn.com", "punishbang.com", "punishtube.com", "realitykings.com", "redgifs.com",
-        "redporn.xxx", "redtube.com", "rk.com", "rockettube.com", "rude.com", "sankakucomplex.com", "sexlikereal.com", "sexvid.xxx",
-        "shameless.com", "shemailhd.sex", "shooshtime.com", "slutload.com", "slutroulette.com", "spankbang.com", "spankwire.com", "stripchat.com",
-        "submityourflicks.com", "submityourtapes.com", "sunporno.com", "teamskeet.com", "theporndude.com", "thumbzilla.com", "tiava.com", "tnaflix.com",
-        "topfreepornvideos.com", "toppornsites.com", "tranny.one", "tube8.com", "tubegalore.com", "tubegals.com", "tubev.sex", "twilightsex.com",
-        "twistysnetwork.com", "txxx.com", "videosz.com", "viewdesisex.com", "virtualtaboo.com", "vixen.com", "vporn.com", "vrcock.com",
-        "vrcosplay.com", "vrporn.com", "vrsmash.com", "wankzvr.com", "watch-my-gf.com", "watch-my-gf.me", "watchindianporn.net", "watchmyexgf.net",
-        "watchmygf.me", "watchmygf.tv", "xbabe.com", "xhamster.com", "xmoviesforyou.com", "xnxx.com", "xnxxhamster.net", "xpaja.net",
-        "xtube.com", "xvideos.com", "xxvids.net", "xxx.com", "xxxaporn.com", "xxxbunker.com", "xxxvideos247.com", "youjizz.com",
-        "youporn.com", "youporngay.com", "yuvutu.com", "zbporn.com", "zzcartoon.com", "zzgays.com"
-    )
+    // ── HARDCODED ADULT DOMAINS REMOVED — Firebase-এ adult_domains node-এ রাখো ──
+    // রানটাইমে FirebaseKeywordSync.getAdultDomains() থেকে আসবে
 
     private fun fastAdultCheck(event: AccessibilityEvent, pkg: String): Boolean {
         if (pkg !in ALL_BROWSER_PKGS) return false
@@ -811,7 +723,13 @@ class RasFocusBlockingService : AccessibilityService() {
         val now = System.currentTimeMillis()
         if (now - lastPopupTime > 1200L) {
             lastPopupTime = now
-            mainHandler.post { showBlockOverlay("Adult Content", "This page contains adult content and has been blocked.") }
+            // ✅ FIX: mainHandler.post{} বাদ — already main thread এ আছি
+            // (onAccessibilityEvent এর synchronous call chain থেকে আসছি)।
+            // আগে এই extra round-trip + BlockPage.show() এর ভেতরের আরেকটা
+            // mainHandler.post{} — দুটো মিলে overlay দেখাতে অপ্রয়োজনীয় দেরি
+            // করাচ্ছিল, যার ফলে ততক্ষণে browser এর নিজের page (Google
+            // homepage) আগেই ভিজিবল হয়ে যাচ্ছিল।
+            showBlockOverlay("Adult Content", "This page contains adult content and has been blocked.")
             mainHandler.postDelayed({ performGlobalAction(GLOBAL_ACTION_HOME) }, 120)
             mainHandler.postDelayed({ closeBrowserTab(pkg) }, 600)
             mainHandler.postDelayed({
@@ -869,6 +787,7 @@ class RasFocusBlockingService : AccessibilityService() {
     }
 
     private fun isAdultUrl(text: String): Boolean {
+        // ── Keyword check — সব Firebase থেকে আসে ──
         if (prefs.blockNormalLoading || prefs.blockRomanticKeywords || prefs.blockAdultKeywordAnyApp) {
             if (activeExtremeKeywords().any { text.contains(it) }) return true
         }
@@ -877,17 +796,20 @@ class RasFocusBlockingService : AccessibilityService() {
             android.net.Uri.parse(raw).host?.lowercase()?.removePrefix("www.") ?: ""
         } catch (e: Exception) { "" }
         if (host.isNotEmpty()) {
+            // ── Firebase remote domains check ──
             if (prefs.blockNormalLoading) {
-                if (adultDomains.contains(host)) return true
+                val remoteDomains = FirebaseKeywordSync.getAdultDomains()
+                if (remoteDomains.contains(host)) return true
+                if (remoteDomains.any { host.endsWith(".$it") }) return true
             }
+            // ── Assets adultsite.txt — website list (এটা থাকবে) ──
             if (prefs.blockNormalLoading || prefs.blockAdultSiteList) {
                 val domainList = getAdultDomainList()
                 if (domainList.any { host == it || host.endsWith(".$it") }) return true
             }
         }
 
-        // ── Firebase remote check — hardcoded list-এ miss হলে এটা catch করবে ──
-        // owned by "Adult Image & Website Block" sub-toggle
+        // ── Firebase full remote check (keywords + domains + TLDs) ──
         if (prefs.blockAdultImageWeb && FirebaseKeywordSync.isBlockedByRemote(text, host)) return true
 
         return false
@@ -1014,20 +936,38 @@ class RasFocusBlockingService : AccessibilityService() {
             }
             if (searchBarFocused) return false
 
-            // ── Search result page কিনা check ──
-            // YouTube search result URL: vnd.youtube://results?search_query=...
-            // Accessibility tree-তে search_results_container বা চলমান title দেখে বুঝব
-            val isSearchResultPage =
-                root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/results").isNotEmpty() ||
-                root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/search_results_container").isNotEmpty() ||
-                root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/channel_list_item").isNotEmpty()
-
-            if (!isSearchResultPage) return false  // search result page নয় → home/feed → block করব না
-
-            // ── Search query text নিয়ে keyword check ──
+            // ✅ FIX: আগে এখানে isSearchResultPage (results/search_results_container/
+            // channel_list_item view-id) দেখেই ধরে নেওয়া হতো এটা search page —
+            // কিন্তু channel_list_item এর মতো view-id Subscriptions tab, channel
+            // এর নিজের page, এমনকি home feed এর "channels for you" shelf-এও
+            // থাকতে পারে। তারপর resultTitleText নেওয়া হতো "title" view-id থেকে
+            // — এই view-id প্রায় সব video thumbnail এর title-এই ব্যবহার হয়
+            // (শুধু search result না, normal home feed video-তেও)। ফলে home
+            // feed এ কোনো video title এ কাকতালীয়ভাবে blocked keyword থাকলেই —
+            // user কিছুই search না করা সত্ত্বেও — ভুলভাবে "adult content in
+            // search" বলে block হয়ে যেত।
+            //
+            // "search result content" বলে কিছু তখনই থাকতে পারে যখন আসলেই কোনো
+            // query search bar-এ আছে — তাই সবার আগে সেটা verify করব; কোনো
+            // query না থাকলে কোনো title scan-ই করব না, কারণ তখন এটা search
+            // result page হতেই পারে না।
             val searchQueryText = ytSearchBarIds.mapNotNull { id ->
                 root.findAccessibilityNodeInfosByViewId(id).firstOrNull()?.text?.toString()
             }.firstOrNull()?.lowercase()?.trim() ?: ""
+
+            if (searchQueryText.isBlank()) return false
+
+            // ── Search result page কিনা check (corroborating signal) ──
+            // YouTube search result URL: vnd.youtube://results?search_query=...
+            // ⚠️ channel_list_item এখানে ব্যবহার করা হয় না — এই view-id
+            // Subscriptions tab, channel page, এমনকি home feed এর "channels
+            // for you" shelf এও থাকে, তাই false positive হয়।
+            // শুধু results / search_results_container দিয়ে detect করা নিরাপদ।
+            val isSearchResultPage =
+                root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/results").isNotEmpty() ||
+                root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/search_results_container").isNotEmpty()
+
+            if (!isSearchResultPage) return false  // search result page নয় → home/feed → block করব না
 
             // Result page title থেকেও নিই (e.g. "porn - YouTube")
             val resultTitleText = (
@@ -1038,9 +978,10 @@ class RasFocusBlockingService : AccessibilityService() {
             val combined = "$searchQueryText $resultTitleText".trim()
             if (combined.isBlank()) return false
 
-            if (activeKeywords.any { combined.contains(it) }) {
+            val ytMatchedKw = activeKeywords.firstOrNull { combined.contains(it) }
+            if (ytMatchedKw != null) {
                 lastScreenScanBlockTime = now
-                forceKillAppAndGoHome(pkg, "Content Blocked", "Blocked keyword detected in YouTube search.")
+                forceKillAppAndGoHome(pkg, "Content Blocked", "Blocked keyword detected in YouTube search.", ytMatchedKw)
                 return true
             }
             return false
@@ -1077,9 +1018,10 @@ class RasFocusBlockingService : AccessibilityService() {
 
             if (fbQueryText.isBlank()) return false  // কোনো query নেই → skip
 
-            if (activeKeywords.any { fbQueryText.contains(it) }) {
+            val fbMatchedKw = activeKeywords.firstOrNull { fbQueryText.contains(it) }
+            if (fbMatchedKw != null) {
                 lastScreenScanBlockTime = now
-                forceKillAppAndGoHome(pkg, "Content Blocked", "Blocked keyword detected in Facebook search.")
+                forceKillAppAndGoHome(pkg, "Content Blocked", "Blocked keyword detected in Facebook search.", fbMatchedKw)
                 return true
             }
             return false
@@ -1105,9 +1047,10 @@ class RasFocusBlockingService : AccessibilityService() {
                 .firstOrNull()?.text?.toString()?.lowercase()?.trim() ?: ""
             if (searchText.isBlank()) return false
 
-            if (activeKeywords.any { searchText.contains(it) }) {
+            val igMatchedKw = activeKeywords.firstOrNull { searchText.contains(it) }
+            if (igMatchedKw != null) {
                 lastScreenScanBlockTime = now
-                forceKillAppAndGoHome(pkg, "Content Blocked", "Blocked keyword detected in Instagram search.")
+                forceKillAppAndGoHome(pkg, "Content Blocked", "Blocked keyword detected in Instagram search.", igMatchedKw)
                 return true
             }
             return false
@@ -1170,7 +1113,7 @@ class RasFocusBlockingService : AccessibilityService() {
         val match = activeKeywords.firstOrNull { titleText.contains(it) } ?: return false
 
         lastScreenScanBlockTime = now
-        forceKillAppAndGoHome(pkg, "Content Blocked", "Blocked keyword detected on screen.")
+        forceKillAppAndGoHome(pkg, "Content Blocked", "Blocked keyword detected on screen.", match)
         return true
     }
 
@@ -1350,7 +1293,8 @@ class RasFocusBlockingService : AccessibilityService() {
         val now = System.currentTimeMillis()
         if (now - fbBlockLastTime < 1200L) return
         fbBlockLastTime = now
-        mainHandler.post { showBlockOverlay(featureTitle, reason) }
+        // ✅ FIX: mainHandler.post{} বাদ — already main thread এ আছি
+        showBlockOverlay(featureTitle, reason)
         mainHandler.postDelayed({
             try {
                 val intent = android.content.Intent(android.content.Intent.ACTION_MAIN).apply {
@@ -1365,6 +1309,34 @@ class RasFocusBlockingService : AccessibilityService() {
         }, 400)
     }
 
+    // ── Robust fallback video-surface detector ──────────────────────────
+    // Facebook এর নিজস্ব view-id (video_player_container, reels_viewer_root
+    // ইত্যাদি) app update এর সাথে প্রায়ই বদলে যায়, আর English text match
+    // ("Reels", "Watch") user এর phone/app Bengali বা অন্য ভাষায় থাকলে
+    // কখনোই মিলবে না — এই দুই কারণে "toggle on থাকলেও block হয় না" এই bug
+    // হতে পারে। SurfaceView/TextureView/VideoView হলো standard Android
+    // class যা প্রায় সব native video player ব্যবহার করে (Facebook এর নিজের
+    // view-id নাম যাই হোক না কেন), তাই এটা অনেক বেশি reliable fallback।
+    // শুধু বড়সড়, visible surface কেই ধরব — ছোট inline feed thumbnail বাদ।
+    private fun hasLargeVisibleVideoSurface(root: AccessibilityNodeInfo, minPercent: Int = 35): Boolean {
+        fun search(node: AccessibilityNodeInfo?, depth: Int): Boolean {
+            node ?: return false
+            if (depth > 30) return false
+            val cn = node.className?.toString() ?: ""
+            if (node.isVisibleToUser &&
+                (cn.contains("SurfaceView") || cn.contains("TextureView") || cn == "android.widget.VideoView")) {
+                val screenBounds = android.graphics.Rect(); root.getBoundsInScreen(screenBounds)
+                val nodeBounds = android.graphics.Rect(); node.getBoundsInScreen(nodeBounds)
+                val screenArea = (screenBounds.width().toLong() * screenBounds.height().toLong()).coerceAtLeast(1)
+                val nodeArea = nodeBounds.width().toLong() * nodeBounds.height().toLong()
+                if (nodeArea * 100 / screenArea >= minPercent) return true
+            }
+            for (i in 0 until node.childCount) if (search(node.getChild(i), depth + 1)) return true
+            return false
+        }
+        return search(root, 0)
+    }
+
     private fun isFbVideoPlayerActuallyOpen(root: AccessibilityNodeInfo): Boolean {
         val fullscreen = root.findAccessibilityNodeInfosByViewId("com.facebook.katana:id/fullscreen_video_container").isNotEmpty()
             || root.findAccessibilityNodeInfosByViewId("com.facebook.katana:id/fb_video_player").isNotEmpty()
@@ -1377,6 +1349,7 @@ class RasFocusBlockingService : AccessibilityService() {
             || root.findAccessibilityNodeInfosByViewId("com.facebook.katana:id/video_fullscreen_button").any { it.isVisibleToUser }
             || root.findAccessibilityNodeInfosByViewId("com.facebook.katana:id/pip_button").any { it.isVisibleToUser }
             || root.findAccessibilityNodeInfosByViewId("com.facebook.katana:id/video_player_progress_bar").any { it.isVisibleToUser }
+            || hasLargeVisibleVideoSurface(root)   // ✅ FIX: view-id মিস হলেও ধরার fallback
         if (fullscreen) return true
 
         val story = root.findAccessibilityNodeInfosByViewId("com.facebook.katana:id/story_viewer_container").isNotEmpty()
@@ -1420,6 +1393,14 @@ class RasFocusBlockingService : AccessibilityService() {
             && root.findAccessibilityNodeInfosByViewId("com.facebook.katana:id/video_comment_button").any { it.isVisibleToUser }
             && root.findAccessibilityNodeInfosByViewId("com.facebook.katana:id/video_share_button").any { it.isVisibleToUser })
         if (hasReelsUi) return true
+
+        // ✅ FIX: view-id/text সব miss করলেও — Reels vertical swipe player
+        // পুরো স্ক্রিন জুড়ে video দেখায়, তাই বড় visible video-surface +
+        // watch_while_layout/tab-navigation না থাকা (মানে এটা normal Watch
+        // video না) মিলিয়ে ধরার চেষ্টা করব।
+        val fullscreenLikeVideo = hasLargeVisibleVideoSurface(root)
+            && root.findAccessibilityNodeInfosByViewId("com.facebook.katana:id/watch_tab").isEmpty()
+        if (fullscreenLikeVideo) return true
         return false
     }
 
