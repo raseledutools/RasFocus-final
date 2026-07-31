@@ -190,11 +190,11 @@ fun getExternalStorageInfo(): StorageInfo {
     } catch (e: Exception) { StorageInfo(0, 0) }
 }
 
-fun getSdCardStorageInfo(): StorageInfo {
+fun getSdCardStorageInfo(context: android.content.Context): StorageInfo {
     return try {
-        val externalDirs = System.getenv("SECONDARY_STORAGE")?.split(":") ?: emptyList()
-        if (externalDirs.isNotEmpty()) {
-            val path = java.io.File(externalDirs[0])
+        val pathStr = LocalFileManager.getSdCardPath(context)
+        if (pathStr != null) {
+            val path = java.io.File(pathStr)
             val stat = StatFs(path.path)
             val total = stat.blockCountLong * stat.blockSizeLong
             val avail = stat.availableBlocksLong * stat.blockSizeLong
@@ -211,34 +211,54 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
     var sdInfo by remember { mutableStateOf(StorageInfo(0, 0)) }
     val scope = rememberCoroutineScope()
 
-    // Load real storage info on first composition
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             internalInfo = getInternalStorageInfo()
             externalInfo = getExternalStorageInfo()
-            sdInfo = getSdCardStorageInfo()
+            sdInfo = getSdCardStorageInfo(context)
         }
     }
 
-    // Permission launcher for MANAGE_EXTERNAL_STORAGE (Android 11+)
     val manageStorageLauncher = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
         androidx.activity.compose.rememberLauncherForActivityResult(
             ActivityResultContracts.StartActivityForResult()
         ) {
-            // Re-check after returning from settings
             scope.launch(Dispatchers.IO) {
                 internalInfo = getInternalStorageInfo()
                 externalInfo = getExternalStorageInfo()
+                sdInfo = getSdCardStorageInfo(context)
+            }
+        }
+    } else null
+    
+    val legacyPermissionLauncher = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+        androidx.activity.compose.rememberLauncherForActivityResult(
+            ActivityResultContracts.RequestMultiplePermissions()
+        ) { permissions ->
+            scope.launch(Dispatchers.IO) {
+                internalInfo = getInternalStorageInfo()
+                externalInfo = getExternalStorageInfo()
+                sdInfo = getSdCardStorageInfo(context)
             }
         }
     } else null
 
     fun openStoragePermissionSettings() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
-                data = Uri.parse("package:${context.packageName}")
+            try {
+                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                    data = Uri.parse("package:${context.packageName}")
+                }
+                manageStorageLauncher?.launch(intent)
+            } catch (e: Exception) {
+                val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                manageStorageLauncher?.launch(intent)
             }
-            manageStorageLauncher?.launch(intent)
+        } else {
+            legacyPermissionLauncher?.launch(arrayOf(
+                Manifest.permission.READ_EXTERNAL_STORAGE,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE
+            ))
         }
     }
 
@@ -336,6 +356,18 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                                     onNavigate(NavState.Local(LocalFileManager.mainStoragePath))
                                 } else {
                                     openStoragePermissionSettings()
+                                }
+                            }
+                            "SD card" -> {
+                                val sdPath = LocalFileManager.getSdCardPath(context)
+                                if (sdPath != null) {
+                                    if (hasStorageAccess()) {
+                                        onNavigate(NavState.Local(sdPath))
+                                    } else {
+                                        openStoragePermissionSettings()
+                                    }
+                                } else {
+                                    android.widget.Toast.makeText(context, "No SD card found", android.widget.Toast.LENGTH_SHORT).show()
                                 }
                             }
                             "Downloads" -> onNavigate(NavState.Local(LocalFileManager.mainStoragePath + "/Download"))
