@@ -235,6 +235,9 @@ object ReminderAlarmPlayer {
                     override fun run() { stop() }
                 }, 60_000L)
             }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     fun stop() {
