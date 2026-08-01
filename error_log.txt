@@ -1,6 +1,6 @@
 === KOTLIN ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:287:1 Expecting a top level declaration
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:492:1 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:301:1 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:506:1 Expecting a top level declaration
 
 === UNRESOLVED / TYPE ERRORS ===
 
@@ -8,25 +8,25 @@ e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/
 > Task :app:kspFullReleaseKotlin FAILED
 * What went wrong:
 Execution failed for task ':app:kspFullReleaseKotlin'.
-BUILD FAILED in 28s
+BUILD FAILED in 34s
 
 === LAST 60 LINES ===
-> Task :app:extractProguardFiles
 > Task :app:extractDeepLinksFullRelease FROM-CACHE
 > Task :app:generateFullReleaseBuildConfig
-> Task :app:packageFullReleaseResources
+> Task :app:buildKotlinToolingMetadata
+> Task :app:packageFullReleaseResources FROM-CACHE
+> Task :app:parseFullReleaseLocalResources FROM-CACHE
 > Task :app:mapFullReleaseSourceSetPaths
-> Task :app:parseFullReleaseLocalResources
-> Task :app:checkFullReleaseDuplicateClasses
 > Task :app:mergeFullReleaseArtProfile
 > Task :app:validateSigningFullRelease
 > Task :app:writeFullReleaseAppMetadata
 > Task :app:writeFullReleaseSigningConfigVersions
 > Task :app:checkFullReleaseAarMetadata
+> Task :app:checkFullReleaseDuplicateClasses
+> Task :app:collectFullReleaseDependencies
 > Task :app:mergeFullReleaseAssets FROM-CACHE
 > Task :app:mergeFullReleaseNativeLibs
 > Task :app:compressFullReleaseAssets FROM-CACHE
-> Task :app:collectFullReleaseDependencies
 
 > Task :app:stripFullReleaseDebugSymbols
 Unable to strip the following libraries, packaging them as they are: libbarhopper_v3.so, libimage_processing_util_jni.so, libpdfium.so, libpdfiumandroid.so.
@@ -34,10 +34,10 @@ Unable to strip the following libraries, packaging them as they are: libbarhoppe
 > Task :app:extractFullReleaseNativeSymbolTables FROM-CACHE
 > Task :app:mergeFullReleaseNativeDebugMetadata NO-SOURCE
 > Task :app:sdkFullReleaseDependencyData
+> Task :app:mergeFullReleaseResources FROM-CACHE
 > Task :app:processFullReleaseMainManifest
 > Task :app:processFullReleaseManifest
 > Task :app:processFullReleaseManifestForPackage
-> Task :app:mergeFullReleaseResources
 note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
 
 note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
@@ -45,9 +45,9 @@ note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round ico
 > Task :app:processFullReleaseResources
 
 > Task :app:kspFullReleaseKotlin FAILED
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:287:1 Expecting a top level declaration
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:492:1 Expecting a top level declaration
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785546214142.json
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:301:1 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:506:1 Expecting a top level declaration
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785546421943.json
 
 FAILURE: Build failed with an exception.
 
@@ -68,6 +68,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 28s
-31 actionable tasks: 24 executed, 7 from cache
+BUILD FAILED in 34s
+31 actionable tasks: 21 executed, 10 from cache
 Configuration cache entry stored.
