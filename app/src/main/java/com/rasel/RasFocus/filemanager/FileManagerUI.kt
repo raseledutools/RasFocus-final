@@ -64,6 +64,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
 import com.rasel.RasFocus.drivebackup.DriveFileManager
 import com.rasel.RasFocus.selfcontrol.study_tools.UniversalViewerActivity
+import android.provider.MediaStore
+import android.graphics.Bitmap
+import android.util.LruCache
+import kotlinx.coroutines.Dispatchers
 
 // ── Rename Dialog ──────────────────────────────────────────────────────────────
 @Composable
@@ -247,7 +251,8 @@ fun LocalFileScreen(
     }
 
     fun refreshFiles() {
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        // Refresh silently in background — no loading spinner
+        scope.launch(Dispatchers.IO) {
             val result = LocalFileManager.listFiles(path)
             withContext(kotlinx.coroutines.Dispatchers.Main) {
                 rawFiles = result
@@ -451,13 +456,16 @@ fun LocalFileScreen(
                         }
                     }
                 }
-                isLoading -> {
+                // No full-screen loading spinner — show empty state instantly
+                // then content appears as soon as IO returns (usually <50ms on local storage)
+                isLoading && files.isEmpty() -> {
+                    // Only show spinner on very first load of an empty-so-far list
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator(color = Color(0xFF00796B))
-                            Spacer(Modifier.height(12.dp))
-                            Text("Loading…", color = Color.Gray, fontSize = 13.sp)
-                        }
+                        LinearProgressIndicator(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp),
+                            color = Color(0xFF00796B),
+                            trackColor = Color(0xFF00796B).copy(alpha = 0.15f)
+                        )
                     }
                 }
                 files.isEmpty() -> {
@@ -960,65 +968,20 @@ fun FileListItem(
             contentAlignment = Alignment.Center
         ) {
             if (!isDirectory && localFile != null && (isImage || isPdf || isVideo)) {
-                val bitmapState = remember(localFile.absolutePath) {
-                    androidx.compose.runtime.mutableStateOf<android.graphics.Bitmap?>(null)
+                // Check cache synchronously first — instant if already loaded
+                val cached = remember(localFile.absolutePath) {
+                    thumbnailCache.get(localFile.absolutePath)
                 }
-                LaunchedEffect(localFile.absolutePath) {
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        try {
-                            val bmp: android.graphics.Bitmap? = when {
-                                isImage -> {
-                                    val opts = android.graphics.BitmapFactory.Options().apply {
-                                        inJustDecodeBounds = true
-                                    }
-                                    android.graphics.BitmapFactory.decodeFile(localFile.absolutePath, opts)
-                                    val scale = maxOf(1, minOf(opts.outWidth, opts.outHeight) / 96)
-                                    val opts2 = android.graphics.BitmapFactory.Options().apply {
-                                        inSampleSize = scale
-                                    }
-                                    android.graphics.BitmapFactory.decodeFile(localFile.absolutePath, opts2)
-                                }
-                                isPdf -> {
-                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                                        val fd = android.os.ParcelFileDescriptor.open(
-                                            localFile, android.os.ParcelFileDescriptor.MODE_READ_ONLY
-                                        )
-                                        val renderer = android.graphics.pdf.PdfRenderer(fd)
-                                        val page = renderer.openPage(0)
-                                        val bmp = android.graphics.Bitmap.createBitmap(
-                                            96, (96 * page.height / page.width.toFloat()).toInt(),
-                                            android.graphics.Bitmap.Config.ARGB_8888
-                                        )
-                                        bmp.eraseColor(android.graphics.Color.WHITE)
-                                        page.render(bmp, null, null,
-                                            android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                                        page.close()
-                                        renderer.close()
-                                        fd.close()
-                                        bmp
-                                    } else null
-                                }
-                                isVideo -> {
-                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                                        android.media.ThumbnailUtils.createVideoThumbnail(
-                                            localFile,
-                                            android.util.Size(96, 96),
-                                            null
-                                        )
-                                    } else {
-                                        @Suppress("DEPRECATION")
-                                        android.media.ThumbnailUtils.createVideoThumbnail(
-                                            localFile.absolutePath,
-                                            android.provider.MediaStore.Images.Thumbnails.MINI_KIND
-                                        )
-                                    }
-                                }
-                                else -> null
-                            }
-                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                bitmapState.value = bmp
-                            }
-                        } catch (_: Exception) {}
+                val context = LocalContext.current
+                val bitmapState = remember(localFile.absolutePath) {
+                    androidx.compose.runtime.mutableStateOf<Bitmap?>(cached)
+                }
+
+                // Only launch IO if not cached
+                if (cached == null) {
+                    LaunchedEffect(localFile.absolutePath) {
+                        val bmp = loadThumbnailFor(context, localFile)
+                        bitmapState.value = bmp
                     }
                 }
 
@@ -1039,6 +1002,7 @@ fun FileListItem(
                         )
                     }
                 } else {
+                    // Show icon while loading (no spinner — instant fallback)
                     FileTypeIcon(ext = ext, isDirectory = false, sizeDp = 40)
                 }
             } else {
@@ -1092,6 +1056,134 @@ fun FileListItem(
                 }
             }
         }
+    }
+}
+
+// ── Global thumbnail memory cache (shared across all FileListItems) ────────────
+//    Holds up to 24 MB worth of 96×96 bitmaps — enough for ~100+ thumbnails
+private val thumbnailCache: LruCache<String, Bitmap> = object : LruCache<String, Bitmap>(
+    (Runtime.getRuntime().maxMemory() / 1024 / 8).toInt().coerceAtMost(24 * 1024) // KB, max 24 MB
+) {
+    override fun sizeOf(key: String, value: Bitmap) = value.byteCount / 1024
+}
+
+// Decode thumb for a local file — tries MediaStore first (instant), then raw decode
+suspend fun loadThumbnailFor(context: android.content.Context, file: java.io.File): Bitmap? {
+    val key = file.absolutePath
+    thumbnailCache.get(key)?.let { return it }
+
+    return kotlinx.coroutines.withContext(Dispatchers.IO) {
+        try {
+            val ext = file.extension.lowercase()
+            val isImage = ext in setOf("jpg","jpeg","png","gif","webp","bmp","heic","heif")
+            val isPdf   = ext == "pdf"
+            val isVideo = ext in setOf("mp4","mkv","mov","avi","3gp","webm")
+
+            val bmp: Bitmap? = when {
+                // ── Images: try MediaStore (system cache) first ──────────────
+                isImage -> {
+                    var thumb: Bitmap? = null
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                        try {
+                            thumb = context.contentResolver.loadThumbnail(
+                                android.net.Uri.fromFile(file),
+                                android.util.Size(96, 96), null
+                            )
+                        } catch (_: Exception) {}
+                    }
+                    if (thumb == null) {
+                        // MediaStore content URI lookup
+                        val uri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                        val proj = arrayOf(MediaStore.Images.Media._ID)
+                        val sel  = "${MediaStore.Images.Media.DATA} = ?"
+                        context.contentResolver.query(uri, proj, sel, arrayOf(file.absolutePath), null)?.use { c ->
+                            if (c.moveToFirst()) {
+                                val id = c.getLong(0)
+                                val contentUri = android.content.ContentUris.withAppendedId(uri, id)
+                                try {
+                                    thumb = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                                        context.contentResolver.loadThumbnail(contentUri, android.util.Size(96, 96), null)
+                                    } else {
+                                        @Suppress("DEPRECATION")
+                                        MediaStore.Images.Thumbnails.getThumbnail(
+                                            context.contentResolver, id,
+                                            MediaStore.Images.Thumbnails.MICRO_KIND, null
+                                        )
+                                    }
+                                } catch (_: Exception) {}
+                            }
+                        }
+                    }
+                    // Fallback: decode file directly at small size
+                    if (thumb == null) {
+                        val opts = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        android.graphics.BitmapFactory.decodeFile(file.absolutePath, opts)
+                        val scale = maxOf(1, minOf(opts.outWidth, opts.outHeight) / 96)
+                        val opts2 = android.graphics.BitmapFactory.Options().apply { inSampleSize = scale }
+                        thumb = android.graphics.BitmapFactory.decodeFile(file.absolutePath, opts2)
+                    }
+                    thumb
+                }
+
+                // ── Videos: MediaStore thumbnail ─────────────────────────────
+                isVideo -> {
+                    var thumb: Bitmap? = null
+                    val uri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                    val proj = arrayOf(MediaStore.Video.Media._ID)
+                    val sel  = "${MediaStore.Video.Media.DATA} = ?"
+                    context.contentResolver.query(uri, proj, sel, arrayOf(file.absolutePath), null)?.use { c ->
+                        if (c.moveToFirst()) {
+                            val id = c.getLong(0)
+                            val contentUri = android.content.ContentUris.withAppendedId(uri, id)
+                            try {
+                                thumb = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                                    context.contentResolver.loadThumbnail(contentUri, android.util.Size(96, 96), null)
+                                } else {
+                                    @Suppress("DEPRECATION")
+                                    MediaStore.Video.Thumbnails.getThumbnail(
+                                        context.contentResolver, id,
+                                        MediaStore.Video.Thumbnails.MICRO_KIND, null
+                                    )
+                                }
+                            } catch (_: Exception) {}
+                        }
+                    }
+                    // Fallback: ThumbnailUtils
+                    if (thumb == null) {
+                        try {
+                            thumb = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                                android.media.ThumbnailUtils.createVideoThumbnail(file, android.util.Size(96, 96), null)
+                            } else {
+                                @Suppress("DEPRECATION")
+                                android.media.ThumbnailUtils.createVideoThumbnail(
+                                    file.absolutePath, MediaStore.Images.Thumbnails.MINI_KIND
+                                )
+                            }
+                        } catch (_: Exception) {}
+                    }
+                    thumb
+                }
+
+                // ── PDF: PdfRenderer (fast at 96px) ──────────────────────────
+                isPdf && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP -> {
+                    try {
+                        val fd = android.os.ParcelFileDescriptor.open(file, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
+                        val renderer = android.graphics.pdf.PdfRenderer(fd)
+                        val page = renderer.openPage(0)
+                        val w = 96; val h = (96f * page.height / page.width).toInt().coerceAtLeast(1)
+                        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                        bmp.eraseColor(android.graphics.Color.WHITE)
+                        page.render(bmp, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                        page.close(); renderer.close(); fd.close()
+                        bmp
+                    } catch (_: Exception) { null }
+                }
+
+                else -> null
+            }
+
+            bmp?.also { thumbnailCache.put(key, it) }
+        } catch (_: Exception) { null }
     }
 }
 
