@@ -27,9 +27,11 @@ import androidx.compose.material.icons.filled.TextSnippet
 import androidx.compose.material.icons.filled.VideoFile
 import kotlinx.coroutines.withContext
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.InsertDriveFile
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -50,12 +52,75 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
 import com.rasel.RasFocus.drivebackup.DriveFileManager
 import com.rasel.RasFocus.selfcontrol.study_tools.UniversalViewerActivity
+
+// ── Rename Dialog — local ও cloud উভয়তে ব্যবহার হয় ──────────────────────
+@Composable
+fun RenameDialog(
+    currentName: String,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var newName by remember { mutableStateOf(currentName) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Rename") },
+        text = {
+            OutlinedTextField(
+                value = newName,
+                onValueChange = { newName = it },
+                label = { Text("New name") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val trimmed = newName.trim()
+                    if (trimmed.isNotEmpty()) onConfirm(trimmed)
+                },
+                enabled = newName.trim().isNotEmpty() && newName.trim() != currentName
+            ) { Text("Rename") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+// ── Delete Confirmation Dialog ─────────────────────────────────────────────
+@Composable
+fun DeleteConfirmDialog(
+    count: Int,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Delete") },
+        text = {
+            Text(
+                if (count == 1) "Delete this item permanently?"
+                else "Delete $count items permanently?"
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("Delete", color = Color(0xFFD32F2F))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
 
 @Composable
 fun LocalFileScreen(
@@ -71,6 +136,24 @@ fun LocalFileScreen(
     var isLoading by remember { mutableStateOf(false) }
     var selectedFiles by remember { mutableStateOf<Set<String>>(emptySet()) }
     var hasPermission by remember { mutableStateOf(LocalFileManager.hasStorageAccess(context)) }
+
+    // Rename dialog state
+    var showRenameDialog by remember { mutableStateOf(false) }
+    // Single-select rename: which file to rename
+    var renameTarget by remember { mutableStateOf<File?>(null) }
+
+    // Delete confirm dialog state
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
+    // ── Helper: refresh file list ──────────────────────────────────────────
+    fun refreshFiles() {
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val result = LocalFileManager.listFiles(path)
+            withContext(kotlinx.coroutines.Dispatchers.Main) {
+                files = result
+            }
+        }
+    }
 
     // Settings থেকে ফিরে এলে permission state refresh করা
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
@@ -131,8 +214,60 @@ fun LocalFileScreen(
         }
     }
 
+    // ── Rename Dialog ──────────────────────────────────────────────────────
+    if (showRenameDialog && renameTarget != null) {
+        RenameDialog(
+            currentName = renameTarget!!.name,
+            onConfirm = { newName ->
+                val target = renameTarget!!
+                val dest = File(target.parent, newName)
+                val ok = target.renameTo(dest)
+                Toast.makeText(
+                    context,
+                    if (ok) "Renamed to $newName" else "Rename failed",
+                    Toast.LENGTH_SHORT
+                ).show()
+                showRenameDialog = false
+                renameTarget = null
+                selectedFiles = emptySet()
+                if (ok) refreshFiles()
+            },
+            onDismiss = {
+                showRenameDialog = false
+                renameTarget = null
+            }
+        )
+    }
+
+    // ── Delete Confirm Dialog ──────────────────────────────────────────────
+    if (showDeleteDialog) {
+        DeleteConfirmDialog(
+            count = selectedFiles.size,
+            onConfirm = {
+                showDeleteDialog = false
+                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    var allOk = true
+                    for (path in selectedFiles) {
+                        val f = File(path)
+                        if (!f.deleteRecursively()) allOk = false
+                    }
+                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        Toast.makeText(
+                            context,
+                            if (allOk) "Deleted successfully" else "Some items could not be deleted",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        selectedFiles = emptySet()
+                        refreshFiles()
+                    }
+                }
+            },
+            onDismiss = { showDeleteDialog = false }
+        )
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
-        // ── Header: normal mode vs selection mode ──────────────────────────
+        // ── Header: normal mode vs selection mode ──────────────────────────────
         if (selectedFiles.isNotEmpty()) {
             SelectionTopBar(
                 selectedCount = selectedFiles.size,
@@ -252,19 +387,14 @@ fun LocalFileScreen(
                                             context, acc, id, name, java.io.File(path)
                                         )
                                         if (!result) {
-                                            // Fallback to downloading as single file if not a folder (downloadFolder handles this internally, but if it fails completely maybe it was just a file)
                                             val fileResult = com.rasel.RasFocus.drivebackup.DriveFileManager.downloadFile(context, acc, id, name, java.io.File(path))
                                             if (fileResult == null) success = false
-                                        }
-                                        if (clipboard.isCut) {
-                                            // Optional: delete from Drive API (needs delete support, skipping for safety unless explicitly requested)
                                         }
                                     }
                                 }
                                 withContext(kotlinx.coroutines.Dispatchers.Main) {
                                     Toast.makeText(context, if (success) "Pasted successfully" else "Some items failed to paste", Toast.LENGTH_SHORT).show()
                                     onSetClipboard(null)
-                                    // Trigger refresh
                                     files = LocalFileManager.listFiles(path)
                                 }
                             }
@@ -276,8 +406,7 @@ fun LocalFileScreen(
                 }
             }
         }
-    }
-    
+
         // ── Footer: selection action bar ──────────────────────────────────
         if (selectedFiles.isNotEmpty()) {
             SelectionBottomBar(
@@ -290,10 +419,16 @@ fun LocalFileScreen(
                     selectedFiles = emptySet()
                 },
                 onRename = {
-                    Toast.makeText(context, "Rename coming soon", Toast.LENGTH_SHORT).show()
+                    if (selectedFiles.size == 1) {
+                        val filePath = selectedFiles.first()
+                        renameTarget = File(filePath)
+                        showRenameDialog = true
+                    } else {
+                        Toast.makeText(context, "Select only one item to rename", Toast.LENGTH_SHORT).show()
+                    }
                 },
                 onDelete = {
-                    Toast.makeText(context, "Delete coming soon", Toast.LENGTH_SHORT).show()
+                    showDeleteDialog = true
                 }
             )
         }
@@ -316,6 +451,24 @@ fun CloudFileScreen(
     var isLoading by remember { mutableStateOf(true) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
     var selectedFiles by remember { mutableStateOf<Set<String>>(emptySet()) }
+
+    // Rename dialog state (Cloud)
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var renameTargetId by remember { mutableStateOf("") }
+    var renameTargetName by remember { mutableStateOf("") }
+
+    // Delete confirm dialog state
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
+    // ── Helper: refresh cloud file list ────────────────────────────────────
+    fun refreshFiles() {
+        scope.launch {
+            isLoading = true
+            val result = DriveFileManager.listFiles(context, accountName, folderId)
+            files = result?.sortedWith(compareBy({ it.mimeType != "application/vnd.google-apps.folder" }, { it.name.lowercase() })) ?: files
+            isLoading = false
+        }
+    }
     
     val fixDriveLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -347,6 +500,62 @@ fun CloudFileScreen(
             }
         }
         isLoading = false
+    }
+
+    // ── Cloud Rename Dialog ────────────────────────────────────────────────
+    if (showRenameDialog && renameTargetId.isNotEmpty()) {
+        RenameDialog(
+            currentName = renameTargetName,
+            onConfirm = { newName ->
+                showRenameDialog = false
+                scope.launch {
+                    val result = DriveFileManager.renameFile(context, accountName, renameTargetId, newName)
+                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        Toast.makeText(
+                            context,
+                            if (result != null) "Renamed to $newName" else "Rename failed",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        renameTargetId = ""
+                        renameTargetName = ""
+                        selectedFiles = emptySet()
+                        if (result != null) refreshFiles()
+                    }
+                }
+            },
+            onDismiss = {
+                showRenameDialog = false
+                renameTargetId = ""
+                renameTargetName = ""
+            }
+        )
+    }
+
+    // ── Cloud Delete Confirm Dialog ────────────────────────────────────────
+    if (showDeleteDialog) {
+        DeleteConfirmDialog(
+            count = selectedFiles.size,
+            onConfirm = {
+                showDeleteDialog = false
+                scope.launch {
+                    var allOk = true
+                    for (fileId in selectedFiles) {
+                        val ok = DriveFileManager.deleteFile(context, accountName, fileId)
+                        if (!ok) allOk = false
+                    }
+                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        Toast.makeText(
+                            context,
+                            if (allOk) "Deleted from Drive" else "Some items could not be deleted",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        selectedFiles = emptySet()
+                        refreshFiles()
+                    }
+                }
+            },
+            onDismiss = { showDeleteDialog = false }
+        )
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -455,7 +664,7 @@ fun CloudFileScreen(
                                     val srcAccount = clipboard.accountName ?: accountName
                                     for (id in clipboard.items) {
                                         val result = if (clipboard.isCut) {
-                                            com.rasel.RasFocus.drivebackup.DriveFileManager.moveFile(context, srcAccount, id, folderId, "root") // We don't have oldParentId easily accessible, this might need refinement
+                                            com.rasel.RasFocus.drivebackup.DriveFileManager.moveFile(context, srcAccount, id, folderId, "root")
                                         } else {
                                             com.rasel.RasFocus.drivebackup.DriveFileManager.copyFile(context, srcAccount, id, folderId)
                                         }
@@ -465,7 +674,6 @@ fun CloudFileScreen(
                                 withContext(kotlinx.coroutines.Dispatchers.Main) {
                                     Toast.makeText(context, if (success) "Pasted successfully" else "Some items failed to paste", Toast.LENGTH_SHORT).show()
                                     onSetClipboard(null)
-                                    // Trigger refresh
                                     isLoading = true
                                     files = com.rasel.RasFocus.drivebackup.DriveFileManager.listFiles(context, accountName, folderId)?.sortedWith(compareBy({ it.mimeType != "application/vnd.google-apps.folder" }, { it.name.lowercase() })) ?: emptyList()
                                     isLoading = false
@@ -479,8 +687,7 @@ fun CloudFileScreen(
                 }
             }
         }
-    }
-    
+
         // ── Footer: selection action bar ──────────────────────────────────
         if (selectedFiles.isNotEmpty()) {
             SelectionBottomBar(
@@ -495,10 +702,18 @@ fun CloudFileScreen(
                     selectedFiles = emptySet()
                 },
                 onRename = {
-                    Toast.makeText(context, "Rename coming soon", Toast.LENGTH_SHORT).show()
+                    if (selectedFiles.size == 1) {
+                        val fileId = selectedFiles.first()
+                        val fileName = files.find { it.id == fileId }?.name ?: ""
+                        renameTargetId = fileId
+                        renameTargetName = fileName
+                        showRenameDialog = true
+                    } else {
+                        Toast.makeText(context, "Select only one item to rename", Toast.LENGTH_SHORT).show()
+                    }
                 },
                 onDelete = {
-                    Toast.makeText(context, "Delete coming soon", Toast.LENGTH_SHORT).show()
+                    showDeleteDialog = true
                 }
             )
         }

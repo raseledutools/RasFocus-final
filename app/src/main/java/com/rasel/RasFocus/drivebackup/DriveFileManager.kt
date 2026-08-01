@@ -216,4 +216,34 @@ object DriveFileManager {
             null
         }
     }
+
+    /**
+     * Permanently deletes a file or folder from Google Drive.
+     * Returns true on success, false on failure.
+     */
+    suspend fun deleteFile(context: Context, accountName: String, fileId: String): Boolean = withContext(Dispatchers.IO) {
+        val driveService = buildDriveService(context, accountName) ?: return@withContext false
+        return@withContext try {
+            driveService.files().delete(fileId).execute()
+            true
+        } catch (e: Exception) {
+            recordFailure("deleteFile", e)
+            false
+        }
+    }
+
+    /**
+     * Renames a file or folder in Google Drive.
+     * Returns the updated File metadata on success, null on failure.
+     */
+    suspend fun renameFile(context: Context, accountName: String, fileId: String, newName: String): File? = withContext(Dispatchers.IO) {
+        val driveService = buildDriveService(context, accountName) ?: return@withContext null
+        return@withContext try {
+            val updatedMeta = File().apply { name = newName }
+            driveService.files().update(fileId, updatedMeta).setFields("id, name").execute()
+        } catch (e: Exception) {
+            recordFailure("renameFile", e)
+            null
+        }
+    }
 }
