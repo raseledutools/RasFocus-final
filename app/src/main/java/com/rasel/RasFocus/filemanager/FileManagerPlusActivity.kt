@@ -2,6 +2,7 @@ package com.rasel.RasFocus.filemanager
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -51,16 +52,17 @@ data class ClipboardState(
     val accountName: String? = null
 )
 
+// Sort options
+enum class SortMode { NAME_ASC, NAME_DESC, DATE_ASC, DATE_DESC, SIZE_ASC, SIZE_DESC }
+
 class FileManagerPlusActivity : ComponentActivity() {
 
-    // Permission grant হলে Activity recreate করা — সবচেয়ে reliable refresh
     private val legacyPermLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val granted = permissions[Manifest.permission.READ_EXTERNAL_STORAGE] == true
         android.util.Log.d("FileManagerPlusActivity", "Permission result: READ_EXTERNAL_STORAGE granted=$granted")
         if (granted) {
-            // Recreate activity — Compose state সম্পূর্ণ fresh হবে
             recreate()
         }
     }
@@ -77,9 +79,8 @@ class FileManagerPlusActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Android 11+ এ Settings থেকে MANAGE_EXTERNAL_STORAGE grant করে ফিরলে recreate
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) {
-            // permission এখন আছে — content recreate করা দরকার নেই, Compose DisposableEffect handle করবে
+            // permission এখন আছে
         }
     }
 
@@ -115,6 +116,53 @@ fun HomeScreen() {
     var currentNavState by remember { mutableStateOf<NavState>(NavState.Home) }
     var clipboard by remember { mutableStateOf<ClipboardState?>(null) }
     var showMoreMenu by remember { mutableStateOf(false) }
+    var sortMode by remember { mutableStateOf(SortMode.NAME_ASC) }
+    var showSearchBar by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+
+    // Cloud subfolder backstack: list of (folderId, pathName) pairs
+    // ─── Cloud backstack — subfolder থেকে proper back navigation এর জন্য ──────
+    val cloudBackStack = remember { mutableStateListOf<Pair<String, String>>() }
+
+    // ─── BackHandler — Android system back button ─────────────────────────────
+    BackHandler(enabled = currentNavState != NavState.Home || drawerState.isOpen) {
+        when {
+            drawerState.isOpen -> scope.launch { drawerState.close() }
+            showSearchBar -> {
+                showSearchBar = false
+                searchQuery = ""
+            }
+            currentNavState is NavState.Cloud -> {
+                val state = currentNavState as NavState.Cloud
+                if (cloudBackStack.isNotEmpty()) {
+                    val prev = cloudBackStack.removeLast()
+                    currentNavState = NavState.Cloud(state.accountName, prev.first, prev.second)
+                } else if (state.folderId != "root") {
+                    // backstack empty — "root" এ যাও
+                    cloudBackStack.clear()
+                    currentNavState = NavState.Cloud(state.accountName, "root", "My Drive")
+                } else {
+                    cloudBackStack.clear()
+                    currentNavState = NavState.CloudAccounts
+                }
+            }
+            currentNavState is NavState.CloudAccounts -> {
+                currentNavState = NavState.Home
+            }
+            currentNavState is NavState.Local -> {
+                val state = currentNavState as NavState.Local
+                val parent = java.io.File(state.path).parent
+                if (parent != null && parent.contains("0")) {
+                    currentNavState = NavState.Local(parent)
+                } else {
+                    currentNavState = NavState.Home
+                }
+            }
+            else -> {
+                currentNavState = NavState.Home
+            }
+        }
+    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -125,6 +173,7 @@ fun HomeScreen() {
             ) {
                 DrawerContent(
                     onNavigate = { newState ->
+                        cloudBackStack.clear()
                         currentNavState = newState
                         scope.launch { drawerState.close() }
                     }
@@ -134,107 +183,188 @@ fun HomeScreen() {
     ) {
         Scaffold(
             topBar = {
-                TopAppBar(
-                    title = { 
-                        Text(
-                            text = when (val state = currentNavState) {
-                                is NavState.Home -> "File Manager +"
-                                is NavState.Local -> state.path.substringAfterLast("/")
-                                is NavState.CloudAccounts -> "Cloud Locations"
-                                is NavState.Cloud -> state.pathName
-                            }, 
-                            color = Color.White
-                        ) 
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color(0xFF1E1E1E) // Dark background from image_5b8f74.jpg
-                    ),
-                    navigationIcon = {
-                        IconButton(onClick = { 
-                            if (currentNavState != NavState.Home) {
-                                currentNavState = NavState.Home
-                            } else {
-                                scope.launch { drawerState.open() }
-                            }
-                        }) {
-                            Icon(
-                                imageVector = if (currentNavState == NavState.Home) Icons.Default.Menu else Icons.Default.ArrowBack, 
-                                contentDescription = "Menu/Back", 
-                                tint = Color.White
+                if (showSearchBar) {
+                    // ── Search bar ───────────────────────────────────────────
+                    TopAppBar(
+                        title = {
+                            OutlinedTextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it },
+                                placeholder = { Text("Search...", color = Color.White.copy(alpha = 0.6f)) },
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White,
+                                    focusedBorderColor = Color.Transparent,
+                                    unfocusedBorderColor = Color.Transparent,
+                                    cursorColor = Color.White
+                                ),
+                                modifier = Modifier.fillMaxWidth()
                             )
-                        }
-                    },
-                    actions = {
-                        IconButton(onClick = {
-                            android.widget.Toast.makeText(context, "Premium features coming soon", android.widget.Toast.LENGTH_SHORT).show()
-                        }) {
-                            Icon(Icons.Default.Star, contentDescription = "Premium", tint = Color(0xFFFFA500))
-                        }
-                        Box {
-                            IconButton(onClick = { showMoreMenu = true }) {
-                                Icon(Icons.Default.MoreVert, contentDescription = "More", tint = Color.White)
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF1E1E1E)),
+                        navigationIcon = {
+                            IconButton(onClick = {
+                                showSearchBar = false
+                                searchQuery = ""
+                            }) {
+                                Icon(Icons.Default.ArrowBack, contentDescription = "Close search", tint = Color.White)
                             }
-                            DropdownMenu(
-                                expanded = showMoreMenu,
-                                onDismissRequest = { showMoreMenu = false }
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text("Sort by name") },
-                                    onClick = {
-                                        showMoreMenu = false
-                                        android.widget.Toast.makeText(context, "Sort by name", android.widget.Toast.LENGTH_SHORT).show()
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Sort by date") },
-                                    onClick = {
-                                        showMoreMenu = false
-                                        android.widget.Toast.makeText(context, "Sort by date", android.widget.Toast.LENGTH_SHORT).show()
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Sort by size") },
-                                    onClick = {
-                                        showMoreMenu = false
-                                        android.widget.Toast.makeText(context, "Sort by size", android.widget.Toast.LENGTH_SHORT).show()
-                                    }
-                                )
-                                Divider()
-                                DropdownMenuItem(
-                                    text = { Text("Settings") },
-                                    onClick = {
-                                        showMoreMenu = false
-                                        android.widget.Toast.makeText(context, "Settings coming soon", android.widget.Toast.LENGTH_SHORT).show()
-                                    }
-                                )
+                        },
+                        actions = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { searchQuery = "" }) {
+                                    Icon(Icons.Default.Close, contentDescription = "Clear", tint = Color.White)
+                                }
                             }
                         }
-                    }
-                )
+                    )
+                } else {
+                    TopAppBar(
+                        title = {
+                            Text(
+                                text = when (val state = currentNavState) {
+                                    is NavState.Home -> "File Manager +"
+                                    is NavState.Local -> state.path.substringAfterLast("/")
+                                    is NavState.CloudAccounts -> "Cloud Locations"
+                                    is NavState.Cloud -> state.pathName
+                                },
+                                color = Color.White
+                            )
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = Color(0xFF1E1E1E)
+                        ),
+                        navigationIcon = {
+                            IconButton(onClick = {
+                                if (currentNavState != NavState.Home) {
+                                    // Back navigation — same as BackHandler
+                                    when {
+                                        currentNavState is NavState.Cloud -> {
+                                            val state = currentNavState as NavState.Cloud
+                                            if (cloudBackStack.isNotEmpty()) {
+                                                val prev = cloudBackStack.removeLast()
+                                                currentNavState = NavState.Cloud(state.accountName, prev.first, prev.second)
+                                            } else if (state.folderId != "root") {
+                                                cloudBackStack.clear()
+                                                currentNavState = NavState.Cloud(state.accountName, "root", "My Drive")
+                                            } else {
+                                                cloudBackStack.clear()
+                                                currentNavState = NavState.CloudAccounts
+                                            }
+                                        }
+                                        currentNavState is NavState.CloudAccounts -> {
+                                            currentNavState = NavState.Home
+                                        }
+                                        currentNavState is NavState.Local -> {
+                                            val state = currentNavState as NavState.Local
+                                            val parent = java.io.File(state.path).parent
+                                            if (parent != null && parent.contains("0")) {
+                                                currentNavState = NavState.Local(parent)
+                                            } else {
+                                                currentNavState = NavState.Home
+                                            }
+                                        }
+                                        else -> currentNavState = NavState.Home
+                                    }
+                                } else {
+                                    scope.launch { drawerState.open() }
+                                }
+                            }) {
+                                Icon(
+                                    imageVector = if (currentNavState == NavState.Home) Icons.Default.Menu else Icons.Default.ArrowBack,
+                                    contentDescription = "Menu/Back",
+                                    tint = Color.White
+                                )
+                            }
+                        },
+                        actions = {
+                            // Search icon — Home ছাড়া সব জায়গায় দেখাবে
+                            if (currentNavState != NavState.Home) {
+                                IconButton(onClick = { showSearchBar = true }) {
+                                    Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
+                                }
+                            }
+                            IconButton(onClick = {
+                                android.widget.Toast.makeText(context, "Premium features coming soon", android.widget.Toast.LENGTH_SHORT).show()
+                            }) {
+                                Icon(Icons.Default.Star, contentDescription = "Premium", tint = Color(0xFFFFA500))
+                            }
+                            Box {
+                                IconButton(onClick = { showMoreMenu = true }) {
+                                    Icon(Icons.Default.MoreVert, contentDescription = "More", tint = Color.White)
+                                }
+                                DropdownMenu(
+                                    expanded = showMoreMenu,
+                                    onDismissRequest = { showMoreMenu = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Sort by name ↑", fontWeight = if (sortMode == SortMode.NAME_ASC) FontWeight.Bold else FontWeight.Normal) },
+                                        onClick = { showMoreMenu = false; sortMode = SortMode.NAME_ASC }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Sort by name ↓", fontWeight = if (sortMode == SortMode.NAME_DESC) FontWeight.Bold else FontWeight.Normal) },
+                                        onClick = { showMoreMenu = false; sortMode = SortMode.NAME_DESC }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Sort by date ↑", fontWeight = if (sortMode == SortMode.DATE_ASC) FontWeight.Bold else FontWeight.Normal) },
+                                        onClick = { showMoreMenu = false; sortMode = SortMode.DATE_ASC }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Sort by date ↓", fontWeight = if (sortMode == SortMode.DATE_DESC) FontWeight.Bold else FontWeight.Normal) },
+                                        onClick = { showMoreMenu = false; sortMode = SortMode.DATE_DESC }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Sort by size ↑", fontWeight = if (sortMode == SortMode.SIZE_ASC) FontWeight.Bold else FontWeight.Normal) },
+                                        onClick = { showMoreMenu = false; sortMode = SortMode.SIZE_ASC }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Sort by size ↓", fontWeight = if (sortMode == SortMode.SIZE_DESC) FontWeight.Bold else FontWeight.Normal) },
+                                        onClick = { showMoreMenu = false; sortMode = SortMode.SIZE_DESC }
+                                    )
+                                    Divider()
+                                    DropdownMenuItem(
+                                        text = { Text("Settings") },
+                                        onClick = {
+                                            showMoreMenu = false
+                                            android.widget.Toast.makeText(context, "Settings coming soon", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    )
+                }
             },
             containerColor = MaterialTheme.colorScheme.background
         ) { paddingValues ->
             Box(modifier = Modifier.padding(paddingValues)) {
                 when (val state = currentNavState) {
                     is NavState.Home -> MainGridContent(
-                        onNavigate = { currentNavState = it }
+                        onNavigate = { newState ->
+                            cloudBackStack.clear()
+                            currentNavState = newState
+                        }
                     )
                     is NavState.Local -> LocalFileScreen(
-                        path = state.path, 
+                        path = state.path,
                         onNavigate = { currentNavState = it },
-                        onBack = { 
+                        onBack = {
                             val parent = java.io.File(state.path).parent
-                            if (parent != null && parent.contains("0")) { // very basic check
+                            if (parent != null && parent.contains("0")) {
                                 currentNavState = NavState.Local(parent)
                             } else {
                                 currentNavState = NavState.Home
                             }
                         },
                         clipboard = clipboard,
-                        onSetClipboard = { clipboard = it }
+                        onSetClipboard = { clipboard = it },
+                        sortMode = sortMode,
+                        searchQuery = if (showSearchBar) searchQuery else ""
                     )
                     is NavState.CloudAccounts -> CloudAccountsScreen(
                         onAccountSelected = { accountName ->
+                            cloudBackStack.clear()
                             currentNavState = NavState.Cloud(accountName, "root", "My Drive")
                         }
                     )
@@ -242,17 +372,29 @@ fun HomeScreen() {
                         accountName = state.accountName,
                         folderId = state.folderId,
                         pathName = state.pathName,
-                        onNavigate = { newState -> currentNavState = newState },
-                        onBack = { 
-                            if (state.folderId == "root") {
+                        onNavigate = { newState ->
+                            // subfolder navigate করার সময় current state কে backstack এ push করো
+                            if (newState is NavState.Cloud) {
+                                cloudBackStack.add(Pair(state.folderId, state.pathName))
+                            }
+                            currentNavState = newState
+                        },
+                        onBack = {
+                            if (cloudBackStack.isNotEmpty()) {
+                                val prev = cloudBackStack.removeLast()
+                                currentNavState = NavState.Cloud(state.accountName, prev.first, prev.second)
+                            } else if (state.folderId == "root") {
+                                cloudBackStack.clear()
                                 currentNavState = NavState.CloudAccounts
                             } else {
-                                // Ideally we'd maintain a backstack of folderIds. For now, go back to root or Accounts.
+                                cloudBackStack.clear()
                                 currentNavState = NavState.Cloud(state.accountName, "root", "My Drive")
                             }
                         },
                         clipboard = clipboard,
-                        onSetClipboard = { clipboard = it }
+                        onSetClipboard = { clipboard = it },
+                        sortMode = sortMode,
+                        searchQuery = if (showSearchBar) searchQuery else ""
                     )
                 }
             }
@@ -276,7 +418,6 @@ data class StorageInfo(val used: Long, val total: Long) {
 
 fun getInternalStorageInfo(): StorageInfo {
     return try {
-        // Use ExternalStorageDirectory — this is the user-accessible "Internal Storage" (sdcard)
         val path = Environment.getExternalStorageDirectory()
         val stat = StatFs(path.path)
         val total = stat.blockCountLong * stat.blockSizeLong
@@ -335,11 +476,11 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
             }
         }
     } else null
-    
+
     val legacyPermissionLauncher = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
         androidx.activity.compose.rememberLauncherForActivityResult(
             ActivityResultContracts.RequestMultiplePermissions()
-        ) { permissions ->
+        ) { _ ->
             scope.launch(Dispatchers.IO) {
                 internalInfo = getInternalStorageInfo()
                 externalInfo = getExternalStorageInfo()
@@ -375,15 +516,9 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
         }
     }
 
-    // --- Screenshot exact layout ---
-    // Row 1: Main storage | SD card | Downloads  (বড় storage cards, size+count দেখায়)
-    // Row 2-4: Images | Audio | Videos / Documents | Apps | New files  (3-col category grid)
-    // Row 5: Cloud | Remote | Access from...  (bottom row)
-
-    val mainStorageInfo = externalInfo  // /storage/emulated/0
+    val mainStorageInfo = externalInfo
     val sdCardPath = remember { LocalFileManager.getSdCardPath(context) }
 
-    // category subtitle: count গণনা করা হবে background এ
     var downloadsCount by remember { mutableStateOf("") }
     var imagesCount   by remember { mutableStateOf("") }
     var audioCount    by remember { mutableStateOf("") }
@@ -406,7 +541,7 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                 return if (sizeStr.isNotEmpty()) "$sizeStr ($count)" else "($count)"
             }
             downloadsCount = countDir("$base/Download")
-            imagesCount    = countDir("$base/DCIM") .ifEmpty { countDir("$base/Pictures") }
+            imagesCount    = countDir("$base/DCIM").ifEmpty { countDir("$base/Pictures") }
             audioCount     = countDir("$base/Music")
             videosCount    = countDir("$base/Movies").ifEmpty { countDir("$base/Video") }
             docsCount      = countDir("$base/Documents")
@@ -434,9 +569,8 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                 if (hasStorageAccess()) onNavigate(NavState.Local("$base/Download"))
                 else openStoragePermissionSettings()
             }
-            "Images"    -> {
+            "Images" -> {
                 if (hasStorageAccess()) {
-                    // DCIM (camera) → Pictures (saved) → base fallback
                     val dcim = java.io.File("$base/DCIM")
                     val pics = java.io.File("$base/Pictures")
                     val path = when {
@@ -450,7 +584,6 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
             "Audio"     -> { if (hasStorageAccess()) onNavigate(NavState.Local("$base/Music")) else openStoragePermissionSettings() }
             "Videos"    -> {
                 if (hasStorageAccess()) {
-                    // Movies → Video → base fallback (manufacturer dependent)
                     val movies = java.io.File("$base/Movies")
                     val video  = java.io.File("$base/Video")
                     val path = when {
@@ -463,7 +596,6 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
             }
             "Documents" -> {
                 if (hasStorageAccess()) {
-                    // Documents folder না থাকলে create করে navigate করা
                     val docs = java.io.File("$base/Documents")
                     if (!docs.exists()) docs.mkdirs()
                     onNavigate(NavState.Local(docs.absolutePath))
@@ -480,10 +612,9 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
     androidx.compose.foundation.lazy.LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF2F2F7)), // iOS-style light grey bg
+            .background(Color(0xFFF2F2F7)),
         contentPadding = PaddingValues(bottom = 16.dp)
     ) {
-        // ── Row 1: Main storage / SD card / Downloads ──────────────────────
         item {
             Row(
                 modifier = Modifier
@@ -491,7 +622,6 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                     .padding(horizontal = 12.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // Main storage card
                 StorageTopCard(
                     label = "Main storage",
                     subtitle = mainStorageInfo.usedText,
@@ -501,7 +631,6 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                     modifier = Modifier.weight(1f),
                     onClick = { navigate("Main storage") }
                 )
-                // SD card card
                 StorageTopCard(
                     label = "SD card",
                     subtitle = if (sdInfo.total > 0) sdInfo.usedText else "Not found",
@@ -511,7 +640,6 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                     modifier = Modifier.weight(1f),
                     onClick = { navigate("SD card") }
                 )
-                // Downloads card
                 StorageTopCard(
                     label = "Downloads",
                     subtitle = downloadsCount,
@@ -525,7 +653,6 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
             }
         }
 
-        // ── Row 2-4: category grid 3 columns ──────────────────────────────
         val categoryItems = listOf(
             GridItemData("Images",    imagesCount,   Icons.Default.Image)        to Color(0xFFAD1457),
             GridItemData("Audio",     audioCount,    Icons.Default.Audiotrack)   to Color(0xFF1565C0),
@@ -552,7 +679,6 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                                 onClick = { navigate(data.title) }
                             )
                         }
-                        // padding cell যদি row টা 3 এর কম হয়
                         repeat(3 - row.size) { Spacer(modifier = Modifier.weight(1f)) }
                     }
                     Spacer(modifier = Modifier.height(10.dp))
@@ -560,7 +686,6 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
             }
         }
 
-        // ── Bottom row: Cloud / Remote / Access from... ────────────────────
         item {
             Row(
                 modifier = Modifier
@@ -597,7 +722,7 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
     }
 }
 
-// ── Top storage card (Main storage / SD card / Downloads) ──────────────
+// ── Top storage card ──────────────────────────────────────────────────────────
 @Composable
 fun StorageTopCard(
     label: String,
@@ -619,7 +744,6 @@ fun StorageTopCard(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.Start
         ) {
-            // Icon
             Box(
                 modifier = Modifier
                     .size(44.dp)
@@ -664,7 +788,7 @@ fun StorageTopCard(
     }
 }
 
-// ── Category card (Images / Audio / Videos / etc.) ───────────────────────
+// ── Category card ─────────────────────────────────────────────────────────────
 @Composable
 fun CategoryCard(
     label: String,
@@ -725,11 +849,10 @@ fun CategoryCard(
 fun DrawerContent(onNavigate: (NavState) -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     Column(modifier = Modifier.fillMaxSize()) {
-        // Drawer Tabs (Folder, Star, History)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFF00796B)) // Dark teal header line
+                .background(Color(0xFF00796B))
                 .padding(vertical = 12.dp),
             horizontalArrangement = Arrangement.SpaceAround
         ) {
@@ -738,15 +861,13 @@ fun DrawerContent(onNavigate: (NavState) -> Unit) {
             Icon(Icons.Default.History, contentDescription = "History", tint = Color.LightGray)
         }
 
-        // Drawer Items
         Column(
             modifier = Modifier
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
         ) {
             DrawerMenuItem(Icons.Default.Home, "Home", Color.Red, onClick = { onNavigate(NavState.Home) })
-            
-            // Main Storage with real Progress
+
             val extInfo = remember { getExternalStorageInfo() }
             val sdCardInfo = remember { getSdCardStorageInfo(context) }
             DrawerStorageItem(
@@ -755,8 +876,7 @@ fun DrawerContent(onNavigate: (NavState) -> Unit) {
                 extInfo.progress,
                 onClick = { onNavigate(NavState.Local(LocalFileManager.mainStoragePath)) }
             )
-            
-            // SD Card with real navigate
+
             DrawerStorageItem(
                 Icons.Default.SdStorage, "SD card",
                 if (sdCardInfo.total > 0) "${(sdCardInfo.progress * 100).toInt()}%" else "—",
@@ -770,21 +890,20 @@ fun DrawerContent(onNavigate: (NavState) -> Unit) {
                     }
                 }
             )
-            
-            // Recycle Bin — folder navigate (Android এ .Trash বা .RecycleBin)
+
             DrawerMenuItem(Icons.Default.Delete, "Recycle Bin", Color.Gray, trailingText = "0 B", onClick = {
                 val trash = java.io.File(LocalFileManager.mainStoragePath + "/.RecycleBin")
                 if (!trash.exists()) trash.mkdirs()
                 onNavigate(NavState.Local(trash.absolutePath))
             })
-            
+
             Divider()
-            
+
             DrawerMenuItem(Icons.Default.CloudQueue, "Google Drive", Color.Blue, isPinned = true, onClick = { onNavigate(NavState.CloudAccounts) })
             DrawerMenuItem(Icons.Default.FolderOpen, "Main storage /Download", Color.Gray, isPinned = true, onClick = { onNavigate(NavState.Local(LocalFileManager.mainStoragePath + "/Download")) })
-            
+
             Divider()
-            
+
             DrawerMenuItem(Icons.Default.Schedule, "New files", Color.Gray, hasMoreVert = true, onClick = {
                 android.widget.Toast.makeText(context, "New files coming soon", android.widget.Toast.LENGTH_SHORT).show()
             })
@@ -793,7 +912,6 @@ fun DrawerContent(onNavigate: (NavState) -> Unit) {
             })
         }
 
-        // Upgrade Banner
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -830,7 +948,7 @@ fun DrawerMenuItem(
         Icon(icon, contentDescription = title, tint = iconTint, modifier = Modifier.size(24.dp))
         Spacer(modifier = Modifier.width(16.dp))
         Text(text = title, modifier = Modifier.weight(1f), fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        
+
         if (trailingText != null) {
             Text(text = trailingText, color = Color.Gray, fontSize = 12.sp)
         }
@@ -868,14 +986,13 @@ fun DrawerStorageItem(icon: ImageVector, title: String, percentageText: String, 
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(2.dp),
-                color = Color(0xFF1976D2), // Blue progress
+                color = Color(0xFF1976D2),
                 trackColor = Color.LightGray,
             )
         }
     }
 }
 
-// Data class for grid items
 data class GridItemData(
     val title: String,
     val subtitle: String,

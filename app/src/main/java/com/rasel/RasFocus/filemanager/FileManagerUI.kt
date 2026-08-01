@@ -14,18 +14,22 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Deselect
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FolderZip
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.PlayCircleOutline
 import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Slideshow
 import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material.icons.filled.TextSnippet
 import androidx.compose.material.icons.filled.VideoFile
 import kotlinx.coroutines.withContext
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.DriveFileMove
@@ -60,7 +64,7 @@ import androidx.core.content.FileProvider
 import com.rasel.RasFocus.drivebackup.DriveFileManager
 import com.rasel.RasFocus.selfcontrol.study_tools.UniversalViewerActivity
 
-// ── Rename Dialog — local ও cloud উভয়তে ব্যবহার হয় ──────────────────────
+// ── Rename Dialog ──────────────────────────────────────────────────────────────
 @Composable
 fun RenameDialog(
     currentName: String,
@@ -95,7 +99,41 @@ fun RenameDialog(
     )
 }
 
-// ── Delete Confirmation Dialog ─────────────────────────────────────────────
+// ── New Folder Dialog ──────────────────────────────────────────────────────────
+@Composable
+fun NewFolderDialog(
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var folderName by remember { mutableStateOf("New folder") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("New Folder") },
+        text = {
+            OutlinedTextField(
+                value = folderName,
+                onValueChange = { folderName = it },
+                label = { Text("Folder name") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val trimmed = folderName.trim()
+                    if (trimmed.isNotEmpty()) onConfirm(trimmed)
+                },
+                enabled = folderName.trim().isNotEmpty()
+            ) { Text("Create") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+// ── Delete Confirmation Dialog ─────────────────────────────────────────────────
 @Composable
 fun DeleteConfirmDialog(
     count: Int,
@@ -122,40 +160,100 @@ fun DeleteConfirmDialog(
     )
 }
 
+// ── File Properties Dialog ─────────────────────────────────────────────────────
+@Composable
+fun FilePropertiesDialog(
+    file: File,
+    onDismiss: () -> Unit
+) {
+    val sdf = SimpleDateFormat("MMM dd, yyyy HH:mm:ss", Locale.getDefault())
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Properties", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                PropertyRow("Name", file.name)
+                PropertyRow("Path", file.absolutePath)
+                PropertyRow("Type", if (file.isDirectory) "Folder" else file.extension.uppercase().ifEmpty { "File" })
+                if (!file.isDirectory) {
+                    PropertyRow("Size", formatFileSize(file.length()))
+                }
+                PropertyRow("Modified", sdf.format(file.lastModified()))
+                PropertyRow("Readable", if (file.canRead()) "Yes" else "No")
+                PropertyRow("Writable", if (file.canWrite()) "Yes" else "No")
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Close") }
+        }
+    )
+}
+
+@Composable
+private fun PropertyRow(label: String, value: String) {
+    Column {
+        Text(label, fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Medium)
+        Text(value, fontSize = 13.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+// ── Apply sort to local files ──────────────────────────────────────────────────
+fun sortFiles(files: List<File>, mode: SortMode): List<File> {
+    val (folders, regular) = files.partition { it.isDirectory }
+    fun sortedList(list: List<File>) = when (mode) {
+        SortMode.NAME_ASC  -> list.sortedBy { it.name.lowercase() }
+        SortMode.NAME_DESC -> list.sortedByDescending { it.name.lowercase() }
+        SortMode.DATE_ASC  -> list.sortedBy { it.lastModified() }
+        SortMode.DATE_DESC -> list.sortedByDescending { it.lastModified() }
+        SortMode.SIZE_ASC  -> list.sortedBy { it.length() }
+        SortMode.SIZE_DESC -> list.sortedByDescending { it.length() }
+    }
+    // Folders always first, then files
+    return sortedList(folders) + sortedList(regular)
+}
+
 @Composable
 fun LocalFileScreen(
-    path: String, 
-    onNavigate: (NavState) -> Unit, 
+    path: String,
+    onNavigate: (NavState) -> Unit,
     onBack: () -> Unit,
     clipboard: ClipboardState?,
-    onSetClipboard: (ClipboardState?) -> Unit
+    onSetClipboard: (ClipboardState?) -> Unit,
+    sortMode: SortMode = SortMode.NAME_ASC,
+    searchQuery: String = ""
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var files by remember { mutableStateOf<List<File>>(emptyList()) }
+    var rawFiles by remember { mutableStateOf<List<File>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
     var selectedFiles by remember { mutableStateOf<Set<String>>(emptySet()) }
     var hasPermission by remember { mutableStateOf(LocalFileManager.hasStorageAccess(context)) }
 
-    // Rename dialog state
+    // Dialog states
     var showRenameDialog by remember { mutableStateOf(false) }
-    // Single-select rename: which file to rename
     var renameTarget by remember { mutableStateOf<File?>(null) }
-
-    // Delete confirm dialog state
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showNewFolderDialog by remember { mutableStateOf(false) }
+    var propertiesTarget by remember { mutableStateOf<File?>(null) }
 
-    // ── Helper: refresh file list ──────────────────────────────────────────
+    // Sorted + filtered files
+    val files by remember(rawFiles, sortMode, searchQuery) {
+        derivedStateOf {
+            val sorted = sortFiles(rawFiles, sortMode)
+            if (searchQuery.isBlank()) sorted
+            else sorted.filter { it.name.contains(searchQuery, ignoreCase = true) }
+        }
+    }
+
     fun refreshFiles() {
         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
             val result = LocalFileManager.listFiles(path)
             withContext(kotlinx.coroutines.Dispatchers.Main) {
-                files = result
+                rawFiles = result
             }
         }
     }
 
-    // Settings থেকে ফিরে এলে permission state refresh করা
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
@@ -176,13 +274,13 @@ fun LocalFileScreen(
             scope.launch(kotlinx.coroutines.Dispatchers.IO) {
                 val result = LocalFileManager.listFiles(path)
                 withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    files = result
+                    rawFiles = result
                     isLoading = false
                 }
             }
         }
     }
-    
+
     val manageStorageLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
@@ -192,7 +290,7 @@ fun LocalFileScreen(
             scope.launch(kotlinx.coroutines.Dispatchers.IO) {
                 val result = LocalFileManager.listFiles(path)
                 withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    files = result
+                    rawFiles = result
                     isLoading = false
                 }
             }
@@ -205,7 +303,7 @@ fun LocalFileScreen(
             withContext(kotlinx.coroutines.Dispatchers.IO) {
                 val result = LocalFileManager.listFiles(path)
                 withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    files = result
+                    rawFiles = result
                     isLoading = false
                 }
             }
@@ -214,7 +312,7 @@ fun LocalFileScreen(
         }
     }
 
-    // ── Rename Dialog ──────────────────────────────────────────────────────
+    // ── Rename Dialog ──────────────────────────────────────────────────────────
     if (showRenameDialog && renameTarget != null) {
         RenameDialog(
             currentName = renameTarget!!.name,
@@ -239,7 +337,25 @@ fun LocalFileScreen(
         )
     }
 
-    // ── Delete Confirm Dialog ──────────────────────────────────────────────
+    // ── New Folder Dialog ──────────────────────────────────────────────────────
+    if (showNewFolderDialog) {
+        NewFolderDialog(
+            onConfirm = { folderName ->
+                showNewFolderDialog = false
+                val newDir = File(path, folderName)
+                val ok = newDir.mkdirs()
+                Toast.makeText(
+                    context,
+                    if (ok) "Folder \"$folderName\" created" else "Failed to create folder",
+                    Toast.LENGTH_SHORT
+                ).show()
+                if (ok) refreshFiles()
+            },
+            onDismiss = { showNewFolderDialog = false }
+        )
+    }
+
+    // ── Delete Confirm Dialog ──────────────────────────────────────────────────
     if (showDeleteDialog) {
         DeleteConfirmDialog(
             count = selectedFiles.size,
@@ -247,8 +363,8 @@ fun LocalFileScreen(
                 showDeleteDialog = false
                 scope.launch(kotlinx.coroutines.Dispatchers.IO) {
                     var allOk = true
-                    for (path in selectedFiles) {
-                        val f = File(path)
+                    for (p in selectedFiles) {
+                        val f = File(p)
                         if (!f.deleteRecursively()) allOk = false
                     }
                     withContext(kotlinx.coroutines.Dispatchers.Main) {
@@ -266,18 +382,26 @@ fun LocalFileScreen(
         )
     }
 
+    // ── File Properties Dialog ─────────────────────────────────────────────────
+    propertiesTarget?.let { propFile ->
+        FilePropertiesDialog(
+            file = propFile,
+            onDismiss = { propertiesTarget = null }
+        )
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
-        // ── Header: normal mode vs selection mode ──────────────────────────────
+        // ── Header ─────────────────────────────────────────────────────────────
         if (selectedFiles.isNotEmpty()) {
             SelectionTopBar(
                 selectedCount = selectedFiles.size,
-                totalCount = files.size,
+                totalCount = rawFiles.size,
                 onClose = { selectedFiles = emptySet() },
                 onSelectAll = {
-                    selectedFiles = if (selectedFiles.size == files.size)
+                    selectedFiles = if (selectedFiles.size == rawFiles.size)
                         emptySet()
                     else
-                        files.map { it.absolutePath }.toSet()
+                        rawFiles.map { it.absolutePath }.toSet()
                 }
             )
         } else {
@@ -296,6 +420,19 @@ fun LocalFileScreen(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f).padding(start = 8.dp)
                 )
+                // Search result count যদি active থাকে
+                if (searchQuery.isNotBlank()) {
+                    Text(
+                        text = "${files.size} found",
+                        fontSize = 12.sp,
+                        color = Color.Gray,
+                        modifier = Modifier.padding(end = 4.dp)
+                    )
+                }
+                // New folder button
+                IconButton(onClick = { showNewFolderDialog = true }) {
+                    Icon(Icons.Default.CreateNewFolder, contentDescription = "New folder", tint = Color(0xFF00796B))
+                }
             }
         }
 
@@ -332,7 +469,10 @@ fun LocalFileScreen(
             }
         } else if (files.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Folder is empty", color = Color.Gray)
+                Text(
+                    if (searchQuery.isNotBlank()) "No results for \"$searchQuery\"" else "Folder is empty",
+                    color = Color.Gray
+                )
             }
         } else {
             Box(modifier = Modifier.fillMaxSize()) {
@@ -346,6 +486,9 @@ fun LocalFileScreen(
                             date = formatDate(file.lastModified()),
                             isSelected = isSelected,
                             localFile = if (file.isDirectory) null else file,
+                            onLongClick = {
+                                selectedFiles = if (isSelected) selectedFiles - file.absolutePath else selectedFiles + file.absolutePath
+                            },
                             onClick = {
                                 if (selectedFiles.isNotEmpty()) {
                                     selectedFiles = if (isSelected) selectedFiles - file.absolutePath else selectedFiles + file.absolutePath
@@ -357,13 +500,18 @@ fun LocalFileScreen(
                                     }
                                 }
                             },
-                            onLongClick = {
-                                selectedFiles = if (isSelected) selectedFiles - file.absolutePath else selectedFiles + file.absolutePath
+                            onPropertiesClick = {
+                                propertiesTarget = file
+                            },
+                            onShareClick = {
+                                if (!file.isDirectory) {
+                                    shareLocalFile(context, file)
+                                }
                             }
                         )
                     }
                 }
-                
+
                 if (clipboard != null && selectedFiles.isEmpty()) {
                     FloatingActionButton(
                         onClick = {
@@ -383,11 +531,9 @@ fun LocalFileScreen(
                                     for (i in clipboard.items.indices) {
                                         val id = clipboard.items[i]
                                         val name = clipboard.itemNames.getOrNull(i) ?: "unknown_file"
-                                        val result = com.rasel.RasFocus.drivebackup.DriveFileManager.downloadFolder(
-                                            context, acc, id, name, java.io.File(path)
-                                        )
+                                        val result = DriveFileManager.downloadFolder(context, acc, id, name, java.io.File(path))
                                         if (!result) {
-                                            val fileResult = com.rasel.RasFocus.drivebackup.DriveFileManager.downloadFile(context, acc, id, name, java.io.File(path))
+                                            val fileResult = DriveFileManager.downloadFile(context, acc, id, name, java.io.File(path))
                                             if (fileResult == null) success = false
                                         }
                                     }
@@ -395,7 +541,7 @@ fun LocalFileScreen(
                                 withContext(kotlinx.coroutines.Dispatchers.Main) {
                                     Toast.makeText(context, if (success) "Pasted successfully" else "Some items failed to paste", Toast.LENGTH_SHORT).show()
                                     onSetClipboard(null)
-                                    files = LocalFileManager.listFiles(path)
+                                    rawFiles = LocalFileManager.listFiles(path)
                                 }
                             }
                         },
@@ -407,7 +553,7 @@ fun LocalFileScreen(
             }
         }
 
-        // ── Footer: selection action bar ──────────────────────────────────
+        // ── Footer: selection action bar ──────────────────────────────────────
         if (selectedFiles.isNotEmpty()) {
             SelectionBottomBar(
                 onCopy = {
@@ -429,6 +575,23 @@ fun LocalFileScreen(
                 },
                 onDelete = {
                     showDeleteDialog = true
+                },
+                onProperties = {
+                    if (selectedFiles.size == 1) {
+                        propertiesTarget = File(selectedFiles.first())
+                        selectedFiles = emptySet()
+                    } else {
+                        Toast.makeText(context, "Select only one item to view properties", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onShare = {
+                    val filesToShare = selectedFiles.map { File(it) }.filter { !it.isDirectory }
+                    if (filesToShare.isNotEmpty()) {
+                        shareLocalFiles(context, filesToShare)
+                        selectedFiles = emptySet()
+                    } else {
+                        Toast.makeText(context, "Cannot share folders", Toast.LENGTH_SHORT).show()
+                    }
                 }
             )
         }
@@ -438,38 +601,54 @@ fun LocalFileScreen(
 @Composable
 fun CloudFileScreen(
     accountName: String,
-    folderId: String, 
-    pathName: String, 
-    onNavigate: (NavState) -> Unit, 
+    folderId: String,
+    pathName: String,
+    onNavigate: (NavState) -> Unit,
     onBack: () -> Unit,
     clipboard: ClipboardState?,
-    onSetClipboard: (ClipboardState?) -> Unit
+    onSetClipboard: (ClipboardState?) -> Unit,
+    sortMode: SortMode = SortMode.NAME_ASC,
+    searchQuery: String = ""
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var files by remember { mutableStateOf<List<com.google.api.services.drive.model.File>>(emptyList()) }
+    var rawFiles by remember { mutableStateOf<List<com.google.api.services.drive.model.File>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
     var selectedFiles by remember { mutableStateOf<Set<String>>(emptySet()) }
 
-    // Rename dialog state (Cloud)
+    // Dialog states
     var showRenameDialog by remember { mutableStateOf(false) }
     var renameTargetId by remember { mutableStateOf("") }
     var renameTargetName by remember { mutableStateOf("") }
-
-    // Delete confirm dialog state
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showNewFolderDialog by remember { mutableStateOf(false) }
 
-    // ── Helper: refresh cloud file list ────────────────────────────────────
+    // Sorted + filtered cloud files
+    val files by remember(rawFiles, sortMode, searchQuery) {
+        derivedStateOf {
+            val sorted = when (sortMode) {
+                SortMode.NAME_ASC  -> rawFiles.sortedWith(compareBy({ it.mimeType != "application/vnd.google-apps.folder" }, { it.name.lowercase() }))
+                SortMode.NAME_DESC -> rawFiles.sortedWith(compareByDescending<com.google.api.services.drive.model.File> { it.name.lowercase() }.thenBy { it.mimeType != "application/vnd.google-apps.folder" })
+                SortMode.DATE_ASC  -> rawFiles.sortedWith(compareBy({ it.mimeType != "application/vnd.google-apps.folder" }, { it.modifiedTime?.value ?: 0L }))
+                SortMode.DATE_DESC -> rawFiles.sortedWith(compareBy<com.google.api.services.drive.model.File> { it.mimeType != "application/vnd.google-apps.folder" }.thenByDescending { it.modifiedTime?.value ?: 0L })
+                SortMode.SIZE_ASC  -> rawFiles.sortedWith(compareBy({ it.mimeType != "application/vnd.google-apps.folder" }, { it.size?.toLong() ?: 0L }))
+                SortMode.SIZE_DESC -> rawFiles.sortedWith(compareBy<com.google.api.services.drive.model.File> { it.mimeType != "application/vnd.google-apps.folder" }.thenByDescending { it.size?.toLong() ?: 0L })
+            }
+            if (searchQuery.isBlank()) sorted
+            else sorted.filter { it.name.contains(searchQuery, ignoreCase = true) }
+        }
+    }
+
     fun refreshFiles() {
         scope.launch {
             isLoading = true
             val result = DriveFileManager.listFiles(context, accountName, folderId)
-            files = result?.sortedWith(compareBy({ it.mimeType != "application/vnd.google-apps.folder" }, { it.name.lowercase() })) ?: files
+            rawFiles = result ?: rawFiles
             isLoading = false
         }
     }
-    
+
     val fixDriveLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
@@ -477,7 +656,7 @@ fun CloudFileScreen(
             isLoading = true
             val result = DriveFileManager.listFiles(context, accountName, folderId)
             if (result != null) {
-                files = result
+                rawFiles = result
                 errorMsg = null
             } else {
                 errorMsg = DriveFileManager.lastError
@@ -490,7 +669,7 @@ fun CloudFileScreen(
         isLoading = true
         val result = DriveFileManager.listFiles(context, accountName, folderId)
         if (result != null) {
-            files = result.sortedWith(compareBy({ it.mimeType != "application/vnd.google-apps.folder" }, { it.name.lowercase() }))
+            rawFiles = result
             errorMsg = null
         } else {
             errorMsg = DriveFileManager.lastError
@@ -502,7 +681,7 @@ fun CloudFileScreen(
         isLoading = false
     }
 
-    // ── Cloud Rename Dialog ────────────────────────────────────────────────
+    // ── Cloud Rename Dialog ────────────────────────────────────────────────────
     if (showRenameDialog && renameTargetId.isNotEmpty()) {
         RenameDialog(
             currentName = renameTargetName,
@@ -531,7 +710,28 @@ fun CloudFileScreen(
         )
     }
 
-    // ── Cloud Delete Confirm Dialog ────────────────────────────────────────
+    // ── Cloud New Folder Dialog ────────────────────────────────────────────────
+    if (showNewFolderDialog) {
+        NewFolderDialog(
+            onConfirm = { folderName ->
+                showNewFolderDialog = false
+                scope.launch {
+                    val result = DriveFileManager.createFolder(context, accountName, folderName, folderId)
+                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        Toast.makeText(
+                            context,
+                            if (result != null) "Folder \"$folderName\" created" else "Failed to create folder",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        if (result != null) refreshFiles()
+                    }
+                }
+            },
+            onDismiss = { showNewFolderDialog = false }
+        )
+    }
+
+    // ── Cloud Delete Confirm Dialog ────────────────────────────────────────────
     if (showDeleteDialog) {
         DeleteConfirmDialog(
             count = selectedFiles.size,
@@ -559,17 +759,17 @@ fun CloudFileScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // ── Header: normal vs selection mode ──────────────────────────────
+        // ── Header ─────────────────────────────────────────────────────────────
         if (selectedFiles.isNotEmpty()) {
             SelectionTopBar(
                 selectedCount = selectedFiles.size,
-                totalCount = files.size,
+                totalCount = rawFiles.size,
                 onClose = { selectedFiles = emptySet() },
                 onSelectAll = {
-                    selectedFiles = if (selectedFiles.size == files.size)
+                    selectedFiles = if (selectedFiles.size == rawFiles.size)
                         emptySet()
                     else
-                        files.map { it.id }.toSet()
+                        rawFiles.map { it.id }.toSet()
                 }
             )
         } else {
@@ -588,6 +788,18 @@ fun CloudFileScreen(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f).padding(start = 8.dp)
                 )
+                if (searchQuery.isNotBlank()) {
+                    Text(
+                        text = "${files.size} found",
+                        fontSize = 12.sp,
+                        color = Color.Gray,
+                        modifier = Modifier.padding(end = 4.dp)
+                    )
+                }
+                // New folder button for Cloud
+                IconButton(onClick = { showNewFolderDialog = true }) {
+                    Icon(Icons.Default.CreateNewFolder, contentDescription = "New folder", tint = Color(0xFF00796B))
+                }
             }
         }
 
@@ -601,7 +813,10 @@ fun CloudFileScreen(
             }
         } else if (files.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Folder is empty", color = Color.Gray)
+                Text(
+                    if (searchQuery.isNotBlank()) "No results for \"$searchQuery\"" else "Folder is empty",
+                    color = Color.Gray
+                )
             }
         } else {
             Box(modifier = Modifier.fillMaxSize()) {
@@ -638,7 +853,7 @@ fun CloudFileScreen(
                         )
                     }
                 }
-                
+
                 if (clipboard != null && selectedFiles.isEmpty()) {
                     FloatingActionButton(
                         onClick = {
@@ -648,11 +863,11 @@ fun CloudFileScreen(
                                     for (item in clipboard.items) {
                                         val src = java.io.File(item)
                                         if (src.isDirectory) {
-                                            if (!com.rasel.RasFocus.drivebackup.DriveFileManager.uploadFolder(context, accountName, src, folderId)) {
+                                            if (!DriveFileManager.uploadFolder(context, accountName, src, folderId)) {
                                                 success = false
                                             }
                                         } else {
-                                            if (com.rasel.RasFocus.drivebackup.DriveFileManager.uploadFile(context, accountName, src, folderId) == null) {
+                                            if (DriveFileManager.uploadFile(context, accountName, src, folderId) == null) {
                                                 success = false
                                             }
                                         }
@@ -664,9 +879,9 @@ fun CloudFileScreen(
                                     val srcAccount = clipboard.accountName ?: accountName
                                     for (id in clipboard.items) {
                                         val result = if (clipboard.isCut) {
-                                            com.rasel.RasFocus.drivebackup.DriveFileManager.moveFile(context, srcAccount, id, folderId, "root")
+                                            DriveFileManager.moveFile(context, srcAccount, id, folderId, "root")
                                         } else {
-                                            com.rasel.RasFocus.drivebackup.DriveFileManager.copyFile(context, srcAccount, id, folderId)
+                                            DriveFileManager.copyFile(context, srcAccount, id, folderId)
                                         }
                                         if (result == null) success = false
                                     }
@@ -675,7 +890,7 @@ fun CloudFileScreen(
                                     Toast.makeText(context, if (success) "Pasted successfully" else "Some items failed to paste", Toast.LENGTH_SHORT).show()
                                     onSetClipboard(null)
                                     isLoading = true
-                                    files = com.rasel.RasFocus.drivebackup.DriveFileManager.listFiles(context, accountName, folderId)?.sortedWith(compareBy({ it.mimeType != "application/vnd.google-apps.folder" }, { it.name.lowercase() })) ?: emptyList()
+                                    rawFiles = DriveFileManager.listFiles(context, accountName, folderId) ?: emptyList()
                                     isLoading = false
                                 }
                             }
@@ -688,23 +903,23 @@ fun CloudFileScreen(
             }
         }
 
-        // ── Footer: selection action bar ──────────────────────────────────
+        // ── Footer: selection action bar ──────────────────────────────────────
         if (selectedFiles.isNotEmpty()) {
             SelectionBottomBar(
                 onCopy = {
-                    val names = selectedFiles.mapNotNull { id -> files.find { it.id == id }?.name }
+                    val names = selectedFiles.mapNotNull { id -> rawFiles.find { it.id == id }?.name }
                     onSetClipboard(ClipboardState("Cloud", selectedFiles.toList(), itemNames = names, isCut = false, accountName = accountName))
                     selectedFiles = emptySet()
                 },
                 onMove = {
-                    val names = selectedFiles.mapNotNull { id -> files.find { it.id == id }?.name }
+                    val names = selectedFiles.mapNotNull { id -> rawFiles.find { it.id == id }?.name }
                     onSetClipboard(ClipboardState("Cloud", selectedFiles.toList(), itemNames = names, isCut = true, accountName = accountName))
                     selectedFiles = emptySet()
                 },
                 onRename = {
                     if (selectedFiles.size == 1) {
                         val fileId = selectedFiles.first()
-                        val fileName = files.find { it.id == fileId }?.name ?: ""
+                        val fileName = rawFiles.find { it.id == fileId }?.name ?: ""
                         renameTargetId = fileId
                         renameTargetName = fileName
                         showRenameDialog = true
@@ -714,6 +929,12 @@ fun CloudFileScreen(
                 },
                 onDelete = {
                     showDeleteDialog = true
+                },
+                onProperties = {
+                    Toast.makeText(context, "Cloud file properties coming soon", Toast.LENGTH_SHORT).show()
+                },
+                onShare = {
+                    Toast.makeText(context, "Cloud file sharing coming soon", Toast.LENGTH_SHORT).show()
                 }
             )
         }
@@ -728,14 +949,17 @@ fun FileListItem(
     size: String,
     date: String,
     isSelected: Boolean = false,
-    localFile: java.io.File? = null,   // thumbnail এর জন্য — local file হলে দেওয়া হয়
+    localFile: java.io.File? = null,
     onClick: () -> Unit,
-    onLongClick: () -> Unit = {}
+    onLongClick: () -> Unit = {},
+    onPropertiesClick: (() -> Unit)? = null,
+    onShareClick: (() -> Unit)? = null
 ) {
     val ext = name.substringAfterLast('.', "").lowercase()
     val isImage = ext in setOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif")
     val isPdf   = ext == "pdf"
     val isVideo = ext in setOf("mp4", "mkv", "mov", "avi", "3gp", "webm")
+    var showMenu by remember { mutableStateOf(false) }
 
     Row(
         modifier = Modifier
@@ -745,15 +969,14 @@ fun FileListItem(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // ── Thumbnail / Icon ────────────────────────────────────────────
+        // ── Thumbnail / Icon ──────────────────────────────────────────────────
         Box(
             modifier = Modifier
                 .size(48.dp)
-                .clip(androidx.compose.foundation.shape.RoundedCornerShape(6.dp)),
+                .clip(RoundedCornerShape(6.dp)),
             contentAlignment = Alignment.Center
         ) {
             if (!isDirectory && localFile != null && (isImage || isPdf || isVideo)) {
-                // Native thumbnail — Coil image, PdfRenderer for PDF, ThumbnailUtils for video
                 val bitmapState = remember(localFile.absolutePath) {
                     androidx.compose.runtime.mutableStateOf<android.graphics.Bitmap?>(null)
                 }
@@ -833,7 +1056,6 @@ fun FileListItem(
                         )
                     }
                 } else {
-                    // thumbnail load হওয়ার আগে বা error হলে — type icon দেখাও
                     FileTypeIcon(ext = ext, isDirectory = false, sizeDp = 40)
                 }
             } else {
@@ -859,10 +1081,38 @@ fun FileListItem(
                 }
             }
         }
+
+        // ── Per-item 3-dot menu (properties / share) ──────────────────────────
+        if (onPropertiesClick != null || onShareClick != null) {
+            Box {
+                IconButton(
+                    onClick = { showMenu = true },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "More", tint = Color.Gray, modifier = Modifier.size(18.dp))
+                }
+                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                    if (onShareClick != null && !isDirectory) {
+                        DropdownMenuItem(
+                            text = { Text("Share") },
+                            leadingIcon = { Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                            onClick = { showMenu = false; onShareClick() }
+                        )
+                    }
+                    if (onPropertiesClick != null) {
+                        DropdownMenuItem(
+                            text = { Text("Properties") },
+                            leadingIcon = { Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                            onClick = { showMenu = false; onPropertiesClick() }
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
-// ── File type icon — extension অনুযায়ী রঙিন icon ─────────────────────────
+// ── File type icon ─────────────────────────────────────────────────────────────
 @Composable
 fun FileTypeIcon(ext: String, isDirectory: Boolean, sizeDp: Int) {
     val (icon, tint) = when {
@@ -909,7 +1159,7 @@ fun formatDate(timestamp: Long): String {
     return sdf.format(timestamp)
 }
 
-// ── File opener — FileProvider URI বানিয়ে UniversalViewerActivity তে পাঠায় ──
+// ── File opener ────────────────────────────────────────────────────────────────
 fun openLocalFile(context: android.content.Context, file: java.io.File) {
     try {
         val uri: Uri = FileProvider.getUriForFile(
@@ -926,7 +1176,6 @@ fun openLocalFile(context: android.content.Context, file: java.io.File) {
         }
         context.startActivity(intent)
     } catch (e: IllegalArgumentException) {
-        // FileProvider path not configured — fallback to system opener
         try {
             val uri = Uri.fromFile(file)
             val mime = getMimeFromExtension(file.extension.lowercase())
@@ -940,6 +1189,43 @@ fun openLocalFile(context: android.content.Context, file: java.io.File) {
         }
     } catch (e: Exception) {
         Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+    }
+}
+
+// ── Share single local file ────────────────────────────────────────────────────
+fun shareLocalFile(context: android.content.Context, file: java.io.File) {
+    try {
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        val mime = getMimeFromExtension(file.extension.lowercase())
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = mime
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, "Share ${file.name}"))
+    } catch (e: Exception) {
+        Toast.makeText(context, "Cannot share: ${e.message}", Toast.LENGTH_SHORT).show()
+    }
+}
+
+// ── Share multiple local files ─────────────────────────────────────────────────
+fun shareLocalFiles(context: android.content.Context, files: List<java.io.File>) {
+    try {
+        if (files.size == 1) {
+            shareLocalFile(context, files[0])
+            return
+        }
+        val uris = ArrayList(files.map { file ->
+            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        })
+        val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+            type = "*/*"
+            putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, "Share ${files.size} files"))
+    } catch (e: Exception) {
+        Toast.makeText(context, "Cannot share: ${e.message}", Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -972,7 +1258,7 @@ fun getMimeFromExtension(ext: String): String = when (ext) {
     else                        -> "*/*"
 }
 
-// ── Selection top bar — image এর মত: X | 2/56 | select-all icons ──────────
+// ── Selection top bar ──────────────────────────────────────────────────────────
 @Composable
 fun SelectionTopBar(
     selectedCount: Int,
@@ -981,7 +1267,7 @@ fun SelectionTopBar(
     onSelectAll: () -> Unit
 ) {
     Surface(
-        color = Color(0xFF1A6B6B), // teal, image এর মত
+        color = Color(0xFF1A6B6B),
         shadowElevation = 4.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -991,16 +1277,9 @@ fun SelectionTopBar(
                 .padding(horizontal = 4.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // X button — selection বাতিল
             IconButton(onClick = onClose) {
-                Icon(
-                    Icons.Default.Close,
-                    contentDescription = "Cancel selection",
-                    tint = Color.White,
-                    modifier = Modifier.size(22.dp)
-                )
+                Icon(Icons.Default.Close, contentDescription = "Cancel selection", tint = Color.White, modifier = Modifier.size(22.dp))
             }
-            // Counter: 2/56
             Text(
                 text = "$selectedCount/$totalCount",
                 color = Color.White,
@@ -1008,38 +1287,28 @@ fun SelectionTopBar(
                 fontSize = 18.sp,
                 modifier = Modifier.weight(1f).padding(start = 4.dp)
             )
-            // Select-all (filled square icon)
             IconButton(onClick = onSelectAll) {
-                Icon(
-                    imageVector = Icons.Default.SelectAll,
-                    contentDescription = "Select all",
-                    tint = Color.White,
-                    modifier = Modifier.size(26.dp)
-                )
+                Icon(imageVector = Icons.Default.SelectAll, contentDescription = "Select all", tint = Color.White, modifier = Modifier.size(26.dp))
             }
-            // Partial / range select (dashed square — MoreVert দিয়ে approximate করা)
             IconButton(onClick = onSelectAll) {
-                Icon(
-                    imageVector = Icons.Default.Deselect,
-                    contentDescription = "Deselect all",
-                    tint = Color.White.copy(alpha = 0.7f),
-                    modifier = Modifier.size(26.dp)
-                )
+                Icon(imageVector = Icons.Default.Deselect, contentDescription = "Deselect all", tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(26.dp))
             }
         }
     }
 }
 
-// ── Selection bottom bar — image এর মত: Copy | Move | Rename | Delete | More
+// ── Selection bottom bar (extended) ───────────────────────────────────────────
 @Composable
 fun SelectionBottomBar(
     onCopy: () -> Unit,
     onMove: () -> Unit,
     onRename: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onProperties: () -> Unit = {},
+    onShare: () -> Unit = {}
 ) {
     Surface(
-        color = Color(0xFF1A6B6B), // teal — image এর মত
+        color = Color(0xFF1A6B6B),
         shadowElevation = 12.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -1047,15 +1316,16 @@ fun SelectionBottomBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(horizontal = 4.dp, vertical = 8.dp),
+                .padding(horizontal = 2.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            SelectionAction(icon = Icons.Default.ContentCopy,  label = "Copy",   onClick = onCopy)
-            SelectionAction(icon = Icons.Default.DriveFileMove, label = "Move",  onClick = onMove)
-            SelectionAction(icon = Icons.Default.Edit,          label = "Rename", onClick = onRename)
-            SelectionAction(icon = Icons.Default.Delete,        label = "Delete", onClick = onDelete)
-            SelectionAction(icon = Icons.Default.MoreVert,      label = "More",   onClick = {})
+            SelectionAction(icon = Icons.Default.ContentCopy,  label = "Copy",       onClick = onCopy)
+            SelectionAction(icon = Icons.Default.DriveFileMove, label = "Move",      onClick = onMove)
+            SelectionAction(icon = Icons.Default.Share,         label = "Share",     onClick = onShare)
+            SelectionAction(icon = Icons.Default.Edit,          label = "Rename",    onClick = onRename)
+            SelectionAction(icon = Icons.Default.Delete,        label = "Delete",    onClick = onDelete)
+            SelectionAction(icon = Icons.Default.Info,          label = "Info",      onClick = onProperties)
         }
     }
 }
@@ -1070,20 +1340,10 @@ private fun SelectionAction(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .clickable { onClick() }
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .padding(horizontal = 6.dp, vertical = 4.dp)
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = label,
-            tint = Color.White,
-            modifier = Modifier.size(24.dp)
-        )
-        Spacer(Modifier.height(3.dp))
-        Text(
-            text = label,
-            color = Color.White,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Medium
-        )
+        Icon(imageVector = icon, contentDescription = label, tint = Color.White, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.height(2.dp))
+        Text(text = label, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Medium)
     }
 }
