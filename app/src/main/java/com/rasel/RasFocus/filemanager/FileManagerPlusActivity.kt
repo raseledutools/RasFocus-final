@@ -418,7 +418,8 @@ data class StorageInfo(val used: Long, val total: Long) {
 
 fun getInternalStorageInfo(): StorageInfo {
     return try {
-        val path = Environment.getExternalStorageDirectory()
+        // Environment.getDataDirectory() → /data partition (true internal storage)
+        val path = Environment.getDataDirectory()
         val stat = StatFs(path.path)
         val total = stat.blockCountLong * stat.blockSizeLong
         val avail = stat.availableBlocksLong * stat.blockSizeLong

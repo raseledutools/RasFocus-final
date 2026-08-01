@@ -368,15 +368,31 @@ fun LocalFileScreen(
             onConfirm = {
                 showDeleteDialog = false
                 scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    val recycleBin = File(LocalFileManager.mainStoragePath + "/.RecycleBin")
+                    if (!recycleBin.exists()) recycleBin.mkdirs()
                     var allOk = true
                     for (p in selectedFiles) {
                         val f = File(p)
-                        if (!f.deleteRecursively()) allOk = false
+                        // Move to RecycleBin; if name conflicts append timestamp
+                        val dest = File(recycleBin, f.name).let { base ->
+                            if (!base.exists()) base
+                            else File(recycleBin, "${f.nameWithoutExtension}_${System.currentTimeMillis()}.${f.extension}")
+                        }
+                        val moved = f.renameTo(dest)
+                        // renameTo fails across filesystems — fall back to copy+delete
+                        if (!moved) {
+                            try {
+                                f.copyRecursively(dest, overwrite = true)
+                                f.deleteRecursively()
+                            } catch (e: Exception) {
+                                allOk = false
+                            }
+                        }
                     }
                     withContext(kotlinx.coroutines.Dispatchers.Main) {
                         Toast.makeText(
                             context,
-                            if (allOk) "Deleted successfully" else "Some items could not be deleted",
+                            if (allOk) "Moved to Recycle Bin" else "Some items could not be deleted",
                             Toast.LENGTH_SHORT
                         ).show()
                         selectedFiles = emptySet()
@@ -403,12 +419,8 @@ fun LocalFileScreen(
                 selectedCount = selectedFiles.size,
                 totalCount = rawFiles.size,
                 onClose = { selectedFiles = emptySet() },
-                onSelectAll = {
-                    selectedFiles = if (selectedFiles.size == rawFiles.size)
-                        emptySet()
-                    else
-                        rawFiles.map { it.absolutePath }.toSet()
-                }
+                onSelectAll = { selectedFiles = rawFiles.map { it.absolutePath }.toSet() },
+                onDeselectAll = { selectedFiles = emptySet() }
             )
         } else {
             FileManagerHeader(
@@ -767,12 +779,8 @@ fun CloudFileScreen(
                 selectedCount = selectedFiles.size,
                 totalCount = rawFiles.size,
                 onClose = { selectedFiles = emptySet() },
-                onSelectAll = {
-                    selectedFiles = if (selectedFiles.size == rawFiles.size)
-                        emptySet()
-                    else
-                        rawFiles.map { it.id }.toSet()
-                }
+                onSelectAll = { selectedFiles = rawFiles.map { it.id }.toSet() },
+                onDeselectAll = { selectedFiles = emptySet() }
             )
         } else {
             FileManagerHeader(
@@ -840,12 +848,16 @@ fun CloudFileScreen(
                                         if (isDir) {
                                             onNavigate(NavState.Cloud(accountName, file.id, file.name))
                                         } else {
-                                            Toast.makeText(context, "Downloading…", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, "Opening…", Toast.LENGTH_SHORT).show()
                                             scope.launch {
-                                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                                val localFile = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                                                     DriveFileManager.downloadFile(context, accountName, file.id, file.name)
                                                 }
-                                                Toast.makeText(context, "Downloaded to Cache", Toast.LENGTH_SHORT).show()
+                                                if (localFile != null) {
+                                                    openLocalFile(context, localFile)
+                                                } else {
+                                                    Toast.makeText(context, "Download failed", Toast.LENGTH_SHORT).show()
+                                                }
                                             }
                                         }
                                     }
@@ -1426,7 +1438,8 @@ fun SelectionTopBar(
     selectedCount: Int,
     totalCount: Int,
     onClose: () -> Unit,
-    onSelectAll: () -> Unit
+    onSelectAll: () -> Unit,
+    onDeselectAll: () -> Unit = {}
 ) {
     Surface(
         color = Color(0xFF1A6B6B),
@@ -1452,7 +1465,7 @@ fun SelectionTopBar(
             IconButton(onClick = onSelectAll) {
                 Icon(imageVector = Icons.Default.SelectAll, contentDescription = "Select all", tint = Color.White, modifier = Modifier.size(26.dp))
             }
-            IconButton(onClick = onSelectAll) {
+            IconButton(onClick = onDeselectAll) {
                 Icon(imageVector = Icons.Default.Deselect, contentDescription = "Deselect all", tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(26.dp))
             }
         }
