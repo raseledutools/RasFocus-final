@@ -1,31 +1,32 @@
 === KOTLIN ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:752:18 Unresolved reference: clip
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/reminder.kt:238:6 Expecting 'catch' or 'finally'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/reminder.kt:1533:2 Missing '}
 
 === UNRESOLVED / TYPE ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:752:18 Unresolved reference: clip
 
 === BUILD FAILURE ===
-> Task :app:compileFullReleaseKotlin FAILED
+> Task :app:kspFullReleaseKotlin FAILED
 * What went wrong:
-Execution failed for task ':app:compileFullReleaseKotlin'.
-BUILD FAILED in 2m 52s
+Execution failed for task ':app:kspFullReleaseKotlin'.
+BUILD FAILED in 36s
 
 === LAST 60 LINES ===
+> Task :app:extractDeepLinksFullRelease FROM-CACHE
+> Task :app:buildKotlinToolingMetadata
 > Task :app:generateFullReleaseBuildConfig
-> Task :app:extractProguardFiles
 > Task :app:packageFullReleaseResources FROM-CACHE
 > Task :app:parseFullReleaseLocalResources FROM-CACHE
 > Task :app:mapFullReleaseSourceSetPaths
-> Task :app:mergeFullReleaseAssets FROM-CACHE
 > Task :app:mergeFullReleaseArtProfile
 > Task :app:validateSigningFullRelease
 > Task :app:writeFullReleaseAppMetadata
 > Task :app:writeFullReleaseSigningConfigVersions
 > Task :app:checkFullReleaseAarMetadata
-> Task :app:compressFullReleaseAssets FROM-CACHE
+> Task :app:mergeFullReleaseAssets FROM-CACHE
 > Task :app:checkFullReleaseDuplicateClasses
-> Task :app:collectFullReleaseDependencies
 > Task :app:mergeFullReleaseNativeLibs
+> Task :app:compressFullReleaseAssets FROM-CACHE
+> Task :app:collectFullReleaseDependencies
 
 > Task :app:stripFullReleaseDebugSymbols
 Unable to strip the following libraries, packaging them as they are: libbarhopper_v3.so, libimage_processing_util_jni.so, libpdfium.so, libpdfiumandroid.so.
@@ -42,17 +43,16 @@ note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round ico
 note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
 
 > Task :app:processFullReleaseResources
-> Task :app:kspFullReleaseKotlin
-> Task :app:compileFullReleaseKotlin
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:752:18 Unresolved reference: clip
 
-> Task :app:compileFullReleaseKotlin FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785547197404.json
+> Task :app:kspFullReleaseKotlin FAILED
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/reminder.kt:238:6 Expecting 'catch' or 'finally'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/reminder.kt:1533:2 Missing '}
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785599129824.json
 
 FAILURE: Build failed with an exception.
 
 * What went wrong:
-Execution failed for task ':app:compileFullReleaseKotlin'.
+Execution failed for task ':app:kspFullReleaseKotlin'.
 > A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
    > Compilation error. See log for more details
 
@@ -68,6 +68,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 2m 52s
-32 actionable tasks: 22 executed, 10 from cache
+BUILD FAILED in 36s
+31 actionable tasks: 21 executed, 10 from cache
 Configuration cache entry stored.
