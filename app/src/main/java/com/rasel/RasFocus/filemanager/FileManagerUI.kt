@@ -6,14 +6,25 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Deselect
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FolderZip
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.PlayCircleOutline
 import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.Slideshow
+import androidx.compose.material.icons.filled.TableChart
+import androidx.compose.material.icons.filled.TextSnippet
+import androidx.compose.material.icons.filled.VideoFile
 import kotlinx.coroutines.withContext
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DriveFileMove
@@ -24,6 +35,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.foundation.Image
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -197,6 +210,7 @@ fun LocalFileScreen(
                             size = if (file.isDirectory) "" else formatFileSize(file.length()),
                             date = formatDate(file.lastModified()),
                             isSelected = isSelected,
+                            localFile = if (file.isDirectory) null else file,
                             onClick = {
                                 if (selectedFiles.isNotEmpty()) {
                                     selectedFiles = if (isSelected) selectedFiles - file.absolutePath else selectedFiles + file.absolutePath
@@ -499,43 +513,173 @@ fun FileListItem(
     size: String,
     date: String,
     isSelected: Boolean = false,
+    localFile: java.io.File? = null,   // thumbnail এর জন্য — local file হলে দেওয়া হয়
     onClick: () -> Unit,
     onLongClick: () -> Unit = {}
 ) {
+    val ext = name.substringAfterLast('.', "").lowercase()
+    val isImage = ext in setOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif")
+    val isPdf   = ext == "pdf"
+    val isVideo = ext in setOf("mp4", "mkv", "mov", "avi", "3gp", "webm")
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(if (isSelected) Color(0xFFE0F7FA) else Color.Transparent)
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick
-            )
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .background(if (isSelected) Color(0xFFB2DFDB) else Color.Transparent)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            imageVector = if (isDirectory) Icons.Default.Folder else Icons.Default.InsertDriveFile,
-            contentDescription = null,
-            tint = if (isDirectory) Color(0xFFFFA000) else Color.Gray,
-            modifier = Modifier.size(40.dp)
-        )
-        Spacer(modifier = Modifier.width(16.dp))
+        // ── Thumbnail / Icon ────────────────────────────────────────────
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clip(androidx.compose.foundation.shape.RoundedCornerShape(6.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (!isDirectory && localFile != null && (isImage || isPdf || isVideo)) {
+                // Native thumbnail — Coil image, PdfRenderer for PDF, ThumbnailUtils for video
+                val bitmapState = remember(localFile.absolutePath) {
+                    androidx.compose.runtime.mutableStateOf<android.graphics.Bitmap?>(null)
+                }
+                LaunchedEffect(localFile.absolutePath) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        try {
+                            val bmp: android.graphics.Bitmap? = when {
+                                isImage -> {
+                                    val opts = android.graphics.BitmapFactory.Options().apply {
+                                        inJustDecodeBounds = true
+                                    }
+                                    android.graphics.BitmapFactory.decodeFile(localFile.absolutePath, opts)
+                                    val scale = maxOf(1, minOf(opts.outWidth, opts.outHeight) / 96)
+                                    val opts2 = android.graphics.BitmapFactory.Options().apply {
+                                        inSampleSize = scale
+                                    }
+                                    android.graphics.BitmapFactory.decodeFile(localFile.absolutePath, opts2)
+                                }
+                                isPdf -> {
+                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                                        val fd = android.os.ParcelFileDescriptor.open(
+                                            localFile, android.os.ParcelFileDescriptor.MODE_READ_ONLY
+                                        )
+                                        val renderer = android.graphics.pdf.PdfRenderer(fd)
+                                        val page = renderer.openPage(0)
+                                        val bmp = android.graphics.Bitmap.createBitmap(
+                                            96, (96 * page.height / page.width.toFloat()).toInt(),
+                                            android.graphics.Bitmap.Config.ARGB_8888
+                                        )
+                                        bmp.eraseColor(android.graphics.Color.WHITE)
+                                        page.render(bmp, null, null,
+                                            android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                                        page.close()
+                                        renderer.close()
+                                        fd.close()
+                                        bmp
+                                    } else null
+                                }
+                                isVideo -> {
+                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                                        android.media.ThumbnailUtils.createVideoThumbnail(
+                                            localFile,
+                                            android.util.Size(96, 96),
+                                            null
+                                        )
+                                    } else {
+                                        @Suppress("DEPRECATION")
+                                        android.media.ThumbnailUtils.createVideoThumbnail(
+                                            localFile.absolutePath,
+                                            android.provider.MediaStore.Images.Thumbnails.MINI_KIND
+                                        )
+                                    }
+                                }
+                                else -> null
+                            }
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                bitmapState.value = bmp
+                            }
+                        } catch (_: Exception) {}
+                    }
+                }
+
+                val bmp = bitmapState.value
+                if (bmp != null) {
+                    androidx.compose.foundation.Image(
+                        bitmap = bmp.asImageBitmap(),
+                        contentDescription = name,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    if (isVideo) {
+                        Icon(
+                            Icons.Default.PlayCircleOutline,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.85f),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                } else {
+                    // thumbnail load হওয়ার আগে বা error হলে — type icon দেখাও
+                    FileTypeIcon(ext = ext, isDirectory = false, sizeDp = 40)
+                }
+            } else {
+                FileTypeIcon(ext = ext, isDirectory = isDirectory, sizeDp = 40)
+            }
+        }
+
+        Spacer(modifier = Modifier.width(14.dp))
+
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = name,
-                fontSize = 16.sp,
+                fontSize = 15.sp,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
+                fontWeight = if (isDirectory) FontWeight.Medium else FontWeight.Normal
             )
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(3.dp))
             Row {
-                Text(text = date, fontSize = 12.sp, color = Color.Gray)
+                Text(text = date, fontSize = 11.sp, color = Color.Gray)
                 if (size.isNotEmpty()) {
-                    Text(text = " • $size", fontSize = 12.sp, color = Color.Gray)
+                    Text(text = " · $size", fontSize = 11.sp, color = Color.Gray)
                 }
             }
         }
     }
+}
+
+// ── File type icon — extension অনুযায়ী রঙিন icon ─────────────────────────
+@Composable
+fun FileTypeIcon(ext: String, isDirectory: Boolean, sizeDp: Int) {
+    val (icon, tint) = when {
+        isDirectory -> Icons.Default.Folder to Color(0xFFFFA000)
+        ext in setOf("jpg","jpeg","png","gif","webp","bmp","heic","heif")
+                    -> Icons.Default.Image to Color(0xFFE91E63)
+        ext == "pdf"-> Icons.Default.PictureAsPdf to Color(0xFFD32F2F)
+        ext in setOf("mp4","mkv","mov","avi","3gp","webm")
+                    -> Icons.Default.VideoFile to Color(0xFF7B1FA2)
+        ext in setOf("mp3","m4a","aac","ogg","flac","wav")
+                    -> Icons.Default.AudioFile to Color(0xFF1565C0)
+        ext in setOf("docx","doc")
+                    -> Icons.Default.Description to Color(0xFF1976D2)
+        ext in setOf("pptx","ppt")
+                    -> Icons.Default.Slideshow to Color(0xFFE65100)
+        ext in setOf("xlsx","xls")
+                    -> Icons.Default.TableChart to Color(0xFF2E7D32)
+        ext in setOf("zip","rar","7z","tar","gz")
+                    -> Icons.Default.FolderZip to Color(0xFF795548)
+        ext == "apk"-> Icons.Default.Android to Color(0xFF388E3C)
+        ext in setOf("txt","md","csv","json","xml","yaml","yml")
+                    -> Icons.Default.TextSnippet to Color(0xFF546E7A)
+        ext in setOf("kt","java","py","js","ts","html","css","sh","c","cpp")
+                    -> Icons.Default.Code to Color(0xFF00838F)
+        else        -> Icons.Default.InsertDriveFile to Color(0xFF9E9E9E)
+    }
+    Icon(
+        imageVector = icon,
+        contentDescription = null,
+        tint = tint,
+        modifier = Modifier.size(sizeDp.dp)
+    )
 }
 
 fun formatFileSize(size: Long): String {
