@@ -3,6 +3,7 @@ package com.rasel.RasFocus.filemanager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -405,155 +406,151 @@ fun LocalFileScreen(
                 }
             )
         } else {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                }
-                Text(
-                    text = path.substringAfterLast("/").ifEmpty { "Root" },
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f).padding(start = 8.dp)
-                )
-                // Search result count যদি active থাকে
-                if (searchQuery.isNotBlank()) {
-                    Text(
-                        text = "${files.size} found",
-                        fontSize = 12.sp,
-                        color = Color.Gray,
-                        modifier = Modifier.padding(end = 4.dp)
-                    )
-                }
-                // New folder button
-                IconButton(onClick = { showNewFolderDialog = true }) {
-                    Icon(Icons.Default.CreateNewFolder, contentDescription = "New folder", tint = Color(0xFF00796B))
-                }
-            }
+            FileManagerHeader(
+                title = path.substringAfterLast("/").ifEmpty { "Root" },
+                subtitle = if (searchQuery.isNotBlank()) "${files.size} found" else "${rawFiles.size} items",
+                onBack = onBack,
+                onNewFolder = { showNewFolderDialog = true }
+            )
         }
 
-        if (!hasPermission) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Storage permission is required to view files.", color = Color.Gray)
-                    Spacer(Modifier.height(16.dp))
-                    Button(onClick = {
-                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                            try {
-                                val intent = Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
-                                    data = android.net.Uri.parse("package:${context.packageName}")
-                                }
-                                manageStorageLauncher.launch(intent)
-                            } catch (e: Exception) {
-                                val intent = Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
-                                manageStorageLauncher.launch(intent)
-                            }
-                        } else {
-                            permissionLauncher.launch(arrayOf(
-                                android.Manifest.permission.READ_EXTERNAL_STORAGE,
-                                android.Manifest.permission.WRITE_EXTERNAL_STORAGE
-                            ))
+        // ── Content area with weight(1f) so footer stays pinned ───────────────
+        Box(modifier = Modifier.weight(1f)) {
+            when {
+                !hasPermission -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
+                            Icon(Icons.Default.Folder, contentDescription = null,
+                                tint = Color(0xFF00796B), modifier = Modifier.size(64.dp))
+                            Spacer(Modifier.height(16.dp))
+                            Text("Storage access required", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                            Spacer(Modifier.height(8.dp))
+                            Text("Allow RasFocus to access files", color = Color.Gray, fontSize = 13.sp)
+                            Spacer(Modifier.height(20.dp))
+                            Button(
+                                onClick = {
+                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                                        try {
+                                            val intent = Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                                                data = android.net.Uri.parse("package:${context.packageName}")
+                                            }
+                                            manageStorageLauncher.launch(intent)
+                                        } catch (e: Exception) {
+                                            val intent = Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                                            manageStorageLauncher.launch(intent)
+                                        }
+                                    } else {
+                                        permissionLauncher.launch(arrayOf(
+                                            android.Manifest.permission.READ_EXTERNAL_STORAGE,
+                                            android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+                                        ))
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00796B))
+                            ) { Text("Grant Permission", color = Color.White) }
                         }
-                    }) {
-                        Text("Grant Permission")
                     }
                 }
-            }
-        } else if (isLoading) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
-        } else if (files.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(
-                    if (searchQuery.isNotBlank()) "No results for \"$searchQuery\"" else "Folder is empty",
-                    color = Color.Gray
-                )
-            }
-        } else {
-            Box(modifier = Modifier.fillMaxSize()) {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(files) { file ->
-                        val isSelected = selectedFiles.contains(file.absolutePath)
-                        FileListItem(
-                            name = file.name,
-                            isDirectory = file.isDirectory,
-                            size = if (file.isDirectory) "" else formatFileSize(file.length()),
-                            date = formatDate(file.lastModified()),
-                            isSelected = isSelected,
-                            localFile = if (file.isDirectory) null else file,
-                            onLongClick = {
-                                selectedFiles = if (isSelected) selectedFiles - file.absolutePath else selectedFiles + file.absolutePath
-                            },
-                            onClick = {
-                                if (selectedFiles.isNotEmpty()) {
+                isLoading -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(color = Color(0xFF00796B))
+                            Spacer(Modifier.height(12.dp))
+                            Text("Loading…", color = Color.Gray, fontSize = 13.sp)
+                        }
+                    }
+                }
+                files.isEmpty() -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.Folder, contentDescription = null,
+                                tint = Color.LightGray, modifier = Modifier.size(56.dp))
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                if (searchQuery.isNotBlank()) "No results for \"$searchQuery\"" else "Folder is empty",
+                                color = Color.Gray, fontSize = 14.sp
+                            )
+                        }
+                    }
+                }
+                else -> {
+                    // ── File list + paste FAB inside same Box ─────────────────
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        items(files) { file ->
+                            val isSelected = selectedFiles.contains(file.absolutePath)
+                            FileListItem(
+                                name = file.name,
+                                isDirectory = file.isDirectory,
+                                size = if (file.isDirectory) "" else formatFileSize(file.length()),
+                                date = formatDate(file.lastModified()),
+                                isSelected = isSelected,
+                                localFile = if (file.isDirectory) null else file,
+                                onLongClick = {
                                     selectedFiles = if (isSelected) selectedFiles - file.absolutePath else selectedFiles + file.absolutePath
-                                } else {
-                                    if (file.isDirectory) {
-                                        onNavigate(NavState.Local(file.absolutePath))
+                                },
+                                onClick = {
+                                    if (selectedFiles.isNotEmpty()) {
+                                        selectedFiles = if (isSelected) selectedFiles - file.absolutePath else selectedFiles + file.absolutePath
                                     } else {
-                                        openLocalFile(context, file)
+                                        if (file.isDirectory) {
+                                            onNavigate(NavState.Local(file.absolutePath))
+                                        } else {
+                                            openLocalFile(context, file)
+                                        }
                                     }
-                                }
-                            },
-                            onPropertiesClick = {
-                                propertiesTarget = file
-                            },
-                            onShareClick = {
-                                if (!file.isDirectory) {
-                                    shareLocalFile(context, file)
+                                },
+                                onPropertiesClick = { propertiesTarget = file },
+                                onShareClick = { if (!file.isDirectory) shareLocalFile(context, file) }
+                            )
+                        }
+                        // bottom padding so FAB doesn't cover last item
+                        item { Spacer(Modifier.height(80.dp)) }
+                    }
+
+                    // ── Paste FAB — only when clipboard active & no selection ─
+                    if (clipboard != null && selectedFiles.isEmpty()) {
+                        PasteFloatingButton(
+                            itemCount = clipboard.items.size,
+                            isCut = clipboard.isCut,
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 16.dp),
+                            onClick = {
+                                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                    var success = true
+                                    if (clipboard.sourceEnv == "Local") {
+                                        for (item in clipboard.items) {
+                                            val src = java.io.File(item)
+                                            val dst = java.io.File(path, src.name)
+                                            try {
+                                                src.copyRecursively(dst, overwrite = true)
+                                                if (clipboard.isCut) src.deleteRecursively()
+                                            } catch (e: Exception) { success = false }
+                                        }
+                                    } else if (clipboard.sourceEnv == "Cloud") {
+                                        val acc = clipboard.accountName ?: ""
+                                        for (i in clipboard.items.indices) {
+                                            val id = clipboard.items[i]
+                                            val name = clipboard.itemNames.getOrNull(i) ?: "unknown_file"
+                                            val result = DriveFileManager.downloadFolder(context, acc, id, name, java.io.File(path))
+                                            if (!result) {
+                                                val fileResult = DriveFileManager.downloadFile(context, acc, id, name, java.io.File(path))
+                                                if (fileResult == null) success = false
+                                            }
+                                        }
+                                    }
+                                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                        Toast.makeText(context, if (success) "Pasted successfully" else "Some items failed to paste", Toast.LENGTH_SHORT).show()
+                                        onSetClipboard(null)
+                                        rawFiles = LocalFileManager.listFiles(path)
+                                    }
                                 }
                             }
                         )
                     }
                 }
-
-                if (clipboard != null && selectedFiles.isEmpty()) {
-                    FloatingActionButton(
-                        onClick = {
-                            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                var success = true
-                                if (clipboard.sourceEnv == "Local") {
-                                    for (item in clipboard.items) {
-                                        val src = java.io.File(item)
-                                        val dst = java.io.File(path, src.name)
-                                        try {
-                                            src.copyRecursively(dst, overwrite = true)
-                                            if (clipboard.isCut) src.deleteRecursively()
-                                        } catch (e: Exception) { success = false }
-                                    }
-                                } else if (clipboard.sourceEnv == "Cloud") {
-                                    val acc = clipboard.accountName ?: ""
-                                    for (i in clipboard.items.indices) {
-                                        val id = clipboard.items[i]
-                                        val name = clipboard.itemNames.getOrNull(i) ?: "unknown_file"
-                                        val result = DriveFileManager.downloadFolder(context, acc, id, name, java.io.File(path))
-                                        if (!result) {
-                                            val fileResult = DriveFileManager.downloadFile(context, acc, id, name, java.io.File(path))
-                                            if (fileResult == null) success = false
-                                        }
-                                    }
-                                }
-                                withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                    Toast.makeText(context, if (success) "Pasted successfully" else "Some items failed to paste", Toast.LENGTH_SHORT).show()
-                                    onSetClipboard(null)
-                                    rawFiles = LocalFileManager.listFiles(path)
-                                }
-                            }
-                        },
-                        modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
-                    ) {
-                        Icon(Icons.Default.ContentPaste, contentDescription = "Paste")
-                    }
-                }
             }
         }
 
-        // ── Footer: selection action bar ──────────────────────────────────────
+        // ── Footer: selection action bar — always below content ────────────────
         if (selectedFiles.isNotEmpty()) {
             SelectionBottomBar(
                 onCopy = {
@@ -566,16 +563,13 @@ fun LocalFileScreen(
                 },
                 onRename = {
                     if (selectedFiles.size == 1) {
-                        val filePath = selectedFiles.first()
-                        renameTarget = File(filePath)
+                        renameTarget = File(selectedFiles.first())
                         showRenameDialog = true
                     } else {
                         Toast.makeText(context, "Select only one item to rename", Toast.LENGTH_SHORT).show()
                     }
                 },
-                onDelete = {
-                    showDeleteDialog = true
-                },
+                onDelete = { showDeleteDialog = true },
                 onProperties = {
                     if (selectedFiles.size == 1) {
                         propertiesTarget = File(selectedFiles.first())
@@ -773,137 +767,133 @@ fun CloudFileScreen(
                 }
             )
         } else {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                }
-                Text(
-                    text = pathName,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f).padding(start = 8.dp)
-                )
-                if (searchQuery.isNotBlank()) {
-                    Text(
-                        text = "${files.size} found",
-                        fontSize = 12.sp,
-                        color = Color.Gray,
-                        modifier = Modifier.padding(end = 4.dp)
-                    )
-                }
-                // New folder button for Cloud
-                IconButton(onClick = { showNewFolderDialog = true }) {
-                    Icon(Icons.Default.CreateNewFolder, contentDescription = "New folder", tint = Color(0xFF00796B))
-                }
-            }
+            FileManagerHeader(
+                title = pathName,
+                subtitle = if (searchQuery.isNotBlank()) "${files.size} found"
+                           else if (!isLoading) "${rawFiles.size} items · Drive" else "Loading…",
+                onBack = onBack,
+                onNewFolder = { showNewFolderDialog = true },
+                headerColor = Color(0xFF1565C0)
+            )
         }
 
-        if (isLoading) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
-        } else if (errorMsg != null) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Error: $errorMsg", color = Color.Red, modifier = Modifier.padding(16.dp))
-            }
-        } else if (files.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(
-                    if (searchQuery.isNotBlank()) "No results for \"$searchQuery\"" else "Folder is empty",
-                    color = Color.Gray
-                )
-            }
-        } else {
-            Box(modifier = Modifier.fillMaxSize()) {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(files) { file ->
-                        val isDir = file.mimeType == "application/vnd.google-apps.folder"
-                        val isSelected = selectedFiles.contains(file.id)
-                        FileListItem(
-                            name = file.name,
-                            isDirectory = isDir,
-                            size = if (isDir || file.size == null) "" else formatFileSize(file.size.toLong()),
-                            date = file.modifiedTime?.value?.let { formatDate(it) } ?: "",
-                            isSelected = isSelected,
-                            onClick = {
-                                if (selectedFiles.isNotEmpty()) {
-                                    selectedFiles = if (isSelected) selectedFiles - file.id else selectedFiles + file.id
-                                } else {
-                                    if (isDir) {
-                                        onNavigate(NavState.Cloud(accountName, file.id, file.name))
+        // ── Content area with weight(1f) ───────────────────────────────────────
+        Box(modifier = Modifier.weight(1f)) {
+            when {
+                isLoading -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(color = Color(0xFF1565C0))
+                            Spacer(Modifier.height(12.dp))
+                            Text("Loading Drive…", color = Color.Gray, fontSize = 13.sp)
+                        }
+                    }
+                }
+                errorMsg != null -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
+                            Icon(Icons.Default.CloudQueue, contentDescription = null,
+                                tint = Color.Red.copy(alpha = 0.6f), modifier = Modifier.size(56.dp))
+                            Spacer(Modifier.height(12.dp))
+                            Text("Drive Error", fontWeight = FontWeight.SemiBold, color = Color.Red)
+                            Spacer(Modifier.height(6.dp))
+                            Text(errorMsg!!, color = Color.Gray, fontSize = 12.sp)
+                        }
+                    }
+                }
+                files.isEmpty() -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.CloudQueue, contentDescription = null,
+                                tint = Color.LightGray, modifier = Modifier.size(56.dp))
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                if (searchQuery.isNotBlank()) "No results for \"$searchQuery\"" else "Folder is empty",
+                                color = Color.Gray, fontSize = 14.sp
+                            )
+                        }
+                    }
+                }
+                else -> {
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        items(files) { file ->
+                            val isDir = file.mimeType == "application/vnd.google-apps.folder"
+                            val isSelected = selectedFiles.contains(file.id)
+                            FileListItem(
+                                name = file.name,
+                                isDirectory = isDir,
+                                size = if (isDir || file.size == null) "" else formatFileSize(file.size.toLong()),
+                                date = file.modifiedTime?.value?.let { formatDate(it) } ?: "",
+                                isSelected = isSelected,
+                                onClick = {
+                                    if (selectedFiles.isNotEmpty()) {
+                                        selectedFiles = if (isSelected) selectedFiles - file.id else selectedFiles + file.id
                                     } else {
-                                        Toast.makeText(context, "Downloading...", Toast.LENGTH_SHORT).show()
-                                        scope.launch {
-                                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                                DriveFileManager.downloadFile(context, accountName, file.id, file.name)
+                                        if (isDir) {
+                                            onNavigate(NavState.Cloud(accountName, file.id, file.name))
+                                        } else {
+                                            Toast.makeText(context, "Downloading…", Toast.LENGTH_SHORT).show()
+                                            scope.launch {
+                                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                                    DriveFileManager.downloadFile(context, accountName, file.id, file.name)
+                                                }
+                                                Toast.makeText(context, "Downloaded to Cache", Toast.LENGTH_SHORT).show()
                                             }
-                                            Toast.makeText(context, "Downloaded to Cache", Toast.LENGTH_SHORT).show()
                                         }
                                     }
+                                },
+                                onLongClick = {
+                                    selectedFiles = if (isSelected) selectedFiles - file.id else selectedFiles + file.id
                                 }
-                            },
-                            onLongClick = {
-                                selectedFiles = if (isSelected) selectedFiles - file.id else selectedFiles + file.id
+                            )
+                        }
+                        item { Spacer(Modifier.height(80.dp)) }
+                    }
+
+                    if (clipboard != null && selectedFiles.isEmpty()) {
+                        PasteFloatingButton(
+                            itemCount = clipboard.items.size,
+                            isCut = clipboard.isCut,
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 16.dp),
+                            onClick = {
+                                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                    var success = true
+                                    if (clipboard.sourceEnv == "Local") {
+                                        for (item in clipboard.items) {
+                                            val src = java.io.File(item)
+                                            if (src.isDirectory) {
+                                                if (!DriveFileManager.uploadFolder(context, accountName, src, folderId)) success = false
+                                            } else {
+                                                if (DriveFileManager.uploadFile(context, accountName, src, folderId) == null) success = false
+                                            }
+                                            if (clipboard.isCut) try { src.deleteRecursively() } catch (_: Exception) {}
+                                        }
+                                    } else if (clipboard.sourceEnv == "Cloud") {
+                                        val srcAccount = clipboard.accountName ?: accountName
+                                        for (id in clipboard.items) {
+                                            val result = if (clipboard.isCut)
+                                                DriveFileManager.moveFile(context, srcAccount, id, folderId, "root")
+                                            else
+                                                DriveFileManager.copyFile(context, srcAccount, id, folderId)
+                                            if (result == null) success = false
+                                        }
+                                    }
+                                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                        Toast.makeText(context, if (success) "Pasted successfully" else "Some items failed to paste", Toast.LENGTH_SHORT).show()
+                                        onSetClipboard(null)
+                                        isLoading = true
+                                        rawFiles = DriveFileManager.listFiles(context, accountName, folderId) ?: emptyList()
+                                        isLoading = false
+                                    }
+                                }
                             }
                         )
                     }
                 }
-
-                if (clipboard != null && selectedFiles.isEmpty()) {
-                    FloatingActionButton(
-                        onClick = {
-                            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                var success = true
-                                if (clipboard.sourceEnv == "Local") {
-                                    for (item in clipboard.items) {
-                                        val src = java.io.File(item)
-                                        if (src.isDirectory) {
-                                            if (!DriveFileManager.uploadFolder(context, accountName, src, folderId)) {
-                                                success = false
-                                            }
-                                        } else {
-                                            if (DriveFileManager.uploadFile(context, accountName, src, folderId) == null) {
-                                                success = false
-                                            }
-                                        }
-                                        if (clipboard.isCut) {
-                                            try { src.deleteRecursively() } catch (e: Exception) {}
-                                        }
-                                    }
-                                } else if (clipboard.sourceEnv == "Cloud") {
-                                    val srcAccount = clipboard.accountName ?: accountName
-                                    for (id in clipboard.items) {
-                                        val result = if (clipboard.isCut) {
-                                            DriveFileManager.moveFile(context, srcAccount, id, folderId, "root")
-                                        } else {
-                                            DriveFileManager.copyFile(context, srcAccount, id, folderId)
-                                        }
-                                        if (result == null) success = false
-                                    }
-                                }
-                                withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                    Toast.makeText(context, if (success) "Pasted successfully" else "Some items failed to paste", Toast.LENGTH_SHORT).show()
-                                    onSetClipboard(null)
-                                    isLoading = true
-                                    rawFiles = DriveFileManager.listFiles(context, accountName, folderId) ?: emptyList()
-                                    isLoading = false
-                                }
-                            }
-                        },
-                        modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
-                    ) {
-                        Icon(Icons.Default.ContentPaste, contentDescription = "Paste")
-                    }
-                }
             }
         }
 
-        // ── Footer: selection action bar ──────────────────────────────────────
+        // ── Footer: selection action bar — always pinned at bottom ────────────
         if (selectedFiles.isNotEmpty()) {
             SelectionBottomBar(
                 onCopy = {
@@ -919,23 +909,16 @@ fun CloudFileScreen(
                 onRename = {
                     if (selectedFiles.size == 1) {
                         val fileId = selectedFiles.first()
-                        val fileName = rawFiles.find { it.id == fileId }?.name ?: ""
                         renameTargetId = fileId
-                        renameTargetName = fileName
+                        renameTargetName = rawFiles.find { it.id == fileId }?.name ?: ""
                         showRenameDialog = true
                     } else {
                         Toast.makeText(context, "Select only one item to rename", Toast.LENGTH_SHORT).show()
                     }
                 },
-                onDelete = {
-                    showDeleteDialog = true
-                },
-                onProperties = {
-                    Toast.makeText(context, "Cloud file properties coming soon", Toast.LENGTH_SHORT).show()
-                },
-                onShare = {
-                    Toast.makeText(context, "Cloud file sharing coming soon", Toast.LENGTH_SHORT).show()
-                }
+                onDelete = { showDeleteDialog = true },
+                onProperties = { Toast.makeText(context, "Cloud file properties coming soon", Toast.LENGTH_SHORT).show() },
+                onShare = { Toast.makeText(context, "Cloud file sharing coming soon", Toast.LENGTH_SHORT).show() }
             )
         }
     }
@@ -1256,6 +1239,93 @@ fun getMimeFromExtension(ext: String): String = when (ext) {
     "zip"                       -> "application/zip"
     "rar"                       -> "application/x-rar-compressed"
     else                        -> "*/*"
+}
+
+// ── Folder view header — clean design with breadcrumb feel ────────────────────
+@Composable
+fun FileManagerHeader(
+    title: String,
+    subtitle: String,
+    onBack: () -> Unit,
+    onNewFolder: () -> Unit,
+    headerColor: Color = Color(0xFF00796B)
+) {
+    Surface(
+        color = headerColor,
+        shadowElevation = 4.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 4.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        Icons.Default.ArrowBack,
+                        contentDescription = "Back",
+                        tint = Color.White
+                    )
+                }
+                Column(modifier = Modifier.weight(1f).padding(start = 2.dp)) {
+                    Text(
+                        text = title,
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 17.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (subtitle.isNotEmpty()) {
+                        Text(
+                            text = subtitle,
+                            color = Color.White.copy(alpha = 0.75f),
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                IconButton(onClick = onNewFolder) {
+                    Icon(
+                        Icons.Default.CreateNewFolder,
+                        contentDescription = "New folder",
+                        tint = Color.White
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ── Paste FAB with count badge ─────────────────────────────────────────────────
+@Composable
+fun PasteFloatingButton(
+    itemCount: Int,
+    isCut: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Box(modifier = modifier) {
+        ExtendedFloatingActionButton(
+            onClick = onClick,
+            containerColor = Color(0xFF00796B),
+            contentColor = Color.White,
+            icon = {
+                Icon(Icons.Default.ContentPaste, contentDescription = "Paste")
+            },
+            text = {
+                Text(
+                    text = if (isCut) "Move $itemCount item${if (itemCount != 1) "s" else ""} here"
+                           else "Paste $itemCount item${if (itemCount != 1) "s" else ""} here",
+                    fontSize = 13.sp
+                )
+            }
+        )
+    }
 }
 
 // ── Selection top bar ──────────────────────────────────────────────────────────

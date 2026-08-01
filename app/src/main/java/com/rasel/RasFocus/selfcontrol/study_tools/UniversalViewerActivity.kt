@@ -82,7 +82,7 @@ class UniversalViewerActivity : ComponentActivity() {
                 }
                 when (fileType) {
                     FileType.PDF -> {
-                        openDirect(PdfViewerActivity::class.java, uri, "application/pdf")
+                        openByClassName("${packageName.replace(".combo","")}.selfcontrol.study_tools.PdfViewerActivity", uri, "application/pdf")
                     }
                     FileType.DOCX -> {
                         openDirect(DocxViewerActivity::class.java, uri, mimeType.ifEmpty {
@@ -109,7 +109,7 @@ class UniversalViewerActivity : ComponentActivity() {
                                     pdfFile
                                 )
                                 withContext(Dispatchers.Main) {
-                                    openDirect(PdfViewerActivity::class.java, pdfUri, "application/pdf")
+                                    openByClassName("${packageName.replace(".combo","")}.selfcontrol.study_tools.PdfViewerActivity", pdfUri, "application/pdf")
                                 }
                             } catch (e: Exception) {
                                 withContext(Dispatchers.Main) {
@@ -123,8 +123,8 @@ class UniversalViewerActivity : ComponentActivity() {
                         openDirect(TextViewerActivity::class.java, uri, mimeType.ifEmpty { "text/plain" })
                     }
                     FileType.UNKNOWN -> {
-                        // Last resort: try PdfViewerActivity
-                        openDirect(PdfViewerActivity::class.java, uri, "application/pdf")
+                        // Last resort: try PdfViewerActivity via class name
+                        openByClassName("${packageName.replace(".combo","")}.selfcontrol.study_tools.PdfViewerActivity", uri, "application/pdf")
                     }
                 }
             }
@@ -164,6 +164,27 @@ class UniversalViewerActivity : ComponentActivity() {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         })
         finish()
+    }
+
+    // Use class name string so PdfViewerActivity (flavor-only) resolves at runtime
+    private fun openByClassName(className: String, uri: Uri, mimeType: String) {
+        try {
+            val cls = Class.forName(className)
+            openDirect(cls, uri, mimeType)
+        } catch (e: ClassNotFoundException) {
+            // Fallback: fire a generic ACTION_VIEW so the system picks a viewer
+            try {
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, mimeType)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                startActivity(intent)
+                finish()
+            } catch (ex: Exception) {
+                android.widget.Toast.makeText(this, "Viewer not available: ${ex.message}", android.widget.Toast.LENGTH_SHORT).show()
+                finish()
+            }
+        }
     }
 
     private fun getFileName(uri: Uri?): String {
