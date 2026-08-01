@@ -223,7 +223,9 @@ object ReminderAlarmPlayer {
                         .build()
                 )
                 setDataSource(context, ringtoneUri)
-                isLooping = (durationEnum == RingtoneDuration.CONTINUOUS)
+                // ONE_MINUTE: loop করে ১ মিনিট বাজবে, তারপর auto-stop
+                // CONTINUOUS: ইউজার dismiss না করা পর্যন্ত loop চলবে
+                isLooping = true
                 prepare()
                 start()
             }
@@ -233,9 +235,6 @@ object ReminderAlarmPlayer {
                     override fun run() { stop() }
                 }, 60_000L)
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
     }
 
     fun stop() {

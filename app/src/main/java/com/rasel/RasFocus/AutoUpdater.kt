@@ -44,10 +44,8 @@ class AutoUpdateWorker(appContext: Context, workerParams: WorkerParameters) : Co
                 return@withContext Result.success()
             }
 
-            // ★ নতুন version পাওয়া গেছে — background এ download করো
-            AutoUpdater.downloadWithProgress(applicationContext, info) { /* download id tracked by DownloadManager */ }
-
-            // ★ Notification দাও (showUpdateAvailableNotification নিজেই lastNotifiedTag save করবে)
+            // ★ নতুন version পাওয়া গেছে — শুধু notification দাও, auto-download বন্ধ।
+            // ইউজার নিজে অ্যাপে গিয়ে Download & Install করবে।
             AutoUpdater.showUpdateAvailableNotification(applicationContext, info)
 
             Result.success()

@@ -153,17 +153,12 @@ class UsageNotificationService : Service() {
                     val lastNotifiedTag  = prefs.getString(com.rasel.RasFocus.AutoUpdater.LAST_NOTIFIED_TAG_KEY, "") ?: ""
 
                     com.rasel.RasFocus.AutoUpdater.fetchLatestReleaseInfo(this@UsageNotificationService) { info ->
-                        // ★ FIX: শুধু নতুন version এর জন্য, এবং শুধু একবার download + notification
+                        // নতুন version পাওয়া গেছে — শুধু notification দাও।
+                        // Auto-download বন্ধ: ইউজার নিজে অ্যাপে গিয়ে Download করবে।
                         if (info != null
                             && info.tagName != lastInstalledTag
                             && info.tagName != lastNotifiedTag
                         ) {
-                            // Silent background download
-                            com.rasel.RasFocus.AutoUpdater.downloadWithProgress(
-                                this@UsageNotificationService, info
-                            ) { /* downloadId tracked by DownloadManager */ }
-
-                            // Notification (showUpdateAvailableNotification saves lastNotifiedTag)
                             com.rasel.RasFocus.AutoUpdater.showUpdateAvailableNotification(
                                 this@UsageNotificationService, info
                             )

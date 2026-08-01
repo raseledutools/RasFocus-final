@@ -33,9 +33,15 @@ import java.util.*
 
 /**
  * Full-screen overlay Activity shown when a reminder alarm fires.
- * Supports Snooze (5 min) and Dismiss actions.
+ * - রিং ১ মিনিট বাজে।
+ * - ইউজার Dismiss/Close না করলে ২ মিনিট পরপর আবার রিং বাজে।
+ * - Snooze বা Dismiss করলে re-ring loop বন্ধ হয়।
  */
 class ReminderAlarmActivity : ComponentActivity() {
+
+    private val reRingHandler = Handler(Looper.getMainLooper())
+    private var reRingRunnable: Runnable? = null
+    private var isDismissed = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -68,6 +74,30 @@ class ReminderAlarmActivity : ComponentActivity() {
         val customUnit      = intent.getStringExtra("customUnit") ?: "DAYS"
         val triggerMillis   = intent.getLongExtra("triggerMillis", System.currentTimeMillis())
 
+        val duration = try { RingtoneDuration.valueOf(durationStr) } catch (_: Exception) { RingtoneDuration.ONE_MINUTE }
+
+        // ── Re-ring loop: ২ মিনিট পরপর আবার বাজাবে যতক্ষণ dismiss না হয় ──
+        fun startReRingLoop(ringtoneUriStr: String) {
+            val runnable = object : Runnable {
+                override fun run() {
+                    if (isDismissed) return
+                    val uri = if (ringtoneUriStr.isNotEmpty())
+                        android.net.Uri.parse(ringtoneUriStr)
+                    else
+                        android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM)
+                            ?: android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
+                    ReminderAlarmPlayer.play(this@ReminderAlarmActivity, uri, duration, withVib)
+                    // ২ মিনিট পরে আবার
+                    reRingHandler.postDelayed(this, 2 * 60_000L)
+                }
+            }
+            reRingRunnable = runnable
+            // প্রথম রিং এখনই বাজছে; ২ মিনিট পরে re-ring শুরু
+            reRingHandler.postDelayed(runnable, 2 * 60_000L)
+        }
+
+        startReRingLoop(ringtoneUri)
+
         setContent {
             ReminderAlarmScreen(
                 title = title,
@@ -75,6 +105,8 @@ class ReminderAlarmActivity : ComponentActivity() {
                 repeatLabel = repeatLabel,
                 priority = priority,
                 onSnooze = {
+                    isDismissed = true
+                    reRingRunnable?.let { reRingHandler.removeCallbacks(it) }
                     ReminderAlarmPlayer.stop()
                     // Re-schedule alarm 5 minutes from now
                     val snoozeMillis = System.currentTimeMillis() + 5 * 60_000L
@@ -85,18 +117,27 @@ class ReminderAlarmActivity : ComponentActivity() {
                         triggerMillis = snoozeMillis,
                         repeatType = RepeatType.NONE, // snooze fires once
                         withVibration = withVib,
-                        ringtoneDuration = try { RingtoneDuration.valueOf(durationStr) } catch (_: Exception) { RingtoneDuration.ONE_MINUTE },
+                        ringtoneDuration = duration,
                         ringtoneUriString = ringtoneUri
                     )
                     scheduleReminderAlarmFull(this, snoozeItem)
                     finish()
                 },
                 onDismiss = {
+                    isDismissed = true
+                    reRingRunnable?.let { reRingHandler.removeCallbacks(it) }
                     ReminderAlarmPlayer.stop()
                     finish()
                 }
             )
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // Activity destroy হলে re-ring loop বন্ধ করো
+        isDismissed = true
+        reRingRunnable?.let { reRingHandler.removeCallbacks(it) }
     }
 
     override fun onBackPressed() {

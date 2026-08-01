@@ -154,11 +154,11 @@ class UsageNotificationService : Service() {
                     
                     com.rasel.RasFocus.AutoUpdater.fetchLatestReleaseInfo(this@UsageNotificationService) { info ->
                         if (info != null && info.tagName != lastTag) {
-                            // Found a new update, silently download it
-                            com.rasel.RasFocus.AutoUpdater.silentDownloadUpdate(
-                                this@UsageNotificationService, 
-                                com.rasel.RasFocus.AutoUpdater.APK_UNIVERSAL, 
-                                info.tagName
+                            // নতুন আপডেট পাওয়া গেছে — শুধু notification দাও।
+                            // Auto-download বন্ধ: ইউজার নিজে অ্যাপে গিয়ে Download করবে।
+                            com.rasel.RasFocus.AutoUpdater.showUpdateAvailableNotification(
+                                this@UsageNotificationService,
+                                info
                             )
                         }
                     }
