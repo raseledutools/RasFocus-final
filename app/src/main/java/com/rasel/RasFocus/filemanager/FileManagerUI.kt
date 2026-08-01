@@ -11,6 +11,9 @@ import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Deselect
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.SelectAll
 import kotlinx.coroutines.withContext
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DriveFileMove
@@ -113,21 +116,36 @@ fun LocalFileScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-            }
-            Text(
-                text = path.substringAfterLast("/").ifEmpty { "Root" },
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f).padding(start = 8.dp)
+        // ── Header: normal mode vs selection mode ──────────────────────────
+        if (selectedFiles.isNotEmpty()) {
+            SelectionTopBar(
+                selectedCount = selectedFiles.size,
+                totalCount = files.size,
+                onClose = { selectedFiles = emptySet() },
+                onSelectAll = {
+                    selectedFiles = if (selectedFiles.size == files.size)
+                        emptySet()
+                    else
+                        files.map { it.absolutePath }.toSet()
+                }
             )
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                }
+                Text(
+                    text = path.substringAfterLast("/").ifEmpty { "Root" },
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f).padding(start = 8.dp)
+                )
+            }
         }
 
         if (!hasPermission) {
@@ -243,19 +261,25 @@ fun LocalFileScreen(
         }
     }
     
-    if (selectedFiles.isNotEmpty()) {
-        SelectionBottomBar(
-            onCopy = { 
-                onSetClipboard(ClipboardState("Local", selectedFiles.toList(), isCut = false))
-                selectedFiles = emptySet()
-            },
-            onMove = { 
-                onSetClipboard(ClipboardState("Local", selectedFiles.toList(), isCut = true))
-                selectedFiles = emptySet()
-            },
-            onDelete = { Toast.makeText(context, "Delete logic coming soon", Toast.LENGTH_SHORT).show() },
-            onClearSelection = { selectedFiles = emptySet() }
-        )
+        // ── Footer: selection action bar ──────────────────────────────────
+        if (selectedFiles.isNotEmpty()) {
+            SelectionBottomBar(
+                onCopy = {
+                    onSetClipboard(ClipboardState("Local", selectedFiles.toList(), isCut = false))
+                    selectedFiles = emptySet()
+                },
+                onMove = {
+                    onSetClipboard(ClipboardState("Local", selectedFiles.toList(), isCut = true))
+                    selectedFiles = emptySet()
+                },
+                onRename = {
+                    Toast.makeText(context, "Rename coming soon", Toast.LENGTH_SHORT).show()
+                },
+                onDelete = {
+                    Toast.makeText(context, "Delete coming soon", Toast.LENGTH_SHORT).show()
+                }
+            )
+        }
     }
 }
 
@@ -309,21 +333,36 @@ fun CloudFileScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-            }
-            Text(
-                text = pathName,
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f).padding(start = 8.dp)
+        // ── Header: normal vs selection mode ──────────────────────────────
+        if (selectedFiles.isNotEmpty()) {
+            SelectionTopBar(
+                selectedCount = selectedFiles.size,
+                totalCount = files.size,
+                onClose = { selectedFiles = emptySet() },
+                onSelectAll = {
+                    selectedFiles = if (selectedFiles.size == files.size)
+                        emptySet()
+                    else
+                        files.map { it.id }.toSet()
+                }
             )
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                }
+                Text(
+                    text = pathName,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f).padding(start = 8.dp)
+                )
+            }
         }
 
         if (isLoading) {
@@ -425,21 +464,27 @@ fun CloudFileScreen(
         }
     }
     
-    if (selectedFiles.isNotEmpty()) {
-        SelectionBottomBar(
-            onCopy = { 
-                val names = selectedFiles.mapNotNull { id -> files.find { it.id == id }?.name }
-                onSetClipboard(ClipboardState("Cloud", selectedFiles.toList(), itemNames = names, isCut = false, accountName = accountName))
-                selectedFiles = emptySet()
-            },
-            onMove = { 
-                val names = selectedFiles.mapNotNull { id -> files.find { it.id == id }?.name }
-                onSetClipboard(ClipboardState("Cloud", selectedFiles.toList(), itemNames = names, isCut = true, accountName = accountName))
-                selectedFiles = emptySet()
-            },
-            onDelete = { Toast.makeText(context, "Delete logic coming soon", Toast.LENGTH_SHORT).show() },
-            onClearSelection = { selectedFiles = emptySet() }
-        )
+        // ── Footer: selection action bar ──────────────────────────────────
+        if (selectedFiles.isNotEmpty()) {
+            SelectionBottomBar(
+                onCopy = {
+                    val names = selectedFiles.mapNotNull { id -> files.find { it.id == id }?.name }
+                    onSetClipboard(ClipboardState("Cloud", selectedFiles.toList(), itemNames = names, isCut = false, accountName = accountName))
+                    selectedFiles = emptySet()
+                },
+                onMove = {
+                    val names = selectedFiles.mapNotNull { id -> files.find { it.id == id }?.name }
+                    onSetClipboard(ClipboardState("Cloud", selectedFiles.toList(), itemNames = names, isCut = true, accountName = accountName))
+                    selectedFiles = emptySet()
+                },
+                onRename = {
+                    Toast.makeText(context, "Rename coming soon", Toast.LENGTH_SHORT).show()
+                },
+                onDelete = {
+                    Toast.makeText(context, "Delete coming soon", Toast.LENGTH_SHORT).show()
+                }
+            )
+        }
     }
 }
 
@@ -502,47 +547,118 @@ fun formatDate(timestamp: Long): String {
     return sdf.format(timestamp)
 }
 
+// ── Selection top bar — image এর মত: X | 2/56 | select-all icons ──────────
+@Composable
+fun SelectionTopBar(
+    selectedCount: Int,
+    totalCount: Int,
+    onClose: () -> Unit,
+    onSelectAll: () -> Unit
+) {
+    Surface(
+        color = Color(0xFF1A6B6B), // teal, image এর মত
+        shadowElevation = 4.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // X button — selection বাতিল
+            IconButton(onClick = onClose) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = "Cancel selection",
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            // Counter: 2/56
+            Text(
+                text = "$selectedCount/$totalCount",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                modifier = Modifier.weight(1f).padding(start = 4.dp)
+            )
+            // Select-all (filled square icon)
+            IconButton(onClick = onSelectAll) {
+                Icon(
+                    imageVector = Icons.Default.SelectAll,
+                    contentDescription = "Select all",
+                    tint = Color.White,
+                    modifier = Modifier.size(26.dp)
+                )
+            }
+            // Partial / range select (dashed square — MoreVert দিয়ে approximate করা)
+            IconButton(onClick = onSelectAll) {
+                Icon(
+                    imageVector = Icons.Default.Deselect,
+                    contentDescription = "Deselect all",
+                    tint = Color.White.copy(alpha = 0.7f),
+                    modifier = Modifier.size(26.dp)
+                )
+            }
+        }
+    }
+}
+
+// ── Selection bottom bar — image এর মত: Copy | Move | Rename | Delete | More
 @Composable
 fun SelectionBottomBar(
     onCopy: () -> Unit,
     onMove: () -> Unit,
-    onDelete: () -> Unit,
-    onClearSelection: () -> Unit
+    onRename: () -> Unit,
+    onDelete: () -> Unit
 ) {
     Surface(
-        color = Color(0xFF1E1E1E),
-        shadowElevation = 8.dp,
+        color = Color(0xFF1A6B6B), // teal — image এর মত
+        shadowElevation = 12.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 4.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onCopy) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.ContentCopy, "Copy", tint = Color.White)
-                    Text("Copy", color = Color.White, fontSize = 10.sp)
-                }
-            }
-            IconButton(onClick = onMove) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.DriveFileMove, "Move", tint = Color.White)
-                    Text("Move", color = Color.White, fontSize = 10.sp)
-                }
-            }
-            IconButton(onClick = onDelete) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Delete, "Delete", tint = Color.White)
-                    Text("Delete", color = Color.White, fontSize = 10.sp)
-                }
-            }
-            IconButton(onClick = onClearSelection) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Close, "Cancel", tint = Color.White)
-                    Text("Cancel", color = Color.White, fontSize = 10.sp)
-                }
-            }
+            SelectionAction(icon = Icons.Default.ContentCopy,  label = "Copy",   onClick = onCopy)
+            SelectionAction(icon = Icons.Default.DriveFileMove, label = "Move",  onClick = onMove)
+            SelectionAction(icon = Icons.Default.Edit,          label = "Rename", onClick = onRename)
+            SelectionAction(icon = Icons.Default.Delete,        label = "Delete", onClick = onDelete)
+            SelectionAction(icon = Icons.Default.MoreVert,      label = "More",   onClick = {})
         }
+    }
+}
+
+@Composable
+private fun SelectionAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clickable { onClick() }
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = Color.White,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(Modifier.height(3.dp))
+        Text(
+            text = label,
+            color = Color.White,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium
+        )
     }
 }
