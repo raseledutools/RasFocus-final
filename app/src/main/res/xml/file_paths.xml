@@ -22,6 +22,13 @@
     <external-files-path
         name="external_pictures"
         path="Pictures/" />
+    <!-- Full external storage root — needed by FileManagerPlus to open
+         any file from /storage/emulated/0/ via FileProvider URI.
+         Without this, getUriForFile() throws IllegalArgumentException
+         for files outside the specific sub-paths listed above. -->
+    <external-path
+        name="external_root"
+        path="." />
     <external-path
         name="external_downloads"
         path="Download/" />

@@ -33,13 +33,16 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
 import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.platform.LocalContext
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.FileProvider
 import com.rasel.RasFocus.drivebackup.DriveFileManager
+import com.rasel.RasFocus.selfcontrol.study_tools.UniversalViewerActivity
 
 @Composable
 fun LocalFileScreen(
@@ -201,7 +204,7 @@ fun LocalFileScreen(
                                     if (file.isDirectory) {
                                         onNavigate(NavState.Local(file.absolutePath))
                                     } else {
-                                        Toast.makeText(context, "Opening local files not implemented", Toast.LENGTH_SHORT).show()
+                                        openLocalFile(context, file)
                                     }
                                 }
                             },
@@ -545,6 +548,69 @@ fun formatFileSize(size: Long): String {
 fun formatDate(timestamp: Long): String {
     val sdf = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
     return sdf.format(timestamp)
+}
+
+// ── File opener — FileProvider URI বানিয়ে UniversalViewerActivity তে পাঠায় ──
+fun openLocalFile(context: android.content.Context, file: java.io.File) {
+    try {
+        val uri: Uri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file
+        )
+        val mime = context.contentResolver.getType(uri)
+            ?: getMimeFromExtension(file.extension.lowercase())
+        val intent = Intent(context, UniversalViewerActivity::class.java).apply {
+            action = Intent.ACTION_VIEW
+            setDataAndType(uri, mime)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(intent)
+    } catch (e: IllegalArgumentException) {
+        // FileProvider path not configured — fallback to system opener
+        try {
+            val uri = Uri.fromFile(file)
+            val mime = getMimeFromExtension(file.extension.lowercase())
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mime)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(intent, "Open with"))
+        } catch (e2: Exception) {
+            Toast.makeText(context, "Cannot open: ${file.name}", Toast.LENGTH_SHORT).show()
+        }
+    } catch (e: Exception) {
+        Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+    }
+}
+
+fun getMimeFromExtension(ext: String): String = when (ext) {
+    "pdf"                       -> "application/pdf"
+    "jpg", "jpeg"               -> "image/jpeg"
+    "png"                       -> "image/png"
+    "gif"                       -> "image/gif"
+    "webp"                      -> "image/webp"
+    "bmp"                       -> "image/bmp"
+    "heic", "heif"              -> "image/heic"
+    "mp4", "mkv", "mov", "avi",
+    "3gp", "webm"               -> "video/mp4"
+    "mp3", "m4a", "aac",
+    "ogg", "flac", "wav"        -> "audio/mpeg"
+    "docx"                      -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    "doc"                       -> "application/msword"
+    "pptx"                      -> "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    "ppt"                       -> "application/vnd.ms-powerpoint"
+    "xlsx"                      -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    "xls"                       -> "application/vnd.ms-excel"
+    "txt", "md", "kt", "java",
+    "py", "js", "ts", "html",
+    "css", "xml", "json",
+    "yaml", "yml", "csv",
+    "sh", "c", "cpp", "h"       -> "text/plain"
+    "apk"                       -> "application/vnd.android.package-archive"
+    "zip"                       -> "application/zip"
+    "rar"                       -> "application/x-rar-compressed"
+    else                        -> "*/*"
 }
 
 // ── Selection top bar — image এর মত: X | 2/56 | select-all icons ──────────
