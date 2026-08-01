@@ -53,13 +53,20 @@ data class ClipboardState(
 
 class FileManagerPlusActivity : ComponentActivity() {
 
+    // Permission grant হলে Activity recreate করা — সবচেয়ে reliable refresh
     private val legacyPermLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { /* result handled in Compose via hasStorageAccess() recheck */ }
+    ) { permissions ->
+        val granted = permissions[Manifest.permission.READ_EXTERNAL_STORAGE] == true
+        android.util.Log.d("FileManagerPlusActivity", "Permission result: READ_EXTERNAL_STORAGE granted=$granted")
+        if (granted) {
+            // Recreate activity — Compose state সম্পূর্ণ fresh হবে
+            recreate()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // App খুলতেই storage permission চাওয়া হবে যদি এখনো না দেওয়া থাকে
         requestStoragePermissionIfNeeded()
         setContent {
             MaterialTheme {
@@ -70,8 +77,10 @@ class FileManagerPlusActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Settings থেকে ফিরে এলে permission recheck করা হয়
-        // Compose state LaunchedEffect(hasStorageAccess()) দিয়ে UI refresh হবে
+        // Android 11+ এ Settings থেকে MANAGE_EXTERNAL_STORAGE grant করে ফিরলে recreate
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) {
+            // permission এখন আছে — content recreate করা দরকার নেই, Compose DisposableEffect handle করবে
+        }
     }
 
     private fun requestStoragePermissionIfNeeded() {

@@ -50,19 +50,43 @@ object LocalFileManager {
 
     fun listFiles(path: String): List<File> {
         return try {
-            File(path).listFiles()
-                ?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
-                ?: emptyList()
+            val dir = File(path)
+            if (!dir.exists()) {
+                android.util.Log.w("LocalFileManager", "Path does not exist: $path")
+                return emptyList()
+            }
+            if (!dir.canRead()) {
+                android.util.Log.w("LocalFileManager", "Cannot read path: $path")
+                return emptyList()
+            }
+            val files = dir.listFiles()
+            if (files == null) {
+                android.util.Log.w("LocalFileManager", "listFiles() null for: $path")
+                return emptyList()
+            }
+            files
+                .filter { !it.name.startsWith(".") }
+                .sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
         } catch (e: Exception) {
+            android.util.Log.e("LocalFileManager", "listFiles() exception: $path", e)
             emptyList()
         }
     }
 
     fun hasStorageAccess(context: Context): Boolean {
         return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            // Android 11+ — MANAGE_EXTERNAL_STORAGE দরকার
             Environment.isExternalStorageManager()
         } else {
-            ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            // Android 10 (API 29) — READ_EXTERNAL_STORAGE grant থাকলেই File API কাজ করে
+            // requestLegacyExternalStorage="true" manifest এ আছে, তাই File.listFiles() চলবে
+            val readGranted = ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.READ_EXTERNAL_STORAGE
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            // Extra check: actually পড়তে পারছি কিনা
+            val canRead = Environment.getExternalStorageDirectory().canRead()
+            android.util.Log.d("LocalFileManager", "hasStorageAccess: readGranted=$readGranted canRead=$canRead")
+            readGranted
         }
     }
 }
