@@ -4,6 +4,11 @@ import android.content.Context
 import android.os.Environment
 import java.io.File
 import androidx.core.content.ContextCompat
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 
 object LocalFileManager {
 
@@ -40,7 +45,6 @@ object LocalFileManager {
                 }
             }
         }
-        // Fallback for older devices or specific manufacturers
         val fallback = System.getenv("SECONDARY_STORAGE")?.split(":")?.firstOrNull()
         if (fallback != null && File(fallback).exists()) {
             return fallback
@@ -50,43 +54,121 @@ object LocalFileManager {
 
     fun listFiles(path: String): List<File> {
         return try {
-            val dir = File(path)
-            if (!dir.exists()) {
-                android.util.Log.w("LocalFileManager", "Path does not exist: $path")
-                return emptyList()
-            }
-            if (!dir.canRead()) {
-                android.util.Log.w("LocalFileManager", "Cannot read path: $path")
-                return emptyList()
-            }
-            val files = dir.listFiles()
-            if (files == null) {
-                android.util.Log.w("LocalFileManager", "listFiles() null for: $path")
-                return emptyList()
-            }
-            files
-                .filter { !it.name.startsWith(".") }
-                .sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
+            File(path).listFiles()
+                ?.filter { !it.name.startsWith(".") || path.contains(".vault") || path.contains(".trash") }
+                ?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
+                ?: emptyList()
         } catch (e: Exception) {
-            android.util.Log.e("LocalFileManager", "listFiles() exception: $path", e)
             emptyList()
         }
     }
 
     fun hasStorageAccess(context: Context): Boolean {
         return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-            // Android 11+ — MANAGE_EXTERNAL_STORAGE দরকার
             Environment.isExternalStorageManager()
         } else {
-            // Android 10 (API 29) — READ_EXTERNAL_STORAGE grant থাকলেই File API কাজ করে
-            // requestLegacyExternalStorage="true" manifest এ আছে, তাই File.listFiles() চলবে
-            val readGranted = ContextCompat.checkSelfPermission(
-                context, android.Manifest.permission.READ_EXTERNAL_STORAGE
-            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-            // Extra check: actually পড়তে পারছি কিনা
-            val canRead = Environment.getExternalStorageDirectory().canRead()
-            android.util.Log.d("LocalFileManager", "hasStorageAccess: readGranted=$readGranted canRead=$canRead")
-            readGranted
+            ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    // --- Premium Features ---
+
+    val trashPath: String
+        get() = "$mainStoragePath/.trash"
+
+    val vaultPath: String
+        get() = "$mainStoragePath/.vault"
+
+    fun initPremiumFolders() {
+        val trash = File(trashPath)
+        if (!trash.exists()) trash.mkdirs()
+        File(trash, ".nomedia").createNewFile()
+
+        val vault = File(vaultPath)
+        if (!vault.exists()) vault.mkdirs()
+        File(vault, ".nomedia").createNewFile()
+    }
+
+    fun moveToTrash(file: File): Boolean {
+        initPremiumFolders()
+        val dest = File(trashPath, file.name)
+        return file.renameTo(dest)
+    }
+
+    fun restoreFromTrash(file: File, originalParent: String): Boolean {
+        val dest = File(originalParent, file.name)
+        return file.renameTo(dest)
+    }
+
+    fun moveToVault(file: File): Boolean {
+        initPremiumFolders()
+        val dest = File(vaultPath, file.name)
+        return file.renameTo(dest)
+    }
+
+    fun restoreFromVault(file: File, destParent: String): Boolean {
+        val dest = File(destParent, file.name)
+        return file.renameTo(dest)
+    }
+
+    fun zipFiles(files: List<File>, zipFile: File): Boolean {
+        return try {
+            FileOutputStream(zipFile).use { fos ->
+                ZipOutputStream(fos).use { zos ->
+                    for (file in files) {
+                        addToZip(file, file.name, zos)
+                    }
+                }
+            }
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun addToZip(file: File, fileName: String, zos: ZipOutputStream) {
+        if (file.isHidden) return
+        if (file.isDirectory) {
+            val children = file.listFiles()
+            if (children != null) {
+                for (child in children) {
+                    addToZip(child, "$fileName/${child.name}", zos)
+                }
+            }
+        } else {
+            FileInputStream(file).use { fis ->
+                val zipEntry = ZipEntry(fileName)
+                zos.putNextEntry(zipEntry)
+                fis.copyTo(zos)
+                zos.closeEntry()
+            }
+        }
+    }
+
+    fun unzipFile(zipFile: File, targetDirectory: File): Boolean {
+        return try {
+            if (!targetDirectory.exists()) targetDirectory.mkdirs()
+            FileInputStream(zipFile).use { fis ->
+                ZipInputStream(fis).use { zis ->
+                    var zipEntry = zis.nextEntry
+                    while (zipEntry != null) {
+                        val newFile = File(targetDirectory, zipEntry.name)
+                        if (zipEntry.isDirectory) {
+                            newFile.mkdirs()
+                        } else {
+                            newFile.parentFile?.mkdirs()
+                            FileOutputStream(newFile).use { fos ->
+                                zis.copyTo(fos)
+                            }
+                        }
+                        zis.closeEntry()
+                        zipEntry = zis.nextEntry
+                    }
+                }
+            }
+            true
+        } catch (e: Exception) {
+            false
         }
     }
 }

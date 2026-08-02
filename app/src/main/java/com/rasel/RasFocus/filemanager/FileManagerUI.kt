@@ -1,4 +1,4 @@
-package com.rasel.RasFocus.filemanager
+﻿package com.rasel.RasFocus.filemanager
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -32,6 +32,14 @@ import androidx.compose.material.icons.filled.VideoFile
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.ViewList
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Folder
@@ -180,12 +188,21 @@ fun FilePropertiesDialog(
                 PropertyRow("Name", file.name)
                 PropertyRow("Path", file.absolutePath)
                 PropertyRow("Type", if (file.isDirectory) "Folder" else file.extension.uppercase().ifEmpty { "File" })
-                if (!file.isDirectory) {
-                    PropertyRow("Size", formatFileSize(file.length()))
+                if (file.isDirectory) {
+                    val count = file.list()?.size ?: 0
+                    PropertyRow("Contains", "$count items")
+                } else {
+                    PropertyRow("Size", "${formatFileSize(file.length())} (${java.text.NumberFormat.getInstance().format(file.length())} bytes)")
+                    PropertyRow("MD5 Hash", "Calculate (Coming soon)") // Placeholder for MD5
                 }
                 PropertyRow("Modified", sdf.format(file.lastModified()))
-                PropertyRow("Readable", if (file.canRead()) "Yes" else "No")
-                PropertyRow("Writable", if (file.canWrite()) "Yes" else "No")
+                
+                val perms = buildString {
+                    append(if (file.canRead()) "r" else "-")
+                    append(if (file.canWrite()) "w" else "-")
+                    append(if (file.canExecute()) "x" else "-")
+                }
+                PropertyRow("Permissions", perms)
             }
         },
         confirmButton = {
@@ -229,10 +246,15 @@ fun LocalFileScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    androidx.compose.runtime.LaunchedEffect(Unit) { DriveCacheManager.init(context) }
+    androidx.compose.runtime.LaunchedEffect(Unit) { DriveCacheManager.init(context) }
+    LaunchedEffect(Unit) { DriveCacheManager.init(context) }
     var rawFiles by remember { mutableStateOf<List<File>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
     var selectedFiles by remember { mutableStateOf<Set<String>>(emptySet()) }
     var hasPermission by remember { mutableStateOf(LocalFileManager.hasStorageAccess(context)) }
+    var isGridView by remember { mutableStateOf(false) }
+    var localSearchQuery by remember { mutableStateOf(searchQuery) }
 
     // Dialog states
     var showRenameDialog by remember { mutableStateOf(false) }
@@ -242,11 +264,11 @@ fun LocalFileScreen(
     var propertiesTarget by remember { mutableStateOf<File?>(null) }
 
     // Sorted + filtered files
-    val files by remember(rawFiles, sortMode, searchQuery) {
+    val files by remember(rawFiles, sortMode, localSearchQuery) {
         derivedStateOf {
             val sorted = sortFiles(rawFiles, sortMode)
-            if (searchQuery.isBlank()) sorted
-            else sorted.filter { it.name.contains(searchQuery, ignoreCase = true) }
+            if (localSearchQuery.isBlank()) sorted
+            else sorted.filter { it.name.contains(localSearchQuery, ignoreCase = true) }
         }
     }
 
@@ -368,7 +390,7 @@ fun LocalFileScreen(
             onConfirm = {
                 showDeleteDialog = false
                 scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                    val recycleBin = File(LocalFileManager.mainStoragePath + "/.RecycleBin")
+                    val recycleBin = File(LocalFileManager.trashPath)
                     if (!recycleBin.exists()) recycleBin.mkdirs()
                     var allOk = true
                     for (p in selectedFiles) {
@@ -425,9 +447,13 @@ fun LocalFileScreen(
         } else {
             FileManagerHeader(
                 title = path.substringAfterLast("/").ifEmpty { "Root" },
-                subtitle = if (searchQuery.isNotBlank()) "${files.size} found" else "${rawFiles.size} items",
+                subtitle = if (localSearchQuery.isNotBlank()) "${files.size} found" else "${rawFiles.size} items",
                 onBack = onBack,
-                onNewFolder = { showNewFolderDialog = true }
+                onNewFolder = { showNewFolderDialog = true },
+                isGridView = isGridView,
+                onToggleGrid = { isGridView = !isGridView },
+                searchQuery = localSearchQuery,
+                onSearchQueryChange = { localSearchQuery = it }
             )
         }
 
@@ -487,7 +513,7 @@ fun LocalFileScreen(
                                 tint = Color.LightGray, modifier = Modifier.size(56.dp))
                             Spacer(Modifier.height(12.dp))
                             Text(
-                                if (searchQuery.isNotBlank()) "No results for \"$searchQuery\"" else "Folder is empty",
+                                if (localSearchQuery.isNotBlank()) "No results for \"$localSearchQuery\"" else "Folder is empty",
                                 color = Color.Gray, fontSize = 14.sp
                             )
                         }
@@ -495,36 +521,74 @@ fun LocalFileScreen(
                 }
                 else -> {
                     // ── File list + paste FAB inside same Box ─────────────────
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        items(files) { file ->
-                            val isSelected = selectedFiles.contains(file.absolutePath)
-                            FileListItem(
-                                name = file.name,
-                                isDirectory = file.isDirectory,
-                                size = if (file.isDirectory) "" else formatFileSize(file.length()),
-                                date = formatDate(file.lastModified()),
-                                isSelected = isSelected,
-                                localFile = if (file.isDirectory) null else file,
-                                onLongClick = {
-                                    selectedFiles = if (isSelected) selectedFiles - file.absolutePath else selectedFiles + file.absolutePath
-                                },
-                                onClick = {
-                                    if (selectedFiles.isNotEmpty()) {
+                    if (isGridView) {
+                        LazyVerticalGrid(
+                            columns = GridCells.Adaptive(100.dp),
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(bottom = 80.dp)
+                        ) {
+                            items(files) { file ->
+                                val isSelected = selectedFiles.contains(file.absolutePath)
+                                FileListItem(
+                                    name = file.name,
+                                    isDirectory = file.isDirectory,
+                                    size = if (file.isDirectory) "" else formatFileSize(file.length()),
+                                    date = formatDate(file.lastModified()),
+                                    isSelected = isSelected,
+                                    isGrid = true,
+                                    localFile = if (file.isDirectory) null else file,
+                                    onLongClick = {
                                         selectedFiles = if (isSelected) selectedFiles - file.absolutePath else selectedFiles + file.absolutePath
-                                    } else {
-                                        if (file.isDirectory) {
-                                            onNavigate(NavState.Local(file.absolutePath))
+                                    },
+                                    onClick = {
+                                        if (selectedFiles.isNotEmpty()) {
+                                            selectedFiles = if (isSelected) selectedFiles - file.absolutePath else selectedFiles + file.absolutePath
                                         } else {
-                                            openLocalFile(context, file)
+                                            if (file.isDirectory) {
+                                                onNavigate(NavState.Local(file.absolutePath))
+                                            } else {
+                                                openLocalFile(context, file, onNavigate)
+                                            }
                                         }
-                                    }
-                                },
-                                onPropertiesClick = { propertiesTarget = file },
-                                onShareClick = { if (!file.isDirectory) shareLocalFile(context, file) }
-                            )
+                                    },
+                                    onPropertiesClick = { propertiesTarget = file },
+                                    onShareClick = { if (!file.isDirectory) shareLocalFile(context, file) }
+                                )
+                            }
                         }
-                        // bottom padding so FAB doesn't cover last item
-                        item { Spacer(Modifier.height(80.dp)) }
+                    } else {
+                        LazyColumn(modifier = Modifier.fillMaxSize()) {
+                            items(files) { file ->
+                                val isSelected = selectedFiles.contains(file.absolutePath)
+                                FileListItem(
+                                    name = file.name,
+                                    isDirectory = file.isDirectory,
+                                    size = if (file.isDirectory) "" else formatFileSize(file.length()),
+                                    date = formatDate(file.lastModified()),
+                                    isSelected = isSelected,
+                                    isGrid = false,
+                                    localFile = if (file.isDirectory) null else file,
+                                    onLongClick = {
+                                        selectedFiles = if (isSelected) selectedFiles - file.absolutePath else selectedFiles + file.absolutePath
+                                    },
+                                    onClick = {
+                                        if (selectedFiles.isNotEmpty()) {
+                                            selectedFiles = if (isSelected) selectedFiles - file.absolutePath else selectedFiles + file.absolutePath
+                                        } else {
+                                            if (file.isDirectory) {
+                                                onNavigate(NavState.Local(file.absolutePath))
+                                            } else {
+                                                openLocalFile(context, file, onNavigate)
+                                            }
+                                        }
+                                    },
+                                    onPropertiesClick = { propertiesTarget = file },
+                                    onShareClick = { if (!file.isDirectory) shareLocalFile(context, file) }
+                                )
+                            }
+                            // bottom padding so FAB doesn't cover last item
+                            item { Spacer(Modifier.height(80.dp)) }
+                        }
                     }
 
                     // ── Paste FAB — only when clipboard active & no selection ─
@@ -597,7 +661,6 @@ fun LocalFileScreen(
                     } else {
                         Toast.makeText(context, "Select only one item to view properties", Toast.LENGTH_SHORT).show()
                     }
-                },
                 onShare = {
                     val filesToShare = selectedFiles.map { File(it) }.filter { !it.isDirectory }
                     if (filesToShare.isNotEmpty()) {
@@ -605,6 +668,49 @@ fun LocalFileScreen(
                         selectedFiles = emptySet()
                     } else {
                         Toast.makeText(context, "Cannot share folders", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onZip = {
+                    scope.launch(Dispatchers.IO) {
+                        val filesToZip = selectedFiles.map { File(it) }
+                        val zipFile = File(path, "archive_${System.currentTimeMillis()}.zip")
+                        val success = LocalFileManager.zipFiles(filesToZip, zipFile)
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, if (success) "Zipped successfully" else "Failed to zip", Toast.LENGTH_SHORT).show()
+                            selectedFiles = emptySet()
+                            rawFiles = LocalFileManager.listFiles(path)
+                        }
+                    }
+                },
+                onUnzip = {
+                    scope.launch(Dispatchers.IO) {
+                        var success = true
+                        for (item in selectedFiles) {
+                            val zipFile = File(item)
+                            if (zipFile.extension.lowercase() == "zip") {
+                                val targetDir = File(path, zipFile.nameWithoutExtension)
+                                if (!LocalFileManager.unzipFile(zipFile, targetDir)) success = false
+                            }
+                        }
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, if (success) "Unzipped successfully" else "Unzip failed", Toast.LENGTH_SHORT).show()
+                            selectedFiles = emptySet()
+                            rawFiles = LocalFileManager.listFiles(path)
+                        }
+                    }
+                },
+                onSecure = {
+                    scope.launch(Dispatchers.IO) {
+                        var success = true
+                        for (item in selectedFiles) {
+                            val file = File(item)
+                            if (!LocalFileManager.moveToVault(file)) success = false
+                        }
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, if (success) "Secured in vault" else "Failed to secure", Toast.LENGTH_SHORT).show()
+                            selectedFiles = emptySet()
+                            rawFiles = LocalFileManager.listFiles(path)
+                        }
                     }
                 }
             )
@@ -626,6 +732,186 @@ fun CloudFileScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    androidx.compose.runtime.LaunchedEffect(Unit) { DriveCacheManager.init(context) }
+    androidx.compose.runtime.LaunchedEffect(Unit) { DriveCacheManager.init(context) }
+    LaunchedEffect(Unit) { DriveCacheManager.init(context) }
+    var rawFiles by remember { mutableStateOf<List<com.google.api.services.drive.model.File>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+    var errorMsg by remember { mutableStateOf<String?>(null) }
+    var selectedFiles by remember { mutableStateOf<Set<String>>(emptySet()) }
+
+    // Dialog states
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var renameTargetId by remember { mutableStateOf("") }
+    var renameTargetName by remember { mutableStateOf("") }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var showNewFolderDialog by remember { mutableStateOf(false) }
+
+    // Sorted + filtered cloud files
+    val files by remember(rawFiles, sortMode, searchQuery) {
+        derivedStateOf {
+            val sorted = when (sortMode) {
+                SortMode.NAME_ASC  -> rawFiles.sortedWith(compareBy({ it.mimeType != "application/vnd.google-apps.folder" }, { it.name.lowercase() }))
+                SortMode.NAME_DESC -> rawFiles.sortedWith(compareByDescending<com.google.api.services.drive.model.File> { it.name.lowercase() }.thenBy { it.mimeType != "application/vnd.google-apps.folder" })
+                SortMode.DATE_ASC  -> rawFiles.sortedWith(compareBy({ it.mimeType != "application/vnd.google-apps.folder" }, { it.modifiedTime?.value ?: 0L }))
+                SortMode.DATE_DESC -> rawFiles.sortedWith(compareBy<com.google.api.services.drive.model.File> { it.mimeType != "application/vnd.google-apps.folder" }.thenByDescending { it.modifiedTime?.value ?: 0L })
+                SortMode.SIZE_ASC  -> rawFiles.sortedWith(compareBy({ it.mimeType != "application/vnd.google-apps.folder" }, { it.size?.toLong() ?: 0L }))
+                SortMode.SIZE_DESC -> rawFiles.sortedWith(compareBy<com.google.api.services.drive.model.File> { it.mimeType != "application/vnd.google-apps.folder" }.thenByDescending { it.size?.toLong() ?: 0L })
+            }
+            if (searchQuery.isBlank()) sorted
+            else sorted.filter { it.name.contains(searchQuery, ignoreCase = true) }
+        }
+    }
+
+    fun refreshFiles() {
+        scope.launch {
+            isLoading = true
+            val result = DriveFileManager.listFiles(context, accountName, folderId)
+            rawFiles = result ?: rawFiles
+            isLoading = false
+        }
+    }
+
+    val fixDriveLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        scope.launch {
+            isLoading = true
+            val result = DriveFileManager.listFiles(context, accountName, folderId)
+            if (result != null) {
+                rawFiles = result
+                errorMsg = null
+            } else {
+                errorMsg = DriveFileManager.lastError
+            }
+            isLoading = false
+        }
+    }
+
+    LaunchedEffect(folderId) {
+        isLoading = true
+        val result = DriveFileManager.listFiles(context, accountName, folderId)
+        if (result != null) {
+            rawFiles = result
+            errorMsg = null
+        } else {
+            errorMsg = DriveFileManager.lastError
+            val recoveryIntent: Intent? = DriveFileManager.lastRecoveryIntent
+            if (recoveryIntent != null) {
+                fixDriveLauncher.launch(recoveryIntent)
+            }
+        }
+        isLoading = false
+    }
+
+    // ── Cloud Rename Dialog ────────────────────────────────────────────────────
+    if (showRenameDialog && renameTargetId.isNotEmpty()) {
+        RenameDialog(
+            currentName = renameTargetName,
+            onConfirm = { newName ->
+                showRenameDialog = false
+                scope.launch {
+                    val result = DriveFileManager.renameFile(context, accountName, renameTargetId, newName)
+                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        Toast.makeText(
+                            context,
+                            if (result != null) "Renamed to $newName" else "Rename failed",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        renameTargetId = ""
+                        renameTargetName = ""
+                        selectedFiles = emptySet()
+                        if (result != null) refreshFiles()
+                    }
+                }
+            },
+            onDismiss = {
+                showRenameDialog = false
+                renameTargetId = ""
+                renameTargetName = ""
+            }
+        )
+    }
+
+    // ── Cloud New Folder Dialog ────────────────────────────────────────────────
+    if (showNewFolderDialog) {
+        NewFolderDialog(
+            onConfirm = { folderName ->
+                showNewFolderDialog = false
+                scope.launch {
+                    val result = DriveFileManager.createFolder(context, accountName, folderName, folderId)
+                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        Toast.makeText(
+                            context,
+                            if (result != null) "Folder \"$folderName\" created" else "Failed to create folder",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        if (result != null) refreshFiles()
+                    }
+                }
+            },
+            onDismiss = { showNewFolderDialog = false }
+        )
+    }
+
+    // ── Cloud Delete Confirm Dialog ────────────────────────────────────────────
+    if (showDeleteDialog) {
+        DeleteConfirmDialog(
+            count = selectedFiles.size,
+            onConfirm = {
+                showDeleteDialog = false
+                scope.launch {
+                    var allOk = true
+                    for (fileId in selectedFiles) {
+                        val ok = DriveFileManager.deleteFile(context, accountName, fileId)
+                        if (!ok) allOk = false
+                    }
+                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        Toast.makeText(
+                            context,
+                            if (allOk) "Deleted from Drive" else "Some items could not be deleted",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        selectedFiles = emptySet()
+                        refreshFiles()
+                    }
+                }
+            },
+            onDismiss = { showDeleteDialog = false }
+        )
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        // ── Header ─────────────────────────────────────────────────────────────
+        if (selectedFiles.isNotEmpty()) {
+            SelectionTopBar(
+                selectedCount = selectedFiles.size,
+                totalCount = rawFiles.size,
+                onClose = { selectedFiles = emptySet() },
+                onSelectAll = { selectedFiles = rawFiles.map { it.id }.toSet() },
+                onDeselectAll = { selectedFiles = emptySet() }
+            )
+        } else {
+            FileManagerHeader(
+                title = pathName,
+                subtitle = if (searchQuery.isNotBlank()) "${files.size} found"
+                           else if (!isLoading) "${rawFiles.size} items · Drive" else "Loading…",
+                onBack = onBack,
+                onNewFolder = { showNewFolderDialog = true },
+                headerColor = Color(0xFF1565C0)
+            )
+        }
+
+        // ── Content area with weight(1f) ───────────────────────────────────────
+        Box(modifier = Modifier.weight(1f)) {
+            when {
+                isLoading -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(color = Color(0xFF1565C0))
+                            Spacer(Modifier.height(12.dp))
+                            Text("Loading Drive…", color = Color.Gray, fontSize = 13.sp)
+    LaunchedEffect(Unit) { DriveCacheManager.init(context) }
     var rawFiles by remember { mutableStateOf<List<com.google.api.services.drive.model.File>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
@@ -835,25 +1121,41 @@ fun CloudFileScreen(
                         items(files) { file ->
                             val isDir = file.mimeType == "application/vnd.google-apps.folder"
                             val isSelected = selectedFiles.contains(file.id)
+                            val isUploading = file.id?.startsWith("uploading_") == true
+                            val isCached = !isDir && !isUploading && DriveCacheManager.isFileCached(context, file.id, file.name)
                             FileListItem(
                                 name = file.name,
                                 isDirectory = isDir,
                                 size = if (isDir || file.size == null) "" else formatFileSize(file.size.toLong()),
-                                date = file.modifiedTime?.value?.let { formatDate(it) } ?: "",
+                                date = if (isUploading) "Uploading..." else (file.modifiedTime?.value?.let { formatDate(it) } ?: ""),
                                 isSelected = isSelected,
+                                syncIcon = if (isUploading) Icons.Default.KeyboardArrowUp else if (!isDir) { if (isCached) Icons.Default.CheckCircle else Icons.Default.CloudQueue } else null,
+                                syncIconTint = if (isUploading) Color(0xFF2196F3) else if (isCached) Color(0xFF4CAF50) else Color.Gray,
                                 onClick = {
-                                    if (selectedFiles.isNotEmpty()) {
+                                    if (isUploading) {
+                                        Toast.makeText(context, "File is currently uploading", Toast.LENGTH_SHORT).show()
+                                    } else if (selectedFiles.isNotEmpty()) {
                                         selectedFiles = if (isSelected) selectedFiles - file.id else selectedFiles + file.id
                                     } else {
                                         if (isDir) {
                                             onNavigate(NavState.Cloud(accountName, file.id, file.name))
                                         } else {
-                                            Toast.makeText(context, "Opening…", Toast.LENGTH_SHORT).show()
                                             scope.launch {
+                                                if (isCached) {
+                                                    val localFile = DriveCacheManager.getCachedFile(context, file.id, file.name)
+                                                    if (localFile != null) {
+                                                        openLocalFile(context, localFile)
+                                                        return@launch
+                                                    }
+                                                }
+                                                Toast.makeText(context, "Downloading...", Toast.LENGTH_SHORT).show()
                                                 val localFile = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                                    DriveFileManager.downloadFile(context, accountName, file.id, file.name)
+                                                    val destDir = DriveCacheManager.getCacheDir(context)
+                                                    val safeName = "${file.id}_${file.name}"
+                                                    DriveFileManager.downloadFile(context, accountName, file.id, safeName, destDir)
                                                 }
                                                 if (localFile != null) {
+                                                    DriveCacheManager.markFileDownloaded(context, file.id, file.name)
                                                     openLocalFile(context, localFile)
                                                 } else {
                                                     Toast.makeText(context, "Download failed", Toast.LENGTH_SHORT).show()
@@ -881,6 +1183,19 @@ fun CloudFileScreen(
                                     if (clipboard.sourceEnv == "Local") {
                                         for (item in clipboard.items) {
                                             val src = java.io.File(item)
+                                            
+                                            // UI: Inject dummy uploading file
+                                            val dummyFile = com.google.api.services.drive.model.File()
+                                            dummyFile.id = "uploading_${System.currentTimeMillis()}_${src.name}"
+                                            dummyFile.name = src.name
+                                            dummyFile.mimeType = if (src.isDirectory) "application/vnd.google-apps.folder" else "application/octet-stream"
+                                            
+                                            withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                val newList = rawFiles.toMutableList()
+                                                newList.add(0, dummyFile)
+                                                rawFiles = newList
+                                            }
+                                            
                                             if (src.isDirectory) {
                                                 if (!DriveFileManager.uploadFolder(context, accountName, src, folderId)) success = false
                                             } else {
@@ -952,372 +1267,13 @@ fun FileListItem(
     size: String,
     date: String,
     isSelected: Boolean = false,
+    isGrid: Boolean = false,
     localFile: java.io.File? = null,
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
     onPropertiesClick: (() -> Unit)? = null,
-    onShareClick: (() -> Unit)? = null
-) {
-    val ext = name.substringAfterLast('.', "").lowercase()
-    val isImage = ext in setOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif")
-    val isPdf   = ext == "pdf"
-    val isVideo = ext in setOf("mp4", "mkv", "mov", "avi", "3gp", "webm")
-    var showMenu by remember { mutableStateOf(false) }
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(if (isSelected) Color(0xFFB2DFDB) else Color.Transparent)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // ── Thumbnail / Icon ──────────────────────────────────────────────────
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clip(RoundedCornerShape(6.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            if (!isDirectory && localFile != null && (isImage || isPdf || isVideo)) {
-                // Check cache synchronously first — instant if already loaded
-                val cached = remember(localFile.absolutePath) {
-                    thumbnailCache.get(localFile.absolutePath)
-                }
-                val context = LocalContext.current
-                val bitmapState = remember(localFile.absolutePath) {
-                    androidx.compose.runtime.mutableStateOf<Bitmap?>(cached)
-                }
-
-                // Only launch IO if not cached
-                if (cached == null) {
-                    LaunchedEffect(localFile.absolutePath) {
-                        val bmp = loadThumbnailFor(context, localFile)
-                        bitmapState.value = bmp
-                    }
-                }
-
-                val bmp = bitmapState.value
-                if (bmp != null) {
-                    androidx.compose.foundation.Image(
-                        bitmap = bmp.asImageBitmap(),
-                        contentDescription = name,
-                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                    if (isVideo) {
-                        Icon(
-                            Icons.Default.PlayCircleOutline,
-                            contentDescription = null,
-                            tint = Color.White.copy(alpha = 0.85f),
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                } else {
-                    // Show icon while loading (no spinner — instant fallback)
-                    FileTypeIcon(ext = ext, isDirectory = false, sizeDp = 40)
-                }
-            } else {
-                FileTypeIcon(ext = ext, isDirectory = isDirectory, sizeDp = 40)
-            }
-        }
-
-        Spacer(modifier = Modifier.width(14.dp))
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = name,
-                fontSize = 15.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                fontWeight = if (isDirectory) FontWeight.Medium else FontWeight.Normal
-            )
-            Spacer(modifier = Modifier.height(3.dp))
-            Row {
-                Text(text = date, fontSize = 11.sp, color = Color.Gray)
-                if (size.isNotEmpty()) {
-                    Text(text = " · $size", fontSize = 11.sp, color = Color.Gray)
-                }
-            }
-        }
-
-        // ── Per-item 3-dot menu (properties / share) ──────────────────────────
-        if (onPropertiesClick != null || onShareClick != null) {
-            Box {
-                IconButton(
-                    onClick = { showMenu = true },
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(Icons.Default.MoreVert, contentDescription = "More", tint = Color.Gray, modifier = Modifier.size(18.dp))
-                }
-                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                    if (onShareClick != null && !isDirectory) {
-                        DropdownMenuItem(
-                            text = { Text("Share") },
-                            leadingIcon = { Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                            onClick = { showMenu = false; onShareClick() }
-                        )
-                    }
-                    if (onPropertiesClick != null) {
-                        DropdownMenuItem(
-                            text = { Text("Properties") },
-                            leadingIcon = { Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                            onClick = { showMenu = false; onPropertiesClick() }
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-// ── Global thumbnail memory cache (shared across all FileListItems) ────────────
-//    Holds up to 24 MB worth of 96×96 bitmaps — enough for ~100+ thumbnails
-private val thumbnailCache: LruCache<String, Bitmap> = object : LruCache<String, Bitmap>(
-    (Runtime.getRuntime().maxMemory() / 1024 / 8).toInt().coerceAtMost(24 * 1024) // KB, max 24 MB
-) {
-    override fun sizeOf(key: String, value: Bitmap) = value.byteCount / 1024
-}
-
-// Decode thumb for a local file — tries MediaStore first (instant), then raw decode
-suspend fun loadThumbnailFor(context: android.content.Context, file: java.io.File): Bitmap? {
-    val key = file.absolutePath
-    thumbnailCache.get(key)?.let { return it }
-
-    return kotlinx.coroutines.withContext(Dispatchers.IO) {
-        try {
-            val ext = file.extension.lowercase()
-            val isImage = ext in setOf("jpg","jpeg","png","gif","webp","bmp","heic","heif")
-            val isPdf   = ext == "pdf"
-            val isVideo = ext in setOf("mp4","mkv","mov","avi","3gp","webm")
-
-            val bmp: Bitmap? = when {
-                // ── Images: try MediaStore (system cache) first ──────────────
-                isImage -> {
-                    var thumb: Bitmap? = null
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                        try {
-                            thumb = context.contentResolver.loadThumbnail(
-                                android.net.Uri.fromFile(file),
-                                android.util.Size(96, 96), null
-                            )
-                        } catch (_: Exception) {}
-                    }
-                    if (thumb == null) {
-                        // MediaStore content URI lookup
-                        val uri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-                        val proj = arrayOf(MediaStore.Images.Media._ID)
-                        val sel  = "${MediaStore.Images.Media.DATA} = ?"
-                        context.contentResolver.query(uri, proj, sel, arrayOf(file.absolutePath), null)?.use { c ->
-                            if (c.moveToFirst()) {
-                                val id = c.getLong(0)
-                                val contentUri = android.content.ContentUris.withAppendedId(uri, id)
-                                try {
-                                    thumb = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                                        context.contentResolver.loadThumbnail(contentUri, android.util.Size(96, 96), null)
-                                    } else {
-                                        @Suppress("DEPRECATION")
-                                        MediaStore.Images.Thumbnails.getThumbnail(
-                                            context.contentResolver, id,
-                                            MediaStore.Images.Thumbnails.MICRO_KIND, null
-                                        )
-                                    }
-                                } catch (_: Exception) {}
-                            }
-                        }
-                    }
-                    // Fallback: decode file directly at small size
-                    if (thumb == null) {
-                        val opts = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                        android.graphics.BitmapFactory.decodeFile(file.absolutePath, opts)
-                        val scale = maxOf(1, minOf(opts.outWidth, opts.outHeight) / 96)
-                        val opts2 = android.graphics.BitmapFactory.Options().apply { inSampleSize = scale }
-                        thumb = android.graphics.BitmapFactory.decodeFile(file.absolutePath, opts2)
-                    }
-                    thumb
-                }
-
-                // ── Videos: MediaStore thumbnail ─────────────────────────────
-                isVideo -> {
-                    var thumb: Bitmap? = null
-                    val uri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-                    val proj = arrayOf(MediaStore.Video.Media._ID)
-                    val sel  = "${MediaStore.Video.Media.DATA} = ?"
-                    context.contentResolver.query(uri, proj, sel, arrayOf(file.absolutePath), null)?.use { c ->
-                        if (c.moveToFirst()) {
-                            val id = c.getLong(0)
-                            val contentUri = android.content.ContentUris.withAppendedId(uri, id)
-                            try {
-                                thumb = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                                    context.contentResolver.loadThumbnail(contentUri, android.util.Size(96, 96), null)
-                                } else {
-                                    @Suppress("DEPRECATION")
-                                    MediaStore.Video.Thumbnails.getThumbnail(
-                                        context.contentResolver, id,
-                                        MediaStore.Video.Thumbnails.MICRO_KIND, null
-                                    )
-                                }
-                            } catch (_: Exception) {}
-                        }
-                    }
-                    // Fallback: ThumbnailUtils
-                    if (thumb == null) {
-                        try {
-                            thumb = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                                android.media.ThumbnailUtils.createVideoThumbnail(file, android.util.Size(96, 96), null)
-                            } else {
-                                @Suppress("DEPRECATION")
-                                android.media.ThumbnailUtils.createVideoThumbnail(
-                                    file.absolutePath, MediaStore.Images.Thumbnails.MINI_KIND
-                                )
-                            }
-                        } catch (_: Exception) {}
-                    }
-                    thumb
-                }
-
-                // ── PDF: PdfRenderer (fast at 96px) ──────────────────────────
-                isPdf && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP -> {
-                    try {
-                        val fd = android.os.ParcelFileDescriptor.open(file, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
-                        val renderer = android.graphics.pdf.PdfRenderer(fd)
-                        val page = renderer.openPage(0)
-                        val w = 96; val h = (96f * page.height / page.width).toInt().coerceAtLeast(1)
-                        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-                        bmp.eraseColor(android.graphics.Color.WHITE)
-                        page.render(bmp, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                        page.close(); renderer.close(); fd.close()
-                        bmp
-                    } catch (_: Exception) { null }
-                }
-
-                else -> null
-            }
-
-            bmp?.also { thumbnailCache.put(key, it) }
-        } catch (_: Exception) { null }
-    }
-}
-
-// ── File type icon ─────────────────────────────────────────────────────────────
-@Composable
-fun FileTypeIcon(ext: String, isDirectory: Boolean, sizeDp: Int) {
-    val (icon, tint) = when {
-        isDirectory -> Icons.Default.Folder to Color(0xFFFFA000)
-        ext in setOf("jpg","jpeg","png","gif","webp","bmp","heic","heif")
-                    -> Icons.Default.Image to Color(0xFFE91E63)
-        ext == "pdf"-> Icons.Default.PictureAsPdf to Color(0xFFD32F2F)
-        ext in setOf("mp4","mkv","mov","avi","3gp","webm")
-                    -> Icons.Default.VideoFile to Color(0xFF7B1FA2)
-        ext in setOf("mp3","m4a","aac","ogg","flac","wav")
-                    -> Icons.Default.AudioFile to Color(0xFF1565C0)
-        ext in setOf("docx","doc")
-                    -> Icons.Default.Description to Color(0xFF1976D2)
-        ext in setOf("pptx","ppt")
-                    -> Icons.Default.Slideshow to Color(0xFFE65100)
-        ext in setOf("xlsx","xls")
-                    -> Icons.Default.TableChart to Color(0xFF2E7D32)
-        ext in setOf("zip","rar","7z","tar","gz")
-                    -> Icons.Default.FolderZip to Color(0xFF795548)
-        ext == "apk"-> Icons.Default.Android to Color(0xFF388E3C)
-        ext in setOf("txt","md","csv","json","xml","yaml","yml")
-                    -> Icons.Default.TextSnippet to Color(0xFF546E7A)
-        ext in setOf("kt","java","py","js","ts","html","css","sh","c","cpp")
-                    -> Icons.Default.Code to Color(0xFF00838F)
-        else        -> Icons.Default.InsertDriveFile to Color(0xFF9E9E9E)
-    }
-    Icon(
-        imageVector = icon,
-        contentDescription = null,
-        tint = tint,
-        modifier = Modifier.size(sizeDp.dp)
-    )
-}
-
-fun formatFileSize(size: Long): String {
-    if (size <= 0) return "0 B"
-    val units = arrayOf("B", "KB", "MB", "GB", "TB")
-    val digitGroups = (Math.log10(size.toDouble()) / Math.log10(1024.0)).toInt()
-    return String.format(Locale.US, "%.1f %s", size / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
-}
-
-fun formatDate(timestamp: Long): String {
-    val sdf = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
-    return sdf.format(timestamp)
-}
-
-// ── File opener ────────────────────────────────────────────────────────────────
-fun openLocalFile(context: android.content.Context, file: java.io.File) {
-    try {
-        val uri: Uri = FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.fileprovider",
-            file
-        )
-        val mime = context.contentResolver.getType(uri)
-            ?: getMimeFromExtension(file.extension.lowercase())
-        val intent = Intent(context, UniversalViewerActivity::class.java).apply {
-            action = Intent.ACTION_VIEW
-            setDataAndType(uri, mime)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        context.startActivity(intent)
-    } catch (e: IllegalArgumentException) {
-        try {
-            val uri = Uri.fromFile(file)
-            val mime = getMimeFromExtension(file.extension.lowercase())
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, mime)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            context.startActivity(Intent.createChooser(intent, "Open with"))
-        } catch (e2: Exception) {
-            Toast.makeText(context, "Cannot open: ${file.name}", Toast.LENGTH_SHORT).show()
-        }
-    } catch (e: Exception) {
-        Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
-    }
-}
-
-// ── Share single local file ────────────────────────────────────────────────────
-fun shareLocalFile(context: android.content.Context, file: java.io.File) {
-    try {
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-        val mime = getMimeFromExtension(file.extension.lowercase())
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = mime
-            putExtra(Intent.EXTRA_STREAM, uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        context.startActivity(Intent.createChooser(intent, "Share ${file.name}"))
-    } catch (e: Exception) {
-        Toast.makeText(context, "Cannot share: ${e.message}", Toast.LENGTH_SHORT).show()
-    }
-}
-
-// ── Share multiple local files ─────────────────────────────────────────────────
-fun shareLocalFiles(context: android.content.Context, files: List<java.io.File>) {
-    try {
-        if (files.size == 1) {
-            shareLocalFile(context, files[0])
-            return
-        }
-        val uris = ArrayList(files.map { file ->
-            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-        })
-        val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-            type = "*/*"
-            putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        context.startActivity(Intent.createChooser(intent, "Share ${files.size} files"))
-    } catch (e: Exception) {
-        Toast.makeText(context, "Cannot share: ${e.message}", Toast.LENGTH_SHORT).show()
-    }
-}
-
-fun getMimeFromExtension(ext: String): String = when (ext) {
-    "pdf"                       -> "application/pdf"
+    onShareClick: (() -> Unit)? = null,
+    syncIcon: androidx.compose.ui.graphics.vector.ImageVector? = null,
     "jpg", "jpeg"               -> "image/jpeg"
     "png"                       -> "image/png"
     "gif"                       -> "image/gif"
@@ -1352,8 +1308,15 @@ fun FileManagerHeader(
     subtitle: String,
     onBack: () -> Unit,
     onNewFolder: () -> Unit,
-    headerColor: Color = Color(0xFF00796B)
+    isGridView: Boolean = false,
+    onToggleGrid: () -> Unit = {},
+    searchQuery: String = "",
+    onSearchQueryChange: (String) -> Unit = {},
+    headerColor: Color = Color(0xFF00796B),
+    onClearCache: (() -> Unit)? = null
 ) {
+    var isSearchExpanded by remember { mutableStateOf(false) }
+
     Surface(
         color = headerColor,
         shadowElevation = 4.dp,
@@ -1367,38 +1330,70 @@ fun FileManagerHeader(
                     .padding(horizontal = 4.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        Icons.Default.ArrowBack,
-                        contentDescription = "Back",
-                        tint = Color.White
+                if (isSearchExpanded) {
+                    IconButton(onClick = { 
+                        isSearchExpanded = false
+                        onSearchQueryChange("")
+                    }) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Close search", tint = Color.White)
+                    }
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = onSearchQueryChange,
+                        modifier = Modifier.weight(1f).padding(vertical = 4.dp, horizontal = 4.dp),
+                        placeholder = { Text("Search...", color = Color.White.copy(alpha = 0.7f)) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color.Transparent,
+                            unfocusedBorderColor = Color.Transparent,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        ),
+                        singleLine = true
                     )
-                }
-                Column(modifier = Modifier.weight(1f).padding(start = 2.dp)) {
-                    Text(
-                        text = title,
-                        color = Color.White,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 17.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    if (subtitle.isNotEmpty()) {
+                } else {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.Default.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Color.White
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f).padding(start = 2.dp)) {
                         Text(
-                            text = subtitle,
-                            color = Color.White.copy(alpha = 0.75f),
-                            fontSize = 11.sp,
+                            text = title,
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 17.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
+                        if (subtitle.isNotEmpty()) {
+                            Text(
+                                text = subtitle,
+                                color = Color.White.copy(alpha = 0.75f),
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
-                }
-                IconButton(onClick = onNewFolder) {
-                    Icon(
-                        Icons.Default.CreateNewFolder,
-                        contentDescription = "New folder",
-                        tint = Color.White
-                    )
+                    IconButton(onClick = { isSearchExpanded = true }) {
+                        Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
+                    }
+                    IconButton(onClick = onToggleGrid) {
+                        Icon(
+                            if (isGridView) Icons.Default.ViewList else Icons.Default.GridView,
+                            contentDescription = "Toggle View",
+                            tint = Color.White
+                        )
+                    }
+                    IconButton(onClick = onNewFolder) {
+                        Icon(
+                            Icons.Default.CreateNewFolder,
+                            contentDescription = "New folder",
+                            tint = Color.White
+                        )
+                    }
                 }
             }
         }
@@ -1480,7 +1475,11 @@ fun SelectionBottomBar(
     onRename: () -> Unit,
     onDelete: () -> Unit,
     onProperties: () -> Unit = {},
-    onShare: () -> Unit = {}
+    onShare: () -> Unit = {},
+    onZip: () -> Unit = {},
+    onUnzip: () -> Unit = {},
+    onMergePdf: () -> Unit = {},
+    onSecure: () -> Unit = {}
 ) {
     Surface(
         color = Color(0xFF1A6B6B),
@@ -1491,16 +1490,22 @@ fun SelectionBottomBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(horizontal = 2.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceAround,
+                .padding(horizontal = 2.dp, vertical = 6.dp)
+                .androidx.compose.foundation.horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            Spacer(Modifier.width(4.dp))
             SelectionAction(icon = Icons.Default.ContentCopy,  label = "Copy",       onClick = onCopy)
             SelectionAction(icon = Icons.Default.DriveFileMove, label = "Move",      onClick = onMove)
             SelectionAction(icon = Icons.Default.Share,         label = "Share",     onClick = onShare)
             SelectionAction(icon = Icons.Default.Edit,          label = "Rename",    onClick = onRename)
             SelectionAction(icon = Icons.Default.Delete,        label = "Delete",    onClick = onDelete)
+            SelectionAction(icon = Icons.Default.FolderZip,     label = "Zip",       onClick = onZip)
+            SelectionAction(icon = Icons.Default.FolderOpen,    label = "Unzip",     onClick = onUnzip)
+            SelectionAction(icon = Icons.Default.Lock,          label = "Secure",    onClick = onSecure)
             SelectionAction(icon = Icons.Default.Info,          label = "Info",      onClick = onProperties)
+            Spacer(Modifier.width(4.dp))
         }
     }
 }
@@ -1522,3 +1527,22 @@ private fun SelectionAction(
         Text(text = label, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Medium)
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,4 +1,4 @@
-package com.rasel.RasFocus.filemanager
+﻿package com.rasel.RasFocus.filemanager
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -80,7 +80,7 @@ class FileManagerPlusActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) {
-            // permission এখন আছে
+            // permission à¦à¦–à¦¨ à¦†à¦›à§‡
         }
     }
 
@@ -121,10 +121,10 @@ fun HomeScreen() {
     var searchQuery by remember { mutableStateOf("") }
 
     // Cloud subfolder backstack: list of (folderId, pathName) pairs
-    // ─── Cloud backstack — subfolder থেকে proper back navigation এর জন্য ──────
+    // â”€â”€â”€ Cloud backstack â€” subfolder à¦¥à§‡à¦•à§‡ proper back navigation à¦à¦° à¦œà¦¨à§à¦¯ â”€â”€â”€â”€â”€â”€
     val cloudBackStack = remember { mutableStateListOf<Pair<String, String>>() }
 
-    // ─── BackHandler — Android system back button ─────────────────────────────
+    // â”€â”€â”€ BackHandler â€” Android system back button â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     BackHandler(enabled = currentNavState != NavState.Home || drawerState.isOpen) {
         when {
             drawerState.isOpen -> scope.launch { drawerState.close() }
@@ -138,7 +138,7 @@ fun HomeScreen() {
                     val prev = cloudBackStack.removeLast()
                     currentNavState = NavState.Cloud(state.accountName, prev.first, prev.second)
                 } else if (state.folderId != "root") {
-                    // backstack empty — "root" এ যাও
+                    // backstack empty â€” "root" à¦ à¦¯à¦¾à¦“
                     cloudBackStack.clear()
                     currentNavState = NavState.Cloud(state.accountName, "root", "My Drive")
                 } else {
@@ -183,8 +183,10 @@ fun HomeScreen() {
     ) {
         Scaffold(
             topBar = {
+                val needsGlobalHeader = currentNavState !is NavState.Local && currentNavState !is NavState.Cloud && currentNavState !is NavState.Remote
+                if (needsGlobalHeader) {
                 if (showSearchBar) {
-                    // ── Search bar ───────────────────────────────────────────
+                    // â”€â”€ Search bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                     TopAppBar(
                         title = {
                             OutlinedTextField(
@@ -238,7 +240,7 @@ fun HomeScreen() {
                         navigationIcon = {
                             IconButton(onClick = {
                                 if (currentNavState != NavState.Home) {
-                                    // Back navigation — same as BackHandler
+                                    // Back navigation â€” same as BackHandler
                                     when {
                                         currentNavState is NavState.Cloud -> {
                                             val state = currentNavState as NavState.Cloud
@@ -279,7 +281,7 @@ fun HomeScreen() {
                             }
                         },
                         actions = {
-                            // Search icon — Home ছাড়া সব জায়গায় দেখাবে
+                            // Search icon â€” Home à¦›à¦¾à¦¡à¦¼à¦¾ à¦¸à¦¬ à¦œà¦¾à¦¯à¦¼à¦—à¦¾à¦¯à¦¼ à¦¦à§‡à¦–à¦¾à¦¬à§‡
                             if (currentNavState != NavState.Home) {
                                 IconButton(onClick = { showSearchBar = true }) {
                                     Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
@@ -299,27 +301,27 @@ fun HomeScreen() {
                                     onDismissRequest = { showMoreMenu = false }
                                 ) {
                                     DropdownMenuItem(
-                                        text = { Text("Sort by name ↑", fontWeight = if (sortMode == SortMode.NAME_ASC) FontWeight.Bold else FontWeight.Normal) },
+                                        text = { Text("Sort by name â†‘", fontWeight = if (sortMode == SortMode.NAME_ASC) FontWeight.Bold else FontWeight.Normal) },
                                         onClick = { showMoreMenu = false; sortMode = SortMode.NAME_ASC }
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Sort by name ↓", fontWeight = if (sortMode == SortMode.NAME_DESC) FontWeight.Bold else FontWeight.Normal) },
+                                        text = { Text("Sort by name â†“", fontWeight = if (sortMode == SortMode.NAME_DESC) FontWeight.Bold else FontWeight.Normal) },
                                         onClick = { showMoreMenu = false; sortMode = SortMode.NAME_DESC }
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Sort by date ↑", fontWeight = if (sortMode == SortMode.DATE_ASC) FontWeight.Bold else FontWeight.Normal) },
+                                        text = { Text("Sort by date â†‘", fontWeight = if (sortMode == SortMode.DATE_ASC) FontWeight.Bold else FontWeight.Normal) },
                                         onClick = { showMoreMenu = false; sortMode = SortMode.DATE_ASC }
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Sort by date ↓", fontWeight = if (sortMode == SortMode.DATE_DESC) FontWeight.Bold else FontWeight.Normal) },
+                                        text = { Text("Sort by date â†“", fontWeight = if (sortMode == SortMode.DATE_DESC) FontWeight.Bold else FontWeight.Normal) },
                                         onClick = { showMoreMenu = false; sortMode = SortMode.DATE_DESC }
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Sort by size ↑", fontWeight = if (sortMode == SortMode.SIZE_ASC) FontWeight.Bold else FontWeight.Normal) },
+                                        text = { Text("Sort by size â†‘", fontWeight = if (sortMode == SortMode.SIZE_ASC) FontWeight.Bold else FontWeight.Normal) },
                                         onClick = { showMoreMenu = false; sortMode = SortMode.SIZE_ASC }
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Sort by size ↓", fontWeight = if (sortMode == SortMode.SIZE_DESC) FontWeight.Bold else FontWeight.Normal) },
+                                        text = { Text("Sort by size â†“", fontWeight = if (sortMode == SortMode.SIZE_DESC) FontWeight.Bold else FontWeight.Normal) },
                                         onClick = { showMoreMenu = false; sortMode = SortMode.SIZE_DESC }
                                     )
                                     Divider()
@@ -373,7 +375,7 @@ fun HomeScreen() {
                         folderId = state.folderId,
                         pathName = state.pathName,
                         onNavigate = { newState ->
-                            // subfolder navigate করার সময় current state কে backstack এ push করো
+                            // subfolder navigate à¦•à¦°à¦¾à¦° à¦¸à¦®à¦¯à¦¼ current state à¦•à§‡ backstack à¦ push à¦•à¦°à§‹
                             if (newState is NavState.Cloud) {
                                 cloudBackStack.add(Pair(state.folderId, state.pathName))
                             }
@@ -418,7 +420,7 @@ data class StorageInfo(val used: Long, val total: Long) {
 
 fun getInternalStorageInfo(): StorageInfo {
     return try {
-        // Environment.getDataDirectory() → /data partition (true internal storage)
+        // Environment.getDataDirectory() â†’ /data partition (true internal storage)
         val path = Environment.getDataDirectory()
         val stat = StatFs(path.path)
         val total = stat.blockCountLong * stat.blockSizeLong
@@ -723,7 +725,7 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
     }
 }
 
-// ── Top storage card ──────────────────────────────────────────────────────────
+// â”€â”€ Top storage card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @Composable
 fun StorageTopCard(
     label: String,
@@ -789,7 +791,7 @@ fun StorageTopCard(
     }
 }
 
-// ── Category card ─────────────────────────────────────────────────────────────
+// â”€â”€ Category card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @Composable
 fun CategoryCard(
     label: String,
@@ -844,7 +846,7 @@ fun CategoryCard(
     }
 }
 
-// GridItemView legacy — replaced by CategoryCard and StorageTopCard
+// GridItemView legacy â€” replaced by CategoryCard and StorageTopCard
 
 @Composable
 fun DrawerContent(onNavigate: (NavState) -> Unit) {
@@ -873,14 +875,14 @@ fun DrawerContent(onNavigate: (NavState) -> Unit) {
             val sdCardInfo = remember { getSdCardStorageInfo(context) }
             DrawerStorageItem(
                 Icons.Default.PhoneAndroid, "Main storage",
-                if (extInfo.total > 0) "${(extInfo.progress * 100).toInt()}%" else "—",
+                if (extInfo.total > 0) "${(extInfo.progress * 100).toInt()}%" else "â€”",
                 extInfo.progress,
                 onClick = { onNavigate(NavState.Local(LocalFileManager.mainStoragePath)) }
             )
 
             DrawerStorageItem(
                 Icons.Default.SdStorage, "SD card",
-                if (sdCardInfo.total > 0) "${(sdCardInfo.progress * 100).toInt()}%" else "—",
+                if (sdCardInfo.total > 0) "${(sdCardInfo.progress * 100).toInt()}%" else "â€”",
                 sdCardInfo.progress,
                 onClick = {
                     val sdPath = LocalFileManager.getSdCardPath(context)
@@ -999,3 +1001,4 @@ data class GridItemData(
     val subtitle: String,
     val icon: ImageVector
 )
+

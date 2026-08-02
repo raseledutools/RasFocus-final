@@ -248,6 +248,10 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.2")
     implementation("androidx.activity:activity-compose:1.10.0")
     implementation("androidx.activity:activity-ktx:1.10.0")
+    
+    // UI/UX Enhancements
+    implementation("io.coil-kt:coil-compose:2.6.0")
+    implementation("androidx.biometric:biometric:1.2.0-alpha05")
     implementation("androidx.savedstate:savedstate-ktx:1.2.1")
 
     // Jetpack Compose
@@ -328,11 +332,22 @@ dependencies {
     // WebKit
     implementation("androidx.webkit:webkit:1.11.0")
 
-    // Media
+    // Media & ExoPlayer
     implementation("androidx.media:media:1.7.0")
+    implementation("androidx.media3:media3-exoplayer:1.3.1")
+    implementation("androidx.media3:media3-ui:1.3.1")
+    implementation("androidx.media3:media3-session:1.3.1")
 
     // Security Crypto
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
+    // FTP Server and Client
+    implementation("org.apache.ftpserver:ftpserver-core:1.2.0")
+    implementation("commons-net:commons-net:3.10.0")
+    implementation("org.slf4j:slf4j-simple:2.0.9")
+
+    // PDFBox for PDF Merge
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
 
     // Accompanist
     implementation("com.google.accompanist:accompanist-systemuicontroller:0.34.0")
