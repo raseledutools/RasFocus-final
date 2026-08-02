@@ -1,4 +1,4 @@
-﻿package com.rasel.RasFocus.filemanager
+package com.rasel.RasFocus.filemanager
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -661,6 +661,7 @@ fun LocalFileScreen(
                     } else {
                         Toast.makeText(context, "Select only one item to view properties", Toast.LENGTH_SHORT).show()
                     }
+                },
                 onShare = {
                     val filesToShare = selectedFiles.map { File(it) }.filter { !it.isDirectory }
                     if (filesToShare.isNotEmpty()) {
@@ -1274,31 +1275,79 @@ fun FileListItem(
     onPropertiesClick: (() -> Unit)? = null,
     onShareClick: (() -> Unit)? = null,
     syncIcon: androidx.compose.ui.graphics.vector.ImageVector? = null,
-    "jpg", "jpeg"               -> "image/jpeg"
-    "png"                       -> "image/png"
-    "gif"                       -> "image/gif"
-    "webp"                      -> "image/webp"
-    "bmp"                       -> "image/bmp"
-    "heic", "heif"              -> "image/heic"
-    "mp4", "mkv", "mov", "avi",
-    "3gp", "webm"               -> "video/mp4"
-    "mp3", "m4a", "aac",
-    "ogg", "flac", "wav"        -> "audio/mpeg"
-    "docx"                      -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    "doc"                       -> "application/msword"
-    "pptx"                      -> "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-    "ppt"                       -> "application/vnd.ms-powerpoint"
-    "xlsx"                      -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    "xls"                       -> "application/vnd.ms-excel"
-    "txt", "md", "kt", "java",
-    "py", "js", "ts", "html",
-    "css", "xml", "json",
-    "yaml", "yml", "csv",
-    "sh", "c", "cpp", "h"       -> "text/plain"
-    "apk"                       -> "application/vnd.android.package-archive"
-    "zip"                       -> "application/zip"
-    "rar"                       -> "application/x-rar-compressed"
-    else                        -> "*/*"
+    syncIconTint: androidx.compose.ui.graphics.Color = androidx.compose.ui.graphics.Color.Gray
+) {
+    val ext = name.substringAfterLast('.', "").lowercase()
+    var showMenu by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(if (isSelected) Color(0xFFB2DFDB) else Color.Transparent)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            FileTypeIcon(ext = ext, isDirectory = isDirectory, sizeDp = 40)
+        }
+
+        Spacer(modifier = Modifier.width(14.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = name,
+                fontSize = 15.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                fontWeight = if (isDirectory) FontWeight.Medium else FontWeight.Normal
+            )
+            Spacer(modifier = Modifier.height(3.dp))
+            Row {
+                Text(text = date, fontSize = 11.sp, color = Color.Gray)
+                if (size.isNotEmpty()) {
+                    Text(text = " · $size", fontSize = 11.sp, color = Color.Gray)
+                }
+            }
+        }
+
+        if (syncIcon != null) {
+            Spacer(Modifier.width(8.dp))
+            Icon(
+                imageVector = syncIcon,
+                contentDescription = "Sync state",
+                tint = syncIconTint,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+
+        if (onPropertiesClick != null || onShareClick != null) {
+            Box {
+                IconButton(onClick = { showMenu = true }, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "More options", tint = Color.Gray, modifier = Modifier.size(18.dp))
+                }
+                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                    if (onShareClick != null && !isDirectory) {
+                        DropdownMenuItem(
+                            text = { Text("Share") },
+                            leadingIcon = { Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                            onClick = { showMenu = false; onShareClick() }
+                        )
+                    }
+                    if (onPropertiesClick != null) {
+                        DropdownMenuItem(
+                            text = { Text("Properties") },
+                            leadingIcon = { Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                            onClick = { showMenu = false; onPropertiesClick() }
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 // ── Folder view header — clean design with breadcrumb feel ────────────────────
