@@ -8,41 +8,7 @@ e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:342:9 Expecting an element
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:404:6 Expecting ')'
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:1003:2 Expecting '}'
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:672:18 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:684:18 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:701:18 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:716:13 Expecting an element
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:717:10 Expecting ')'
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1277:5 Parameter name expected
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1277:6 Expecting comma or ')'
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1277:6 Expecting ')'
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1277:9 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1278:33 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1279:33 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1280:33 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1281:33 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1282:11 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1283:10 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1284:10 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1285:10 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1286:10 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1287:33 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1288:33 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1289:33 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1290:33 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1291:33 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1292:33 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1293:10 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1294:9 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1295:10 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1296:11 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1297:9 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1298:33 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1299:33 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1300:33 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1301:5 Expecting an element
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1301:33 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1529:2 Expecting '}'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1578:2 Expecting '}'
 
 === UNRESOLVED / TYPE ERRORS ===
 
@@ -50,46 +16,46 @@ e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/
 > Task :app:kspFullReleaseKotlin FAILED
 * What went wrong:
 Execution failed for task ':app:kspFullReleaseKotlin'.
-BUILD FAILED in 54s
+BUILD FAILED in 25s
 
 === LAST 60 LINES ===
+> Task :app:packageFullReleaseResources FROM-CACHE
+> Task :app:parseFullReleaseLocalResources FROM-CACHE
+> Task :app:mapFullReleaseSourceSetPaths
+> Task :app:mergeFullReleaseArtProfile
+> Task :app:validateSigningFullRelease
+> Task :app:writeFullReleaseAppMetadata
+> Task :app:writeFullReleaseSigningConfigVersions
+> Task :app:checkFullReleaseAarMetadata
+> Task :app:mergeFullReleaseAssets FROM-CACHE
+> Task :app:checkFullReleaseDuplicateClasses
+> Task :app:collectFullReleaseDependencies
+> Task :app:compressFullReleaseAssets FROM-CACHE
+> Task :app:mergeFullReleaseNativeLibs
+> Task :app:mergeFullReleaseResources FROM-CACHE
+
+> Task :app:stripFullReleaseDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libbarhopper_v3.so, libimage_processing_util_jni.so, libpdfium.so, libpdfiumandroid.so.
+
+> Task :app:extractFullReleaseNativeSymbolTables FROM-CACHE
+> Task :app:sdkFullReleaseDependencyData
+> Task :app:mergeFullReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:processFullReleaseMainManifest
+> Task :app:processFullReleaseManifest
+> Task :app:processFullReleaseManifestForPackage
+note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
+
+note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
+
+> Task :app:processFullReleaseResources
+
+> Task :app:kspFullReleaseKotlin FAILED
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:340:14 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:342:9 Expecting an element
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:404:6 Expecting ')'
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:1003:2 Expecting '}'
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:672:18 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:684:18 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:701:18 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:716:13 Expecting an element
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:717:10 Expecting ')'
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1277:5 Parameter name expected
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1277:6 Expecting comma or ')'
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1277:6 Expecting ')'
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1277:9 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1278:33 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1279:33 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1280:33 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1281:33 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1282:11 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1283:10 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1284:10 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1285:10 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1286:10 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1287:33 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1288:33 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1289:33 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1290:33 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1291:33 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1292:33 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1293:10 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1294:9 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1295:10 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1296:11 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1297:9 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1298:33 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1299:33 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1300:33 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1301:5 Expecting an element
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1301:33 Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1529:2 Expecting '}'
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785687260269.json
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:1578:2 Expecting '}'
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785687644083.json
 
 FAILURE: Build failed with an exception.
 
@@ -110,6 +76,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 54s
-31 actionable tasks: 22 executed, 9 from cache
+BUILD FAILED in 25s
+31 actionable tasks: 21 executed, 10 from cache
 Configuration cache entry stored.
