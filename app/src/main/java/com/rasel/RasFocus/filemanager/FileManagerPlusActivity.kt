@@ -1,4 +1,4 @@
-﻿package com.rasel.RasFocus.filemanager
+package com.rasel.RasFocus.filemanager
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -185,7 +185,7 @@ fun HomeScreen() {
             topBar = {
                 val needsGlobalHeader = currentNavState !is NavState.Local && currentNavState !is NavState.Cloud && currentNavState !is NavState.Remote
                 if (needsGlobalHeader) {
-                if (showSearchBar) {
+                    if (showSearchBar) {
                     // â”€â”€ Search bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                     TopAppBar(
                         title = {
@@ -336,6 +336,7 @@ fun HomeScreen() {
                             }
                         }
                     )
+                    }
                 }
             },
             containerColor = MaterialTheme.colorScheme.background
