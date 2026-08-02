@@ -1,12 +1,7 @@
 package com.rasel.RasFocus.selfcontrol.study_tools
 
 import android.content.Intent
-import android.graphics.BitmapFactory
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.Typeface
-import android.graphics.pdf.PdfDocument
+
 import android.net.Uri
 import android.os.Bundle
 import android.view.WindowManager
@@ -21,11 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import java.io.File
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UniversalViewerActivity
@@ -100,24 +91,9 @@ class UniversalViewerActivity : ComponentActivity() {
                         })
                     }
                     FileType.IMAGE -> {
-                        withContext(Dispatchers.IO) {
-                            try {
-                                val pdfFile = imageToPdf(uri, fileName)
-                                val pdfUri  = FileProvider.getUriForFile(
-                                    this@UniversalViewerActivity,
-                                    "${packageName}.fileprovider",
-                                    pdfFile
-                                )
-                                withContext(Dispatchers.Main) {
-                                    openByClassName("${packageName.replace(".combo","")}.selfcontrol.study_tools.PdfViewerActivity", pdfUri, "application/pdf")
-                                }
-                            } catch (e: Exception) {
-                                withContext(Dispatchers.Main) {
-                                    status.value = "Image খুলতে ব্যর্থ: ${e.message}"
-                                }
-                            }
-                        }
-                        return@LaunchedEffect
+                        // Direct → ImageViewerActivity (fast, no PDF conversion)
+                        openDirect(ImageViewerActivity::class.java, uri,
+                            mimeType.ifEmpty { "image/*" })
                     }
                     FileType.TEXT -> {
                         openDirect(TextViewerActivity::class.java, uri, mimeType.ifEmpty { "text/plain" })
@@ -228,42 +204,4 @@ class UniversalViewerActivity : ComponentActivity() {
         }
     }
 
-    // ── Image → single-page PDF ────────────────────────────────────────────
-    private fun imageToPdf(uri: Uri, fileName: String): File {
-        val bytes = contentResolver.openInputStream(uri)?.readBytes()
-            ?: throw IllegalStateException("Cannot read image")
-        val orig = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-            ?: throw IllegalStateException("Cannot decode image")
-
-        // Fit within A4 portrait keeping aspect ratio
-        val pageW = 595; val pageH = 842
-        val margin = 36f
-        val maxW = pageW - margin * 2
-        val maxH = pageH - margin * 2
-        val scaleX = maxW / orig.width
-        val scaleY = maxH / orig.height
-        val scale  = minOf(scaleX, scaleY, 1f)   // never upscale
-        val dstW = (orig.width * scale).toInt()
-        val dstH = (orig.height * scale).toInt()
-        val left = margin + (maxW - dstW) / 2f
-        val top  = margin + (maxH - dstH) / 2f
-
-        val pdf    = PdfDocument()
-        val info   = PdfDocument.PageInfo.Builder(pageW, pageH, 1).create()
-        val page   = pdf.startPage(info)
-        val canvas = page.canvas
-        canvas.drawColor(Color.WHITE)
-        canvas.drawBitmap(orig, null,
-            android.graphics.RectF(left, top, left + dstW, top + dstH), null)
-        pdf.finishPage(page)
-        orig.recycle()
-
-        val cacheDir = File(cacheDir, "converted_pdfs")
-        cacheDir.mkdirs()
-        val safe = fileName.replace(Regex("[^a-zA-Z0-9._-]"), "_")
-        val file = File(cacheDir, "${safe}.pdf")
-        file.outputStream().use { pdf.writeTo(it) }
-        pdf.close()
-        return file
-    }
 }

@@ -314,6 +314,15 @@
         android:theme="@style/Theme.RasFocus"
         android:configChanges="orientation|screenSize|keyboardHidden" />
 
+    <activity
+        android:name=".selfcontrol.study_tools.ImageViewerActivity"
+        android:label="RasFocus Image"
+        android:exported="false"
+        android:launchMode="singleTop"
+        android:hardwareAccelerated="true"
+        android:theme="@style/Theme.RasFocus"
+        android:configChanges="orientation|screenSize|keyboardHidden" />
+
     <!-- Combo module viewers — internal only -->
     <activity
         android:name=".combo.selfcontrol.study_tools.PdfViewerActivity"
