@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -263,7 +265,7 @@ fun TextEditorScreen(
                 actions = {
                     IconButton(onClick = {
                         isSaving = true
-                        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+                        scope.launch(Dispatchers.IO) {
                             try {
                                 file.writeText(textContent)
                                 withContext(Dispatchers.Main) {
@@ -274,11 +276,13 @@ fun TextEditorScreen(
                                     android.widget.Toast.makeText(context, "Error saving", android.widget.Toast.LENGTH_SHORT).show()
                                 }
                             } finally {
-                                isSaving = false
+                                withContext(Dispatchers.Main) {
+                                    isSaving = false
+                                }
                             }
                         }
                     }) {
-                        Icon(androidx.compose.material.icons.Icons.Default.Check, contentDescription = "Save", tint = Color.White)
+                        Icon(Icons.Default.Check, contentDescription = "Save", tint = Color.White)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF1E1E1E))

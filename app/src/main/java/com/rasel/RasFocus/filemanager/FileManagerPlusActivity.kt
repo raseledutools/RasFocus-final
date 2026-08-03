@@ -36,12 +36,93 @@ import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import android.webkit.MimeTypeMap
+import androidx.core.content.FileProvider
 
 sealed class NavState {
     object Home : NavState()
     data class Local(val path: String) : NavState()
     object CloudAccounts : NavState()
     data class Cloud(val accountName: String, val folderId: String, val pathName: String) : NavState()
+    data class Remote(val serverId: String, val path: String) : NavState()
+}
+
+// ── Shared utility functions ───────────────────────────────────────────────────
+fun formatFileSize(size: Long): String {
+    if (size <= 0) return "0 B"
+    val units = arrayOf("B", "kB", "MB", "GB", "TB")
+    val digitGroups = (Math.log10(size.toDouble()) / Math.log10(1024.0)).toInt()
+    return java.text.DecimalFormat("#,##0.#").format(size / Math.pow(1024.0, digitGroups.toDouble())) + " " + units[digitGroups]
+}
+
+fun formatDate(timestamp: Long): String {
+    val sdf = java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.getDefault())
+    return sdf.format(java.util.Date(timestamp))
+}
+
+fun openLocalFile(context: android.content.Context, file: java.io.File, onNavigate: ((NavState) -> Unit)? = null) {
+    try {
+        val ext = file.extension.lowercase()
+        // Check for viewable types first with internal viewers (via UniversalViewerActivity or similar)
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW)
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.provider",
+            file
+        )
+        val mimeType = android.webkit.MimeTypeMap.getSingleton()
+            .getMimeTypeFromExtension(ext) ?: "*/*"
+        intent.setDataAndType(uri, mimeType)
+        intent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        android.widget.Toast.makeText(context, "Cannot open file: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+    }
+}
+
+fun shareLocalFile(context: android.content.Context, file: java.io.File) {
+    try {
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.provider",
+            file
+        )
+        val ext = file.extension.lowercase()
+        val mimeType = android.webkit.MimeTypeMap.getSingleton()
+            .getMimeTypeFromExtension(ext) ?: "*/*"
+        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = mimeType
+            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(android.content.Intent.createChooser(intent, "Share ${file.name}"))
+    } catch (e: Exception) {
+        android.widget.Toast.makeText(context, "Cannot share file: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+    }
+}
+
+fun shareLocalFiles(context: android.content.Context, files: List<java.io.File>) {
+    if (files.size == 1) {
+        shareLocalFile(context, files.first())
+        return
+    }
+    try {
+        val uris = ArrayList(files.map { file ->
+            androidx.core.content.FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.provider",
+                file
+            )
+        })
+        val intent = android.content.Intent(android.content.Intent.ACTION_SEND_MULTIPLE).apply {
+            type = "*/*"
+            putParcelableArrayListExtra(android.content.Intent.EXTRA_STREAM, uris)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(android.content.Intent.createChooser(intent, "Share ${files.size} files"))
+    } catch (e: Exception) {
+        android.widget.Toast.makeText(context, "Cannot share files: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+    }
 }
 
 data class ClipboardState(
@@ -230,6 +311,7 @@ fun HomeScreen() {
                                     is NavState.Local -> state.path.substringAfterLast("/")
                                     is NavState.CloudAccounts -> "Cloud Locations"
                                     is NavState.Cloud -> state.pathName
+                                    is NavState.Remote -> state.path
                                 },
                                 color = Color.White
                             )
@@ -398,6 +480,12 @@ fun HomeScreen() {
                         onSetClipboard = { clipboard = it },
                         sortMode = sortMode,
                         searchQuery = if (showSearchBar) searchQuery else ""
+                    )
+                    is NavState.Remote -> RemoteFileScreen(
+                        serverId = state.serverId,
+                        initialPath = state.path,
+                        onNavigate = { newState -> currentNavState = newState },
+                        onBack = { currentNavState = NavState.Home }
                     )
                 }
             }

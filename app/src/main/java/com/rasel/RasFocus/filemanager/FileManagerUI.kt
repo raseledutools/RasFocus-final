@@ -10,6 +10,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AudioFile
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
@@ -18,11 +20,15 @@ import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Deselect
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.FolderZip
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.PlayCircleOutline
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Slideshow
@@ -65,6 +71,8 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -1359,7 +1367,7 @@ fun SelectionBottomBar(
                 .fillMaxWidth()
                 .navigationBarsPadding()
                 .padding(horizontal = 2.dp, vertical = 6.dp)
-                .androidx.compose.foundation.horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+                .horizontalScroll(androidx.compose.foundation.rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1394,6 +1402,41 @@ private fun SelectionAction(
         Spacer(Modifier.height(2.dp))
         Text(text = label, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Medium)
     }
+}
+
+// ── FileTypeIcon ───────────────────────────────────────────────────────────────
+@Composable
+fun FileTypeIcon(ext: String, isDirectory: Boolean, sizeDp: Int = 40) {
+    val (icon, tint) = when {
+        isDirectory -> Icons.Default.Folder to Color(0xFFFFA726)
+        ext == "pdf" -> Icons.Default.PictureAsPdf to Color(0xFFE53935)
+        ext in listOf("jpg", "jpeg", "png", "gif", "bmp", "webp", "heic") ->
+            Icons.Default.Image to Color(0xFF1E88E5)
+        ext in listOf("mp4", "mkv", "avi", "mov", "webm", "3gp") ->
+            Icons.Default.VideoFile to Color(0xFF8E24AA)
+        ext in listOf("mp3", "wav", "ogg", "flac", "aac", "m4a") ->
+            Icons.Default.AudioFile to Color(0xFF00ACC1)
+        ext in listOf("doc", "docx", "odt", "txt", "rtf") ->
+            Icons.Default.Description to Color(0xFF1565C0)
+        ext in listOf("xls", "xlsx", "ods", "csv") ->
+            Icons.Default.TableChart to Color(0xFF2E7D32)
+        ext in listOf("ppt", "pptx", "odp") ->
+            Icons.Default.Slideshow to Color(0xFFE65100)
+        ext in listOf("zip", "rar", "7z", "tar", "gz", "bz2") ->
+            Icons.Default.FolderZip to Color(0xFF6D4C41)
+        ext == "apk" -> Icons.Default.Android to Color(0xFF43A047)
+        ext in listOf("kt", "java", "py", "js", "ts", "html", "css", "xml", "json", "sh") ->
+            Icons.Default.Code to Color(0xFF546E7A)
+        ext in listOf("txt", "log", "md") ->
+            Icons.Default.TextSnippet to Color(0xFF78909C)
+        else -> Icons.Default.InsertDriveFile to Color(0xFF90A4AE)
+    }
+    Icon(
+        imageVector = icon,
+        contentDescription = null,
+        tint = tint,
+        modifier = Modifier.size(sizeDp.dp)
+    )
 }
 
 
