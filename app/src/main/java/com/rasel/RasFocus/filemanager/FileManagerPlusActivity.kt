@@ -45,6 +45,10 @@ sealed class NavState {
     object CloudAccounts : NavState()
     data class Cloud(val accountName: String, val folderId: String, val pathName: String) : NavState()
     data class Remote(val serverId: String, val path: String) : NavState()
+    object RecycleBin : NavState()
+    object SecureVault : NavState()
+    object StorageAnalyzer : NavState()
+    object AppManager : NavState()
 }
 
 // ── Shared utility functions ───────────────────────────────────────────────────
@@ -213,6 +217,12 @@ fun HomeScreen() {
                 showSearchBar = false
                 searchQuery = ""
             }
+            currentNavState == NavState.RecycleBin ||
+            currentNavState == NavState.SecureVault ||
+            currentNavState == NavState.StorageAnalyzer ||
+            currentNavState == NavState.AppManager -> {
+                currentNavState = NavState.Home
+            }
             currentNavState is NavState.Cloud -> {
                 val state = currentNavState as NavState.Cloud
                 if (cloudBackStack.isNotEmpty()) {
@@ -273,7 +283,13 @@ fun HomeScreen() {
     ) {
         Scaffold(
             topBar = {
-                val needsGlobalHeader = currentNavState !is NavState.Local && currentNavState !is NavState.Cloud && currentNavState !is NavState.Remote
+                val needsGlobalHeader = currentNavState !is NavState.Local &&
+                    currentNavState !is NavState.Cloud &&
+                    currentNavState !is NavState.Remote &&
+                    currentNavState != NavState.RecycleBin &&
+                    currentNavState != NavState.SecureVault &&
+                    currentNavState != NavState.StorageAnalyzer &&
+                    currentNavState != NavState.AppManager
                 if (needsGlobalHeader) {
                     if (showSearchBar) {
                     // â”€â”€ Search bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -496,6 +512,18 @@ fun HomeScreen() {
                         onNavigate = { newState -> currentNavState = newState },
                         onBack = { currentNavState = NavState.Home }
                     )
+                    is NavState.RecycleBin -> RecycleBinScreen(
+                        onBack = { currentNavState = NavState.Home }
+                    )
+                    is NavState.SecureVault -> SecureVaultScreen(
+                        onBack = { currentNavState = NavState.Home }
+                    )
+                    is NavState.StorageAnalyzer -> StorageAnalyzerScreen(
+                        onBack = { currentNavState = NavState.Home }
+                    )
+                    is NavState.AppManager -> AppManagerScreen(
+                        onBack = { currentNavState = NavState.Home }
+                    )
                 }
             }
         }
@@ -703,10 +731,7 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                 } else openStoragePermissionSettings()
             }
             "Apps" -> {
-                // APK files screen
-                val apkPath = android.os.Environment.getExternalStorageDirectory().absolutePath
-                onNavigate(NavState.Local(apkPath))
-                android.widget.Toast.makeText(context, "Browse to find APK and app files", android.widget.Toast.LENGTH_SHORT).show()
+                onNavigate(NavState.AppManager)
             }
             "New files" -> {
                 // Recent downloads
@@ -1008,10 +1033,17 @@ fun DrawerContent(onNavigate: (NavState) -> Unit) {
                 }
             )
 
-            DrawerMenuItem(Icons.Default.Delete, "Recycle Bin", Color.Gray, trailingText = "0 B", onClick = {
-                val trash = java.io.File(LocalFileManager.mainStoragePath + "/.RecycleBin")
-                if (!trash.exists()) trash.mkdirs()
-                onNavigate(NavState.Local(trash.absolutePath))
+            DrawerMenuItem(Icons.Default.Delete, "Recycle Bin", Color.Gray, onClick = {
+                onNavigate(NavState.RecycleBin)
+            })
+            DrawerMenuItem(Icons.Default.Lock, "Secure Vault", Color(0xFF7B1FA2), onClick = {
+                onNavigate(NavState.SecureVault)
+            })
+            DrawerMenuItem(Icons.Default.PieChart, "Storage Analyzer", Color(0xFF00796B), onClick = {
+                onNavigate(NavState.StorageAnalyzer)
+            })
+            DrawerMenuItem(Icons.Default.Apps, "App Manager", Color(0xFF1565C0), onClick = {
+                onNavigate(NavState.AppManager)
             })
 
             Divider()
@@ -1021,10 +1053,10 @@ fun DrawerContent(onNavigate: (NavState) -> Unit) {
 
             Divider()
 
-            DrawerMenuItem(Icons.Default.Schedule, "New files", Color.Gray, hasMoreVert = true, onClick = {
-                android.widget.Toast.makeText(context, "New files coming soon", android.widget.Toast.LENGTH_SHORT).show()
+            DrawerMenuItem(Icons.Default.Schedule, "New files", Color.Gray, onClick = {
+                onNavigate(NavState.Local(LocalFileManager.mainStoragePath + "/Download"))
             })
-            DrawerMenuItem(Icons.Default.Download, "Downloads", Color(0xFFFFA500), hasMoreVert = true, onClick = {
+            DrawerMenuItem(Icons.Default.Download, "Downloads", Color(0xFFFFA500), onClick = {
                 onNavigate(NavState.Local(LocalFileManager.mainStoragePath + "/Download"))
             })
         }
