@@ -62,6 +62,34 @@ object DriveCacheManager {
         saveCachedMap(emptyMap())
     }
 
+    // ── Offline file list cache ────────────────────────────────────────────────
+    // Saves the Drive folder listing so it can be shown when offline
+    fun saveFileList(
+        context: Context,
+        accountName: String,
+        folderId: String,
+        files: List<com.google.api.services.drive.model.File>
+    ) {
+        val key = "filelist_${accountName}_$folderId"
+        val json = gson.toJson(files)
+        prefs.edit().putString(key, json).apply()
+    }
+
+    fun loadFileList(
+        context: Context,
+        accountName: String,
+        folderId: String
+    ): List<com.google.api.services.drive.model.File>? {
+        val key = "filelist_${accountName}_$folderId"
+        val json = prefs.getString(key, null) ?: return null
+        return try {
+            val type = object : TypeToken<List<com.google.api.services.drive.model.File>>() {}.type
+            gson.fromJson(json, type)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     private fun getCachedMap(): MutableMap<String, Long> {
         val json = prefs.getString(KEY_CACHED_FILES, null)
         return if (json != null) {

@@ -232,9 +232,18 @@ fun HomeScreen() {
             }
             currentNavState is NavState.Local -> {
                 val state = currentNavState as NavState.Local
-                val parent = java.io.File(state.path).parent
-                if (parent != null && parent.contains("0")) {
-                    currentNavState = NavState.Local(parent)
+                val currentFile = java.io.File(state.path)
+                val parent = currentFile.parentFile
+                // Root paths: /storage/emulated/0, /sdcard, /mnt/sdcard
+                val storageRoot = android.os.Environment.getExternalStorageDirectory().absolutePath
+                val isAtRoot = parent == null ||
+                    parent.absolutePath == storageRoot ||
+                    parent.absolutePath == "/storage/emulated" ||
+                    parent.absolutePath == "/storage" ||
+                    parent.absolutePath == "/mnt" ||
+                    !parent.exists()
+                if (!isAtRoot) {
+                    currentNavState = NavState.Local(parent!!.absolutePath)
                 } else {
                     currentNavState = NavState.Home
                 }
@@ -693,11 +702,27 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                     onNavigate(NavState.Local(docs.absolutePath))
                 } else openStoragePermissionSettings()
             }
-            "Apps"      -> android.widget.Toast.makeText(context, "Apps coming soon", android.widget.Toast.LENGTH_SHORT).show()
-            "New files" -> android.widget.Toast.makeText(context, "New files coming soon", android.widget.Toast.LENGTH_SHORT).show()
+            "Apps" -> {
+                // APK files screen
+                val apkPath = android.os.Environment.getExternalStorageDirectory().absolutePath
+                onNavigate(NavState.Local(apkPath))
+                android.widget.Toast.makeText(context, "Browse to find APK and app files", android.widget.Toast.LENGTH_SHORT).show()
+            }
+            "New files" -> {
+                // Recent downloads
+                if (hasStorageAccess()) onNavigate(NavState.Local("$base/Download"))
+                else openStoragePermissionSettings()
+            }
             "Cloud"     -> onNavigate(NavState.CloudAccounts)
-            "Remote"    -> android.widget.Toast.makeText(context, "Remote coming soon", android.widget.Toast.LENGTH_SHORT).show()
-            "Access from..." -> android.widget.Toast.makeText(context, "Access from PC coming soon", android.widget.Toast.LENGTH_SHORT).show()
+            "Remote"    -> {
+                onNavigate(NavState.CloudAccounts)
+                android.widget.Toast.makeText(context, "Use Cloud to access remote files", android.widget.Toast.LENGTH_SHORT).show()
+            }
+            "Access from..." -> {
+                // Open Downloads as access point
+                if (hasStorageAccess()) onNavigate(NavState.Local("$base/Download"))
+                else openStoragePermissionSettings()
+            }
         }
     }
 

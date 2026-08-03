@@ -799,11 +799,24 @@ fun CloudFileScreen(
         if (result != null) {
             rawFiles = result
             errorMsg = null
+            // Cache the file list for offline use
+            DriveCacheManager.saveFileList(context, accountName, folderId, result)
         } else {
-            errorMsg = DriveFileManager.lastError
-            val recoveryIntent: Intent? = DriveFileManager.lastRecoveryIntent
-            if (recoveryIntent != null) {
-                fixDriveLauncher.launch(recoveryIntent)
+            // Offline fallback: load from cache
+            val cached = DriveCacheManager.loadFileList(context, accountName, folderId)
+            if (cached != null && cached.isNotEmpty()) {
+                rawFiles = cached
+                errorMsg = null
+                // Show offline notice as Toast, not as blocking error
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    android.widget.Toast.makeText(context, "Offline mode — showing cached files", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                errorMsg = DriveFileManager.lastError
+                val recoveryIntent: Intent? = DriveFileManager.lastRecoveryIntent
+                if (recoveryIntent != null) {
+                    fixDriveLauncher.launch(recoveryIntent)
+                }
             }
         }
         isLoading = false
@@ -1080,8 +1093,48 @@ fun CloudFileScreen(
                     }
                 },
                 onDelete = { showDeleteDialog = true },
-                onProperties = { Toast.makeText(context, "Cloud file properties coming soon", Toast.LENGTH_SHORT).show() },
-                onShare = { Toast.makeText(context, "Cloud file sharing coming soon", Toast.LENGTH_SHORT).show() }
+                onProperties = {
+                    if (selectedFiles.size == 1) {
+                        val fileId = selectedFiles.first()
+                        val file = rawFiles.find { it.id == fileId }
+                        if (file != null) {
+                            val sb = StringBuilder()
+                            sb.appendLine("Name: ${file.name}")
+                            sb.appendLine("Type: ${if (file.mimeType == "application/vnd.google-apps.folder") "Folder" else file.mimeType ?: "Unknown"}")
+                            if (file.size != null) sb.appendLine("Size: ${formatFileSize(file.size.toLong())}")
+                            if (file.modifiedTime != null) sb.appendLine("Modified: ${formatDate(file.modifiedTime.value)}")
+                            sb.appendLine("Drive ID: ${file.id}")
+                            Toast.makeText(context, sb.toString().trimEnd(), Toast.LENGTH_LONG).show()
+                        }
+                        selectedFiles = emptySet()
+                    } else {
+                        Toast.makeText(context, "Select only one item", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onShare = {
+                    scope.launch {
+                        val filesToShare = selectedFiles.mapNotNull { fileId ->
+                            rawFiles.find { it.id == fileId }
+                        }.filter { it.mimeType != "application/vnd.google-apps.folder" }
+                        if (filesToShare.isEmpty()) {
+                            Toast.makeText(context, "Cannot share folders", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "Downloading ${filesToShare.size} file(s) to share...", Toast.LENGTH_SHORT).show()
+                            val localFiles = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                val dir = DriveCacheManager.getCacheDir(context)
+                                filesToShare.mapNotNull { f ->
+                                    DriveFileManager.downloadFile(context, accountName, f.id, "${f.id}_${f.name}", dir)
+                                }
+                            }
+                            if (localFiles.isNotEmpty()) {
+                                shareLocalFiles(context, localFiles)
+                                selectedFiles = emptySet()
+                            } else {
+                                Toast.makeText(context, "Download failed", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                }
             )
         }
     }
