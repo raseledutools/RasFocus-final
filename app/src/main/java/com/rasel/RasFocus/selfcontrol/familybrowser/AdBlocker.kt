@@ -1022,5 +1022,3 @@ object YouTubeAdPruner {
 })();
 """.trimIndent()
 }
-
-}
