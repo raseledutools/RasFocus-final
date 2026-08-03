@@ -4,8 +4,10 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -586,6 +588,14 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
     var sdInfo by remember { mutableStateOf(StorageInfo(0, 0)) }
     val scope = rememberCoroutineScope()
 
+    // ── My Drive quick-access state ───────────────────────────────────────────
+    val drivePrefs = remember { context.getSharedPreferences("MyDrivePrefs", android.content.Context.MODE_PRIVATE) }
+    var selectedDriveAccount by remember {
+        mutableStateOf(drivePrefs.getString("selected_account", null))
+    }
+    var showDrivePickerSheet by remember { mutableStateOf(false) }
+    var driveAccounts by remember { mutableStateOf(CloudAccountManager.getAccounts(context)) }
+
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             internalInfo = getInternalStorageInfo()
@@ -782,15 +792,31 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                     modifier = Modifier.weight(1f),
                     onClick = { navigate("SD card") }
                 )
-                StorageTopCard(
-                    label = "Downloads",
-                    subtitle = downloadsCount,
-                    icon = Icons.Default.Download,
-                    iconColor = Color(0xFFE65100),
-                    progress = 0f,
-                    showProgress = false,
+                MyDriveTopCard(
+                    selectedAccount = selectedDriveAccount,
                     modifier = Modifier.weight(1f),
-                    onClick = { navigate("Downloads") }
+                    onClick = {
+                        driveAccounts = CloudAccountManager.getAccounts(context)
+                        if (driveAccounts.isEmpty()) {
+                            // কোনো account নেই → add করতে CloudAccounts এ যাও
+                            onNavigate(NavState.CloudAccounts)
+                        } else if (driveAccounts.size == 1) {
+                            // Single account → directly open
+                            val acc = driveAccounts.first()
+                            selectedDriveAccount = acc
+                            drivePrefs.edit().putString("selected_account", acc).apply()
+                            onNavigate(NavState.Cloud(acc, "root", "My Drive"))
+                        } else {
+                            // Multiple accounts → show picker
+                            showDrivePickerSheet = true
+                        }
+                    },
+                    onLongClick = {
+                        // Long press → always show picker to change account
+                        driveAccounts = CloudAccountManager.getAccounts(context)
+                        if (driveAccounts.isNotEmpty()) showDrivePickerSheet = true
+                        else onNavigate(NavState.CloudAccounts)
+                    }
                 )
             }
         }
@@ -862,9 +888,207 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
             }
         }
     }
+
+    // ── Drive Account Picker BottomSheet ──────────────────────────────────────
+    if (showDrivePickerSheet) {
+        DriveAccountPickerSheet(
+            accounts = driveAccounts,
+            selectedAccount = selectedDriveAccount,
+            onSelect = { account ->
+                showDrivePickerSheet = false
+                selectedDriveAccount = account
+                drivePrefs.edit().putString("selected_account", account).apply()
+                onNavigate(NavState.Cloud(account, "root", "My Drive"))
+            },
+            onAddAccount = {
+                showDrivePickerSheet = false
+                onNavigate(NavState.CloudAccounts)
+            },
+            onDismiss = { showDrivePickerSheet = false }
+        )
+    }
 }
 
 // â”€â”€ Top storage card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── My Drive quick-access top card ───────────────────────────────────────────
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+fun MyDriveTopCard(
+    selectedAccount: String?,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit = {}
+) {
+    val driveBlue = Color(0xFF1A73E8)
+    Card(
+        modifier = modifier
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        shape = RoundedCornerShape(14.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.Start
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(driveBlue.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.CloudQueue,
+                    contentDescription = "My Drive",
+                    tint = driveBlue,
+                    modifier = Modifier.size(26.dp)
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "My Drive",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = if (selectedAccount != null)
+                    selectedAccount.substringBefore("@").take(12)
+                else
+                    "Tap to connect",
+                fontSize = 10.sp,
+                color = if (selectedAccount != null) driveBlue else Color.Gray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+// ── Drive Account Picker BottomSheet ──────────────────────────────────────────
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DriveAccountPickerSheet(
+    accounts: List<String>,
+    selectedAccount: String?,
+    onSelect: (String) -> Unit,
+    onAddAccount: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color.White,
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 32.dp)
+        ) {
+            Text(
+                text = "Select Drive Account",
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+
+            accounts.forEach { account ->
+                val isSelected = account == selectedAccount
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelect(account) }
+                        .background(
+                            if (isSelected) Color(0xFF1A73E8).copy(alpha = 0.08f)
+                            else Color.Transparent,
+                            RoundedCornerShape(10.dp)
+                        )
+                        .padding(horizontal = 12.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(19.dp))
+                            .background(Color(0xFF1A73E8).copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = account.firstOrNull()?.uppercaseChar()?.toString() ?: "G",
+                            color = Color(0xFF1A73E8),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = account,
+                            fontSize = 14.sp,
+                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "Google Drive",
+                            fontSize = 11.sp,
+                            color = Color.Gray
+                        )
+                    }
+                    if (isSelected) {
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription = "Selected",
+                            tint = Color(0xFF1A73E8),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+                HorizontalDivider(color = Color(0xFFEEEEEE), thickness = 0.5.dp)
+            }
+
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onAddAccount() }
+                    .padding(horizontal = 12.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(19.dp))
+                        .background(Color(0xFF43A047).copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Add,
+                        contentDescription = "Add account",
+                        tint = Color(0xFF43A047),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    text = "Add another account",
+                    fontSize = 14.sp,
+                    color = Color(0xFF43A047),
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+    }
+}
+
 @Composable
 fun StorageTopCard(
     label: String,
