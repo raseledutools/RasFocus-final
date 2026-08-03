@@ -744,6 +744,9 @@ fun CloudFileScreen(
     var isLoading by remember { mutableStateOf(true) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
     var selectedFiles by remember { mutableStateOf<Set<String>>(emptySet()) }
+    // Offline state
+    var isOfflineMode by remember { mutableStateOf(false) }
+    var cacheAgeMinutes by remember { mutableStateOf<Long?>(null) }
 
     // Dialog states
     var showRenameDialog by remember { mutableStateOf(false) }
@@ -795,28 +798,48 @@ fun CloudFileScreen(
 
     LaunchedEffect(folderId) {
         isLoading = true
-        val result = DriveFileManager.listFiles(context, accountName, folderId)
-        if (result != null) {
-            rawFiles = result
-            errorMsg = null
-            // Cache the file list for offline use
-            DriveCacheManager.saveFileList(context, accountName, folderId, result)
+        isOfflineMode = false
+
+        val online = DriveCacheManager.isOnline(context)
+        if (online) {
+            // ── Online: fetch from Drive, then cache ──────────────────────────
+            val result = DriveFileManager.listFiles(context, accountName, folderId)
+            if (result != null) {
+                rawFiles = result
+                errorMsg = null
+                DriveCacheManager.saveFileList(context, accountName, folderId, result)
+            } else {
+                // Network available but Drive call failed (token expired, etc.)
+                val cached = DriveCacheManager.loadFileList(context, accountName, folderId)
+                if (cached != null && cached.isNotEmpty()) {
+                    rawFiles = cached
+                    errorMsg = null
+                    isOfflineMode = true
+                    cacheAgeMinutes = DriveCacheManager.cacheAgeMinutes(accountName, folderId)
+                } else {
+                    errorMsg = DriveFileManager.lastError
+                    val recoveryIntent: Intent? = DriveFileManager.lastRecoveryIntent
+                    if (recoveryIntent != null) {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            fixDriveLauncher.launch(recoveryIntent)
+                        }
+                    }
+                }
+            }
         } else {
-            // Offline fallback: load from cache
+            // ── Offline: load from cache ──────────────────────────────────────
             val cached = DriveCacheManager.loadFileList(context, accountName, folderId)
             if (cached != null && cached.isNotEmpty()) {
                 rawFiles = cached
                 errorMsg = null
-                // Show offline notice as Toast, not as blocking error
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    android.widget.Toast.makeText(context, "Offline mode — showing cached files", android.widget.Toast.LENGTH_SHORT).show()
-                }
+                isOfflineMode = true
+                cacheAgeMinutes = DriveCacheManager.cacheAgeMinutes(accountName, folderId)
             } else {
-                errorMsg = DriveFileManager.lastError
-                val recoveryIntent: Intent? = DriveFileManager.lastRecoveryIntent
-                if (recoveryIntent != null) {
-                    fixDriveLauncher.launch(recoveryIntent)
-                }
+                // Never visited this folder online before → no cache
+                errorMsg = if (DriveCacheManager.hasCachedList(accountName, "root"))
+                    "This folder was never opened online — no offline data available"
+                else
+                    "No internet connection and no cached data"
             }
         }
         isLoading = false
@@ -913,10 +936,17 @@ fun CloudFileScreen(
             FileManagerHeader(
                 title = pathName,
                 subtitle = if (searchQuery.isNotBlank()) "${files.size} found"
-                           else if (!isLoading) "${rawFiles.size} items · Drive" else "Loading…",
+                           else if (isLoading) "Loading…"
+                           else if (isOfflineMode) {
+                               val age = cacheAgeMinutes
+                               if (age == null) "Offline · cached" 
+                               else if (age < 60) "Offline · cached ${age}m ago"
+                               else "Offline · cached ${age/60}h ago"
+                           }
+                           else "${rawFiles.size} items · Drive",
                 onBack = onBack,
                 onNewFolder = { showNewFolderDialog = true },
-                headerColor = Color(0xFF1565C0)
+                headerColor = if (isOfflineMode) Color(0xFF546E7A) else Color(0xFF1565C0)
             )
         }
 
@@ -933,14 +963,33 @@ fun CloudFileScreen(
                     }
                 }
                 errorMsg != null -> {
+                    val isOfflineErr = !DriveCacheManager.isOnline(context)
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
-                            Icon(Icons.Default.CloudQueue, contentDescription = null,
-                                tint = Color.Red.copy(alpha = 0.6f), modifier = Modifier.size(56.dp))
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(24.dp)
+                        ) {
+                            Icon(
+                                if (isOfflineErr) Icons.Default.CloudQueue else Icons.Default.CloudQueue,
+                                contentDescription = null,
+                                tint = if (isOfflineErr) Color(0xFF546E7A) else Color.Red.copy(alpha = 0.6f),
+                                modifier = Modifier.size(56.dp)
+                            )
                             Spacer(Modifier.height(12.dp))
-                            Text("Drive Error", fontWeight = FontWeight.SemiBold, color = Color.Red)
+                            Text(
+                                if (isOfflineErr) "You're offline" else "Drive Error",
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (isOfflineErr) Color(0xFF546E7A) else Color.Red
+                            )
                             Spacer(Modifier.height(6.dp))
-                            Text(errorMsg!!, color = Color.Gray, fontSize = 12.sp)
+                            Text(
+                                if (isOfflineErr)
+                                    "Open this folder online first to enable offline access"
+                                else errorMsg!!,
+                                color = Color.Gray,
+                                fontSize = 13.sp,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
                         }
                     }
                 }
@@ -964,14 +1013,25 @@ fun CloudFileScreen(
                             val isSelected = selectedFiles.contains(file.id)
                             val isUploading = file.id?.startsWith("uploading_") == true
                             val isCached = !isDir && !isUploading && DriveCacheManager.isFileCached(context, file.id, file.name)
+                            val isFolderCached = isDir && DriveCacheManager.hasCachedList(accountName, file.id)
                             FileListItem(
                                 name = file.name,
                                 isDirectory = isDir,
                                 size = if (isDir || file.size == null) "" else formatFileSize(file.size.toLong()),
                                 date = if (isUploading) "Uploading..." else (file.modifiedTime?.value?.let { formatDate(it) } ?: ""),
                                 isSelected = isSelected,
-                                syncIcon = if (isUploading) Icons.Default.KeyboardArrowUp else if (!isDir) { if (isCached) Icons.Default.CheckCircle else Icons.Default.CloudQueue } else null,
-                                syncIconTint = if (isUploading) Color(0xFF2196F3) else if (isCached) Color(0xFF4CAF50) else Color.Gray,
+                                syncIcon = when {
+                                    isUploading -> Icons.Default.KeyboardArrowUp
+                                    isDir && isOfflineMode -> if (isFolderCached) Icons.Default.CheckCircle else Icons.Default.CloudQueue
+                                    !isDir -> if (isCached) Icons.Default.CheckCircle else Icons.Default.CloudQueue
+                                    else -> null
+                                },
+                                syncIconTint = when {
+                                    isUploading -> Color(0xFF2196F3)
+                                    isDir && isOfflineMode -> if (isFolderCached) Color(0xFF4CAF50) else Color(0xFFBDBDBD)
+                                    isCached -> Color(0xFF4CAF50)
+                                    else -> Color(0xFFBDBDBD)
+                                },
                                 onClick = {
                                     if (isUploading) {
                                         Toast.makeText(context, "File is currently uploading", Toast.LENGTH_SHORT).show()
@@ -979,6 +1039,10 @@ fun CloudFileScreen(
                                         selectedFiles = if (isSelected) selectedFiles - file.id else selectedFiles + file.id
                                     } else {
                                         if (isDir) {
+                                            // Offline + never cached → warn but still navigate (will show error there)
+                                            if (isOfflineMode && !isFolderCached) {
+                                                Toast.makeText(context, "Folder not cached — open it online first", Toast.LENGTH_SHORT).show()
+                                            }
                                             onNavigate(NavState.Cloud(accountName, file.id, file.name))
                                         } else {
                                             scope.launch {
@@ -988,6 +1052,11 @@ fun CloudFileScreen(
                                                         openLocalFile(context, localFile)
                                                         return@launch
                                                     }
+                                                }
+                                                // Offline + not cached → cannot download
+                                                if (isOfflineMode) {
+                                                    Toast.makeText(context, "No internet — file not available offline", Toast.LENGTH_SHORT).show()
+                                                    return@launch
                                                 }
                                                 Toast.makeText(context, "Downloading...", Toast.LENGTH_SHORT).show()
                                                 val localFile = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
