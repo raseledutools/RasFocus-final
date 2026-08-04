@@ -58,7 +58,7 @@ object DriveFileManager {
             val result = driveService.files().list()
                 .setQ(query)
                 .setSpaces("drive")
-                .setFields("nextPageToken, files(id, name, mimeType, size, modifiedTime)")
+                .setFields("nextPageToken, files(id, name, mimeType, size, modifiedTime, thumbnailLink, hasThumbnail)")
                 .execute()
             
             lastError = null
@@ -66,6 +66,34 @@ object DriveFileManager {
             result.files
         } catch (e: Exception) {
             recordFailure("listFiles", e)
+            null
+        }
+    }
+
+    // Fetch ALL images from Drive (for Photo Gallery screen)
+    suspend fun listImages(context: Context, accountName: String): List<File>? = withContext(Dispatchers.IO) {
+        val driveService = buildDriveService(context, accountName) ?: return@withContext null
+        try {
+            val query = "mimeType contains 'image/' and trashed = false"
+            val allImages = mutableListOf<File>()
+            var pageToken: String? = null
+            do {
+                val result = driveService.files().list()
+                    .setQ(query)
+                    .setSpaces("drive")
+                    .setFields("nextPageToken, files(id, name, mimeType, size, modifiedTime, thumbnailLink, hasThumbnail)")
+                    .setOrderBy("modifiedTime desc")
+                    .setPageSize(100)
+                    .setPageToken(pageToken)
+                    .execute()
+                allImages.addAll(result.files)
+                pageToken = result.nextPageToken
+            } while (pageToken != null && allImages.size < 500)
+            lastError = null
+            lastRecoveryIntent = null
+            allImages
+        } catch (e: Exception) {
+            recordFailure("listImages", e)
             null
         }
     }

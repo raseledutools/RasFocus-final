@@ -42,6 +42,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.Image
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.google.api.services.drive.model.File
 import com.rasel.RasFocus.filemanager.DriveCacheManager
 import kotlinx.coroutines.Dispatchers
@@ -63,7 +65,7 @@ class DriveFileManagerActivity : ComponentActivity() {
 }
 
 // ── View mode ──────────────────────────────────────────────────────────────────
-enum class ViewMode { LIST, GRID }
+enum class ViewMode { LIST, GRID, PHOTOS }
 
 // ── Offline menu state ─────────────────────────────────────────────────────────
 data class ContextMenuState(
@@ -91,6 +93,52 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
     var viewMode    by remember { mutableStateOf(ViewMode.LIST) }
     var contextMenu by remember { mutableStateOf<ContextMenuState?>(null) }
     var offlineProgress by remember { mutableStateOf<Pair<String, Float>?>(null) } // fileName to 0..1
+
+    // ── Upload state ───────────────────────────────────────────────────────────
+    var isUploading by remember { mutableStateOf(false) }
+    var uploadProgress by remember { mutableStateOf<String?>(null) }
+
+    // ── File picker launcher for upload ───────────────────────────────────────
+    val uploadFileLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetMultipleContents()
+    ) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        scope.launch {
+            isUploading = true
+            var successCount = 0
+            var failCount = 0
+            uris.forEach { uri ->
+                uploadProgress = "Uploading ${successCount + failCount + 1}/${uris.size}..."
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val fileName = context.contentResolver.query(uri, null, null, null, null)?.use { c ->
+                    val idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    c.moveToFirst()
+                    if (idx >= 0) c.getString(idx) else "upload_${System.currentTimeMillis()}"
+                } ?: "upload_${System.currentTimeMillis()}"
+                if (inputStream != null) {
+                    val tempFile = java.io.File(context.cacheDir, fileName)
+                    tempFile.outputStream().use { out -> inputStream.copyTo(out) }
+                    val result = DriveFileManager.uploadFile(
+                        context, accountName, tempFile, currentFolder.first
+                    )
+                    tempFile.delete()
+                    if (result != null) successCount++ else failCount++
+                } else failCount++
+            }
+            isUploading = false
+            uploadProgress = null
+            Toast.makeText(
+                context,
+                if (failCount == 0) "Uploaded $successCount file(s)" else "$successCount uploaded, $failCount failed",
+                Toast.LENGTH_SHORT
+            ).show()
+            // Refresh folder
+            loadFolder(context, accountName, currentFolder.first,
+                onFiles = { files = it; errorMsg = null },
+                onError = { m, h -> errorMsg = m; showFixDrive = h },
+                onLoading = { isLoading = it })
+        }
+    }
 
     // ── Permission recovery launcher ───────────────────────────────────────────
     val fixDriveLauncher = rememberLauncherForActivityResult(
@@ -251,15 +299,27 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
                     }) { Icon(Icons.Default.ArrowBack, "Back") }
                 },
                 actions = {
-                    // View toggle
+                    // Photos gallery tab toggle
                     IconButton(onClick = {
-                        viewMode = if (viewMode == ViewMode.LIST) ViewMode.GRID else ViewMode.LIST
+                        viewMode = if (viewMode == ViewMode.PHOTOS) ViewMode.LIST else ViewMode.PHOTOS
                     }) {
                         Icon(
-                            if (viewMode == ViewMode.LIST) Icons.Default.GridView else Icons.Default.ViewList,
-                            contentDescription = "Toggle view",
-                            tint = Color.White
+                            Icons.Default.PhotoLibrary,
+                            contentDescription = "Photos",
+                            tint = if (viewMode == ViewMode.PHOTOS) Color(0xFFFFD54F) else Color.White
                         )
+                    }
+                    // List/Grid toggle (hidden in Photos mode)
+                    if (viewMode != ViewMode.PHOTOS) {
+                        IconButton(onClick = {
+                            viewMode = if (viewMode == ViewMode.LIST) ViewMode.GRID else ViewMode.LIST
+                        }) {
+                            Icon(
+                                if (viewMode == ViewMode.LIST) Icons.Default.GridView else Icons.Default.ViewList,
+                                contentDescription = "Toggle view",
+                                tint = Color.White
+                            )
+                        }
                     }
                     // Offline indicator dot
                     if (!isOnline) {
@@ -277,6 +337,25 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
                 )
             )
         }
+        floatingActionButton = {
+            if (viewMode != ViewMode.PHOTOS && isOnline) {
+                FloatingActionButton(
+                    onClick = { uploadFileLauncher.launch("*/*") },
+                    containerColor = Color(0xFF4A90D9),
+                    contentColor = Color.White
+                ) {
+                    if (isUploading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Icon(Icons.Default.CloudUpload, contentDescription = "Upload")
+                    }
+                }
+            }
+        }
     ) { padding ->
         Box(
             modifier = Modifier
@@ -284,6 +363,13 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
                 .padding(padding)
                 .background(Color(0xFFF8FAFC))
         ) {
+            // Upload progress bar
+            if (uploadProgress != null) {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter),
+                    color = Color(0xFF4A90D9)
+                )
+            }
             when {
                 isLoading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
 
@@ -314,6 +400,13 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
 
                 files.isEmpty() -> Text("Folder is empty",
                     modifier = Modifier.align(Alignment.Center), color = Color.Gray)
+
+                viewMode == ViewMode.PHOTOS -> {
+                    DrivePhotoGalleryScreen(
+                        accountName = accountName,
+                        isOnline = isOnline
+                    )
+                }
 
                 viewMode == ViewMode.LIST -> {
                     LazyColumn(Modifier.fillMaxSize()) {
@@ -431,7 +524,7 @@ private fun handleFileClick(
 private fun isImageMime(mimeType: String?): Boolean =
     mimeType?.startsWith("image/") == true
 
-// ── Thumbnail loader ──────────────────────────────────────────────────────────
+// ── Thumbnail loader — online (Coil + thumbnailLink) or local cache ───────────
 @Composable
 private fun DriveThumbnail(
     file: File,
@@ -439,35 +532,49 @@ private fun DriveThumbnail(
     modifier: Modifier = Modifier,
     context: Context = LocalContext.current
 ) {
-    var bitmap by remember(file.id) { mutableStateOf<Bitmap?>(null) }
+    // Prefer Drive's thumbnailLink (online) — Coil handles caching automatically
+    val thumbUrl = file.thumbnailLink?.replace("=s220", "=s400") // request larger thumb
 
+    // Local cache fallback (pinned files)
+    var localBitmap by remember(file.id) { mutableStateOf<Bitmap?>(null) }
     LaunchedEffect(file.id) {
+        if (thumbUrl != null) return@LaunchedEffect // Coil handles it
         if (!isImageMime(file.mimeType)) return@LaunchedEffect
         withContext(Dispatchers.IO) {
-            // Only show thumbnail if already pinned/cached locally — no auto-download on scroll
             val cached = DriveCacheManager.getCachedFile(context, file.id ?: "", file.name ?: "")
             if (cached != null && cached.exists()) {
-                val opts = BitmapFactory.Options().apply {
-                    inSampleSize = 4
-                    inJustDecodeBounds = false
-                }
-                bitmap = BitmapFactory.decodeFile(cached.absolutePath, opts)
+                val opts = BitmapFactory.Options().apply { inSampleSize = 4 }
+                localBitmap = BitmapFactory.decodeFile(cached.absolutePath, opts)
             }
         }
     }
 
-    if (bitmap != null) {
-        Image(
-            bitmap = bitmap!!.asImageBitmap(),
-            contentDescription = file.name,
-            modifier = modifier,
-            contentScale = ContentScale.Crop
-        )
-    } else {
-        Box(modifier.background(Color(0xFFE3E8F0)),
-            contentAlignment = Alignment.Center) {
-            Icon(Icons.Default.Image, contentDescription = null,
-                tint = Color(0xFFADB5BD), modifier = Modifier.size(32.dp))
+    when {
+        thumbUrl != null -> {
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(thumbUrl)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = file.name,
+                modifier = modifier,
+                contentScale = ContentScale.Crop,
+                error = androidx.compose.ui.graphics.painter.ColorPainter(Color(0xFFE3E8F0))
+            )
+        }
+        localBitmap != null -> {
+            Image(
+                bitmap = localBitmap!!.asImageBitmap(),
+                contentDescription = file.name,
+                modifier = modifier,
+                contentScale = ContentScale.Crop
+            )
+        }
+        else -> {
+            Box(modifier.background(Color(0xFFE3E8F0)), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.Image, contentDescription = null,
+                    tint = Color(0xFFADB5BD), modifier = Modifier.size(32.dp))
+            }
         }
     }
 }
