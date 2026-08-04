@@ -336,7 +336,7 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
                     navigationIconContentColor = Color.White
                 )
             )
-        }
+        },
         floatingActionButton = {
             if (viewMode != ViewMode.PHOTOS && isOnline) {
                 FloatingActionButton(
