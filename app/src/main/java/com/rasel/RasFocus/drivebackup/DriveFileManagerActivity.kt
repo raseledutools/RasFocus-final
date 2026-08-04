@@ -42,6 +42,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.Image
+import android.webkit.MimeTypeMap
+import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.google.api.services.drive.model.File
@@ -97,6 +99,8 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
     // ── Upload state ───────────────────────────────────────────────────────────
     var isUploading by remember { mutableStateOf(false) }
     var uploadProgress by remember { mutableStateOf<String?>(null) }
+    var isDownloading by remember { mutableStateOf(false) }
+    var downloadingName by remember { mutableStateOf<String?>(null) }
 
     // ── File picker launcher for upload ───────────────────────────────────────
     val uploadFileLauncher = rememberLauncherForActivityResult(
@@ -194,57 +198,116 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
     // ── Context menu (long-press) ──────────────────────────────────────────────
     contextMenu?.let { menu ->
         if (menu.show) {
-            val isPinned = DriveCacheManager.isPinned(menu.file.id ?: "")
+            val fid      = menu.file.id  ?: ""
+            val fname    = menu.file.name ?: "File"
+            val isPinned = DriveCacheManager.isPinned(fid)
+            val isCached = DriveCacheManager.isFileCached(context, fid, fname)
+            val isFolder = menu.file.mimeType == "application/vnd.google-apps.folder"
+
             AlertDialog(
                 onDismissRequest = { contextMenu = null },
-                title = { Text(menu.file.name ?: "File", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                title = {
+                    Column {
+                        Text(fname, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                            fontWeight = FontWeight.SemiBold)
+                        // Local / Cloud badge
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(top = 4.dp)
+                        ) {
+                            if (isCached) {
+                                Icon(Icons.Default.PhoneAndroid, null,
+                                    tint = Color(0xFF4CAF50), modifier = Modifier.size(14.dp))
+                                Spacer(Modifier.width(3.dp))
+                                Text("Local copy", fontSize = 11.sp, color = Color(0xFF4CAF50))
+                            } else {
+                                Icon(Icons.Default.Cloud, null,
+                                    tint = Color(0xFF4A90D9), modifier = Modifier.size(14.dp))
+                                Spacer(Modifier.width(3.dp))
+                                Text("Cloud only", fontSize = 11.sp, color = Color(0xFF4A90D9))
+                            }
+                        }
+                    }
+                },
                 text = {
                     Column {
-                        TextButton(onClick = {
-                            contextMenu = null
-                            val fid  = menu.file.id  ?: return@TextButton
-                            val name = menu.file.name ?: return@TextButton
-                            if (isPinned) {
-                                DriveCacheManager.unpin(fid)
-                                Toast.makeText(context, "Removed from offline", Toast.LENGTH_SHORT).show()
-                            } else {
-                                DriveCacheManager.pin(fid)
-                                scope.launch {
-                                    offlineProgress = Pair(name, 0f)
-                                    val dest = DriveCacheManager.getCacheDir(context)
-                                    if (menu.file.mimeType == "application/vnd.google-apps.folder") {
-                                        val ok = DriveFileManager.downloadFolder(
-                                            context, accountName, fid, name, dest)
-                                        offlineProgress = null
-                                        Toast.makeText(context,
-                                            if (ok) "Folder saved offline" else "Download failed",
-                                            Toast.LENGTH_SHORT).show()
-                                    } else {
-                                        offlineProgress = Pair(name, 0.5f)
-                                        val f = DriveFileManager.downloadFile(
-                                            context, accountName, fid, name, dest)
+                        // Make available offline / Remove offline
+                        if (!isFolder) {
+                            TextButton(onClick = {
+                                contextMenu = null
+                                if (isPinned) {
+                                    DriveCacheManager.unpin(fid)
+                                    Toast.makeText(context, "Removed from offline", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    DriveCacheManager.pin(fid)
+                                    scope.launch {
+                                        offlineProgress = Pair(fname, 0.5f)
+                                        val dest = DriveCacheManager.getCacheDir(context)
+                                        val f = DriveFileManager.downloadFile(context, accountName, fid, fname, dest)
                                         offlineProgress = null
                                         if (f != null) {
-                                            DriveCacheManager.markFileDownloaded(context, fid, name)
-                                            Toast.makeText(context, "Saved offline: $name",
-                                                Toast.LENGTH_SHORT).show()
+                                            DriveCacheManager.markFileDownloaded(context, fid, fname)
+                                            Toast.makeText(context, "Saved offline: $fname", Toast.LENGTH_SHORT).show()
                                         } else {
                                             DriveCacheManager.unpin(fid)
-                                            Toast.makeText(context, "Download failed",
-                                                Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, "Download failed", Toast.LENGTH_SHORT).show()
                                         }
                                     }
                                 }
+                            }, modifier = Modifier.fillMaxWidth()) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        if (isPinned) Icons.Default.CloudDone else Icons.Default.CloudDownload,
+                                        contentDescription = null,
+                                        tint = if (isPinned) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(if (isPinned) "Remove offline copy" else "Make available offline")
+                                }
                             }
-                        }, modifier = Modifier.fillMaxWidth()) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    if (isPinned) Icons.Default.CloudDone else Icons.Default.CloudDownload,
-                                    contentDescription = null,
-                                    tint = if (isPinned) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text(if (isPinned) "Remove offline copy" else "Make available offline")
+                        } else {
+                            // Folder offline
+                            TextButton(onClick = {
+                                contextMenu = null
+                                DriveCacheManager.pin(fid)
+                                scope.launch {
+                                    offlineProgress = Pair(fname, 0f)
+                                    val ok = DriveFileManager.downloadFolder(
+                                        context, accountName, fid, fname, DriveCacheManager.getCacheDir(context))
+                                    offlineProgress = null
+                                    Toast.makeText(context,
+                                        if (ok) "Folder saved offline" else "Download failed",
+                                        Toast.LENGTH_SHORT).show()
+                                }
+                            }, modifier = Modifier.fillMaxWidth()) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.CloudDownload, null,
+                                        tint = MaterialTheme.colorScheme.primary)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Download folder offline")
+                                }
+                            }
+                        }
+
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                        // Clear cache (this file only)
+                        if (isCached) {
+                            TextButton(onClick = {
+                                contextMenu = null
+                                val cacheFile = DriveCacheManager.getCachedFile(context, fid, fname)
+                                val deleted = cacheFile?.delete() == true
+                                DriveCacheManager.unpin(fid)
+                                Toast.makeText(context,
+                                    if (deleted) "Cache cleared: $fname" else "Nothing to clear",
+                                    Toast.LENGTH_SHORT).show()
+                            }, modifier = Modifier.fillMaxWidth()) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.DeleteSweep, null,
+                                        tint = Color(0xFFE53935))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Clear local cache", color = Color(0xFFE53935))
+                                }
                             }
                         }
                     }
@@ -370,6 +433,33 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
                     color = Color(0xFF4A90D9)
                 )
             }
+
+            // Download-then-open loading overlay
+            if (isDownloading) {
+                Box(
+                    Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E2E)),
+                        elevation = CardDefaults.cardElevation(8.dp)
+                    ) {
+                        Column(
+                            Modifier.padding(horizontal = 28.dp, vertical = 20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            CircularProgressIndicator(color = Color(0xFF4A90D9), strokeWidth = 3.dp)
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                text = if (downloadingName != null) "Downloading…\n${downloadingName!!}" else "Downloading…",
+                                color = Color.White, fontSize = 14.sp,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
+                    }
+                }
+            }
             when {
                 isLoading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
 
@@ -417,7 +507,11 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
                                 isOnline = isOnline,
                                 onClick = {
                                     handleFileClick(context, scope, file, accountName, navStack,
-                                        onNavigate = { navStack = it })
+                                        onNavigate = { navStack = it },
+                                        onDownloading = { dl ->
+                                            isDownloading = dl
+                                            downloadingName = if (dl) file.name else null
+                                        })
                                 },
                                 onLongClick = {
                                     contextMenu = ContextMenuState(file, show = true)
@@ -444,7 +538,11 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
                                 isOnline = isOnline,
                                 onClick = {
                                     handleFileClick(context, scope, file, accountName, navStack,
-                                        onNavigate = { navStack = it })
+                                        onNavigate = { navStack = it },
+                                        onDownloading = { dl ->
+                                            isDownloading = dl
+                                            downloadingName = if (dl) file.name else null
+                                        })
                                 },
                                 onLongClick = {
                                     contextMenu = ContextMenuState(file, show = true)
@@ -504,19 +602,81 @@ private suspend fun loadFolder(
 }
 
 // ── File click handler ────────────────────────────────────────────────────────
+// ── File click handler — download-then-open ───────────────────────────────────
 private fun handleFileClick(
     context: Context,
     scope: kotlinx.coroutines.CoroutineScope,
     file: File,
     accountName: String,
     navStack: List<Pair<String, String>>,
-    onNavigate: (List<Pair<String, String>>) -> Unit
+    onNavigate: (List<Pair<String, String>>) -> Unit,
+    onDownloading: (Boolean) -> Unit = {}
 ) {
     if (file.mimeType == "application/vnd.google-apps.folder") {
         onNavigate(navStack + Pair(file.id ?: "", file.name ?: "Folder"))
-    } else {
-        // Auto-download disabled — use long-press → "Make available offline" to save files
-        Toast.makeText(context, "Long-press to save offline", Toast.LENGTH_SHORT).show()
+        return
+    }
+    val fid  = file.id  ?: return
+    val name = file.name ?: return
+
+    scope.launch {
+        // Check cache first — instant open if already downloaded
+        val cached = DriveCacheManager.getCachedFile(context, fid, name)
+        if (cached != null && cached.exists()) {
+            openDriveCachedFile(context, cached, file.mimeType)
+            return@launch
+        }
+
+        // Not cached — download with loading indicator
+        onDownloading(true)
+        val dest = DriveCacheManager.getCacheDir(context)
+        val downloaded = withContext(Dispatchers.IO) {
+            DriveFileManager.downloadFile(context, accountName, fid, name, dest)
+        }
+        onDownloading(false)
+
+        if (downloaded != null) {
+            DriveCacheManager.markFileDownloaded(context, fid, name)
+            openDriveCachedFile(context, downloaded, file.mimeType)
+        } else {
+            Toast.makeText(context, "Download failed: ${DriveFileManager.lastError ?: "unknown"}", Toast.LENGTH_SHORT).show()
+        }
+    }
+}
+
+// ── Open a locally-cached Drive file via FileProvider ────────────────────────
+private fun openDriveCachedFile(context: Context, file: java.io.File, mimeType: String?) {
+    try {
+        val uri = FileProvider.getUriForFile(
+            context, "${context.packageName}.fileprovider", file
+        )
+        val mime = mimeType?.takeIf { it != "application/vnd.google-apps.folder" }
+            ?: MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.lowercase())
+            ?: "*/*"
+
+        // Route known types through UniversalViewerActivity (in-app viewer)
+        val pkg = context.packageName.replace(".combo", "")
+        val cls = try { Class.forName("$pkg.selfcontrol.study_tools.UniversalViewerActivity") }
+                  catch (_: ClassNotFoundException) { null }
+        if (cls != null && mime != "*/*") {
+            val intent = Intent(context, cls).apply {
+                action = Intent.ACTION_VIEW
+                setDataAndType(uri, mime)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            return
+        }
+        // Fallback: system chooser
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, mime)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(Intent.createChooser(intent, "Open with"))
+    } catch (e: Exception) {
+        Toast.makeText(context, "Cannot open: ${e.message}", Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -629,26 +789,42 @@ fun DriveFileListItem(
         Column(Modifier.weight(1f)) {
             Text(file.name ?: "Unknown",
                 fontWeight = FontWeight.Medium, fontSize = 15.sp,
-                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
             val sizeKb = if (!isFolder) "${(file.getSize() ?: 0) / 1024} KB • " else ""
             Text("$sizeKb$dateStr", fontSize = 12.sp, color = Color.Gray)
         }
 
-        // Offline / sync status icon
+        // Local / Cloud status badge
         Spacer(Modifier.width(8.dp))
         when {
-            isPinned && isCached ->
-                Icon(Icons.Default.CheckCircle, "Offline ready",
-                    tint = Color(0xFF4CAF50), modifier = Modifier.size(18.dp))
-            isPinned && !isCached ->
-                Icon(Icons.Default.Sync, "Syncing",
-                    tint = Color(0xFFFF9800), modifier = Modifier.size(18.dp))
-            isCached ->
-                Icon(Icons.Default.CloudDone, "Cached",
-                    tint = Color(0xFF90CAF9), modifier = Modifier.size(18.dp))
-            !isOnline ->
-                Icon(Icons.Default.Cloud, "Cloud only",
-                    tint = Color(0xFFBDBDBD), modifier = Modifier.size(18.dp))
+            isPinned && isCached -> {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.PhoneAndroid, "Local",
+                        tint = Color(0xFF4CAF50), modifier = Modifier.size(16.dp))
+                    Text("Local", fontSize = 9.sp, color = Color(0xFF4CAF50))
+                }
+            }
+            isPinned && !isCached -> {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.Sync, "Syncing",
+                        tint = Color(0xFFFF9800), modifier = Modifier.size(16.dp))
+                    Text("Sync", fontSize = 9.sp, color = Color(0xFFFF9800))
+                }
+            }
+            isCached -> {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.PhoneAndroid, "Cached",
+                        tint = Color(0xFF90CAF9), modifier = Modifier.size(16.dp))
+                    Text("Cache", fontSize = 9.sp, color = Color(0xFF90CAF9))
+                }
+            }
+            else -> {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.Cloud, "Cloud",
+                        tint = Color(0xFFBDBDBD), modifier = Modifier.size(16.dp))
+                    Text("Cloud", fontSize = 9.sp, color = Color(0xFFBDBDBD))
+                }
+            }
         }
     }
 }
