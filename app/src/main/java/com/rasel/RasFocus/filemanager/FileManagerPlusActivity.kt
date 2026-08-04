@@ -69,17 +69,56 @@ fun formatDate(timestamp: Long): String {
 fun openLocalFile(context: android.content.Context, file: java.io.File, onNavigate: ((NavState) -> Unit)? = null) {
     try {
         val ext = file.extension.lowercase()
-        // Check for viewable types first with internal viewers (via UniversalViewerActivity or similar)
-        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW)
         val uri = androidx.core.content.FileProvider.getUriForFile(
             context,
             "${context.packageName}.fileprovider",
             file
         )
+
+        // ── Known types: directly launch RasFocus internal viewers ──
+        // Skips the system "Open with" chooser → always gets in-app viewer
+        // (pdfium for PDF, ImageViewerActivity for images, etc.)
+        val internalMime: String? = when (ext) {
+            "pdf" -> "application/pdf"
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "webp" -> "image/webp"
+            "gif" -> "image/gif"
+            "bmp" -> "image/bmp"
+            "heic", "heif" -> "image/heic"
+            "docx", "doc" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            "pptx", "ppt" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            "xlsx", "xls" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            "txt", "md", "kt", "java", "py", "js", "ts", "json", "xml", "csv",
+            "html", "css", "sh", "c", "cpp", "h", "rs", "go", "rb", "yaml", "yml" -> "text/plain"
+            else -> null
+        }
+
+        if (internalMime != null) {
+            // Route through UniversalViewerActivity → correct internal viewer
+            val pkg = context.packageName.replace(".combo", "")
+            val cls = try {
+                Class.forName("$pkg.selfcontrol.study_tools.UniversalViewerActivity")
+            } catch (_: ClassNotFoundException) { null }
+            if (cls != null) {
+                val intent = android.content.Intent(context, cls).apply {
+                    action = android.content.Intent.ACTION_VIEW
+                    setDataAndType(uri, internalMime)
+                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+                return
+            }
+        }
+
+        // ── Fallback: system chooser for unknown/unsupported types ──
         val mimeType = android.webkit.MimeTypeMap.getSingleton()
             .getMimeTypeFromExtension(ext) ?: "*/*"
-        intent.setDataAndType(uri, mimeType)
-        intent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, mimeType)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
         context.startActivity(intent)
     } catch (e: Exception) {
         android.widget.Toast.makeText(context, "Cannot open file: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()

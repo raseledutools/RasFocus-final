@@ -172,7 +172,7 @@
             <data android:scheme="content" android:mimeType="application/vnd.ms-excel" />
         </intent-filter>
 
-        <!-- Images -->
+        <!-- Images — content:// scheme (modern file managers) -->
         <intent-filter android:priority="100">
             <action android:name="android.intent.action.VIEW" />
             <category android:name="android.intent.category.DEFAULT" />
@@ -193,6 +193,49 @@
             <action android:name="android.intent.action.VIEW" />
             <category android:name="android.intent.category.DEFAULT" />
             <data android:scheme="content" android:mimeType="image/gif" />
+        </intent-filter>
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="image/bmp" />
+        </intent-filter>
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="image/heic" />
+        </intent-filter>
+        <!-- Images — file:// scheme (older/third-party file managers) -->
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="file" android:mimeType="image/jpeg" />
+        </intent-filter>
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="file" android:mimeType="image/png" />
+        </intent-filter>
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="file" android:mimeType="image/webp" />
+        </intent-filter>
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="file" android:mimeType="image/gif" />
+        </intent-filter>
+        <!-- image/* wildcard — catches heic/bmp/tiff and file managers
+             that send a generic image MIME instead of a specific subtype -->
+        <intent-filter android:priority="90">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="image/*" />
+        </intent-filter>
+        <intent-filter android:priority="90">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="file" android:mimeType="image/*" />
         </intent-filter>
 
         <!-- Text / Markdown / Code -->

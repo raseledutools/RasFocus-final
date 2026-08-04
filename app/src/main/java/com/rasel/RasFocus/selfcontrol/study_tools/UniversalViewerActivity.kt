@@ -58,7 +58,11 @@ class UniversalViewerActivity : ComponentActivity() {
         val fileName = getFileName(uri)
         val mimeType = intent?.type
             ?: uri?.let { contentResolver.getType(it) }
-            ?: ""
+            // file:// URIs: contentResolver.getType() returns null, fall back to extension
+            ?: run {
+                val ext = fileName.substringAfterLast('.', "").lowercase()
+                android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: ""
+            }
 
         // Detect file type from extension + MIME
         val fileType = detectType(fileName, mimeType)
