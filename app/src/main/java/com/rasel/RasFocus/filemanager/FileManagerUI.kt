@@ -1115,12 +1115,41 @@ fun CloudFileScreen(
                                         }
                                     } else if (clipboard.sourceEnv == "Cloud") {
                                         val srcAccount = clipboard.accountName ?: accountName
-                                        for (id in clipboard.items) {
-                                            val result = if (clipboard.isCut)
-                                                DriveFileManager.moveFile(context, srcAccount, id, folderId, "root")
-                                            else
-                                                DriveFileManager.copyFile(context, srcAccount, id, folderId)
-                                            if (result == null) success = false
+                                        val isCrossAccount = srcAccount != accountName
+                                        for (i in clipboard.items.indices) {
+                                            val id   = clipboard.items[i]
+                                            val name = clipboard.itemNames.getOrNull(i) ?: "file"
+                                            val mime = clipboard.itemMimeTypes.getOrNull(i) ?: ""
+                                            val isFolder = mime == "application/vnd.google-apps.folder"
+
+                                            val ok = when {
+                                                clipboard.isCut && !isCrossAccount -> {
+                                                    // Same account move — fast API call
+                                                    DriveFileManager.moveFile(context, srcAccount, id, folderId, "root") != null
+                                                }
+                                                isCrossAccount -> {
+                                                    // Cross-account: download from src, upload to dest
+                                                    DriveFileManager.crossAccountCopyFile(
+                                                        context, srcAccount, accountName,
+                                                        id, name, folderId, isFolder
+                                                    ).also {
+                                                        // Cut: delete from source after successful copy
+                                                        if (it && clipboard.isCut)
+                                                            DriveFileManager.deleteFile(context, srcAccount, id)
+                                                    }
+                                                }
+                                                isFolder -> {
+                                                    // Same account, folder copy — recursive
+                                                    DriveFileManager.copyFolderRecursive(
+                                                        context, srcAccount, id, name, folderId
+                                                    )
+                                                }
+                                                else -> {
+                                                    // Same account, file copy
+                                                    DriveFileManager.copyFile(context, srcAccount, id, folderId) != null
+                                                }
+                                            }
+                                            if (!ok) success = false
                                         }
                                     }
                                     withContext(kotlinx.coroutines.Dispatchers.Main) {
@@ -1143,12 +1172,14 @@ fun CloudFileScreen(
             SelectionBottomBar(
                 onCopy = {
                     val names = selectedFiles.mapNotNull { id -> rawFiles.find { it.id == id }?.name }
-                    onSetClipboard(ClipboardState("Cloud", selectedFiles.toList(), itemNames = names, isCut = false, accountName = accountName))
+                    val mimes = selectedFiles.mapNotNull { id -> rawFiles.find { it.id == id }?.mimeType }
+                    onSetClipboard(ClipboardState("Cloud", selectedFiles.toList(), itemNames = names, itemMimeTypes = mimes, isCut = false, accountName = accountName))
                     selectedFiles = emptySet()
                 },
                 onMove = {
                     val names = selectedFiles.mapNotNull { id -> rawFiles.find { it.id == id }?.name }
-                    onSetClipboard(ClipboardState("Cloud", selectedFiles.toList(), itemNames = names, isCut = true, accountName = accountName))
+                    val mimes = selectedFiles.mapNotNull { id -> rawFiles.find { it.id == id }?.mimeType }
+                    onSetClipboard(ClipboardState("Cloud", selectedFiles.toList(), itemNames = names, itemMimeTypes = mimes, isCut = true, accountName = accountName))
                     selectedFiles = emptySet()
                 },
                 onRename = {

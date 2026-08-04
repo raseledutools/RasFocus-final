@@ -174,6 +174,7 @@ data class ClipboardState(
     val sourceEnv: String, // "Local" or "Cloud"
     val items: List<String>, // paths or fileIds
     val itemNames: List<String> = emptyList(), // For Cloud files
+    val itemMimeTypes: List<String> = emptyList(), // For Cloud: mimeType per item
     val isCut: Boolean = false,
     val accountName: String? = null
 )
