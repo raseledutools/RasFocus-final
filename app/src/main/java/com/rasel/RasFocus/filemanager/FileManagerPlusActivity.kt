@@ -73,7 +73,7 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
         val intent = android.content.Intent(android.content.Intent.ACTION_VIEW)
         val uri = androidx.core.content.FileProvider.getUriForFile(
             context,
-            "${context.packageName}.provider",
+            "${context.packageName}.fileprovider",
             file
         )
         val mimeType = android.webkit.MimeTypeMap.getSingleton()
@@ -90,7 +90,7 @@ fun shareLocalFile(context: android.content.Context, file: java.io.File) {
     try {
         val uri = androidx.core.content.FileProvider.getUriForFile(
             context,
-            "${context.packageName}.provider",
+            "${context.packageName}.fileprovider",
             file
         )
         val ext = file.extension.lowercase()
@@ -116,7 +116,7 @@ fun shareLocalFiles(context: android.content.Context, files: List<java.io.File>)
         val uris = ArrayList(files.map { file ->
             androidx.core.content.FileProvider.getUriForFile(
                 context,
-                "${context.packageName}.provider",
+                "${context.packageName}.fileprovider",
                 file
             )
         })

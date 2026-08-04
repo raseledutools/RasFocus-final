@@ -682,7 +682,7 @@ fun loadDocs(context: Context): List<ScannedDoc> {
 private fun sharePdf(context: Context, doc: ScannedDoc) {
     val file = File(doc.path)
     if (!file.exists()) { Toast.makeText(context, "File not found", Toast.LENGTH_SHORT).show(); return }
-    val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
     context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
         type = "application/pdf"
         putExtra(Intent.EXTRA_STREAM, uri)
