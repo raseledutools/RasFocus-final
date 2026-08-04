@@ -422,18 +422,8 @@ private fun handleFileClick(
     if (file.mimeType == "application/vnd.google-apps.folder") {
         onNavigate(navStack + Pair(file.id ?: "", file.name ?: "Folder"))
     } else {
-        Toast.makeText(context, "Downloading ${file.name}…", Toast.LENGTH_SHORT).show()
-        scope.launch {
-            val dest = DriveCacheManager.getCacheDir(context)
-            val f = DriveFileManager.downloadFile(context, accountName,
-                file.id ?: "", file.name ?: "file", dest)
-            if (f != null) {
-                DriveCacheManager.markFileDownloaded(context, file.id ?: "", file.name ?: "")
-                Toast.makeText(context, "Downloaded: ${f.name}", Toast.LENGTH_LONG).show()
-            } else {
-                Toast.makeText(context, "Download failed", Toast.LENGTH_SHORT).show()
-            }
-        }
+        // Auto-download disabled — use long-press → "Make available offline" to save files
+        Toast.makeText(context, "Long-press to save offline", Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -454,26 +444,14 @@ private fun DriveThumbnail(
     LaunchedEffect(file.id) {
         if (!isImageMime(file.mimeType)) return@LaunchedEffect
         withContext(Dispatchers.IO) {
-            // 1. Check local cache first
+            // Only show thumbnail if already pinned/cached locally — no auto-download on scroll
             val cached = DriveCacheManager.getCachedFile(context, file.id ?: "", file.name ?: "")
             if (cached != null && cached.exists()) {
                 val opts = BitmapFactory.Options().apply {
-                    inSampleSize = 4 // small thumbnail
+                    inSampleSize = 4
                     inJustDecodeBounds = false
                 }
                 bitmap = BitmapFactory.decodeFile(cached.absolutePath, opts)
-                return@withContext
-            }
-            // 2. Download thumbnail from Drive if online
-            if (DriveCacheManager.isOnline(context)) {
-                val dest = DriveCacheManager.getCacheDir(context)
-                val f = DriveFileManager.downloadFile(
-                    context, accountName, file.id ?: "", file.name ?: "img", dest)
-                if (f != null) {
-                    val opts = BitmapFactory.Options().apply { inSampleSize = 4 }
-                    bitmap = BitmapFactory.decodeFile(f.absolutePath, opts)
-                    DriveCacheManager.markFileDownloaded(context, file.id ?: "", file.name ?: "")
-                }
             }
         }
     }
