@@ -171,6 +171,8 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
                             onLoading = { isLoading = it })
                         // Also kick off background sync for pinned files
                         DriveBackgroundSyncWorker.schedule(context, accountName)
+                        // Refresh full folder structure metadata (PC Drive style)
+                        DriveMetadataSyncWorker.runNow(context, accountName)
                     }
                 }
             }
@@ -180,6 +182,16 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).build()
         cm.registerNetworkCallback(req, cb)
         onDispose { cm.unregisterNetworkCallback(cb) }
+    }
+
+    // ── One-time metadata pre-cache (runs once per screen open if online) ─────
+    // PC Google Drive এর মতো — সব folder/file name background এ cache হয়
+    // যাতে offline এ পুরো tree browse করা যায়
+    LaunchedEffect(accountName) {
+        if (accountName.isNotEmpty() && DriveCacheManager.isOnline(context)) {
+            DriveMetadataSyncWorker.runNow(context, accountName)
+            DriveMetadataSyncWorker.schedule(context, accountName)
+        }
     }
 
     // ── Initial load ───────────────────────────────────────────────────────────

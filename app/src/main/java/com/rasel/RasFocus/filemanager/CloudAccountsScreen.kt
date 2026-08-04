@@ -57,6 +57,10 @@ fun CloudAccountsScreen(onAccountSelected: (String) -> Unit) {
             account?.email?.let { email ->
                 CloudAccountManager.addAccount(context, email)
                 accounts = CloudAccountManager.getAccounts(context)
+                // Sign-in সফল — সাথে সাথে full metadata sync শুরু করো
+                // PC Google Drive এর মতো offline browse এর জন্য
+                com.rasel.RasFocus.drivebackup.DriveMetadataSyncWorker.runNow(context, email)
+                com.rasel.RasFocus.drivebackup.DriveMetadataSyncWorker.schedule(context, email)
             }
         } catch (e: ApiException) {
             // Handle error silently or show toast
