@@ -32,24 +32,9 @@ data class ReleaseInfo(
 
 class AutoUpdateWorker(appContext: Context, workerParams: WorkerParameters) : CoroutineWorker(appContext, workerParams) {
     override suspend fun doWork(): Result {
-        return withContext(Dispatchers.IO) {
-            val prefs = applicationContext.getSharedPreferences(AutoUpdater.PREFS_NAME, Context.MODE_PRIVATE)
-            val lastInstalledTag = prefs.getString(AutoUpdater.LAST_TAG_KEY, "") ?: ""
-            val lastNotifiedTag  = prefs.getString(AutoUpdater.LAST_NOTIFIED_TAG_KEY, "") ?: ""
-
-            val info = AutoUpdater.fetchLatestReleaseInfoSync(applicationContext) ?: return@withContext Result.success()
-
-            // ★ FIX: ইতিমধ্যে install হয়েছে বা notification দেওয়া হয়েছে এমন version এর জন্য কিছু করো না
-            if (info.tagName == lastInstalledTag || info.tagName == lastNotifiedTag) {
-                return@withContext Result.success()
-            }
-
-            // ★ নতুন version পাওয়া গেছে — শুধু notification দাও, auto-download বন্ধ।
-            // ইউজার নিজে অ্যাপে গিয়ে Download & Install করবে।
-            AutoUpdater.showUpdateAvailableNotification(applicationContext, info)
-
-            Result.success()
-        }
+        // Auto-update disabled — background check and notification turned off.
+        // User initiates updates manually from within the app.
+        return Result.success()
     }
 }
 

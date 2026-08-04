@@ -21,8 +21,8 @@ class BootReceiver : BroadcastReceiver() {
                 }
             }
             
-            // Re-register background auto-update worker
-            com.rasel.RasFocus.AutoUpdater.setupBackgroundAutoUpdate(context)
+            // Auto-update disabled — user initiates updates manually from the app
+            // com.rasel.RasFocus.AutoUpdater.setupBackgroundAutoUpdate(context)
         }
     }
 }

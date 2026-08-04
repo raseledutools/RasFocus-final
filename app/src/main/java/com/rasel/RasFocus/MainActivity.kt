@@ -910,9 +910,9 @@ class MainActivity : ComponentActivity() {
         // Initialize DataManager so all features have access to persisted state
         com.rasel.RasFocus.DataManager.init(this)
         
-        // Check for app updates via GitHub API (Immediate check + Background periodic check)
-        AutoUpdater.checkForUpdates(this) // popup handled in StayFocusedApp LaunchedEffect
-        AutoUpdater.setupBackgroundAutoUpdate(this)
+        // Auto-update disabled — user initiates updates manually from the app
+        // AutoUpdater.checkForUpdates(this)
+        // AutoUpdater.setupBackgroundAutoUpdate(this)
         
         // Ensure Notification Service is running if terms are accepted
         val prefs = getSharedPreferences("rasfocus_prefs", android.content.Context.MODE_PRIVATE)

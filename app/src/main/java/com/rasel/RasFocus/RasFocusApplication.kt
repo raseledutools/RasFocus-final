@@ -19,8 +19,8 @@ class RasFocusApplication : Application() {
         // (internet থাকলে) Firebase থেকে keyword/domain list load করে ফেলি।
         com.rasel.RasFocus.selfcontrol.FirebaseKeywordSync.init(this)
         
-        // Setup background auto-updater
-        com.rasel.RasFocus.AutoUpdater.setupBackgroundAutoUpdate(this)
+        // Auto-update disabled — user initiates updates manually from the app
+        // com.rasel.RasFocus.AutoUpdater.setupBackgroundAutoUpdate(this)
     }
 
     // ══════════════════════════════════════════════════════════════════
