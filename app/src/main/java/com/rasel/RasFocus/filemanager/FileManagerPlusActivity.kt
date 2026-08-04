@@ -339,6 +339,10 @@ fun HomeScreen() {
                                     is NavState.CloudAccounts -> "Cloud Locations"
                                     is NavState.Cloud -> state.pathName
                                     is NavState.Remote -> state.path
+                                    is NavState.RecycleBin -> "Recycle Bin"
+                                    is NavState.SecureVault -> "Secure Vault"
+                                    is NavState.StorageAnalyzer -> "Storage Analyzer"
+                                    is NavState.AppManager -> "App Manager"
                                 },
                                 color = Color.White
                             )
