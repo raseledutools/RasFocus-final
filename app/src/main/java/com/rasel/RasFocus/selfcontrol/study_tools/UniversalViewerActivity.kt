@@ -138,11 +138,26 @@ class UniversalViewerActivity : ComponentActivity() {
     }
 
     private fun openDirect(cls: Class<*>, uri: Uri, mimeType: String) {
-        startActivity(Intent(this, cls).apply {
-            action = Intent.ACTION_VIEW
-            setDataAndType(uri, mimeType)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        })
+        try {
+            startActivity(Intent(this, cls).apply {
+                action = Intent.ACTION_VIEW
+                setDataAndType(uri, mimeType)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                // Forward the original URI grant so the target Activity
+                // can open it even after process death/recreation
+                if (uri.scheme == "content") {
+                    clipData = android.content.ClipData.newRawUri("", uri)
+                }
+            })
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(
+                this,
+                "Cannot open: ${e.message}",
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+        }
         finish()
     }
 

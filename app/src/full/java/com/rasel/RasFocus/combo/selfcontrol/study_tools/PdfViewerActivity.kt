@@ -162,8 +162,9 @@ class PdfViewerActivity : ComponentActivity() {
                     android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
             } catch (_: SecurityException) {
-                // Source app didn't offer a persistable grant — nothing more we can do,
-                // but this must never crash the activity.
+                // Source app didn't offer a persistable grant — safe to ignore.
+            } catch (_: Exception) {
+                // IllegalArgumentException on some ROMs — never crash the viewer.
             }
         }
 

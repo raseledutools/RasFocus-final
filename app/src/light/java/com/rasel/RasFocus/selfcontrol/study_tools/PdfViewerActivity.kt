@@ -79,6 +79,7 @@ class PdfViewerActivity : ComponentActivity() {
         if (uri != null && uri.scheme == "content") {
             try { contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             catch (_: SecurityException) {}
+            catch (_: Exception) {} // IllegalArgumentException on some ROMs — never crash
         }
         uriState.value = uri
         fileNameState.value = uri?.let { n -> var nm: String? = null

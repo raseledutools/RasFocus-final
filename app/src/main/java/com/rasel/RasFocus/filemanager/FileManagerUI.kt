@@ -1241,7 +1241,34 @@ fun FileListItem(
             modifier = Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)),
             contentAlignment = Alignment.Center
         ) {
-            FileTypeIcon(ext = ext, isDirectory = isDirectory, sizeDp = 40)
+            val isImage = ext in listOf("jpg","jpeg","png","gif","bmp","webp","heic","heif")
+            val isVideo = ext in listOf("mp4","mkv","avi","mov","webm","3gp")
+            if (localFile != null && (isImage || isVideo)) {
+                AsyncImage(
+                    model = coil.request.ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                        .data(localFile)
+                        .crossfade(true)
+                        .size(96) // 48dp * 2x — small thumbnail
+                        .build(),
+                    contentDescription = name,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                    error = androidx.compose.ui.graphics.painter.ColorPainter(
+                        androidx.compose.ui.graphics.Color(0xFFEEEEEE)
+                    )
+                )
+                // Video overlay play icon
+                if (isVideo) {
+                    Icon(
+                        imageVector = Icons.Default.PlayCircleOutline,
+                        contentDescription = null,
+                        tint = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier.size(22.dp).align(Alignment.Center)
+                    )
+                }
+            } else {
+                FileTypeIcon(ext = ext, isDirectory = isDirectory, sizeDp = 40)
+            }
         }
 
         Spacer(modifier = Modifier.width(14.dp))

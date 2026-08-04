@@ -155,6 +155,8 @@ class PdfViewerActivity : ComponentActivity() {
         // but the read grant is gone — contentResolver calls below then throw
         // SecurityException, which shows up as "PDF loads forever, then the app dies"
         // specifically for PDFs opened from another app (Drive/Files/etc).
+        // Only content:// URIs support persistable grants.
+        // file:// URIs throw SecurityException or IllegalArgumentException here — skip them.
         if (uri != null && uri.scheme == "content") {
             try {
                 contentResolver.takePersistableUriPermission(
@@ -162,8 +164,10 @@ class PdfViewerActivity : ComponentActivity() {
                     android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
             } catch (_: SecurityException) {
-                // Source app didn't offer a persistable grant — nothing more we can do,
-                // but this must never crash the activity.
+                // Source app didn't offer a persistable grant — safe to ignore.
+            } catch (_: Exception) {
+                // Catch all other edge-case exceptions (e.g. IllegalArgumentException
+                // from some ROMs) — never crash the viewer over this.
             }
         }
 
