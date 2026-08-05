@@ -389,6 +389,7 @@ fun HomeScreen() {
                                     is NavState.SecureVault -> "Secure Vault"
                                     is NavState.StorageAnalyzer -> "Storage Analyzer"
                                     is NavState.AppManager -> "App Manager"
+                                    is NavState.DriveOfflineSettings -> "Offline Settings"
                                 },
                                 color = Color.White
                             )
@@ -507,6 +508,11 @@ fun HomeScreen() {
                             cloudBackStack.clear()
                             currentNavState = newState
                         }
+                    )
+                    is NavState.Category -> CategoryScreen(
+                        category = state.type,
+                        onBack = { currentNavState = NavState.Home },
+                        onFileClick = { file -> openLocalFile(context, file) { currentNavState = it } }
                     )
                     is NavState.Local -> LocalFileScreen(
                         path = state.path,
