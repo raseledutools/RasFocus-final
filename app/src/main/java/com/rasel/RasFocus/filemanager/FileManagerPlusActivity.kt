@@ -1,4 +1,4 @@
-﻿package com.rasel.RasFocus.filemanager
+package com.rasel.RasFocus.filemanager
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -923,15 +923,6 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                 color = Color(0xFF1D1B20),
                 modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 12.dp)
             )
-        },
-                    onLongClick = {
-                        // Long press → always show picker to change account
-                        driveAccounts = CloudAccountManager.getAccounts(context)
-                        if (driveAccounts.isNotEmpty()) showDrivePickerSheet = true
-                        else onNavigate(NavState.CloudAccounts)
-                    }
-                )
-            }
         }
 
         val categoryItems = listOf(
