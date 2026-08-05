@@ -102,7 +102,6 @@ fun TextEditorScreen(path: String, onBack: () -> Unit) {
                         .fillMaxSize()
                         .padding(16.dp),
                     textStyle = androidx.compose.ui.text.TextStyle(
-                        fontSize = 16.sp,
                         fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                         color = MaterialTheme.colorScheme.onBackground
                     ),

@@ -1284,10 +1284,10 @@ fun FileListItem(
                 LaunchedEffect(localFile) {
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                         val pm = context.packageManager
-                        val pi = pm.getPackageArchiveInfo(localFile.absolutePath, 0)
+                        val pi = pm.getPackageArchiveInfo(localFile!!.absolutePath, 0)
                         pi?.applicationInfo?.let {
-                            it.sourceDir = localFile.absolutePath
-                            it.publicSourceDir = localFile.absolutePath
+                            it.sourceDir = localFile!!.absolutePath
+                            it.publicSourceDir = localFile!!.absolutePath
                             apkIcon = it.loadIcon(pm)
                         }
                     }
