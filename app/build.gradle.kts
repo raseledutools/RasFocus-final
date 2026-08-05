@@ -206,7 +206,13 @@ android {
 }
 
 dependencies {
-    implementation("com.hierynomus:smbj:0.13.0")
+    implementation("com.hierynomus:smbj:0.13.0") {
+        // smbj pulls bcprov-jdk15to18 transitively, but google-api-client-android
+        // also pulls bcprov-jdk18on — two overlapping BouncyCastle JARs cause
+        // hundreds of duplicate class errors at :checkFullReleaseDuplicateClasses.
+        // bcprov-jdk18on is a superset of jdk15to18, so excluding the older one is safe.
+        exclude(group = "org.bouncycastle", module = "bcprov-jdk15to18")
+    }
     // ── Exclude old Support Library — conflicts with AndroidX (duplicate class error)
     // com.android.support:support-media-compat:26.1.0 vs androidx.media:media:1.7.0
     // com.android.support:support-compat:26.1.0 vs androidx.core:core:1.13.1
