@@ -196,6 +196,7 @@ fun FtpFileScreen(
                         return@withContext
                     }
                     ftpClient.enterLocalPassiveMode()
+                    ftpClient.setFileType(org.apache.commons.net.ftp.FTP.BINARY_FILE_TYPE)
                 }
                 ftpClient.changeWorkingDirectory(initialPath)
                 val list = ftpClient.listFiles()
@@ -264,7 +265,30 @@ fun FtpFileScreen(
                                     val nextPath = if (initialPath.endsWith("/")) initialPath + file.name else "$initialPath/${file.name}"
                                     onNavigate(NavState.Remote(server.id, nextPath))
                                 } else {
-                                    android.widget.Toast.makeText(context, "Downloading remote files is coming soon", android.widget.Toast.LENGTH_SHORT).show()
+                                    val nextPath = if (initialPath.endsWith("/")) initialPath + file.name else "$initialPath/${file.name}"
+                                    android.widget.Toast.makeText(context, "Downloading ${file.name}...", android.widget.Toast.LENGTH_SHORT).show()
+                                    scope.launch(Dispatchers.IO) {
+                                        try {
+                                            val downloadsDir = java.io.File(LocalFileManager.mainStoragePath, "Download")
+                                            if (!downloadsDir.exists()) downloadsDir.mkdirs()
+                                            val localFile = java.io.File(downloadsDir, file.name)
+                                            val outputStream = java.io.FileOutputStream(localFile)
+                                            val downloadSuccess = ftpClient.retrieveFile(nextPath, outputStream)
+                                            outputStream.close()
+                                            withContext(Dispatchers.Main) {
+                                                if (downloadSuccess) {
+                                                    android.widget.Toast.makeText(context, "Downloaded to Downloads folder", android.widget.Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    android.widget.Toast.makeText(context, "Failed to download file", android.widget.Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                            withContext(Dispatchers.Main) {
+                                                android.widget.Toast.makeText(context, "Error: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         )

@@ -47,6 +47,7 @@ sealed class NavState {
     data class Category(val type: String) : NavState()
     object CloudAccounts : NavState()
     data class Cloud(val accountName: String, val folderId: String, val pathName: String) : NavState()
+    object RemoteConnections : NavState()
     data class Remote(val serverId: String, val path: String) : NavState()
     object RecycleBin : NavState()
     object SecureVault : NavState()
@@ -352,7 +353,8 @@ fun HomeScreen() {
                     currentNavState != NavState.StorageAnalyzer &&
                     currentNavState != NavState.AppManager &&
                     currentNavState != NavState.DriveOfflineSettings &&
-                    currentNavState != NavState.FtpServer
+                    currentNavState != NavState.FtpServer &&
+                    currentNavState != NavState.RemoteConnections
                 if (needsGlobalHeader) {
                     if (showSearchBar) {
                     // Ã¢â€ â‚¬Ã¢â€ â‚¬ Search bar Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬
@@ -598,6 +600,10 @@ fun HomeScreen() {
                         onSetClipboard = { clipboard = it },
                         sortMode = sortMode,
                         searchQuery = if (showSearchBar) searchQuery else ""
+                    )
+                    is NavState.RemoteConnections -> RemoteConnectionsScreen(
+                        onNavigate = { newState -> currentNavState = newState },
+                        onBack = { currentNavState = NavState.Home }
                     )
                     is NavState.Remote -> RemoteFileScreen(
                         serverId = state.serverId,
@@ -854,8 +860,7 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
             }
             "Cloud"     -> onNavigate(NavState.CloudAccounts)
             "Remote"    -> {
-                onNavigate(NavState.CloudAccounts)
-                android.widget.Toast.makeText(context, "Use Cloud to access remote files", android.widget.Toast.LENGTH_SHORT).show()
+                onNavigate(NavState.RemoteConnections)
             }
             "Access from..." -> {
                 onNavigate(NavState.FtpServer)
