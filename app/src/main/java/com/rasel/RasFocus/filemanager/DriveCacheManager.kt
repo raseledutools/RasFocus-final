@@ -85,8 +85,20 @@ object DriveCacheManager {
     ) {
         val key     = "filelist_${accountName}_$folderId"
         val timeKey = "cachetime_${accountName}_$folderId"
+        
+        val metadataList = files.map { file ->
+            CachedFileMetadata(
+                id = file.id ?: "",
+                name = file.name ?: "",
+                size = file.getSize(),
+                isDirectory = file.mimeType == "application/vnd.google-apps.folder",
+                modifiedTime = file.modifiedTime?.value ?: 0L,
+                parentId = folderId
+            )
+        }
+        
         prefs.edit()
-            .putString(key, gson.toJson(files))
+            .putString(key, gson.toJson(metadataList))
             .putLong(timeKey, System.currentTimeMillis())
             .apply()
     }
@@ -98,8 +110,19 @@ object DriveCacheManager {
     ): List<com.google.api.services.drive.model.File>? {
         val json = prefs.getString("filelist_${accountName}_$folderId", null) ?: return null
         return try {
-            val type = object : TypeToken<List<com.google.api.services.drive.model.File>>() {}.type
-            gson.fromJson(json, type)
+            val type = object : TypeToken<List<CachedFileMetadata>>() {}.type
+            val metadataList: List<CachedFileMetadata> = gson.fromJson(json, type)
+            metadataList.map { meta ->
+                com.google.api.services.drive.model.File().apply {
+                    id = meta.id ?: ""
+                    name = meta.name ?: "Unknown"
+                    size = meta.size ?: 0L
+                    mimeType = if (meta.isDirectory == true) "application/vnd.google-apps.folder" else "*/*"
+                    if (meta.modifiedTime != null && meta.modifiedTime > 0) {
+                        modifiedTime = com.google.api.client.util.DateTime(meta.modifiedTime)
+                    }
+                }
+            }
         } catch (_: Exception) { null }
     }
 

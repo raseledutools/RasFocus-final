@@ -22,6 +22,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -74,6 +75,7 @@ fun PdfViewerScreen(
     val file = File(pdfPath)
     var pdfRenderer by remember { mutableStateOf<PdfRenderer?>(null) }
     var fileDescriptor by remember { mutableStateOf<ParcelFileDescriptor?>(null) }
+    val pdfMutex = remember { kotlinx.coroutines.sync.Mutex() }
     
     DisposableEffect(pdfPath) {
         try {
@@ -111,7 +113,7 @@ fun PdfViewerScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 items(pdfRenderer!!.pageCount) { index ->
-                    PdfPage(pdfRenderer = pdfRenderer!!, pageIndex = index)
+                    PdfPage(pdfRenderer = pdfRenderer!!, pageIndex = index, mutex = pdfMutex)
                     Spacer(modifier = Modifier.height(8.dp))
                 }
             }
@@ -124,22 +126,24 @@ fun PdfViewerScreen(
 }
 
 @Composable
-fun PdfPage(pdfRenderer: PdfRenderer, pageIndex: Int) {
+fun PdfPage(pdfRenderer: PdfRenderer, pageIndex: Int, mutex: kotlinx.coroutines.sync.Mutex) {
     var bitmap by remember { mutableStateOf<Bitmap?>(null) }
 
     LaunchedEffect(pageIndex) {
         withContext(Dispatchers.IO) {
             try {
-                val page = pdfRenderer.openPage(pageIndex)
-                // Render at a higher resolution for clarity
-                val renderWidth = page.width * 2
-                val renderHeight = page.height * 2
-                val newBitmap = Bitmap.createBitmap(renderWidth, renderHeight, Bitmap.Config.ARGB_8888)
-                // Fill with white background (PDFs are often transparent)
-                newBitmap.eraseColor(android.graphics.Color.WHITE)
-                page.render(newBitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                page.close()
-                bitmap = newBitmap
+                mutex.withLock {
+                    val page = pdfRenderer.openPage(pageIndex)
+                    // Render at a higher resolution for clarity
+                    val renderWidth = page.width * 2
+                    val renderHeight = page.height * 2
+                    val newBitmap = Bitmap.createBitmap(renderWidth, renderHeight, Bitmap.Config.ARGB_8888)
+                    // Fill with white background (PDFs are often transparent)
+                    newBitmap.eraseColor(android.graphics.Color.WHITE)
+                    page.render(newBitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                    page.close()
+                    bitmap = newBitmap
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
