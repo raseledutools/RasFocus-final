@@ -84,8 +84,10 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
         .getLastSignedInAccount(context)?.email ?: ""
 
     // ── State ──────────────────────────────────────────────────────────────────
-    var navStack    by remember { mutableStateOf(listOf(Pair("root", "My Drive"))) }
-    val currentFolder = navStack.last()
+    var navStack       by remember { mutableStateOf(listOf(Pair("root", "My Drive"))) }
+    val currentFolder  = navStack.last()
+    // Flag: BackHandler already pre-loaded cache — LaunchedEffect should skip reload
+    var skipNextLoad   by remember { mutableStateOf(false) }
 
     var files       by remember { mutableStateOf<List<File>>(emptyList()) }
     var isLoading   by remember { mutableStateOf(true) }
@@ -197,6 +199,25 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
     // ── Initial load ───────────────────────────────────────────────────────────
     LaunchedEffect(currentFolder.first) {
         DriveCacheManager.init(context)
+        if (skipNextLoad) {
+            // BackHandler already loaded cache instantly — just refresh in background silently
+            skipNextLoad = false
+            if (DriveCacheManager.isOnline(context)) {
+                val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    DriveFileManager.listFiles(context, accountName, currentFolder.first)
+                }
+                if (result != null) {
+                    val sorted = result.sortedWith(
+                        compareBy({ it.mimeType != "application/vnd.google-apps.folder" },
+                                  { it.name?.lowercase() ?: "" })
+                    )
+                    DriveCacheManager.saveFileList(context, accountName, currentFolder.first, sorted)
+                    files = sorted
+                    errorMsg = null
+                }
+            }
+            return@LaunchedEffect
+        }
         loadFolder(context, accountName, currentFolder.first,
             onFiles = { files = it; errorMsg = null },
             onError = { msg, hasIntent -> errorMsg = msg; showFixDrive = hasIntent },
@@ -211,6 +232,8 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
             if (cached != null) {
                 files = cached
                 isLoading = false
+                errorMsg = null
+                skipNextLoad = true  // tell LaunchedEffect to skip full reload
             }
             navStack = navStack.dropLast(1)
         } else {
@@ -387,6 +410,8 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
                             if (cached != null) {
                                 files = cached
                                 isLoading = false
+                                errorMsg = null
+                                skipNextLoad = true  // tell LaunchedEffect to skip full reload
                             }
                             navStack = navStack.dropLast(1)
                         } else {
