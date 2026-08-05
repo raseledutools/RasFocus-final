@@ -17,6 +17,12 @@ data class SmbFile(
 
 object SmbFileManager {
 
+    /**
+     * Lists shares on the SMB server by probing common share names.
+     * smbj 0.13.0 does not expose a shareLocator/NetShareEnum API directly,
+     * so we attempt to connect to well-known share names and return the ones
+     * that succeed. Administrative shares (ending in $) are skipped.
+     */
     suspend fun listShares(server: RemoteServer): List<String> = withContext(Dispatchers.IO) {
         val client = SMBClient()
         var connection: Connection? = null
@@ -28,8 +34,20 @@ object SmbFileManager {
                 AuthenticationContext.anonymous()
             }
             val session = connection.authenticate(auth)
-            val shares = client.shareLocator.getShares(session, server.host)
-            shares.map { it.smbNetworkResource.name }.filter { !it.endsWith("$") } // hide administrative shares
+            // Probe common share names; return those we can successfully connect to
+            val candidates = listOf("shared", "public", "data", "files", "media", "home",
+                "documents", "downloads", "backup", "nas", "storage", "share", "common")
+            val found = mutableListOf<String>()
+            for (name in candidates) {
+                try {
+                    val share = session.connectShare(name) as? DiskShare
+                    if (share != null) {
+                        found.add(name)
+                        try { share.close() } catch (_: Exception) {}
+                    }
+                } catch (_: Exception) { /* share doesn't exist or no access */ }
+            }
+            found
         } catch (e: Exception) {
             e.printStackTrace()
             emptyList()

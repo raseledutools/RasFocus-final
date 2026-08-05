@@ -1,83 +1,8 @@
 ╔══════════════════════════════════════════╗
-║      LAST BUILD: ERROR ❌                ║
-║   Push করার আগে এই error fix করুন।     ║
+║        LAST BUILD: SUCCESS ✅            ║
 ╚══════════════════════════════════════════╝
 
-=== KOTLIN ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:209:34: Unexpected type specification
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:209:39: Expecting ')'
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:209:40: Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:210:34: Unexpected type specification
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:210:39: Expecting ')'
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:210:40: Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:209:24: Unresolved reference: hierynomus
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:210:24: Unresolved reference: hierynomus
+Build passed at: 2026-08-05 06:39:08 UTC
+Run: #663  |  Commit: f32064f1cc82f1c88fc14a2b8ea83ee6a9484c3e
 
-=== UNRESOLVED / TYPE ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:209:24: Unresolved reference: hierynomus
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:210:24: Unresolved reference: hierynomus
-                                   ^ Unresolved reference: hierynomus
-                                   ^ Unresolved reference: hierynomus
-
-=== BUILD FAILURE ===
-* What went wrong:
-BUILD FAILED in 16s
-
-=== LAST 60 LINES ===
-Starting a Gradle Daemon (subsequent builds will be faster)
-Calculating task graph as no cached configuration is available for tasks: assembleFullRelease
-
-> Configure project :app
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:209:34: Unexpected type specification
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:209:39: Expecting ')'
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:209:40: Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:210:34: Unexpected type specification
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:210:39: Expecting ')'
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:210:40: Unexpected tokens (use ';' to separate expressions on the same line)
-w: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:119:41: 'getter for buildDir: File!' is deprecated. Deprecated in Java
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:209:24: Unresolved reference: hierynomus
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:210:24: Unresolved reference: hierynomus
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785905442015.json
-
-FAILURE: Build failed with an exception.
-
-* Where:
-Build file '/home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts' line: 209
-
-* What went wrong:
-Script compilation errors:
-
-  Line 209:     implementation(com.hierynomus:smbj:0.13.0)
-                                             ^ Unexpected type specification
-
-  Line 209:     implementation(com.hierynomus:smbj:0.13.0)
-                                                  ^ Expecting ')'
-
-  Line 209:     implementation(com.hierynomus:smbj:0.13.0)
-                                                   ^ Unexpected tokens (use ';' to separate expressions on the same line)
-
-  Line 209:     implementation(com.hierynomus:smbj:0.13.0)
-                                   ^ Unresolved reference: hierynomus
-
-  Line 210:     implementation(com.hierynomus:smbj:0.13.0)
-                                             ^ Unexpected type specification
-
-  Line 210:     implementation(com.hierynomus:smbj:0.13.0)
-                                                  ^ Expecting ')'
-
-  Line 210:     implementation(com.hierynomus:smbj:0.13.0)
-                                                   ^ Unexpected tokens (use ';' to separate expressions on the same line)
-
-  Line 210:     implementation(com.hierynomus:smbj:0.13.0)
-                                   ^ Unresolved reference: hierynomus
-
-8 errors
-
-* Try:
-> Run with --stacktrace option to get the stack trace.
-> Run with --info or --debug option to get more log output.
-> Run with --scan to get full insights.
-> Get more help at https://help.gradle.org.
-
-BUILD FAILED in 16s
-Configuration cache entry stored.
+No errors. Safe to push.

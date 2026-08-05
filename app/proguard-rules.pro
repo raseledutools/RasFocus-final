@@ -103,3 +103,43 @@
 -keep class com.google.api.** { *; }
 -keep class com.google.api.services.drive.** { *; }
 -dontwarn com.google.api.**
+
+# -- smbj (SMB/CIFS client) ----------------------------------------------------
+# smbj uses SPNEGO/Kerberos (org.ietf.jgss) for optional auth — not available
+# on Android. We only use NTLM/anonymous auth, so these are safe to ignore.
+-keep class com.hierynomus.smbj.** { *; }
+-keep class com.hierynomus.msfscc.** { *; }
+-keep class com.hierynomus.msdtyp.** { *; }
+-keep class com.hierynomus.mssmb2.** { *; }
+-keep class com.hierynomus.protocol.** { *; }
+-dontwarn com.hierynomus.**
+-dontwarn org.ietf.jgss.**
+
+# -- net.engio mbassy (event bus used by smbj) ---------------------------------
+# The EL (Expression Language) filter in mbassy references javax.el which is
+# not present on Android. We never use annotation-based EL filtering.
+-keep class net.engio.mbassy.** { *; }
+-dontwarn net.engio.mbassy.**
+-dontwarn javax.el.**
+
+# -- Apache FTPServer & MINA (FTP server) -------------------------------------
+-keep class org.apache.ftpserver.** { *; }
+-keep class org.apache.mina.** { *; }
+-dontwarn org.apache.ftpserver.**
+-dontwarn org.apache.mina.**
+-dontwarn org.apache.commons.net.**
+
+# -- SLF4J (logging facade used by FTPServer and smbj) ------------------------
+-keep class org.slf4j.** { *; }
+-dontwarn org.slf4j.**
+
+# -- BouncyCastle (pulled by smbj / google-api-client) ------------------------
+-keep class org.bouncycastle.** { *; }
+-dontwarn org.bouncycastle.**
+
+# -- pdfiumandroid (native PDF renderer) --------------------------------------
+-keep class io.legere.pdfiumandroid.** { *; }
+-dontwarn io.legere.pdfiumandroid.**
+
+# -- Google Play Services location (internal GMS class warning) ---------------
+-dontwarn com.google.android.gms.internal.location.**
