@@ -412,6 +412,7 @@ fun HomeScreen() {
                                     is NavState.RemoteConnections -> "Remote Connections"
                                     is NavState.TextEditor -> state.path.substringAfterLast("/")
                                     is NavState.Saf -> state.uri.substringAfterLast("%2F").substringAfterLast("/")
+                                    else -> ""
                                 },
                                 color = Color(0xFF1D1B20).copy(alpha = 0.9f), fontWeight = FontWeight.Bold, fontSize = 22.sp
                             )
