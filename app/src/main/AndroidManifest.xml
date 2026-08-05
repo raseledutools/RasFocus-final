@@ -22,6 +22,7 @@
 <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
 <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 <!-- FIX: required on Android 12+ (API 31) for AlarmManager.setExact/setExactAndAllowWhileIdle
      used by the Pomodoro alarm scheduler in ButtonPhone.kt — without this, scheduling threw
      SecurityException and crashed the app on every Android 12-16 device. -->
@@ -854,6 +855,10 @@
             android:name=".filemanager.FileManagerPlusActivity"
             android:exported="false"
             android:theme="@style/Theme.RasFocus" />
+        <service
+            android:name=".filemanager.FileOperationService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 
 </manifest>

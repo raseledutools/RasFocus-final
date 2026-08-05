@@ -54,6 +54,7 @@ sealed class NavState {
     object AppManager : NavState()
     object DriveOfflineSettings : NavState()
     data class TextEditor(val path: String) : NavState()
+    data class Saf(val uri: String) : NavState()
 }
 
 // ── Shared utility functions ───────────────────────────────────────────────────
@@ -204,6 +205,7 @@ class FileManagerPlusActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        SafFileManager.init(this)
         requestStoragePermissionIfNeeded()
         setContent {
             MaterialTheme {
@@ -613,6 +615,11 @@ fun HomeScreen() {
                                 currentNavState = NavState.Home 
                             }
                         }
+                    )
+                    is NavState.Saf -> SafFileScreen(
+                        uriString = state.uri,
+                        onNavigate = { newState -> currentNavState = newState },
+                        onBack = { currentNavState = NavState.Home }
                     )
                 }
             }
@@ -1288,10 +1295,26 @@ fun CategoryCard(
 }
 
 // GridItemView legacy â€” replaced by CategoryCard and StorageTopCard
+// GridItemView legacy — replaced by CategoryCard and StorageTopCard
 
 @Composable
 fun DrawerContent(onNavigate: (NavState) -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val safLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            SafFileManager.addUri(context, uri)
+        }
+    }
+    
+    // We want the UI to recompose when SafFileManager.grantedUris changes.
+    // A simple way is to use a state that tracks its size.
+    var safCount by remember { mutableStateOf(SafFileManager.grantedUris.size) }
+    LaunchedEffect(SafFileManager.grantedUris.size) {
+        safCount = SafFileManager.grantedUris.size
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier

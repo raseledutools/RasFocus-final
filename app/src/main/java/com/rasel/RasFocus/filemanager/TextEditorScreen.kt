@@ -9,6 +9,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -101,7 +102,7 @@ fun TextEditorScreen(path: String, onBack: () -> Unit) {
                         .fillMaxSize()
                         .padding(16.dp),
                     textStyle = androidx.compose.ui.text.TextStyle(
-                        fontSize = androidx.compose.ui.unit.sp.TextUnit(16f, androidx.compose.ui.unit.TextUnitType.Sp),
+                        fontSize = 16.sp,
                         fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                         color = MaterialTheme.colorScheme.onBackground
                     ),

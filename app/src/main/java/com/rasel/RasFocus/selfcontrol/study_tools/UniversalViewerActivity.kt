@@ -52,7 +52,7 @@ class UniversalViewerActivity : ComponentActivity() {
                 contentResolver.takePersistableUriPermission(
                     uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
-            } catch (_: SecurityException) {}
+            } catch (_: Exception) {}
         }
 
         val fileName = getFileName(uri)
@@ -124,13 +124,8 @@ class UniversalViewerActivity : ComponentActivity() {
                             Button(onClick = { finish() }) { Text("← ফিরে যান") }
                         }
                     } else {
-                        // Brief loading indicator while we dispatch to the right viewer
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator(color = ComposeColor(0xFF6C63FF))
-                            Spacer(Modifier.height(12.dp))
-                            Text("ফাইল খুলছি…",
-                                color = ComposeColor(0xFFF5F5F5), fontSize = 14.sp)
-                        }
+                        // Removed loading indicator to reduce visual transitions
+                        Box(Modifier.fillMaxSize())
                     }
                 }
             }
@@ -186,11 +181,15 @@ class UniversalViewerActivity : ComponentActivity() {
         if (uri == null) return ""
         var name: String? = null
         if (uri.scheme == "content") {
-            contentResolver.query(uri, null, null, null, null)?.use { c ->
-                if (c.moveToFirst()) {
-                    val idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                    if (idx >= 0) name = c.getString(idx)
+            try {
+                contentResolver.query(uri, null, null, null, null)?.use { c ->
+                    if (c.moveToFirst()) {
+                        val idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                        if (idx >= 0) name = c.getString(idx)
+                    }
                 }
+            } catch (e: Exception) {
+                // Ignore query exceptions
             }
         }
         return name ?: uri.lastPathSegment?.substringAfterLast('/') ?: ""

@@ -178,11 +178,15 @@ class PdfViewerActivity : ComponentActivity() {
     private fun getFileNameFromUri(uri: Uri): String {
         var name: String? = null
         if (uri.scheme == "content") {
-            contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                    if (idx >= 0) name = cursor.getString(idx)
+            try {
+                contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                        if (idx >= 0) name = cursor.getString(idx)
+                    }
                 }
+            } catch (e: Exception) {
+                // Ignore query exceptions
             }
         }
         return name ?: uri.lastPathSegment?.substringAfterLast('/') ?: "PDF"
@@ -335,10 +339,12 @@ fun NativePdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
                         }
                     } else null
                 } ?: run {
-                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                        ?: throw IllegalStateException("File খুলতে পারিনি")
                     val tmp = java.io.File(context.cacheDir, "pdf_fb_${System.currentTimeMillis()}.pdf")
-                    tmp.writeBytes(bytes)
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        tmp.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    } ?: throw IllegalStateException("File খুলতে পারিনি")
                     val pfd2 = android.os.ParcelFileDescriptor.open(
                         tmp, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
                     try { pdfCore.newDocument(pfd2) }
@@ -506,7 +512,7 @@ fun NativePdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
     Box(Modifier.fillMaxSize().background(Color(0xFF111111))) {
 
         when {
-            isLoading -> LoadingView(fileName)
+            // Loading screen removed to improve perceived speed
             errorMsg.isNotEmpty() -> ErrorView(errorMsg, onClose)
             else -> {
                 // ── Page list, zoomed as ONE unit ───────────────────────────────

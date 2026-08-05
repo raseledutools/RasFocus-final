@@ -82,12 +82,24 @@ class PdfViewerActivity : ComponentActivity() {
             catch (_: Exception) {} // IllegalArgumentException on some ROMs — never crash
         }
         uriState.value = uri
-        fileNameState.value = uri?.let { n -> var nm: String? = null
-            if (n.scheme == "content") contentResolver.query(n, null, null, null, null)?.use { c ->
-                if (c.moveToFirst()) { val i = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME); if (i >= 0) nm = c.getString(i) }
+        fileNameState.value = uri?.let { getFileNameFromUri(it) } ?: "PDF"
+    }
+
+    private fun getFileNameFromUri(uri: Uri): String {
+        var name: String? = null
+        if (uri.scheme == "content") {
+            try {
+                contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                        if (idx >= 0) name = cursor.getString(idx)
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore query exceptions
             }
-            nm ?: n.lastPathSegment?.substringAfterLast('/') ?: "PDF"
-        } ?: "PDF"
+        }
+        return name ?: uri.lastPathSegment?.substringAfterLast('/') ?: "PDF"
     }
 }
 
@@ -179,11 +191,8 @@ fun LightPdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
 
     Box(Modifier.fillMaxSize().background(VA_BG).systemBarsPadding()) {
         when {
-            loading -> Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator(color = ComposeColor(0xFF6C63FF))
-                Spacer(Modifier.height(12.dp))
-                Text("PDF লোড হচ্ছে...", color = VA_WHITE, fontSize = 14.sp)
-            }
+            // Removed loading indicator to reduce visual transitions
+            loading -> Box(Modifier.fillMaxSize())
             errorMsg.isNotEmpty() -> Text(errorMsg, color = ComposeColor.Red, modifier = Modifier.align(Alignment.Center))
             total == 0 -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = ComposeColor(0xFF6C63FF))
             else -> {

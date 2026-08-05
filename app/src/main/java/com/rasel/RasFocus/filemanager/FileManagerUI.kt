@@ -261,6 +261,7 @@ fun LocalFileScreen(
     var hasPermission by remember { mutableStateOf(LocalFileManager.hasStorageAccess(context)) }
     var isGridView by remember { mutableStateOf(false) }
     var localSearchQuery by remember { mutableStateOf(searchQuery) }
+    val operations by FileOperationManager.operations.collectAsState()
 
     // Dialog states
     var showRenameDialog by remember { mutableStateOf(false) }
@@ -607,35 +608,30 @@ fun LocalFileScreen(
                             isCut = clipboard.isCut,
                             modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 16.dp),
                             onClick = {
-                                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                    var success = true
-                                    if (clipboard.sourceEnv == "Local") {
-                                        for (item in clipboard.items) {
-                                            val src = java.io.File(item)
-                                            val dst = java.io.File(path, src.name)
-                                            try {
-                                                src.copyRecursively(dst, overwrite = true)
-                                                if (clipboard.isCut) src.deleteRecursively()
-                                            } catch (e: Exception) { success = false }
-                                        }
-                                    } else if (clipboard.sourceEnv == "Cloud") {
-                                        val acc = clipboard.accountName ?: ""
-                                        for (i in clipboard.items.indices) {
-                                            val id = clipboard.items[i]
-                                            val name = clipboard.itemNames.getOrNull(i) ?: "unknown_file"
-                                            val result = DriveFileManager.downloadFolder(context, acc, id, name, java.io.File(path))
-                                            if (!result) {
-                                                val fileResult = DriveFileManager.downloadFile(context, acc, id, name, java.io.File(path))
-                                                if (fileResult == null) success = false
-                                            }
-                                        }
-                                    }
-                                    withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                        Toast.makeText(context, if (success) "Pasted successfully" else "Some items failed to paste", Toast.LENGTH_SHORT).show()
-                                        onSetClipboard(null)
-                                        rawFiles = LocalFileManager.listFiles(path)
-                                    }
+                                val opId = java.util.UUID.randomUUID().toString()
+                                val op = FileOperation(
+                                    id = opId,
+                                    type = if (clipboard.isCut) OperationType.MOVE else OperationType.COPY,
+                                    sourceCount = clipboard.items.size,
+                                    itemsProcessed = 0
+                                )
+                                FileOperationManager.addOperation(op)
+                                val intent = android.content.Intent(context, FileOperationService::class.java).apply {
+                                    action = "ACTION_START"
+                                    putExtra("OP_ID", opId)
+                                    putStringArrayListExtra("SOURCE_PATHS", ArrayList(clipboard.items))
+                                    putExtra("DEST_PATH", path)
+                                    putExtra("IS_CUT", clipboard.isCut)
+                                    putExtra("SOURCE_ENV", clipboard.sourceEnv)
                                 }
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                    context.startForegroundService(intent)
+                                } else {
+                                    context.startService(intent)
+                                }
+                                onSetClipboard(null)
+                                // We don't refresh rawFiles immediately because the operation runs in background.
+                                // We might need a way to refresh it later or listen for completion.
                             }
                         )
                     }
@@ -725,6 +721,8 @@ fun LocalFileScreen(
                 }
             )
         }
+        
+        ActiveOperationsBar(operations = operations)
     }
 }
 
@@ -1284,7 +1282,7 @@ fun FileListItem(
 
             if (localFile != null && isApk) {
                 LaunchedEffect(localFile) {
-                    kotlinx.coroutines.Dispatchers.IO.invoke {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                         val pm = context.packageManager
                         val pi = pm.getPackageArchiveInfo(localFile.absolutePath, 0)
                         pi?.applicationInfo?.let {
@@ -1647,7 +1645,33 @@ fun FileTypeIcon(ext: String, isDirectory: Boolean, sizeDp: Int = 40) {
 
 
 
-
+@Composable
+fun ActiveOperationsBar(operations: List<FileOperation>) {
+    if (operations.isEmpty()) return
+    val op = operations.firstOrNull { !it.isComplete && !it.isCancelled } ?: return
+    val pct = (op.progress * 100).toInt()
+    val text = if (op.type == OperationType.COPY) "Copying ${op.itemsProcessed}/${op.sourceCount} items... $pct%" else "Moving ${op.itemsProcessed}/${op.sourceCount} items... $pct%"
+    Row(
+        modifier = Modifier.fillMaxWidth().background(Color(0xFF333333)).padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text, color = Color.White, fontSize = 14.sp)
+            Spacer(Modifier.height(4.dp))
+            androidx.compose.material3.LinearProgressIndicator(
+                progress = { op.progress },
+                modifier = Modifier.fillMaxWidth().height(4.dp),
+                color = Color(0xFF00B0FF),
+                trackColor = Color.DarkGray
+            )
+            Text(op.currentFileName, color = Color.Gray, fontSize = 12.sp, maxLines = 1)
+        }
+        Spacer(Modifier.width(8.dp))
+        IconButton(onClick = { FileOperationManager.updateOperation(op.id) { it.copy(isCancelled = true) } }) {
+            Icon(Icons.Default.Close, contentDescription = "Cancel", tint = Color.White)
+        }
+    }
+}
 
 
 
