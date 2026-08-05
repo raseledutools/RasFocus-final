@@ -7,6 +7,8 @@ import android.net.NetworkCapabilities
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 data class CachedFileMetadata(
     val id: String,
@@ -20,7 +22,7 @@ data class CachedFileMetadata(
 object DriveCacheManager {
     private const val PREFS_NAME       = "DriveCachePrefs"
     private const val KEY_CACHED_FILES = "cached_files"
-    private const val KEY_PINNED_FILES = "pinned_file_ids"   // NEW: "Make available offline" pins
+    private const val KEY_PINNED_FILES = "pinned_file_ids"
     private const val CACHE_DIR_NAME   = ".drive_cache"
 
     private lateinit var prefs: SharedPreferences
@@ -85,7 +87,7 @@ object DriveCacheManager {
     ) {
         val key     = "filelist_${accountName}_$folderId"
         val timeKey = "cachetime_${accountName}_$folderId"
-        
+
         val metadataList = files.map { file ->
             CachedFileMetadata(
                 id = file.id ?: "",
@@ -96,7 +98,7 @@ object DriveCacheManager {
                 parentId = folderId
             )
         }
-        
+
         prefs.edit()
             .putString(key, gson.toJson(metadataList))
             .putLong(timeKey, System.currentTimeMillis())
@@ -135,11 +137,62 @@ object DriveCacheManager {
     fun hasCachedList(accountName: String, folderId: String): Boolean =
         prefs.contains("filelist_${accountName}_$folderId")
 
-    // ── "Make available offline" PIN system ────────────────────────────────────
-    // pin()   → marks a file/folder to always keep offline (synced by background worker)
-    // unpin() → removes the pin (cache file stays until clearCache)
-    // isPinned() → used by UI to show green ✓ badge
+    // ── Recursive subfolder cache ──────────────────────────────────────────────
+    // Online এ থাকলে background এ root থেকে সব subfolder recursively cache করে।
+    // এতে offline এ গেলেও সব folder/subfolder browse করা যাবে।
+    suspend fun cacheAllSubfoldersRecursively(
+        context: Context,
+        accountName: String,
+        folderId: String,
+        depth: Int = 0,
+        maxDepth: Int = 6              // 6 level deep পর্যন্ত cache করবে
+    ) = withContext(Dispatchers.IO) {
+        if (depth > maxDepth) return@withContext
 
+        try {
+            // এই folder এর listing নেওয়া হয়েছে কিনা, এবং কতক্ষণ আগে?
+            val ageMinutes = cacheAgeMinutes(accountName, folderId)
+            val needsRefresh = ageMinutes == null || ageMinutes > 60  // 1 ঘণ্টার বেশি পুরনো হলে refresh
+
+            val files: List<com.google.api.services.drive.model.File>? = if (needsRefresh) {
+                // Drive থেকে fresh fetch
+                val result = com.rasel.RasFocus.drivebackup.DriveFileManager.listFiles(
+                    context, accountName, folderId
+                )
+                if (result != null) {
+                    saveFileList(context, accountName, folderId, result)
+                }
+                result
+            } else {
+                // Already fresh — load from cache
+                loadFileList(context, accountName, folderId)
+            }
+
+            // Subfolders গুলো recursively cache করো
+            files?.forEach { file ->
+                if (file.mimeType == "application/vnd.google-apps.folder") {
+                    val childId = file.id ?: return@forEach
+                    cacheAllSubfoldersRecursively(
+                        context, accountName, childId, depth + 1, maxDepth
+                    )
+                }
+            }
+        } catch (_: Exception) {
+            // Silent fail — background job, user কে disturb করবে না
+        }
+    }
+
+    // ── একটা নির্দিষ্ট folder এর সব subfolder এর listing cache আছে কিনা check ──
+    fun hasDeepCache(accountName: String, folderId: String): Boolean {
+        // root এবং অন্তত কিছু subfolder cached থাকলে "deep cache available" ধরবো
+        val rootCached = hasCachedList(accountName, folderId)
+        if (!rootCached) return false
+        // কমপক্ষে ১টা subfolder cached আছে কিনা দেখো
+        val prefix = "filelist_${accountName}_"
+        return prefs.all.keys.count { it.startsWith(prefix) } > 1
+    }
+
+    // ── "Make available offline" PIN system ────────────────────────────────────
     fun pin(fileId: String) {
         val set = getPinnedSet().toMutableSet()
         set.add(fileId)
