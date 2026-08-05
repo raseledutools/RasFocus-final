@@ -51,6 +51,7 @@ sealed class NavState {
     object SecureVault : NavState()
     object StorageAnalyzer : NavState()
     object AppManager : NavState()
+    object DriveOfflineSettings : NavState()
 }
 
 // ── Shared utility functions ───────────────────────────────────────────────────
@@ -262,7 +263,8 @@ fun HomeScreen() {
             currentNavState == NavState.RecycleBin ||
             currentNavState == NavState.SecureVault ||
             currentNavState == NavState.StorageAnalyzer ||
-            currentNavState == NavState.AppManager -> {
+            currentNavState == NavState.AppManager ||
+            currentNavState == NavState.DriveOfflineSettings -> {
                 currentNavState = NavState.Home
             }
             currentNavState is NavState.Cloud -> {
@@ -331,7 +333,8 @@ fun HomeScreen() {
                     currentNavState != NavState.RecycleBin &&
                     currentNavState != NavState.SecureVault &&
                     currentNavState != NavState.StorageAnalyzer &&
-                    currentNavState != NavState.AppManager
+                    currentNavState != NavState.AppManager &&
+                    currentNavState != NavState.DriveOfflineSettings
                 if (needsGlobalHeader) {
                     if (showSearchBar) {
                     // â”€â”€ Search bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -568,6 +571,9 @@ fun HomeScreen() {
                         onBack = { currentNavState = NavState.Home }
                     )
                     is NavState.AppManager -> AppManagerScreen(
+                        onBack = { currentNavState = NavState.Home }
+                    )
+                    is NavState.DriveOfflineSettings -> DriveOfflineSettingsScreen(
                         onBack = { currentNavState = NavState.Home }
                     )
                 }
@@ -1317,6 +1323,7 @@ fun DrawerContent(onNavigate: (NavState) -> Unit) {
             Divider()
 
             DrawerMenuItem(Icons.Default.CloudQueue, "Google Drive", Color.Blue, isPinned = true, onClick = { onNavigate(NavState.CloudAccounts) })
+            DrawerMenuItem(Icons.Default.CloudSync, "Manage Offline Files", Color(0xFF1A73E8), onClick = { onNavigate(NavState.DriveOfflineSettings) })
             DrawerMenuItem(Icons.Default.FolderOpen, "Main storage /Download", Color.Gray, isPinned = true, onClick = { onNavigate(NavState.Local(LocalFileManager.mainStoragePath + "/Download")) })
 
             Divider()
