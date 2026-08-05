@@ -21,7 +21,7 @@ e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:2
 
 === BUILD FAILURE ===
 * What went wrong:
-BUILD FAILED in 16s
+BUILD FAILED in 17s
 
 === LAST 60 LINES ===
 Starting a Gradle Daemon (subsequent builds will be faster)
@@ -37,7 +37,7 @@ e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:2
 w: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:119:41: 'getter for buildDir: File!' is deprecated. Deprecated in Java
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:209:24: Unresolved reference: hierynomus
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:210:24: Unresolved reference: hierynomus
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785905442015.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785906218974.json
 
 FAILURE: Build failed with an exception.
 
@@ -79,5 +79,5 @@ Script compilation errors:
 > Run with --scan to get full insights.
 > Get more help at https://help.gradle.org.
 
-BUILD FAILED in 16s
+BUILD FAILED in 17s
 Configuration cache entry stored.
