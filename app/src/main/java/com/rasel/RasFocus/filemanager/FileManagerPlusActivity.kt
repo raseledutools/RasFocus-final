@@ -53,6 +53,7 @@ sealed class NavState {
     object StorageAnalyzer : NavState()
     object AppManager : NavState()
     object DriveOfflineSettings : NavState()
+    data class TextEditor(val path: String) : NavState()
 }
 
 // ── Shared utility functions ───────────────────────────────────────────────────
@@ -97,6 +98,11 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
         }
 
         if (internalMime != null) {
+            if (internalMime == "text/plain" && onNavigate != null) {
+                onNavigate(NavState.TextEditor(file.absolutePath))
+                return
+            }
+
             // Route through UniversalViewerActivity → correct internal viewer
             val pkg = context.packageName.replace(".combo", "")
             val cls = try {
@@ -266,6 +272,7 @@ fun HomeScreen() {
             currentNavState == NavState.StorageAnalyzer ||
             currentNavState == NavState.AppManager ||
             currentNavState == NavState.DriveOfflineSettings ||
+            currentNavState is NavState.TextEditor ||
             currentNavState is NavState.Category -> {
                 currentNavState = NavState.Home
             }
@@ -390,6 +397,7 @@ fun HomeScreen() {
                                     is NavState.StorageAnalyzer -> "Storage Analyzer"
                                     is NavState.AppManager -> "App Manager"
                                     is NavState.DriveOfflineSettings -> "Offline Settings"
+                                    is NavState.TextEditor -> state.path.substringAfterLast("/")
                                 },
                                 color = Color.White
                             )
@@ -593,6 +601,18 @@ fun HomeScreen() {
                     )
                     is NavState.DriveOfflineSettings -> DriveOfflineSettingsScreen(
                         onBack = { currentNavState = NavState.Home }
+                    )
+                    is NavState.TextEditor -> TextEditorScreen(
+                        path = state.path,
+                        onBack = { 
+                            // Go back to the directory containing this file
+                            val parent = java.io.File(state.path).parent
+                            if (parent != null) {
+                                currentNavState = NavState.Local(parent)
+                            } else {
+                                currentNavState = NavState.Home 
+                            }
+                        }
                     )
                 }
             }

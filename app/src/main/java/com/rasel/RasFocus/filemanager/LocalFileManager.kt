@@ -52,10 +52,10 @@ object LocalFileManager {
         return null
     }
 
-    fun listFiles(path: String): List<File> {
+    fun listFiles(path: String, showHidden: Boolean = false): List<File> {
         return try {
             File(path).listFiles()
-                ?.filter { !it.name.startsWith(".") || path.contains(".vault") || path.contains(".trash") }
+                ?.filter { showHidden || !it.name.startsWith(".") || path.contains(".vault") || path.contains(".trash") }
                 ?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
                 ?: emptyList()
         } catch (e: Exception) {

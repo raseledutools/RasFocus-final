@@ -281,7 +281,8 @@ fun LocalFileScreen(
     fun refreshFiles() {
         // Refresh silently in background — no loading spinner
         scope.launch(Dispatchers.IO) {
-            val result = LocalFileManager.listFiles(path)
+            val showHidden = SettingsManager.showHiddenFiles(context)
+            val result = LocalFileManager.listFiles(path, showHidden)
             withContext(kotlinx.coroutines.Dispatchers.Main) {
                 rawFiles = result
             }
@@ -306,7 +307,8 @@ fun LocalFileScreen(
         if (hasPermission) {
             isLoading = true
             scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                val result = LocalFileManager.listFiles(path)
+                val showHidden = SettingsManager.showHiddenFiles(context)
+                val result = LocalFileManager.listFiles(path, showHidden)
                 withContext(kotlinx.coroutines.Dispatchers.Main) {
                     rawFiles = result
                     isLoading = false
@@ -335,7 +337,8 @@ fun LocalFileScreen(
         if (hasPermission) {
             isLoading = true
             withContext(kotlinx.coroutines.Dispatchers.IO) {
-                val result = LocalFileManager.listFiles(path)
+                val showHidden = SettingsManager.showHiddenFiles(context)
+                val result = LocalFileManager.listFiles(path, showHidden)
                 withContext(kotlinx.coroutines.Dispatchers.Main) {
                     rawFiles = result
                     isLoading = false
@@ -1274,12 +1277,36 @@ fun FileListItem(
         ) {
             val isImage = ext in listOf("jpg","jpeg","png","gif","bmp","webp","heic","heif")
             val isVideo = ext in listOf("mp4","mkv","avi","mov","webm","3gp")
-            if (localFile != null && (isImage || isVideo)) {
+            val isApk = ext == "apk"
+
+            var apkIcon by remember(localFile) { mutableStateOf<android.graphics.drawable.Drawable?>(null) }
+            val context = androidx.compose.ui.platform.LocalContext.current
+
+            if (localFile != null && isApk) {
+                LaunchedEffect(localFile) {
+                    kotlinx.coroutines.Dispatchers.IO.invoke {
+                        val pm = context.packageManager
+                        val pi = pm.getPackageArchiveInfo(localFile.absolutePath, 0)
+                        pi?.applicationInfo?.let {
+                            it.sourceDir = localFile.absolutePath
+                            it.publicSourceDir = localFile.absolutePath
+                            apkIcon = it.loadIcon(pm)
+                        }
+                    }
+                }
+            }
+
+            if (localFile != null && (isImage || isVideo || apkIcon != null)) {
                 AsyncImage(
-                    model = coil.request.ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
-                        .data(localFile)
-                        .crossfade(true)
-                        .size(96) // 48dp * 2x — small thumbnail
+                    model = coil.request.ImageRequest.Builder(context)
+                        .data(if (apkIcon != null) apkIcon else localFile)
+                        .crossfade(false) // instant load
+                        .size(96)
+                        .apply {
+                            if (isVideo) {
+                                decoderFactory(coil.decode.VideoFrameDecoder.Factory())
+                            }
+                        }
                         .build(),
                     contentDescription = name,
                     contentScale = androidx.compose.ui.layout.ContentScale.Crop,
@@ -1288,7 +1315,6 @@ fun FileListItem(
                         androidx.compose.ui.graphics.Color(0xFFEEEEEE)
                     )
                 )
-                // Video overlay play icon
                 if (isVideo) {
                     Icon(
                         imageVector = Icons.Default.PlayCircleOutline,
