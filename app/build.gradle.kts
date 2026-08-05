@@ -206,8 +206,7 @@ android {
 }
 
 dependencies {
-    implementation(com.hierynomus:smbj:0.13.0)
-    implementation(com.hierynomus:smbj:0.13.0)
+    implementation("com.hierynomus:smbj:0.13.0")
     // ── Exclude old Support Library — conflicts with AndroidX (duplicate class error)
     // com.android.support:support-media-compat:26.1.0 vs androidx.media:media:1.7.0
     // com.android.support:support-compat:26.1.0 vs androidx.core:core:1.13.1
