@@ -1,4 +1,4 @@
-package com.rasel.RasFocus.filemanager
+﻿package com.rasel.RasFocus.filemanager
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -57,7 +57,7 @@ sealed class NavState {
     data class Saf(val uri: String) : NavState()
 }
 
-// ── Shared utility functions ───────────────────────────────────────────────────
+// â”€â”€ Shared utility functions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 fun formatFileSize(size: Long): String {
     if (size <= 0) return "0 B"
     val units = arrayOf("B", "kB", "MB", "GB", "TB")
@@ -79,8 +79,8 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
             file
         )
 
-        // ── Known types: directly launch RasFocus internal viewers ──
-        // Skips the system "Open with" chooser → always gets in-app viewer
+        // â”€â”€ Known types: directly launch RasFocus internal viewers â”€â”€
+        // Skips the system "Open with" chooser â†’ always gets in-app viewer
         // (pdfium for PDF, ImageViewerActivity for images, etc.)
         val internalMime: String? = when (ext) {
             "pdf" -> "application/pdf"
@@ -104,7 +104,7 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
                 return
             }
 
-            // Route through UniversalViewerActivity → correct internal viewer
+            // Route through UniversalViewerActivity â†’ correct internal viewer
             val pkg = context.packageName.replace(".combo", "")
             val cls = try {
                 Class.forName("$pkg.selfcontrol.study_tools.UniversalViewerActivity")
@@ -121,7 +121,7 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
             }
         }
 
-        // ── Fallback: system chooser for unknown/unsupported types ──
+        // â”€â”€ Fallback: system chooser for unknown/unsupported types â”€â”€
         val mimeType = android.webkit.MimeTypeMap.getSingleton()
             .getMimeTypeFromExtension(ext) ?: "*/*"
         val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
@@ -217,7 +217,7 @@ class FileManagerPlusActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) {
-            // permission à¦à¦–à¦¨ à¦†à¦›à§‡
+            // permission Ã Â¦ÂÃ Â¦â€“Ã Â¦Â¨ Ã Â¦â€ Ã Â¦â€ºÃ Â§â€¡
         }
     }
 
@@ -258,10 +258,10 @@ fun HomeScreen() {
     var searchQuery by remember { mutableStateOf("") }
 
     // Cloud subfolder backstack: list of (folderId, pathName) pairs
-    // â”€â”€â”€ Cloud backstack â€” subfolder à¦¥à§‡à¦•à§‡ proper back navigation à¦à¦° à¦œà¦¨à§à¦¯ â”€â”€â”€â”€â”€â”€
+    // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Cloud backstack Ã¢â‚¬â€ subfolder Ã Â¦Â¥Ã Â§â€¡Ã Â¦â€¢Ã Â§â€¡ proper back navigation Ã Â¦ÂÃ Â¦Â° Ã Â¦Å“Ã Â¦Â¨Ã Â§ÂÃ Â¦Â¯ Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     val cloudBackStack = remember { mutableStateListOf<Pair<String, String>>() }
 
-    // â”€â”€â”€ BackHandler â€” Android system back button â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ BackHandler Ã¢â‚¬â€ Android system back button Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     val activity = androidx.compose.ui.platform.LocalContext.current as? androidx.activity.ComponentActivity
 
     BackHandler(enabled = true) {
@@ -315,7 +315,7 @@ fun HomeScreen() {
                 }
             }
             currentNavState == NavState.Home && !drawerState.isOpen -> {
-                // Home screen এ back করলে activity finish করো (app থেকে বের হওয়া)
+                // Home screen à¦ back à¦•à¦°à¦²à§‡ activity finish à¦•à¦°à§‹ (app à¦¥à§‡à¦•à§‡ à¦¬à§‡à¦° à¦¹à¦“à¦¯à¦¼à¦¾)
                 activity?.finish()
             }
             else -> {
@@ -353,7 +353,7 @@ fun HomeScreen() {
                     currentNavState != NavState.DriveOfflineSettings
                 if (needsGlobalHeader) {
                     if (showSearchBar) {
-                    // â”€â”€ Search bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+                    // Ã¢â€â‚¬Ã¢â€â‚¬ Search bar Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
                     TopAppBar(
                         title = {
                             OutlinedTextField(
@@ -414,7 +414,7 @@ fun HomeScreen() {
                         navigationIcon = {
                             IconButton(onClick = {
                                 if (currentNavState != NavState.Home) {
-                                    // Back navigation â€” same as BackHandler
+                                    // Back navigation Ã¢â‚¬â€ same as BackHandler
                                     when {
                                         currentNavState is NavState.Cloud -> {
                                             val state = currentNavState as NavState.Cloud
@@ -464,7 +464,7 @@ fun HomeScreen() {
                             }
                         },
                         actions = {
-                            // Search icon â€” Home à¦›à¦¾à¦¡à¦¼à¦¾ à¦¸à¦¬ à¦œà¦¾à¦¯à¦¼à¦—à¦¾à¦¯à¦¼ à¦¦à§‡à¦–à¦¾à¦¬à§‡
+                            // Search icon Ã¢â‚¬â€ Home Ã Â¦â€ºÃ Â¦Â¾Ã Â¦Â¡Ã Â¦Â¼Ã Â¦Â¾ Ã Â¦Â¸Ã Â¦Â¬ Ã Â¦Å“Ã Â¦Â¾Ã Â¦Â¯Ã Â¦Â¼Ã Â¦â€”Ã Â¦Â¾Ã Â¦Â¯Ã Â¦Â¼ Ã Â¦Â¦Ã Â§â€¡Ã Â¦â€“Ã Â¦Â¾Ã Â¦Â¬Ã Â§â€¡
                             if (currentNavState != NavState.Home) {
                                 IconButton(onClick = { showSearchBar = true }) {
                                     Icon(Icons.Default.Search, contentDescription = "Search", tint = Color(0xFF49454F))
@@ -484,27 +484,27 @@ fun HomeScreen() {
                                     onDismissRequest = { showMoreMenu = false }
                                 ) {
                                     DropdownMenuItem(
-                                        text = { Text("Sort by name â†‘", fontWeight = if (sortMode == SortMode.NAME_ASC) FontWeight.Bold else FontWeight.Normal) },
+                                        text = { Text("Sort by name Ã¢â€ â€˜", fontWeight = if (sortMode == SortMode.NAME_ASC) FontWeight.Bold else FontWeight.Normal) },
                                         onClick = { showMoreMenu = false; sortMode = SortMode.NAME_ASC }
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Sort by name â†“", fontWeight = if (sortMode == SortMode.NAME_DESC) FontWeight.Bold else FontWeight.Normal) },
+                                        text = { Text("Sort by name Ã¢â€ â€œ", fontWeight = if (sortMode == SortMode.NAME_DESC) FontWeight.Bold else FontWeight.Normal) },
                                         onClick = { showMoreMenu = false; sortMode = SortMode.NAME_DESC }
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Sort by date â†‘", fontWeight = if (sortMode == SortMode.DATE_ASC) FontWeight.Bold else FontWeight.Normal) },
+                                        text = { Text("Sort by date Ã¢â€ â€˜", fontWeight = if (sortMode == SortMode.DATE_ASC) FontWeight.Bold else FontWeight.Normal) },
                                         onClick = { showMoreMenu = false; sortMode = SortMode.DATE_ASC }
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Sort by date â†“", fontWeight = if (sortMode == SortMode.DATE_DESC) FontWeight.Bold else FontWeight.Normal) },
+                                        text = { Text("Sort by date Ã¢â€ â€œ", fontWeight = if (sortMode == SortMode.DATE_DESC) FontWeight.Bold else FontWeight.Normal) },
                                         onClick = { showMoreMenu = false; sortMode = SortMode.DATE_DESC }
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Sort by size â†‘", fontWeight = if (sortMode == SortMode.SIZE_ASC) FontWeight.Bold else FontWeight.Normal) },
+                                        text = { Text("Sort by size Ã¢â€ â€˜", fontWeight = if (sortMode == SortMode.SIZE_ASC) FontWeight.Bold else FontWeight.Normal) },
                                         onClick = { showMoreMenu = false; sortMode = SortMode.SIZE_ASC }
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Sort by size â†“", fontWeight = if (sortMode == SortMode.SIZE_DESC) FontWeight.Bold else FontWeight.Normal) },
+                                        text = { Text("Sort by size Ã¢â€ â€œ", fontWeight = if (sortMode == SortMode.SIZE_DESC) FontWeight.Bold else FontWeight.Normal) },
                                         onClick = { showMoreMenu = false; sortMode = SortMode.SIZE_DESC }
                                     )
                                     Divider()
@@ -573,7 +573,7 @@ fun HomeScreen() {
                         folderId = state.folderId,
                         pathName = state.pathName,
                         onNavigate = { newState ->
-                            // subfolder navigate à¦•à¦°à¦¾à¦° à¦¸à¦®à¦¯à¦¼ current state à¦•à§‡ backstack à¦ push à¦•à¦°à§‹
+                            // subfolder navigate Ã Â¦â€¢Ã Â¦Â°Ã Â¦Â¾Ã Â¦Â° Ã Â¦Â¸Ã Â¦Â®Ã Â¦Â¯Ã Â¦Â¼ current state Ã Â¦â€¢Ã Â§â€¡ backstack Ã Â¦Â push Ã Â¦â€¢Ã Â¦Â°Ã Â§â€¹
                             if (newState is NavState.Cloud) {
                                 cloudBackStack.add(Pair(state.folderId, state.pathName))
                             }
@@ -656,7 +656,7 @@ data class StorageInfo(val used: Long, val total: Long) {
 
 fun getInternalStorageInfo(): StorageInfo {
     return try {
-        // Environment.getDataDirectory() â†’ /data partition (true internal storage)
+        // Environment.getDataDirectory() Ã¢â€ â€™ /data partition (true internal storage)
         val path = Environment.getDataDirectory()
         val stat = StatFs(path.path)
         val total = stat.blockCountLong * stat.blockSizeLong
@@ -696,7 +696,7 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
     var sdInfo by remember { mutableStateOf(StorageInfo(0, 0)) }
     val scope = rememberCoroutineScope()
 
-    // ── My Drive quick-access state ───────────────────────────────────────────
+    // ΓöÇΓöÇ My Drive quick-access state ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     val drivePrefs = remember { context.getSharedPreferences("MyDrivePrefs", android.content.Context.MODE_PRIVATE) }
     var selectedDriveAccount by remember {
         mutableStateOf(drivePrefs.getString("selected_account", null))
@@ -859,72 +859,58 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
         }
     }
 
-    val categoryItems = listOf(
-        GridItemData("Images",    imagesCount,   Icons.Default.Image)        to Color(0xFFAD1457),
-        GridItemData("Audio",     audioCount,    Icons.Default.Audiotrack)   to Color(0xFF1565C0),
-        GridItemData("Videos",    videosCount,   Icons.Default.VideoLibrary) to Color(0xFF6A1B9A),
-        GridItemData("Documents", docsCount,     Icons.Default.Description)  to Color(0xFF37474F),
-        GridItemData("Apps",      appsCount,     Icons.Default.Android)      to Color(0xFF00838F),
-        GridItemData("New files", newFilesCount, Icons.Default.Schedule)     to Color(0xFF4E342E)
-    )
-
     androidx.compose.foundation.lazy.LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF7F9FC)),
+            .background(Color(0xFFF2F2F7)),
         contentPadding = PaddingValues(bottom = 16.dp)
     ) {
-                item {
-            Column(
+        item {
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Text(
-                    text = "Storage Locations",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color(0xFF1D1B20),
-                    modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
-                )
-
                 StorageTopCard(
-                    label = "Internal Storage",
+                    label = "Main storage",
                     subtitle = mainStorageInfo.usedText,
                     icon = Icons.Default.PhoneAndroid,
-                    iconColor = Color(0xFF6750A4),
+                    iconColor = Color(0xFF5C6BC0),
                     progress = mainStorageInfo.progress,
+                    modifier = Modifier.weight(1f),
                     onClick = { navigate("Main storage") }
                 )
-                
-                if (sdInfo.total > 0) {
-                    StorageTopCard(
-                        label = "SD Card",
-                        subtitle = sdInfo.usedText,
-                        icon = Icons.Default.SdStorage,
-                        iconColor = Color(0xFF006874),
-                        progress = sdInfo.progress,
-                        onClick = { navigate("SD card") }
-                    )
-                }
-
+                StorageTopCard(
+                    label = "SD card",
+                    subtitle = if (sdInfo.total > 0) sdInfo.usedText else "Not found",
+                    icon = Icons.Default.SdStorage,
+                    iconColor = Color(0xFF388E3C),
+                    progress = sdInfo.progress,
+                    modifier = Modifier.weight(1f),
+                    onClick = { navigate("SD card") }
+                )
                 MyDriveTopCard(
                     selectedAccount = selectedDriveAccount,
+                    modifier = Modifier.weight(1f),
                     onClick = {
                         driveAccounts = CloudAccountManager.getAccounts(context)
                         if (driveAccounts.isEmpty()) {
+                            // αªòαºïαª¿αºï account αª¿αºçαªç ΓåÆ add αªòαª░αªñαºç CloudAccounts αªÅ αª»αª╛αªô
                             onNavigate(NavState.CloudAccounts)
                         } else if (driveAccounts.size == 1) {
+                            // Single account ΓåÆ directly open
                             val acc = driveAccounts.first()
                             selectedDriveAccount = acc
                             drivePrefs.edit().putString("selected_account", acc).apply()
                             onNavigate(NavState.Cloud(acc, "root", "My Drive"))
                         } else {
+                            // Multiple accounts ΓåÆ show picker
                             showDrivePickerSheet = true
                         }
                     },
                     onLongClick = {
+                        // Long press ΓåÆ always show picker to change account
                         driveAccounts = CloudAccountManager.getAccounts(context)
                         if (driveAccounts.isNotEmpty()) showDrivePickerSheet = true
                         else onNavigate(NavState.CloudAccounts)
@@ -933,22 +919,21 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
             }
         }
 
-        item {
-            Text(
-                text = "Categories",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = Color(0xFF1D1B20),
-                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 12.dp)
-            )
-        }
+        val categoryItems = listOf(
+            GridItemData("Images",    imagesCount,   Icons.Default.Image)        to Color(0xFFAD1457),
+            GridItemData("Audio",     audioCount,    Icons.Default.Audiotrack)   to Color(0xFF1565C0),
+            GridItemData("Videos",    videosCount,   Icons.Default.VideoLibrary) to Color(0xFF6A1B9A),
+            GridItemData("Documents", docsCount,     Icons.Default.Description)  to Color(0xFF37474F),
+            GridItemData("Apps",      appsCount,     Icons.Default.Android)      to Color(0xFF00838F),
+            GridItemData("New files", newFilesCount, Icons.Default.Schedule)     to Color(0xFF4E342E),
+        )
 
         item {
-            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                for (row in categoryItems.chunked(2)) {
+            Column(modifier = Modifier.padding(horizontal = 12.dp)) {
+                for (row in categoryItems.chunked(3)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         for ((data, color) in row) {
                             CategoryCard(
@@ -960,34 +945,25 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                                 onClick = { navigate(data.title) }
                             )
                         }
-                        repeat(2 - row.size) { Spacer(modifier = Modifier.weight(1f)) }
+                        repeat(3 - row.size) { Spacer(modifier = Modifier.weight(1f)) }
                     }
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
                 }
             }
         }
 
         item {
-            Text(
-                text = "More Options",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = Color(0xFF1D1B20),
-                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 12.dp)
-            )
-        }
-        item {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    .padding(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 CategoryCard(
                     label = "Cloud",
                     subtitle = cloudCount,
                     icon = Icons.Default.Cloud,
-                    iconColor = Color(0xFF006874),
+                    iconColor = Color(0xFF1565C0),
                     modifier = Modifier.weight(1f),
                     onClick = { navigate("Cloud") }
                 )
@@ -995,33 +971,23 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                     label = "Remote",
                     subtitle = "",
                     icon = Icons.Default.Computer,
-                    iconColor = Color(0xFF984061),
+                    iconColor = Color(0xFF4E342E),
                     modifier = Modifier.weight(1f),
                     onClick = { navigate("Remote") }
                 )
-            }
-        }
-        item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
                 CategoryCard(
                     label = "Access from...",
                     subtitle = "",
                     icon = Icons.Default.Devices,
-                    iconColor = Color(0xFF4E444B),
+                    iconColor = Color(0xFF37474F),
                     modifier = Modifier.weight(1f),
                     onClick = { navigate("Access from...") }
                 )
-                Spacer(modifier = Modifier.weight(1f))
             }
         }
     }
 
-    // ── Drive Account Picker BottomSheet ──────────────────────────────────────
+    // ΓöÇΓöÇ Drive Account Picker BottomSheet ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     if (showDrivePickerSheet) {
         DriveAccountPickerSheet(
             accounts = driveAccounts,
@@ -1041,8 +1007,8 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
     }
 }
 
-// â”€â”€ Top storage card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// ── My Drive quick-access top card ───────────────────────────────────────────
+// ├óΓÇ¥Γé¼├óΓÇ¥Γé¼ Top storage card ├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼
+// ΓöÇΓöÇ My Drive quick-access top card ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun MyDriveTopCard(
@@ -1102,7 +1068,7 @@ fun MyDriveTopCard(
     }
 }
 
-// ── Drive Account Picker BottomSheet ──────────────────────────────────────────
+// ΓöÇΓöÇ Drive Account Picker BottomSheet ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DriveAccountPickerSheet(
@@ -1233,78 +1199,60 @@ fun StorageTopCard(
     onClick: () -> Unit
 ) {
     Card(
-        modifier = modifier.clickable { onClick() }.fillMaxWidth(),
+        modifier = modifier.clickable { onClick() },
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        shape = RoundedCornerShape(20.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp) // Flat but distinct
+        shape = RoundedCornerShape(14.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.Start
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(androidx.compose.ui.graphics.Brush.linearGradient(
-                            listOf(iconColor.copy(alpha=0.2f), iconColor.copy(alpha=0.05f))
-                        )),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = label,
-                        tint = iconColor,
-                        modifier = Modifier.size(28.dp)
-                    )
-                }
-                Spacer(Modifier.width(16.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = label,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF1D1B20),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    if (subtitle.isNotEmpty()) {
-                        Text(
-                            text = subtitle,
-                            fontSize = 12.sp,
-                            color = Color(0xFF49454F),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(iconColor.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    tint = iconColor,
+                    modifier = Modifier.size(26.dp)
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = label,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (subtitle.isNotEmpty()) {
+                Text(
+                    text = subtitle,
+                    fontSize = 10.sp,
+                    color = Color.Gray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
             if (showProgress && progress > 0f) {
-                Spacer(Modifier.height(14.dp))
-                // Custom gradient progress bar
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(6.dp)
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(iconColor.copy(alpha = 0.1f))
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(progress)
-                            .fillMaxHeight()
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(androidx.compose.ui.graphics.Brush.horizontalGradient(
-                                listOf(iconColor.copy(alpha=0.6f), iconColor)
-                            ))
-                    )
-                }
+                Spacer(Modifier.height(6.dp))
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)),
+                    color = if (progress > 0.9f) Color(0xFFE53935) else iconColor,
+                    trackColor = iconColor.copy(alpha = 0.15f)
+                )
             }
         }
     }
 }
-// â”€â”€ Category card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+// ├óΓÇ¥Γé¼├óΓÇ¥Γé¼ Category card ├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼├óΓÇ¥Γé¼
 @Composable
 fun CategoryCard(
     label: String,
@@ -1317,43 +1265,40 @@ fun CategoryCard(
     Card(
         modifier = modifier.clickable { onClick() },
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        shape = RoundedCornerShape(20.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        shape = RoundedCornerShape(14.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 18.dp).fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 14.dp),
+            horizontalAlignment = Alignment.Start
         ) {
             Box(
                 modifier = Modifier
-                    .size(56.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(androidx.compose.ui.graphics.Brush.linearGradient(
-                        listOf(iconColor.copy(alpha=0.15f), iconColor.copy(alpha=0.05f))
-                    )),
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(iconColor.copy(alpha = 0.12f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = label,
                     tint = iconColor,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(22.dp)
                 )
             }
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
             Text(
                 text = label,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF1D1B20),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             if (subtitle.isNotEmpty()) {
                 Text(
                     text = subtitle,
-                    fontSize = 11.sp,
-                    color = Color(0xFF49454F),
+                    fontSize = 10.sp,
+                    color = Color.Gray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -1362,6 +1307,8 @@ fun CategoryCard(
     }
 }
 
+// GridItemView legacy ├óΓé¼ΓÇ¥ replaced by CategoryCard and StorageTopCard
+// GridItemView legacy ΓÇö replaced by CategoryCard and StorageTopCard
 
 @Composable
 fun DrawerContent(onNavigate: (NavState) -> Unit) {
@@ -1405,14 +1352,14 @@ fun DrawerContent(onNavigate: (NavState) -> Unit) {
             val sdCardInfo = remember { getSdCardStorageInfo(context) }
             DrawerStorageItem(
                 Icons.Default.PhoneAndroid, "Main storage",
-                if (extInfo.total > 0) "${(extInfo.progress * 100).toInt()}%" else "â€”",
+                if (extInfo.total > 0) "${(extInfo.progress * 100).toInt()}%" else "Ã¢â‚¬â€",
                 extInfo.progress,
                 onClick = { onNavigate(NavState.Local(LocalFileManager.mainStoragePath)) }
             )
 
             DrawerStorageItem(
                 Icons.Default.SdStorage, "SD card",
-                if (sdCardInfo.total > 0) "${(sdCardInfo.progress * 100).toInt()}%" else "â€”",
+                if (sdCardInfo.total > 0) "${(sdCardInfo.progress * 100).toInt()}%" else "Ã¢â‚¬â€",
                 sdCardInfo.progress,
                 onClick = {
                     val sdPath = LocalFileManager.getSdCardPath(context)
