@@ -4,74 +4,60 @@
 ╚══════════════════════════════════════════╝
 
 === KOTLIN ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:209:34: Unexpected type specification
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:209:39: Expecting ')'
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:209:40: Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:210:34: Unexpected type specification
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:210:39: Expecting ')'
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:210:40: Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:209:24: Unresolved reference: hierynomus
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:210:24: Unresolved reference: hierynomus
 
 === UNRESOLVED / TYPE ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:209:24: Unresolved reference: hierynomus
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:210:24: Unresolved reference: hierynomus
-                                   ^ Unresolved reference: hierynomus
-                                   ^ Unresolved reference: hierynomus
 
 === BUILD FAILURE ===
+> Task :app:checkFullReleaseDuplicateClasses FAILED
 * What went wrong:
-BUILD FAILED in 17s
+Execution failed for task ':app:checkFullReleaseDuplicateClasses'.
+BUILD FAILED in 29s
 
 === LAST 60 LINES ===
-Starting a Gradle Daemon (subsequent builds will be faster)
-Calculating task graph as no cached configuration is available for tasks: assembleFullRelease
-
-> Configure project :app
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:209:34: Unexpected type specification
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:209:39: Expecting ')'
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:209:40: Unexpected tokens (use ';' to separate expressions on the same line)
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:210:34: Unexpected type specification
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:210:39: Expecting ')'
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:210:40: Unexpected tokens (use ';' to separate expressions on the same line)
-w: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:119:41: 'getter for buildDir: File!' is deprecated. Deprecated in Java
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:209:24: Unresolved reference: hierynomus
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts:210:24: Unresolved reference: hierynomus
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785906218974.json
-
-FAILURE: Build failed with an exception.
-
-* Where:
-Build file '/home/runner/work/RasFocus-final/RasFocus-final/app/build.gradle.kts' line: 209
-
-* What went wrong:
-Script compilation errors:
-
-  Line 209:     implementation(com.hierynomus:smbj:0.13.0)
-                                             ^ Unexpected type specification
-
-  Line 209:     implementation(com.hierynomus:smbj:0.13.0)
-                                                  ^ Expecting ')'
-
-  Line 209:     implementation(com.hierynomus:smbj:0.13.0)
-                                                   ^ Unexpected tokens (use ';' to separate expressions on the same line)
-
-  Line 209:     implementation(com.hierynomus:smbj:0.13.0)
-                                   ^ Unresolved reference: hierynomus
-
-  Line 210:     implementation(com.hierynomus:smbj:0.13.0)
-                                             ^ Unexpected type specification
-
-  Line 210:     implementation(com.hierynomus:smbj:0.13.0)
-                                                  ^ Expecting ')'
-
-  Line 210:     implementation(com.hierynomus:smbj:0.13.0)
-                                                   ^ Unexpected tokens (use ';' to separate expressions on the same line)
-
-  Line 210:     implementation(com.hierynomus:smbj:0.13.0)
-                                   ^ Unresolved reference: hierynomus
-
-8 errors
+     Duplicate class org.bouncycastle.util.test.TestRandomEntropySourceProvider found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.util.test.TestRandomEntropySourceProvider$1 found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.util.test.TestResult found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.util.test.UncloseableOutputStream found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.AttributeCertificateHolder found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.AttributeCertificateIssuer found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.CertPathReviewerException found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.CertPathValidatorUtilities found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.CertStatus found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.ExtCertificateEncodingException found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.ExtendedPKIXBuilderParameters found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.ExtendedPKIXParameters found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.NoSuchParserException found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.NoSuchStoreException found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.PKIXAttrCertChecker found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.PKIXCRLUtil found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.PKIXCertPathReviewer found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.X509Attribute found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.X509AttributeCertStoreSelector found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.X509AttributeCertificate found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.X509CRLStoreSelector found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.X509CertPairStoreSelector found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.X509CertStoreSelector found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.X509CertificatePair found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.X509CollectionStoreParameters found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.X509Store found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.X509StoreParameters found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.X509StoreSpi found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.X509StreamParser found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.X509StreamParserSpi found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.X509Util found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.X509Util$Implementation found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.X509V1CertificateGenerator found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.X509V2AttributeCertificate found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.X509V2CRLGenerator found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.X509V2CRLGenerator$ExtCRLException found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.X509V3CertificateGenerator found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.extension.AuthorityKeyIdentifierStructure found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.extension.X509ExtensionUtil found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.util.LDAPStoreHelper found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.util.StreamParser found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     Duplicate class org.bouncycastle.x509.util.StreamParsingException found in modules bcprov-jdk15to18-1.72.jar -> bcprov-jdk15to18-1.72 (org.bouncycastle:bcprov-jdk15to18:1.72) and bcprov-jdk18on-1.75.jar -> bcprov-jdk18on-1.75 (org.bouncycastle:bcprov-jdk18on:1.75)
+     
+     Go to the documentation to learn how to <a href="d.android.com/r/tools/classpath-sync-errors">Fix dependency resolution errors</a>.
 
 * Try:
 > Run with --stacktrace option to get the stack trace.
@@ -79,5 +65,12 @@ Script compilation errors:
 > Run with --scan to get full insights.
 > Get more help at https://help.gradle.org.
 
-BUILD FAILED in 17s
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 29s
+24 actionable tasks: 15 executed, 9 from cache
 Configuration cache entry stored.
