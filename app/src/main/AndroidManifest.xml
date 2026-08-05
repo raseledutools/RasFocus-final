@@ -112,8 +112,7 @@
         android:name=".selfcontrol.study_tools.UniversalViewerActivity"
         android:label="RasFocus"
         android:exported="true"
-        android:launchMode="singleTask"
-        android:taskAffinity=""
+        android:launchMode="singleTop"
         android:hardwareAccelerated="true"
         android:theme="@style/Theme.RasFocus"
         android:configChanges="orientation|screenSize|keyboardHidden">

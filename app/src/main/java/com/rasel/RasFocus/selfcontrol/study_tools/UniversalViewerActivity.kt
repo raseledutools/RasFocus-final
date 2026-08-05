@@ -162,18 +162,8 @@ class UniversalViewerActivity : ComponentActivity() {
             val cls = Class.forName(className)
             openDirect(cls, uri, mimeType)
         } catch (e: ClassNotFoundException) {
-            // Fallback: fire a generic ACTION_VIEW so the system picks a viewer
-            try {
-                val intent = Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(uri, mimeType)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
-                startActivity(intent)
-                finish()
-            } catch (ex: Exception) {
-                android.widget.Toast.makeText(this, "Viewer not available: ${ex.message}", android.widget.Toast.LENGTH_SHORT).show()
-                finish()
-            }
+            android.widget.Toast.makeText(this, "Viewer not available in this version.", android.widget.Toast.LENGTH_SHORT).show()
+            finish()
         }
     }
 

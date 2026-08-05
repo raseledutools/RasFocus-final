@@ -850,6 +850,15 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
         }
     }
 
+    val categoryItems = listOf(
+        GridItemData("Images",    imagesCount,   Icons.Default.Image)        to Color(0xFFAD1457),
+        GridItemData("Audio",     audioCount,    Icons.Default.Audiotrack)   to Color(0xFF1565C0),
+        GridItemData("Videos",    videosCount,   Icons.Default.VideoLibrary) to Color(0xFF6A1B9A),
+        GridItemData("Documents", docsCount,     Icons.Default.Description)  to Color(0xFF37474F),
+        GridItemData("Apps",      appsCount,     Icons.Default.Android)      to Color(0xFF00838F),
+        GridItemData("New files", newFilesCount, Icons.Default.Schedule)     to Color(0xFF4E342E)
+    )
+
     androidx.compose.foundation.lazy.LazyColumn(
         modifier = modifier
             .fillMaxSize()
@@ -925,15 +934,6 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
             )
         }
 
-        val categoryItems = listOf(
-            GridItemData("Images",    imagesCount,   Icons.Default.Image)        to Color(0xFFAD1457),
-            GridItemData("Audio",     audioCount,    Icons.Default.Audiotrack)   to Color(0xFF1565C0),
-            GridItemData("Videos",    videosCount,   Icons.Default.VideoLibrary) to Color(0xFF6A1B9A),
-            GridItemData("Documents", docsCount,     Icons.Default.Description)  to Color(0xFF37474F),
-            GridItemData("Apps",      appsCount,     Icons.Default.Android)      to Color(0xFF00838F),
-            GridItemData("New files", newFilesCount, Icons.Default.Schedule)     to Color(0xFF4E342E),
-        )
-
         item {
             Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                 for (row in categoryItems.chunked(2)) {
@@ -958,7 +958,7 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
             }
         }
 
-                item {
+        item {
             Text(
                 text = "More Options",
                 fontSize = 18.sp,
