@@ -262,7 +262,9 @@ fun HomeScreen() {
     val cloudBackStack = remember { mutableStateListOf<Pair<String, String>>() }
 
     // â”€â”€â”€ BackHandler â€” Android system back button â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    BackHandler(enabled = currentNavState != NavState.Home || drawerState.isOpen) {
+    val activity = androidx.compose.ui.platform.LocalContext.current as? androidx.activity.ComponentActivity
+
+    BackHandler(enabled = true) {
         when {
             drawerState.isOpen -> scope.launch { drawerState.close() }
             showSearchBar -> {
@@ -284,7 +286,6 @@ fun HomeScreen() {
                     val prev = cloudBackStack.removeLast()
                     currentNavState = NavState.Cloud(state.accountName, prev.first, prev.second)
                 } else if (state.folderId != "root") {
-                    // backstack empty â€” "root" à¦ à¦¯à¦¾à¦“
                     cloudBackStack.clear()
                     currentNavState = NavState.Cloud(state.accountName, "root", "My Drive")
                 } else {
@@ -312,6 +313,10 @@ fun HomeScreen() {
                 } else {
                     currentNavState = NavState.Home
                 }
+            }
+            currentNavState == NavState.Home && !drawerState.isOpen -> {
+                // Home screen এ back করলে activity finish করো (app থেকে বের হওয়া)
+                activity?.finish()
             }
             else -> {
                 currentNavState = NavState.Home
