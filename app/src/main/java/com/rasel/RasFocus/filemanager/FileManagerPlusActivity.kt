@@ -1,4 +1,4 @@
-﻿package com.rasel.RasFocus.filemanager
+package com.rasel.RasFocus.filemanager
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -53,6 +53,7 @@ sealed class NavState {
     object StorageAnalyzer : NavState()
     object AppManager : NavState()
     object DriveOfflineSettings : NavState()
+    object FtpServer : NavState()
     data class TextEditor(val path: String) : NavState()
     data class Saf(val uri: String) : NavState()
 }
@@ -350,10 +351,11 @@ fun HomeScreen() {
                     currentNavState != NavState.SecureVault &&
                     currentNavState != NavState.StorageAnalyzer &&
                     currentNavState != NavState.AppManager &&
-                    currentNavState != NavState.DriveOfflineSettings
+                    currentNavState != NavState.DriveOfflineSettings &&
+                    currentNavState != NavState.FtpServer
                 if (needsGlobalHeader) {
                     if (showSearchBar) {
-                    // Ã¢â€â‚¬Ã¢â€â‚¬ Search bar Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+                    // Ã¢â€ â‚¬Ã¢â€ â‚¬ Search bar Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬
                     TopAppBar(
                         title = {
                             OutlinedTextField(
@@ -404,6 +406,7 @@ fun HomeScreen() {
                                     is NavState.StorageAnalyzer -> "Storage Analyzer"
                                     is NavState.AppManager -> "App Manager"
                                     is NavState.DriveOfflineSettings -> "Offline Settings"
+                                    is NavState.FtpServer -> "Access from PC"
                                     is NavState.TextEditor -> state.path.substringAfterLast("/")
                                     is NavState.Saf -> state.uri.substringAfterLast("%2F").substringAfterLast("/")
                                 },
@@ -414,7 +417,7 @@ fun HomeScreen() {
                         navigationIcon = {
                             IconButton(onClick = {
                                 if (currentNavState != NavState.Home) {
-                                    // Back navigation Ã¢â‚¬â€ same as BackHandler
+                                    // Back navigation Ã¢â‚¬â€  same as BackHandler
                                     when {
                                         currentNavState is NavState.Cloud -> {
                                             val state = currentNavState as NavState.Cloud
@@ -464,7 +467,7 @@ fun HomeScreen() {
                             }
                         },
                         actions = {
-                            // Search icon Ã¢â‚¬â€ Home Ã Â¦â€ºÃ Â¦Â¾Ã Â¦Â¡Ã Â¦Â¼Ã Â¦Â¾ Ã Â¦Â¸Ã Â¦Â¬ Ã Â¦Å“Ã Â¦Â¾Ã Â¦Â¯Ã Â¦Â¼Ã Â¦â€”Ã Â¦Â¾Ã Â¦Â¯Ã Â¦Â¼ Ã Â¦Â¦Ã Â§â€¡Ã Â¦â€“Ã Â¦Â¾Ã Â¦Â¬Ã Â§â€¡
+                            // Search icon Ã¢â‚¬â€  Home Ã Â¦â€ºÃ Â¦Â¾Ã Â¦Â¡Ã Â¦Â¼Ã Â¦Â¾ Ã Â¦Â¸Ã Â¦Â¬ Ã Â¦Å“Ã Â¦Â¾Ã Â¦Â¯Ã Â¦Â¼Ã Â¦â€”Ã Â¦Â¾Ã Â¦Â¯Ã Â¦Â¼ Ã Â¦Â¦Ã Â§â€¡Ã Â¦â€“Ã Â¦Â¾Ã Â¦Â¬Ã Â§â€¡
                             if (currentNavState != NavState.Home) {
                                 IconButton(onClick = { showSearchBar = true }) {
                                     Icon(Icons.Default.Search, contentDescription = "Search", tint = Color(0xFF49454F))
@@ -573,7 +576,7 @@ fun HomeScreen() {
                         folderId = state.folderId,
                         pathName = state.pathName,
                         onNavigate = { newState ->
-                            // subfolder navigate Ã Â¦â€¢Ã Â¦Â°Ã Â¦Â¾Ã Â¦Â° Ã Â¦Â¸Ã Â¦Â®Ã Â¦Â¯Ã Â¦Â¼ current state Ã Â¦â€¢Ã Â§â€¡ backstack Ã Â¦Â push Ã Â¦â€¢Ã Â¦Â°Ã Â§â€¹
+                            // subfolder navigate Ã Â¦â€¢Ã Â¦Â°Ã Â¦Â¾Ã Â¦Â° Ã Â¦Â¸Ã Â¦Â®Ã Â¦Â¯Ã Â¦Â¼ current state Ã Â¦â€¢Ã Â§â€¡ backstack Ã Â¦Â  push Ã Â¦â€¢Ã Â¦Â°Ã Â§â€¹
                             if (newState is NavState.Cloud) {
                                 cloudBackStack.add(Pair(state.folderId, state.pathName))
                             }
@@ -600,6 +603,9 @@ fun HomeScreen() {
                         serverId = state.serverId,
                         initialPath = state.path,
                         onNavigate = { newState -> currentNavState = newState },
+                        onBack = { currentNavState = NavState.Home }
+                    )
+                    is NavState.FtpServer -> FtpServerScreen(
                         onBack = { currentNavState = NavState.Home }
                     )
                     is NavState.RecycleBin -> RecycleBinScreen(
@@ -852,9 +858,7 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                 android.widget.Toast.makeText(context, "Use Cloud to access remote files", android.widget.Toast.LENGTH_SHORT).show()
             }
             "Access from..." -> {
-                // Open Downloads as access point
-                if (hasStorageAccess()) onNavigate(NavState.Local("$base/Download"))
-                else openStoragePermissionSettings()
+                onNavigate(NavState.FtpServer)
             }
         }
     }
