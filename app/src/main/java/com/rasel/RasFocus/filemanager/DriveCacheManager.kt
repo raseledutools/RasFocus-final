@@ -116,7 +116,7 @@ object DriveCacheManager {
                 com.google.api.services.drive.model.File().apply {
                     id = meta.id ?: ""
                     name = meta.name ?: "Unknown"
-                    size = meta.size ?: 0L
+                    setSize(java.math.BigInteger.valueOf(meta.size ?: 0L))
                     mimeType = if (meta.isDirectory == true) "application/vnd.google-apps.folder" else "*/*"
                     if (meta.modifiedTime != null && meta.modifiedTime > 0) {
                         modifiedTime = com.google.api.client.util.DateTime(meta.modifiedTime)
