@@ -74,6 +74,98 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.runtime.mutableStateMapOf
 
+
+// ============================================================
+// MEDIA EMBED HELPERS  — base64 encode/decode for JSON export
+// ============================================================
+private const val DIARY_LOG_TAG = "RasDiary"
+
+/** Encode a media file to base64 string. Returns null if file missing/unreadable. */
+private fun encodeMediaToBase64(path: String): String? = try {
+    val file = java.io.File(path)
+    if (!file.exists()) {
+        android.util.Log.w(DIARY_LOG_TAG, "encodeMediaToBase64: file not found: $path")
+        null
+    } else {
+        android.util.Base64.encodeToString(file.readBytes(), android.util.Base64.NO_WRAP)
+    }
+} catch (e: Exception) {
+    android.util.Log.e(DIARY_LOG_TAG, "encodeMediaToBase64 failed for $path: ${e.message}", e)
+    null
+}
+
+/**
+ * Decode base64 data and save to app-private diary_media dir.
+ * Returns the new absolute file path (with image:/voice: prefix), or null on failure.
+ */
+private fun decodeBase64ToFile(context: android.content.Context, base64Data: String, fileName: String, prefix: String): String? = try {
+    val bytes = android.util.Base64.decode(base64Data, android.util.Base64.NO_WRAP)
+    val destDir = java.io.File(context.filesDir, "diary_media")
+    destDir.mkdirs()
+    val destFile = java.io.File(destDir, fileName)
+    destFile.writeBytes(bytes)
+    android.util.Log.d(DIARY_LOG_TAG, "decodeBase64ToFile: saved $fileName (${bytes.size} bytes)")
+    "$prefix:${destFile.absolutePath}"
+} catch (e: Exception) {
+    android.util.Log.e(DIARY_LOG_TAG, "decodeBase64ToFile failed for $fileName: ${e.message}", e)
+    null
+}
+
+/**
+ * Build the mediaData JSONArray for one entry:
+ * [{ "path": "image:/…", "name": "photo_123.jpg", "data": "<base64>" }, …]
+ * Files that can't be read are skipped with a log.
+ */
+private fun buildMediaDataArray(mediaPaths: List<String>): org.json.JSONArray {
+    val arr = org.json.JSONArray()
+    for (path in mediaPaths) {
+        val (prefix, absPath) = when {
+            path.startsWith("image:") -> "image" to path.removePrefix("image:")
+            path.startsWith("voice:") -> "voice" to path.removePrefix("voice:")
+            else -> continue
+        }
+        // Skip content:// URIs — they can't be reliably read on another device
+        if (absPath.startsWith("content://")) {
+            android.util.Log.w(DIARY_LOG_TAG, "buildMediaDataArray: skipping content URI: $absPath")
+            continue
+        }
+        val b64 = encodeMediaToBase64(absPath) ?: continue
+        arr.put(org.json.JSONObject().apply {
+            put("path", path)                              // original path (informational)
+            put("name", java.io.File(absPath).name)       // filename for recreation
+            put("prefix", prefix)                          // "image" or "voice"
+            put("data", b64)                               // base64 binary
+        })
+    }
+    return arr
+}
+
+/**
+ * Restore media from a mediaData JSONArray (from JSON import).
+ * Writes files to diary_media/, returns new mediaPaths list.
+ */
+private fun restoreMediaFromArray(context: android.content.Context, mediaDataArr: org.json.JSONArray?): List<String> {
+    if (mediaDataArr == null) return emptyList()
+    val restored = mutableListOf<String>()
+    for (i in 0 until mediaDataArr.length()) {
+        try {
+            val item = mediaDataArr.getJSONObject(i)
+            val name   = item.optString("name")
+            val prefix = item.optString("prefix", "image")
+            val data   = item.optString("data", "")
+            if (name.isBlank() || data.isBlank()) {
+                android.util.Log.w(DIARY_LOG_TAG, "restoreMediaFromArray: empty name/data at index $i, skipping")
+                continue
+            }
+            val newPath = decodeBase64ToFile(context, data, name, prefix)
+            if (newPath != null) restored.add(newPath)
+        } catch (e: Exception) {
+            android.util.Log.e(DIARY_LOG_TAG, "restoreMediaFromArray: error at index $i: ${e.message}", e)
+        }
+    }
+    return restored
+}
+
 // ============================================================
 // BIOMETRIC HELPER
 // ============================================================
@@ -1012,11 +1104,19 @@ fun ProfessionalDiaryScreen(
                         val db   = DiaryDatabase.getDatabase(listExportContext)
                         val toInsert = (0 until arr.length()).map { i ->
                             val o = arr.getJSONObject(i)
-                            // Restore mediaPaths (photos + voice notes)
-                            val mediaJsonArr = o.optJSONArray("mediaPaths")
-                            val mediaPaths = if (mediaJsonArr != null) {
-                                (0 until mediaJsonArr.length()).map { mediaJsonArr.getString(it) }
-                            } else emptyList()
+                            // Restore media: prefer embedded base64 data, fall back to paths
+                            val mediaDataArr = o.optJSONArray("mediaData")
+                            val mediaPaths = if (mediaDataArr != null && mediaDataArr.length() > 0) {
+                                android.util.Log.d(DIARY_LOG_TAG, "import: restoring ${mediaDataArr.length()} media items from base64")
+                                restoreMediaFromArray(listExportContext, mediaDataArr)
+                            } else {
+                                // Legacy JSON (no mediaData): keep paths as-is, log warning
+                                val arr2 = o.optJSONArray("mediaPaths")
+                                if (arr2 != null && arr2.length() > 0) {
+                                    android.util.Log.w(DIARY_LOG_TAG, "import: no mediaData found, using raw paths (may not work on this device)")
+                                }
+                                if (arr2 != null) (0 until arr2.length()).map { arr2.getString(it) } else emptyList()
+                            }
                             DiaryEntry(
                                 id        = o.optLong("id", System.currentTimeMillis() + i),
                                 title     = o.optString("title"),
@@ -1075,7 +1175,9 @@ fun ProfessionalDiaryScreen(
                                                 put("reminderTimeMillis", e.reminderTimeMillis)
                                                 put("reminderLabel", e.reminderLabel)
                                                 // Include media paths so photos & voice notes survive export
-                                                put("mediaPaths", JSONArray(e.mediaPaths))
+                                                // Embed binary data so images/voice survive across devices
+                                                put("mediaPaths", JSONArray(e.mediaPaths))     // kept for legacy compat
+                                                put("mediaData", buildMediaDataArray(e.mediaPaths))
                                             })
                                         }
                                         val root = JSONObject().apply {
@@ -1547,10 +1649,17 @@ fun ProfessionalDiaryScreen(
                     val db      = DiaryDatabase.getDatabase(context)
                     val toInsert = (0 until arr.length()).map { i ->
                         val o = arr.getJSONObject(i)
-                        val mediaJsonArr = o.optJSONArray("mediaPaths")
-                        val mediaPaths = if (mediaJsonArr != null) {
-                            (0 until mediaJsonArr.length()).map { mediaJsonArr.getString(it) }
-                        } else emptyList()
+                        val mediaDataArr2 = o.optJSONArray("mediaData")
+                        val mediaPaths = if (mediaDataArr2 != null && mediaDataArr2.length() > 0) {
+                            android.util.Log.d(DIARY_LOG_TAG, "import: restoring ${mediaDataArr2.length()} media items from base64")
+                            restoreMediaFromArray(context, mediaDataArr2)
+                        } else {
+                            val arr2 = o.optJSONArray("mediaPaths")
+                            if (arr2 != null && arr2.length() > 0) {
+                                android.util.Log.w(DIARY_LOG_TAG, "import: no mediaData found, using raw paths (may not work on this device)")
+                            }
+                            if (arr2 != null) (0 until arr2.length()).map { arr2.getString(it) } else emptyList()
+                        }
                         DiaryEntry(
                             id        = o.optLong("id", System.currentTimeMillis() + i),
                             title     = o.optString("title"),
@@ -1632,7 +1741,8 @@ fun ProfessionalDiaryScreen(
                                             put("timestamp", e.timestamp)
                                             put("reminderTimeMillis", e.reminderTimeMillis)
                                             put("reminderLabel", e.reminderLabel)
-                                            put("mediaPaths", JSONArray(e.mediaPaths))
+                                            put("mediaPaths", JSONArray(e.mediaPaths))     // kept for legacy compat
+                                            put("mediaData", buildMediaDataArray(e.mediaPaths))
                                         })
                                     }
                                     val root = JSONObject().apply {
@@ -1750,7 +1860,9 @@ fun ProfessionalDiaryScreen(
                                                     put("timestamp", e.timestamp)
                                                     put("reminderTimeMillis", e.reminderTimeMillis)
                                                     put("reminderLabel", e.reminderLabel)
-                                                    put("mediaPaths", JSONArray(e.mediaPaths))
+                                                    // Embed binary data so images/voice survive across devices
+                                                put("mediaPaths", JSONArray(e.mediaPaths))     // kept for legacy compat
+                                                put("mediaData", buildMediaDataArray(e.mediaPaths))
                                                 })
                                             }
                                             val root2 = JSONObject().apply {
@@ -1826,10 +1938,18 @@ fun ProfessionalDiaryScreen(
                                                 val db      = DiaryDatabase.getDatabase(context)
                                                 val entries3 = (0 until arr3.length()).map { i ->
                                                     val o = arr3.getJSONObject(i)
-                                                    val mediaJsonArr = o.optJSONArray("mediaPaths")
-                                                    val mediaPaths = if (mediaJsonArr != null) {
-                                                        (0 until mediaJsonArr.length()).map { mediaJsonArr.getString(it) }
-                                                    } else emptyList()
+                                                    val mediaDataArr3 = o.optJSONArray("mediaData")
+                                                    val mediaPaths = if (mediaDataArr3 != null && mediaDataArr3.length() > 0) {
+                                                        android.util.Log.d(DIARY_LOG_TAG, "drive import: restoring ${mediaDataArr3.length()} media items from base64")
+                                                        restoreMediaFromArray(context, mediaDataArr3)
+                                                    } else {
+                                                        // Drive backup may not have embedded media; will try separate downloadDiaryMedia below
+                                                        val arr3b = o.optJSONArray("mediaPaths")
+                                                        if (arr3b != null && arr3b.length() > 0) {
+                                                            android.util.Log.w(DIARY_LOG_TAG, "drive import: no mediaData, will rely on separate media download")
+                                                        }
+                                                        if (arr3b != null) (0 until arr3b.length()).map { arr3b.getString(it) } else emptyList()
+                                                    }
                                                     DiaryEntry(
                                                         id        = o.optLong("id", System.currentTimeMillis() + i),
                                                         title     = o.optString("title"),
@@ -2413,18 +2533,22 @@ fun DiaryEditorArea(
                         Box {
                             // Load bitmap: support both absolute file paths and content:// URIs
                             val bmp = remember(uriStr) {
-                                runCatching {
+                                try {
                                     if (uriStr.startsWith("/")) {
-                                        // Absolute file path
-                                        android.graphics.BitmapFactory.decodeFile(uriStr)
+                                        val bmpResult = android.graphics.BitmapFactory.decodeFile(uriStr)
+                                        if (bmpResult == null) android.util.Log.e(DIARY_LOG_TAG, "decodeFile returned null for: $uriStr")
+                                        bmpResult
                                     } else {
                                         // content:// URI
                                         val contentUri = android.net.Uri.parse(uriStr)
                                         context.contentResolver.openInputStream(contentUri)?.use { stream ->
                                             android.graphics.BitmapFactory.decodeStream(stream)
-                                        }
+                                        }.also { if (it == null) android.util.Log.e(DIARY_LOG_TAG, "decodeStream returned null for: $uriStr") }
                                     }
-                                }.getOrNull()
+                                } catch (e: Exception) {
+                                    android.util.Log.e(DIARY_LOG_TAG, "Bitmap load failed for $uriStr: ${e.message}", e)
+                                    null
+                                }
                             }
                             if (bmp != null) {
                                 Image(
