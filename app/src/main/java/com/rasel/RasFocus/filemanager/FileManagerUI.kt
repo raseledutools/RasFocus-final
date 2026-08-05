@@ -803,12 +803,24 @@ fun CloudFileScreen(
 
         val online = DriveCacheManager.isOnline(context)
         if (online) {
-            // ── Online: fetch from Drive, then cache ──────────────────────────
+            // ── Online: fetch from Drive, cache current folder ─────────────────
             val result = DriveFileManager.listFiles(context, accountName, folderId)
             if (result != null) {
                 rawFiles = result
                 errorMsg = null
                 DriveCacheManager.saveFileList(context, accountName, folderId, result)
+
+                // ── Background: root folder open হলে সব subfolder recursively cache করো
+                // এতে offline এ গেলেও পুরো Drive tree browse করা যাবে
+                if (folderId == "root") {
+                    kotlinx.coroutines.launch(Dispatchers.IO) {
+                        DriveCacheManager.cacheAllSubfoldersRecursively(
+                            context = context,
+                            accountName = accountName,
+                            folderId = "root"
+                        )
+                    }
+                }
             } else {
                 // Network available but Drive call failed (token expired, etc.)
                 val cached = DriveCacheManager.loadFileList(context, accountName, folderId)
