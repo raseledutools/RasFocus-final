@@ -4,41 +4,41 @@
 ╚══════════════════════════════════════════╝
 
 === KOTLIN ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/DriveCacheManager.kt:119:21 Val cannot be reassigned
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/DriveCacheManager.kt:119:28 Type mismatch: inferred type is Long but Int was expected
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/DriveCacheManager.kt:119:29 Type mismatch: inferred type is BigInteger! but Long! was expected
 
 === UNRESOLVED / TYPE ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/DriveCacheManager.kt:119:28 Type mismatch: inferred type is Long but Int was expected
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/DriveCacheManager.kt:119:29 Type mismatch: inferred type is BigInteger! but Long! was expected
 
 === BUILD FAILURE ===
 > Task :app:compileFullReleaseKotlin FAILED
 * What went wrong:
 Execution failed for task ':app:compileFullReleaseKotlin'.
-BUILD FAILED in 3m 22s
+BUILD FAILED in 3m 29s
 
 === LAST 60 LINES ===
+> Task :app:extractProguardFiles
 > Task :app:generateFullReleaseBuildConfig
 > Task :app:packageFullReleaseResources FROM-CACHE
 > Task :app:parseFullReleaseLocalResources FROM-CACHE
 > Task :app:mapFullReleaseSourceSetPaths
-> Task :app:mergeFullReleaseArtProfile
+> Task :app:checkFullReleaseAarMetadata
 > Task :app:validateSigningFullRelease
 > Task :app:writeFullReleaseAppMetadata
+> Task :app:mergeFullReleaseArtProfile
 > Task :app:writeFullReleaseSigningConfigVersions
-> Task :app:checkFullReleaseAarMetadata
 > Task :app:mergeFullReleaseAssets FROM-CACHE
 > Task :app:checkFullReleaseDuplicateClasses
+> Task :app:collectFullReleaseDependencies
 > Task :app:compressFullReleaseAssets FROM-CACHE
 > Task :app:mergeFullReleaseNativeLibs
-> Task :app:collectFullReleaseDependencies
 
 > Task :app:stripFullReleaseDebugSymbols
 Unable to strip the following libraries, packaging them as they are: libbarhopper_v3.so, libimage_processing_util_jni.so, libpdfium.so, libpdfiumandroid.so.
 
 > Task :app:extractFullReleaseNativeSymbolTables FROM-CACHE
 > Task :app:mergeFullReleaseNativeDebugMetadata NO-SOURCE
-> Task :app:mergeFullReleaseResources FROM-CACHE
 > Task :app:sdkFullReleaseDependencyData
+> Task :app:mergeFullReleaseResources FROM-CACHE
 > Task :app:processFullReleaseMainManifest
 > Task :app:processFullReleaseManifest
 > Task :app:processFullReleaseManifestForPackage
@@ -49,11 +49,10 @@ note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round ico
 > Task :app:processFullReleaseResources
 > Task :app:kspFullReleaseKotlin
 > Task :app:compileFullReleaseKotlin
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/DriveCacheManager.kt:119:21 Val cannot be reassigned
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/DriveCacheManager.kt:119:28 Type mismatch: inferred type is Long but Int was expected
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/DriveCacheManager.kt:119:29 Type mismatch: inferred type is BigInteger! but Long! was expected
 
 > Task :app:compileFullReleaseKotlin FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785920727826.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785923156397.json
 
 FAILURE: Build failed with an exception.
 
@@ -74,6 +73,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 3m 22s
+BUILD FAILED in 3m 29s
 32 actionable tasks: 22 executed, 10 from cache
 Configuration cache entry stored.
