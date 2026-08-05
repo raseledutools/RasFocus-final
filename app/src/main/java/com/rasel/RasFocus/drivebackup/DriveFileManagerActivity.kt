@@ -9,15 +9,15 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Bundle
+import android.webkit.MimeTypeMap
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -41,9 +41,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.Image
-import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.google.api.services.drive.model.File
@@ -51,6 +54,8 @@ import com.rasel.RasFocus.filemanager.DriveCacheManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.net.URLDecoder
+import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -75,44 +80,91 @@ data class ContextMenuState(
     val show: Boolean = false
 )
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+// ── Root composable — owns NavController ──────────────────────────────────────
 @Composable
 fun DriveFileManagerScreen(onClose: () -> Unit) {
-    val context     = LocalContext.current
-    val scope       = rememberCoroutineScope()
-    val accountName = com.google.android.gms.auth.api.signin.GoogleSignIn
+    val navController = rememberNavController()
+    val context       = LocalContext.current
+    val accountName   = com.google.android.gms.auth.api.signin.GoogleSignIn
         .getLastSignedInAccount(context)?.email ?: ""
 
-    // ── State ──────────────────────────────────────────────────────────────────
-    var navStack       by remember { mutableStateOf(listOf(Pair("root", "My Drive"))) }
-    val currentFolder  = navStack.last()
-    // Flag: BackHandler already pre-loaded cache — LaunchedEffect should skip reload
-    var skipNextLoad   by remember { mutableStateOf(false) }
+    // One-time metadata pre-cache (background, runs once per open)
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(accountName) {
+        if (accountName.isNotEmpty() && DriveCacheManager.isOnline(context)) {
+            DriveMetadataSyncWorker.runNow(context, accountName)
+            DriveMetadataSyncWorker.schedule(context, accountName)
+        }
+    }
 
-    var files       by remember { mutableStateOf<List<File>>(emptyList()) }
-    var isLoading   by remember { mutableStateOf(true) }
-    var errorMsg    by remember { mutableStateOf<String?>(null) }
-    var showFixDrive by remember { mutableStateOf(false) }
-    var isOnline    by remember { mutableStateOf(DriveCacheManager.isOnline(context)) }
-    var viewMode    by remember { mutableStateOf(ViewMode.LIST) }
-    var contextMenu by remember { mutableStateOf<ContextMenuState?>(null) }
-    var offlineProgress by remember { mutableStateOf<Pair<String, Float>?>(null) } // fileName to 0..1
+    NavHost(
+        navController = navController,
+        startDestination = "folder/{folderId}/{folderName}",
+    ) {
+        composable(
+            route = "folder/{folderId}/{folderName}",
+            arguments = listOf(
+                navArgument("folderId")   { type = NavType.StringType; defaultValue = "root" },
+                navArgument("folderName") { type = NavType.StringType; defaultValue = "My Drive" }
+            )
+        ) { backStackEntry ->
+            val folderId   = backStackEntry.arguments?.getString("folderId")   ?: "root"
+            val folderName = backStackEntry.arguments?.getString("folderName")
+                ?.let { URLDecoder.decode(it, "UTF-8") } ?: "My Drive"
 
-    // ── Upload state ───────────────────────────────────────────────────────────
-    var isUploading by remember { mutableStateOf(false) }
-    var uploadProgress by remember { mutableStateOf<String?>(null) }
-    var isDownloading by remember { mutableStateOf(false) }
+            DriveFolderScreen(
+                folderId    = folderId,
+                folderName  = folderName,
+                accountName = accountName,
+                onNavigateToFolder = { id, name ->
+                    val encoded = URLEncoder.encode(name, "UTF-8")
+                    navController.navigate("folder/$id/$encoded")
+                },
+                onBack = {
+                    if (!navController.popBackStack()) onClose()
+                }
+            )
+        }
+    }
+}
+
+// ── Per-folder screen — each subfolder is a NEW composable instance ────────────
+// NavController পপ করলে এই instance destroy হয়, আগেরটা resume হয়।
+// আগের files state সহ — কোনো reload নেই, কোনো blank নেই।
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+fun DriveFolderScreen(
+    folderId: String,
+    folderName: String,
+    accountName: String,
+    onNavigateToFolder: (id: String, name: String) -> Unit,
+    onBack: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope   = rememberCoroutineScope()
+
+    // ── State — প্রতিটা folder এর নিজস্ব, NavController রক্ষা করে ────────────
+    var files           by remember { mutableStateOf<List<File>>(emptyList()) }
+    var isLoading       by remember { mutableStateOf(true) }
+    var errorMsg        by remember { mutableStateOf<String?>(null) }
+    var showFixDrive    by remember { mutableStateOf(false) }
+    var isOnline        by remember { mutableStateOf(DriveCacheManager.isOnline(context)) }
+    var viewMode        by remember { mutableStateOf(ViewMode.LIST) }
+    var contextMenu     by remember { mutableStateOf<ContextMenuState?>(null) }
+    var offlineProgress by remember { mutableStateOf<Pair<String, Float>?>(null) }
+    var isUploading     by remember { mutableStateOf(false) }
+    var uploadProgress  by remember { mutableStateOf<String?>(null) }
+    var isDownloading   by remember { mutableStateOf(false) }
     var downloadingName by remember { mutableStateOf<String?>(null) }
 
-    // ── File picker launcher for upload ───────────────────────────────────────
+    // ── File picker for upload ─────────────────────────────────────────────────
     val uploadFileLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetMultipleContents()
     ) { uris ->
         if (uris.isEmpty()) return@rememberLauncherForActivityResult
         scope.launch {
             isUploading = true
-            var successCount = 0
-            var failCount = 0
+            var successCount = 0; var failCount = 0
             uris.forEach { uri ->
                 uploadProgress = "Uploading ${successCount + failCount + 1}/${uris.size}..."
                 val inputStream = context.contentResolver.openInputStream(uri)
@@ -124,22 +176,20 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
                 if (inputStream != null) {
                     val tempFile = java.io.File(context.cacheDir, fileName)
                     tempFile.outputStream().use { out -> inputStream.copyTo(out) }
-                    val result = DriveFileManager.uploadFile(
-                        context, accountName, tempFile, currentFolder.first
-                    )
+                    val result = DriveFileManager.uploadFile(context, accountName, tempFile, folderId)
                     tempFile.delete()
                     if (result != null) successCount++ else failCount++
                 } else failCount++
             }
-            isUploading = false
-            uploadProgress = null
+            isUploading = false; uploadProgress = null
             Toast.makeText(
                 context,
-                if (failCount == 0) "Uploaded $successCount file(s)" else "$successCount uploaded, $failCount failed",
+                if (failCount == 0) "Uploaded $successCount file(s)"
+                else "$successCount uploaded, $failCount failed",
                 Toast.LENGTH_SHORT
             ).show()
-            // Refresh folder
-            loadFolder(context, accountName, currentFolder.first,
+            // Refresh this folder
+            loadFolder(context, accountName, folderId,
                 onFiles = { files = it; errorMsg = null },
                 onError = { m, h -> errorMsg = m; showFixDrive = h },
                 onLoading = { isLoading = it })
@@ -151,13 +201,15 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
         ActivityResultContracts.StartActivityForResult()
     ) {
         showFixDrive = false
-        scope.launch { loadFolder(context, accountName, currentFolder.first,
-            onFiles = { files = it; errorMsg = null },
-            onError = { msg, hasIntent -> errorMsg = msg; showFixDrive = hasIntent },
-            onLoading = { isLoading = it }) }
+        scope.launch {
+            loadFolder(context, accountName, folderId,
+                onFiles = { files = it; errorMsg = null },
+                onError = { msg, hasIntent -> errorMsg = msg; showFixDrive = hasIntent },
+                onLoading = { isLoading = it })
+        }
     }
 
-    // ── Network connectivity callback — auto-refresh when online ──────────────
+    // ── Network callback ───────────────────────────────────────────────────────
     DisposableEffect(Unit) {
         DriveCacheManager.init(context)
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -166,14 +218,11 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
                 if (!isOnline) {
                     isOnline = true
                     scope.launch {
-                        // Internet came back → silently refresh
-                        loadFolder(context, accountName, currentFolder.first,
+                        loadFolder(context, accountName, folderId,
                             onFiles = { files = it; errorMsg = null },
-                            onError = { _, _ -> /* keep cached view */ },
+                            onError = { _, _ -> },
                             onLoading = { isLoading = it })
-                        // Also kick off background sync for pinned files
                         DriveBackgroundSyncWorker.schedule(context, accountName)
-                        // Refresh full folder structure metadata (PC Drive style)
                         DriveMetadataSyncWorker.runNow(context, accountName)
                     }
                 }
@@ -186,65 +235,20 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
         onDispose { cm.unregisterNetworkCallback(cb) }
     }
 
-    // ── One-time metadata pre-cache (runs once per screen open if online) ─────
-    // PC Google Drive এর মতো — সব folder/file name background এ cache হয়
-    // যাতে offline এ পুরো tree browse করা যায়
-    LaunchedEffect(accountName) {
-        if (accountName.isNotEmpty() && DriveCacheManager.isOnline(context)) {
-            DriveMetadataSyncWorker.runNow(context, accountName)
-            DriveMetadataSyncWorker.schedule(context, accountName)
-        }
-    }
-
-    // ── Initial load ───────────────────────────────────────────────────────────
-    LaunchedEffect(currentFolder.first) {
+    // ── Load folder once on entry ──────────────────────────────────────────────
+    // শুধু প্রথমবার চলে। Back করলে এই composable resume হয়, re-run হয় না।
+    LaunchedEffect(Unit) {
         DriveCacheManager.init(context)
-        if (skipNextLoad) {
-            // BackHandler already loaded cache instantly — just refresh in background silently
-            skipNextLoad = false
-            if (DriveCacheManager.isOnline(context)) {
-                val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    DriveFileManager.listFiles(context, accountName, currentFolder.first)
-                }
-                if (result != null) {
-                    val sorted = result.sortedWith(
-                        compareBy({ it.mimeType != "application/vnd.google-apps.folder" },
-                                  { it.name?.lowercase() ?: "" })
-                    )
-                    DriveCacheManager.saveFileList(context, accountName, currentFolder.first, sorted)
-                    files = sorted
-                    errorMsg = null
-                }
-            }
-            return@LaunchedEffect
-        }
-        loadFolder(context, accountName, currentFolder.first,
+        loadFolder(context, accountName, folderId,
             onFiles = { files = it; errorMsg = null },
             onError = { msg, hasIntent -> errorMsg = msg; showFixDrive = hasIntent },
             onLoading = { isLoading = it })
     }
 
-    BackHandler {
-        if (navStack.size > 1) {
-            val prevFolder = navStack.dropLast(1).last()
-            // Pre-load cache before navStack changes — prevents black/blank flash
-            val cached = DriveCacheManager.loadFileList(context, accountName, prevFolder.first)
-            if (cached != null) {
-                files = cached
-                isLoading = false
-                errorMsg = null
-                skipNextLoad = true  // tell LaunchedEffect to skip full reload
-            }
-            navStack = navStack.dropLast(1)
-        } else {
-            onClose()
-        }
-    }
-
-    // ── Context menu (long-press) ──────────────────────────────────────────────
+    // ── Context menu ──────────────────────────────────────────────────────────
     contextMenu?.let { menu ->
         if (menu.show) {
-            val fid      = menu.file.id  ?: ""
+            val fid      = menu.file.id   ?: ""
             val fname    = menu.file.name ?: "File"
             val isPinned = DriveCacheManager.isPinned(fid)
             val isCached = DriveCacheManager.isFileCached(context, fid, fname)
@@ -256,11 +260,8 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
                     Column {
                         Text(fname, maxLines = 2, overflow = TextOverflow.Ellipsis,
                             fontWeight = FontWeight.SemiBold)
-                        // Local / Cloud badge
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(top = 4.dp)
-                        ) {
+                        Row(verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(top = 4.dp)) {
                             if (isCached) {
                                 Icon(Icons.Default.PhoneAndroid, null,
                                     tint = Color(0xFF4CAF50), modifier = Modifier.size(14.dp))
@@ -277,7 +278,6 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
                 },
                 text = {
                     Column {
-                        // Make available offline / Remove offline
                         if (!isFolder) {
                             TextButton(onClick = {
                                 contextMenu = null
@@ -312,7 +312,6 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
                                 }
                             }
                         } else {
-                            // Folder offline
                             TextButton(onClick = {
                                 contextMenu = null
                                 DriveCacheManager.pin(fid)
@@ -337,7 +336,6 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
 
                         HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
-                        // Clear cache (this file only)
                         if (isCached) {
                             TextButton(onClick = {
                                 contextMenu = null
@@ -349,8 +347,7 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
                                     Toast.LENGTH_SHORT).show()
                             }, modifier = Modifier.fillMaxWidth()) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.DeleteSweep, null,
-                                        tint = Color(0xFFE53935))
+                                    Icon(Icons.Default.DeleteSweep, null, tint = Color(0xFFE53935))
                                     Spacer(Modifier.width(8.dp))
                                     Text("Clear local cache", color = Color(0xFFE53935))
                                 }
@@ -365,89 +362,60 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
         }
     }
 
-    // ── Offline download progress snackbar ────────────────────────────────────
-    offlineProgress?.let { (name, progress) ->
-        Box(
-            Modifier.fillMaxSize(),
-            contentAlignment = Alignment.BottomCenter
-        ) {
+    // ── Offline progress snackbar ──────────────────────────────────────────────
+    offlineProgress?.let { (name, _) ->
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
             Card(
                 modifier = Modifier.fillMaxWidth().padding(12.dp),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF323232))
             ) {
                 Column(Modifier.padding(12.dp)) {
-                    Text("Saving offline: $name",
-                        color = Color.White, fontSize = 13.sp,
+                    Text("Saving offline: $name", color = Color.White, fontSize = 13.sp,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Spacer(Modifier.height(6.dp))
-                    LinearProgressIndicator(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = Color(0xFF4CAF50)
-                    )
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = Color(0xFF4CAF50))
                 }
             }
         }
     }
 
+    // ── Scaffold ───────────────────────────────────────────────────────────────
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Column {
-                        Text(currentFolder.second, fontSize = 17.sp, maxLines = 1,
-                            overflow = TextOverflow.Ellipsis)
+                        Text(folderName, fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         if (!isOnline) {
-                            Text("Offline", fontSize = 11.sp,
-                                color = Color.White.copy(alpha = 0.75f))
+                            Text("Offline", fontSize = 11.sp, color = Color.White.copy(alpha = 0.75f))
                         }
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = {
-                        if (navStack.size > 1) {
-                            val prevFolder = navStack.dropLast(1).last()
-                            val cached = DriveCacheManager.loadFileList(context, accountName, prevFolder.first)
-                            if (cached != null) {
-                                files = cached
-                                isLoading = false
-                                errorMsg = null
-                                skipNextLoad = true  // tell LaunchedEffect to skip full reload
-                            }
-                            navStack = navStack.dropLast(1)
-                        } else {
-                            onClose()
-                        }
-                    }) { Icon(Icons.Default.ArrowBack, "Back") }
+                    // সহজ একটা back — NavController.popBackStack() শেষ কথা
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, "Back")
+                    }
                 },
                 actions = {
-                    // Photos gallery tab toggle
                     IconButton(onClick = {
                         viewMode = if (viewMode == ViewMode.PHOTOS) ViewMode.LIST else ViewMode.PHOTOS
                     }) {
-                        Icon(
-                            Icons.Default.PhotoLibrary,
-                            contentDescription = "Photos",
-                            tint = if (viewMode == ViewMode.PHOTOS) Color(0xFFFFD54F) else Color.White
-                        )
+                        Icon(Icons.Default.PhotoLibrary, contentDescription = "Photos",
+                            tint = if (viewMode == ViewMode.PHOTOS) Color(0xFFFFD54F) else Color.White)
                     }
-                    // List/Grid toggle (hidden in Photos mode)
                     if (viewMode != ViewMode.PHOTOS) {
                         IconButton(onClick = {
                             viewMode = if (viewMode == ViewMode.LIST) ViewMode.GRID else ViewMode.LIST
                         }) {
                             Icon(
                                 if (viewMode == ViewMode.LIST) Icons.Default.GridView else Icons.Default.ViewList,
-                                contentDescription = "Toggle view",
-                                tint = Color.White
+                                contentDescription = "Toggle view", tint = Color.White
                             )
                         }
                     }
-                    // Offline indicator dot
                     if (!isOnline) {
-                        Box(
-                            Modifier.size(8.dp)
-                                .background(Color(0xFFFF9800), shape = RoundedCornerShape(50))
-                        )
+                        Box(Modifier.size(8.dp).background(Color(0xFFFF9800), RoundedCornerShape(50)))
                         Spacer(Modifier.width(8.dp))
                     }
                 },
@@ -462,15 +430,11 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
             if (viewMode != ViewMode.PHOTOS && isOnline) {
                 FloatingActionButton(
                     onClick = { uploadFileLauncher.launch("*/*") },
-                    containerColor = Color(0xFF4A90D9),
-                    contentColor = Color.White
+                    containerColor = Color(0xFF4A90D9), contentColor = Color.White
                 ) {
                     if (isUploading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            color = Color.White,
-                            strokeWidth = 2.dp
-                        )
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp),
+                            color = Color.White, strokeWidth = 2.dp)
                     } else {
                         Icon(Icons.Default.CloudUpload, contentDescription = "Upload")
                     }
@@ -484,7 +448,6 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
                 .padding(padding)
                 .background(Color(0xFFF8FAFC))
         ) {
-            // Upload progress bar
             if (uploadProgress != null) {
                 LinearProgressIndicator(
                     modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter),
@@ -492,21 +455,14 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
                 )
             }
 
-            // Download-then-open loading overlay
             if (isDownloading) {
-                Box(
-                    Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Card(
-                        shape = RoundedCornerShape(16.dp),
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)),
+                    contentAlignment = Alignment.Center) {
+                    Card(shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E2E)),
-                        elevation = CardDefaults.cardElevation(8.dp)
-                    ) {
-                        Column(
-                            Modifier.padding(horizontal = 28.dp, vertical = 20.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
+                        elevation = CardDefaults.cardElevation(8.dp)) {
+                        Column(Modifier.padding(horizontal = 28.dp, vertical = 20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally) {
                             CircularProgressIndicator(color = Color(0xFF4A90D9), strokeWidth = 3.dp)
                             Spacer(Modifier.height(12.dp))
                             Text(
@@ -518,6 +474,7 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
                     }
                 }
             }
+
             when {
                 isLoading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
 
@@ -530,14 +487,13 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
                     if (showFixDrive) {
                         Button(onClick = {
                             DriveFileManager.lastRecoveryIntent?.let { fixDriveLauncher.launch(it) }
-                        }, colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFFF9800))) {
+                        }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))) {
                             Text("Grant Drive Permission")
                         }
                     } else {
                         Button(onClick = {
                             scope.launch {
-                                loadFolder(context, accountName, currentFolder.first,
+                                loadFolder(context, accountName, folderId,
                                     onFiles = { files = it; errorMsg = null },
                                     onError = { m, h -> errorMsg = m; showFixDrive = h },
                                     onLoading = { isLoading = it })
@@ -550,10 +506,7 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
                     modifier = Modifier.align(Alignment.Center), color = Color.Gray)
 
                 viewMode == ViewMode.PHOTOS -> {
-                    DrivePhotoGalleryScreen(
-                        accountName = accountName,
-                        isOnline = isOnline
-                    )
+                    DrivePhotoGalleryScreen(accountName = accountName, isOnline = isOnline)
                 }
 
                 viewMode == ViewMode.LIST -> {
@@ -564,23 +517,26 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
                                 accountName = accountName,
                                 isOnline = isOnline,
                                 onClick = {
-                                    handleFileClick(context, scope, file, accountName, navStack,
-                                        onNavigate = { navStack = it },
-                                        onDownloading = { dl ->
-                                            isDownloading = dl
-                                            downloadingName = if (dl) file.name else null
-                                        })
+                                    if (file.mimeType == "application/vnd.google-apps.folder") {
+                                        onNavigateToFolder(file.id ?: "", file.name ?: "Folder")
+                                    } else {
+                                        scope.launch {
+                                            openFile(context, scope, file, accountName,
+                                                onDownloading = { dl ->
+                                                    isDownloading = dl
+                                                    downloadingName = if (dl) file.name else null
+                                                })
+                                        }
+                                    }
                                 },
-                                onLongClick = {
-                                    contextMenu = ContextMenuState(file, show = true)
-                                }
+                                onLongClick = { contextMenu = ContextMenuState(file, show = true) }
                             )
                             HorizontalDivider(color = Color.LightGray.copy(alpha = 0.4f))
                         }
                     }
                 }
 
-                else -> { // GRID
+                else -> {
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(3),
                         modifier = Modifier.fillMaxSize(),
@@ -595,16 +551,19 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
                                 context = context,
                                 isOnline = isOnline,
                                 onClick = {
-                                    handleFileClick(context, scope, file, accountName, navStack,
-                                        onNavigate = { navStack = it },
-                                        onDownloading = { dl ->
-                                            isDownloading = dl
-                                            downloadingName = if (dl) file.name else null
-                                        })
+                                    if (file.mimeType == "application/vnd.google-apps.folder") {
+                                        onNavigateToFolder(file.id ?: "", file.name ?: "Folder")
+                                    } else {
+                                        scope.launch {
+                                            openFile(context, scope, file, accountName,
+                                                onDownloading = { dl ->
+                                                    isDownloading = dl
+                                                    downloadingName = if (dl) file.name else null
+                                                })
+                                        }
+                                    }
                                 },
-                                onLongClick = {
-                                    contextMenu = ContextMenuState(file, show = true)
-                                }
+                                onLongClick = { contextMenu = ContextMenuState(file, show = true) }
                             )
                         }
                     }
@@ -614,7 +573,7 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
     }
 }
 
-// ── Folder load helper ────────────────────────────────────────────────────────
+// ── Folder load helper ─────────────────────────────────────────────────────────
 private suspend fun loadFolder(
     context: Context,
     accountName: String,
@@ -625,11 +584,11 @@ private suspend fun loadFolder(
 ) {
     DriveCacheManager.init(context)
 
-    // ── Show cached data instantly (no loading flash) ─────────────────────────
-    val cachedImmediate = DriveCacheManager.loadFileList(context, accountName, folderId)
-    if (cachedImmediate != null) {
-        onFiles(cachedImmediate)
-        // Still refresh in background if online — but don't show loading spinner
+    // Cache থাকলে instantly দেখাও, loading spinner নেই
+    val cached = DriveCacheManager.loadFileList(context, accountName, folderId)
+    if (cached != null) {
+        onFiles(cached)
+        // Background এ silently refresh
         if (DriveCacheManager.isOnline(context)) {
             val result = withContext(Dispatchers.IO) {
                 DriveFileManager.listFiles(context, accountName, folderId)
@@ -646,7 +605,7 @@ private suspend fun loadFolder(
         return
     }
 
-    // ── No cache — show loading spinner and fetch ─────────────────────────────
+    // Cache নেই — spinner দেখাও এবং fetch করো
     onLoading(true)
     if (DriveCacheManager.isOnline(context)) {
         val result = withContext(Dispatchers.IO) {
@@ -669,80 +628,67 @@ private suspend fun loadFolder(
     onLoading(false)
 }
 
-// ── File click handler ────────────────────────────────────────────────────────
-// ── File click handler — download-then-open ───────────────────────────────────
-private fun handleFileClick(
+// ── File open helper ──────────────────────────────────────────────────────────
+private suspend fun openFile(
     context: Context,
     scope: kotlinx.coroutines.CoroutineScope,
     file: File,
     accountName: String,
-    navStack: List<Pair<String, String>>,
-    onNavigate: (List<Pair<String, String>>) -> Unit,
-    onDownloading: (Boolean) -> Unit = {}
+    onDownloading: (Boolean) -> Unit
 ) {
-    if (file.mimeType == "application/vnd.google-apps.folder") {
-        onNavigate(navStack + Pair(file.id ?: "", file.name ?: "Folder"))
-        return
-    }
-    val fid  = file.id  ?: return
+    val fid  = file.id   ?: return
     val name = file.name ?: return
 
-    scope.launch {
-        // Check cache first — instant open if already downloaded
-        val cached = DriveCacheManager.getCachedFile(context, fid, name)
-        if (cached != null && cached.exists()) {
-            openDriveCachedFile(context, cached, file.mimeType)
-            return@launch
-        }
+    val cached = DriveCacheManager.getCachedFile(context, fid, name)
+    if (cached != null && cached.exists()) {
+        openDriveCachedFile(context, cached, file.mimeType)
+        return
+    }
 
-        // Not cached — download with loading indicator
-        onDownloading(true)
-        val dest = DriveCacheManager.getCacheDir(context)
-        val downloaded = withContext(Dispatchers.IO) {
-            DriveFileManager.downloadFile(context, accountName, fid, name, dest)
-        }
-        onDownloading(false)
+    onDownloading(true)
+    val dest       = DriveCacheManager.getCacheDir(context)
+    val downloaded = withContext(Dispatchers.IO) {
+        DriveFileManager.downloadFile(context, accountName, fid, name, dest)
+    }
+    onDownloading(false)
 
-        if (downloaded != null) {
-            DriveCacheManager.markFileDownloaded(context, fid, name)
-            openDriveCachedFile(context, downloaded, file.mimeType)
-        } else {
-            Toast.makeText(context, "Download failed: ${DriveFileManager.lastError ?: "unknown"}", Toast.LENGTH_SHORT).show()
-        }
+    if (downloaded != null) {
+        DriveCacheManager.markFileDownloaded(context, fid, name)
+        openDriveCachedFile(context, downloaded, file.mimeType)
+    } else {
+        Toast.makeText(context,
+            "Download failed: ${DriveFileManager.lastError ?: "unknown"}",
+            Toast.LENGTH_SHORT).show()
     }
 }
 
-// ── Open a locally-cached Drive file via FileProvider ────────────────────────
+// ── Open cached file via FileProvider ─────────────────────────────────────────
 private fun openDriveCachedFile(context: Context, file: java.io.File, mimeType: String?) {
     try {
-        val uri = FileProvider.getUriForFile(
-            context, "${context.packageName}.fileprovider", file
-        )
+        val uri  = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         val mime = mimeType?.takeIf { it != "application/vnd.google-apps.folder" }
             ?: MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.lowercase())
             ?: "*/*"
 
-        // Route known types through UniversalViewerActivity (in-app viewer)
         val pkg = context.packageName.replace(".combo", "")
         val cls = try { Class.forName("$pkg.selfcontrol.study_tools.UniversalViewerActivity") }
                   catch (_: ClassNotFoundException) { null }
         if (cls != null && mime != "*/*") {
-            val intent = Intent(context, cls).apply {
+            context.startActivity(Intent(context, cls).apply {
                 action = Intent.ACTION_VIEW
                 setDataAndType(uri, mime)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            context.startActivity(intent)
+            })
             return
         }
-        // Fallback: system chooser
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, mime)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        context.startActivity(Intent.createChooser(intent, "Open with"))
+        context.startActivity(Intent.createChooser(
+            Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mime)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }, "Open with"
+        ))
     } catch (e: Exception) {
         Toast.makeText(context, "Cannot open: ${e.message}", Toast.LENGTH_SHORT).show()
     }
@@ -752,7 +698,7 @@ private fun openDriveCachedFile(context: Context, file: java.io.File, mimeType: 
 private fun isImageMime(mimeType: String?): Boolean =
     mimeType?.startsWith("image/") == true
 
-// ── Thumbnail loader — online (Coil + thumbnailLink) or local cache ───────────
+// ── Thumbnail ─────────────────────────────────────────────────────────────────
 @Composable
 private fun DriveThumbnail(
     file: File,
@@ -760,13 +706,11 @@ private fun DriveThumbnail(
     modifier: Modifier = Modifier,
     context: Context = LocalContext.current
 ) {
-    // Prefer Drive's thumbnailLink (online) — Coil handles caching automatically
-    val thumbUrl = file.thumbnailLink?.replace("=s220", "=s400") // request larger thumb
+    val thumbUrl = file.thumbnailLink?.replace("=s220", "=s400")
 
-    // Local cache fallback (pinned files)
     var localBitmap by remember(file.id) { mutableStateOf<Bitmap?>(null) }
     LaunchedEffect(file.id) {
-        if (thumbUrl != null) return@LaunchedEffect // Coil handles it
+        if (thumbUrl != null) return@LaunchedEffect
         if (!isImageMime(file.mimeType)) return@LaunchedEffect
         withContext(Dispatchers.IO) {
             val cached = DriveCacheManager.getCachedFile(context, file.id ?: "", file.name ?: "")
@@ -780,10 +724,7 @@ private fun DriveThumbnail(
     when {
         thumbUrl != null -> {
             AsyncImage(
-                model = ImageRequest.Builder(context)
-                    .data(thumbUrl)
-                    .crossfade(true)
-                    .build(),
+                model = ImageRequest.Builder(context).data(thumbUrl).crossfade(true).build(),
                 contentDescription = file.name,
                 modifier = modifier,
                 contentScale = ContentScale.Crop,
@@ -791,12 +732,8 @@ private fun DriveThumbnail(
             )
         }
         localBitmap != null -> {
-            Image(
-                bitmap = localBitmap!!.asImageBitmap(),
-                contentDescription = file.name,
-                modifier = modifier,
-                contentScale = ContentScale.Crop
-            )
+            Image(bitmap = localBitmap!!.asImageBitmap(), contentDescription = file.name,
+                modifier = modifier, contentScale = ContentScale.Crop)
         }
         else -> {
             Box(modifier.background(Color(0xFFE3E8F0)), contentAlignment = Alignment.Center) {
@@ -834,11 +771,8 @@ fun DriveFileListItem(
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Icon / thumbnail
-        Box(
-            modifier = Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)),
-            contentAlignment = Alignment.Center
-        ) {
+        Box(modifier = Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)),
+            contentAlignment = Alignment.Center) {
             if (isImageMime(file.mimeType)) {
                 DriveThumbnail(file, accountName,
                     Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)), context)
@@ -855,43 +789,33 @@ fun DriveFileListItem(
         Spacer(Modifier.width(14.dp))
 
         Column(Modifier.weight(1f)) {
-            Text(file.name ?: "Unknown",
-                fontWeight = FontWeight.Medium, fontSize = 15.sp,
+            Text(file.name ?: "Unknown", fontWeight = FontWeight.Medium, fontSize = 15.sp,
                 maxLines = 2, overflow = TextOverflow.Ellipsis)
             val sizeKb = if (!isFolder) "${(file.getSize() ?: 0) / 1024} KB • " else ""
             Text("$sizeKb$dateStr", fontSize = 12.sp, color = Color.Gray)
         }
 
-        // Local / Cloud status badge
         Spacer(Modifier.width(8.dp))
         when {
-            isPinned && isCached -> {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.PhoneAndroid, "Local",
-                        tint = Color(0xFF4CAF50), modifier = Modifier.size(16.dp))
-                    Text("Local", fontSize = 9.sp, color = Color(0xFF4CAF50))
-                }
+            isPinned && isCached -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Default.PhoneAndroid, "Local",
+                    tint = Color(0xFF4CAF50), modifier = Modifier.size(16.dp))
+                Text("Local", fontSize = 9.sp, color = Color(0xFF4CAF50))
             }
-            isPinned && !isCached -> {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Sync, "Syncing",
-                        tint = Color(0xFFFF9800), modifier = Modifier.size(16.dp))
-                    Text("Sync", fontSize = 9.sp, color = Color(0xFFFF9800))
-                }
+            isPinned && !isCached -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Default.Sync, "Syncing",
+                    tint = Color(0xFFFF9800), modifier = Modifier.size(16.dp))
+                Text("Sync", fontSize = 9.sp, color = Color(0xFFFF9800))
             }
-            isCached -> {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.PhoneAndroid, "Cached",
-                        tint = Color(0xFF90CAF9), modifier = Modifier.size(16.dp))
-                    Text("Cache", fontSize = 9.sp, color = Color(0xFF90CAF9))
-                }
+            isCached -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Default.PhoneAndroid, "Cached",
+                    tint = Color(0xFF90CAF9), modifier = Modifier.size(16.dp))
+                Text("Cache", fontSize = 9.sp, color = Color(0xFF90CAF9))
             }
-            else -> {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Cloud, "Cloud",
-                        tint = Color(0xFFBDBDBD), modifier = Modifier.size(16.dp))
-                    Text("Cloud", fontSize = 9.sp, color = Color(0xFFBDBDBD))
-                }
+            else -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Default.Cloud, "Cloud",
+                    tint = Color(0xFFBDBDBD), modifier = Modifier.size(16.dp))
+                Text("Cloud", fontSize = 9.sp, color = Color(0xFFBDBDBD))
             }
         }
     }
@@ -921,15 +845,12 @@ fun DriveFileGridItem(
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Box(Modifier.fillMaxSize()) {
-            // Main content
             if (isImageMime(file.mimeType)) {
                 DriveThumbnail(file, accountName, Modifier.fillMaxSize(), context)
             } else {
-                Column(
-                    Modifier.fillMaxSize(),
+                Column(Modifier.fillMaxSize(),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
+                    verticalArrangement = Arrangement.Center) {
                     Icon(
                         imageVector = if (isFolder) Icons.Default.Folder else Icons.Default.InsertDriveFile,
                         contentDescription = null,
@@ -939,27 +860,19 @@ fun DriveFileGridItem(
                 }
             }
 
-            // Offline pin badge (top-right)
             if (isPinned) {
-                Box(
-                    Modifier.align(Alignment.TopEnd).padding(4.dp)
-                        .size(20.dp)
-                        .background(Color(0xFF4CAF50), RoundedCornerShape(50)),
-                    contentAlignment = Alignment.Center
-                ) {
+                Box(Modifier.align(Alignment.TopEnd).padding(4.dp)
+                    .size(20.dp).background(Color(0xFF4CAF50), RoundedCornerShape(50)),
+                    contentAlignment = Alignment.Center) {
                     Icon(Icons.Default.Check, contentDescription = "Pinned offline",
                         tint = Color.White, modifier = Modifier.size(12.dp))
                 }
             }
 
-            // File name label at bottom
-            Box(
-                Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.45f))
-                    .padding(horizontal = 6.dp, vertical = 3.dp)
-            ) {
-                Text(file.name ?: "",
-                    color = Color.White, fontSize = 11.sp,
+            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                .background(Color.Black.copy(alpha = 0.45f))
+                .padding(horizontal = 6.dp, vertical = 3.dp)) {
+                Text(file.name ?: "", color = Color.White, fontSize = 11.sp,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
