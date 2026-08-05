@@ -813,7 +813,7 @@ fun CloudFileScreen(
                 // ── Background: root folder open হলে সব subfolder recursively cache করো
                 // এতে offline এ গেলেও পুরো Drive tree browse করা যাবে
                 if (folderId == "root") {
-                    kotlinx.coroutines.launch(Dispatchers.IO) {
+                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
                         DriveCacheManager.cacheAllSubfoldersRecursively(
                             context = context,
                             accountName = accountName,
