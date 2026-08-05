@@ -66,6 +66,12 @@ class DiaryAutoBackupWorker(
                 put("tags",    e.tags.joinToString(","))
                 put("locked",  e.isLocked)
                 put("timestamp", e.timestamp)
+                put("reminderTimeMillis", e.reminderTimeMillis)
+                put("reminderLabel", e.reminderLabel)
+                // Keep path list for legacy compat
+                put("mediaPaths", JSONArray(e.mediaPaths))
+                // Embed binary data so images/voice survive across devices & reinstalls
+                put("mediaData", buildMediaDataArray(ctx, e.mediaPaths))
             })
         }
         val root = JSONObject().apply {
@@ -75,7 +81,40 @@ class DiaryAutoBackupWorker(
         }
         File(ctx.cacheDir, "RasFocus_Diary_Backup.json")
             .also { it.writeText(root.toString(2)) }
-    } catch (_: Exception) { null }
+    } catch (e: Exception) {
+        android.util.Log.e("DiaryAutoBackup", "buildJsonFile failed: ${e.message}", e)
+        null
+    }
+
+    /** Encode all media files for one entry into a JSONArray of {name, prefix, data}. */
+    private fun buildMediaDataArray(ctx: Context, mediaPaths: List<String>): JSONArray {
+        val arr = JSONArray()
+        for (path in mediaPaths) {
+            val (prefix, absPath) = when {
+                path.startsWith("image:") -> "image" to path.removePrefix("image:")
+                path.startsWith("voice:") -> "voice" to path.removePrefix("voice:")
+                else -> continue
+            }
+            if (absPath.startsWith("content://")) continue  // content URIs not portable
+            val file = File(absPath)
+            if (!file.exists()) {
+                android.util.Log.w("DiaryAutoBackup", "buildMediaDataArray: missing $absPath")
+                continue
+            }
+            try {
+                val b64 = android.util.Base64.encodeToString(file.readBytes(), android.util.Base64.NO_WRAP)
+                arr.put(JSONObject().apply {
+                    put("path",   path)
+                    put("name",   file.name)
+                    put("prefix", prefix)
+                    put("data",   b64)
+                })
+            } catch (e: Exception) {
+                android.util.Log.e("DiaryAutoBackup", "buildMediaDataArray: encode failed for $absPath: ${e.message}", e)
+            }
+        }
+        return arr
+    }
 
     // ── PDF builder (android.graphics.pdf — no extra lib) ────────────────────
     private fun buildPdfFile(ctx: Context, entries: List<DiaryEntry>): File? = try {
@@ -133,16 +172,20 @@ class DiaryAutoBackupWorker(
         private const val WORK_NAME = "rasfocus_diary_auto_backup"
 
         fun schedule(context: Context) {
-            val req = PeriodicWorkRequestBuilder<DiaryAutoBackupWorker>(3, TimeUnit.HOURS)
+            // Android WorkManager enforces a minimum periodic interval of 15 minutes.
+            // Setting 15 minutes here is the shortest interval the OS will honour.
+            val req = PeriodicWorkRequestBuilder<DiaryAutoBackupWorker>(15, TimeUnit.MINUTES)
                 .setConstraints(
                     Constraints.Builder()
                         .setRequiredNetworkType(NetworkType.CONNECTED)
                         .build()
                 )
-                .setInitialDelay(10, TimeUnit.MINUTES)
+                .setInitialDelay(1, TimeUnit.MINUTES)   // first run 1 min after schedule()
                 .build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-                WORK_NAME, ExistingPeriodicWorkPolicy.KEEP, req
+                WORK_NAME,
+                ExistingPeriodicWorkPolicy.REPLACE,     // REPLACE so new interval takes effect immediately
+                req
             )
         }
 
