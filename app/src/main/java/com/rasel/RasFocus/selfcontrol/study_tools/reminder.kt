@@ -673,7 +673,22 @@ fun ReminderScreen(onBack: () -> Unit) {
                                 cancelReminderAlarm(context, reminder.id)
                                 reminders = reminders.filter { it.id != reminder.id }
                             },
-                            onEdit = { editItem = reminder; showAddDialog = true }
+                            onEdit = { editItem = reminder; showAddDialog = true },
+                            onToggleActive = {
+                                val nowActive = !reminder.isActive
+                                if (nowActive) {
+                                    // Re-schedule the alarm
+                                    ensureReminderChannel(context)
+                                    scheduleReminderAlarmFull(context, reminder.copy(isActive = true))
+                                } else {
+                                    // Cancel the alarm
+                                    cancelReminderAlarm(context, reminder.id)
+                                }
+                                reminders = reminders.map {
+                                    if (it.id == reminder.id) it.copy(isActive = nowActive) else it
+                                }
+                                ReminderStorage.save(context, reminders)
+                            }
                         )
                     }
                 }
@@ -737,16 +752,22 @@ private fun ReminderListItem(
     reminder: ReminderItem,
     onComplete: () -> Unit,
     onDelete: () -> Unit,
-    onEdit: () -> Unit
+    onEdit: () -> Unit,
+    onToggleActive: () -> Unit
 ) {
     var showMenu by remember { mutableStateOf(false) }
+
+    // Active / Inactive colours
+    val activeColor   = Color(0xFF43A047)   // green
+    val inactiveColor = Color(0xFFBDBDBD)   // grey
+
     Column {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(RmWhite)
+                .background(if (reminder.isActive) RmWhite else Color(0xFFF5F5F5))
                 .clickable { onEdit() }
-                .padding(horizontal = 16.dp, vertical = 14.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Checkbox
@@ -760,15 +781,15 @@ private fun ReminderListItem(
                 if (reminder.isCompleted)
                     Icon(Icons.Default.Check, contentDescription = null, tint = RmWhite, modifier = Modifier.size(14.dp))
             }
-            Spacer(Modifier.width(14.dp))
+            Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     reminder.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
-                    color = if (reminder.isCompleted) RmTextSub else RmText,
+                    color = if (reminder.isCompleted || !reminder.isActive) RmTextSub else RmText,
                     textDecoration = if (reminder.isCompleted) TextDecoration.LineThrough else null,
                     maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
-                Spacer(Modifier.height(3.dp))
+                Spacer(Modifier.height(2.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(formatDateTime(reminder.triggerMillis), fontSize = 12.sp, color = RmTextSub)
                     if (reminder.repeatType != RepeatType.NONE) {
@@ -778,8 +799,76 @@ private fun ReminderListItem(
                         Text("  •  $repeatLabel", fontSize = 12.sp, color = RmTextSub)
                     }
                 }
+                Spacer(Modifier.height(6.dp))
+                // ── Double-button: Activate / Deactivate ──
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // ACTIVATE button
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(
+                                if (reminder.isActive) activeColor else activeColor.copy(alpha = 0.12f)
+                            )
+                            .border(
+                                1.dp,
+                                if (reminder.isActive) activeColor else activeColor.copy(alpha = 0.4f),
+                                RoundedCornerShape(8.dp)
+                            )
+                            .clickable(enabled = !reminder.isActive) { onToggleActive() }
+                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.PlayArrow,
+                                contentDescription = "Activate",
+                                tint = if (reminder.isActive) RmWhite else activeColor,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(Modifier.width(3.dp))
+                            Text(
+                                "Active",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (reminder.isActive) RmWhite else activeColor
+                            )
+                        }
+                    }
+                    // DEACTIVATE button
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(
+                                if (!reminder.isActive) inactiveColor else inactiveColor.copy(alpha = 0.12f)
+                            )
+                            .border(
+                                1.dp,
+                                if (!reminder.isActive) inactiveColor else inactiveColor.copy(alpha = 0.4f),
+                                RoundedCornerShape(8.dp)
+                            )
+                            .clickable(enabled = reminder.isActive) { onToggleActive() }
+                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Pause,
+                                contentDescription = "Deactivate",
+                                tint = if (!reminder.isActive) RmWhite else inactiveColor,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(Modifier.width(3.dp))
+                            Text(
+                                "Inactive",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (!reminder.isActive) RmWhite else inactiveColor
+                            )
+                        }
+                    }
+                }
             }
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(6.dp))
             Column(horizontalAlignment = Alignment.End) {
                 val rel = relativeDate(reminder.triggerMillis)
                 Text(

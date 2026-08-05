@@ -409,6 +409,7 @@ fun HomeScreen() {
                                     is NavState.AppManager -> "App Manager"
                                     is NavState.DriveOfflineSettings -> "Offline Settings"
                                     is NavState.FtpServer -> "Access from PC"
+                                    is NavState.RemoteConnections -> "Remote Connections"
                                     is NavState.TextEditor -> state.path.substringAfterLast("/")
                                     is NavState.Saf -> state.uri.substringAfterLast("%2F").substringAfterLast("/")
                                 },
