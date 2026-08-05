@@ -288,9 +288,9 @@ fun HomeScreen() {
                 val state = currentNavState as NavState.Local
                 val currentFile = java.io.File(state.path)
                 val parent = currentFile.parentFile
-                // Root paths: /storage/emulated/0, /sdcard, /mnt/sdcard
                 val storageRoot = android.os.Environment.getExternalStorageDirectory().absolutePath
                 val isAtRoot = parent == null ||
+                    currentFile.absolutePath == storageRoot ||
                     parent.absolutePath == storageRoot ||
                     parent.absolutePath == "/storage/emulated" ||
                     parent.absolutePath == "/storage" ||
@@ -509,9 +509,18 @@ fun HomeScreen() {
                         path = state.path,
                         onNavigate = { currentNavState = it },
                         onBack = {
-                            val parent = java.io.File(state.path).parent
-                            if (parent != null && parent.contains("0")) {
-                                currentNavState = NavState.Local(parent)
+                            val currentFile = java.io.File(state.path)
+                            val parent = currentFile.parentFile
+                            val storageRoot = android.os.Environment.getExternalStorageDirectory().absolutePath
+                            val isAtRoot = parent == null ||
+                                currentFile.absolutePath == storageRoot ||
+                                parent.absolutePath == storageRoot ||
+                                parent.absolutePath == "/storage/emulated" ||
+                                parent.absolutePath == "/storage" ||
+                                parent.absolutePath == "/mnt" ||
+                                !parent.exists()
+                            if (!isAtRoot) {
+                                currentNavState = NavState.Local(parent!!.absolutePath)
                             } else {
                                 currentNavState = NavState.Home
                             }
