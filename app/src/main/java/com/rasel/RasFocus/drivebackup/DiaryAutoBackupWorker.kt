@@ -201,5 +201,23 @@ class DiaryAutoBackupWorker(
                 ).build()
             WorkManager.getInstance(context).enqueue(req)
         }
+
+        // Schedule auto-backup exactly 5 minutes after a save
+        fun schedule5MinBackup(context: Context) {
+            val req = OneTimeWorkRequestBuilder<DiaryAutoBackupWorker>()
+                .setConstraints(
+                    Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
+                )
+                .setInitialDelay(5, TimeUnit.MINUTES)
+                .build()
+            
+            // REPLACE ensures that if the user saves multiple times within 5 minutes, 
+            // the timer is reset and only ONE backup happens 5 mins after the LAST save.
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                WORK_NAME,
+                ExistingWorkPolicy.REPLACE,
+                req
+            )
+        }
     }
 }

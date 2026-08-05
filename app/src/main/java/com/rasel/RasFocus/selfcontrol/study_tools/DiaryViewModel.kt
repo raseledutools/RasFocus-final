@@ -343,6 +343,9 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         if (DiaryCloudSync.isLoggedIn()) {
             runCatching { DiaryCloudSync.uploadEntry(entry) }
         }
+        
+        // Schedule Drive PDF/JSON backup 5 minutes from now
+        com.rasel.RasFocus.drivebackup.DiaryAutoBackupWorker.schedule5MinBackup(getApplication())
     }
 
     fun deleteEntry(entry: DiaryEntry) {
