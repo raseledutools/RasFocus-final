@@ -4,67 +4,60 @@
 ╚══════════════════════════════════════════╝
 
 === KOTLIN ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:390:40 'when' expression must be exhaustive, add necessary 'is Saf' branch or 'else' branch instead
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/SmbFileManager.kt:31:33 Unresolved reference: shareLocator
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/SmbFileManager.kt:32:26 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/SmbFileManager.kt:32:65 Unresolved reference: it
 
 === UNRESOLVED / TYPE ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/SmbFileManager.kt:31:33 Unresolved reference: shareLocator
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/SmbFileManager.kt:32:26 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/SmbFileManager.kt:32:65 Unresolved reference: it
 
 === BUILD FAILURE ===
-> Task :app:compileFullReleaseKotlin FAILED
+> Task :app:minifyFullReleaseWithR8 FAILED
 * What went wrong:
-Execution failed for task ':app:compileFullReleaseKotlin'.
-BUILD FAILED in 3m 48s
+Execution failed for task ':app:minifyFullReleaseWithR8'.
+BUILD FAILED in 8m 1s
 
 === LAST 60 LINES ===
-> Task :app:parseFullReleaseLocalResources FROM-CACHE
-> Task :app:mapFullReleaseSourceSetPaths
-> Task :app:mergeFullReleaseArtProfile
-> Task :app:validateSigningFullRelease
-> Task :app:mergeFullReleaseAssets FROM-CACHE
-> Task :app:writeFullReleaseAppMetadata
-> Task :app:checkFullReleaseAarMetadata
-> Task :app:writeFullReleaseSigningConfigVersions
-> Task :app:compressFullReleaseAssets FROM-CACHE
-> Task :app:checkFullReleaseDuplicateClasses
-> Task :app:mergeFullReleaseNativeLibs
-> Task :app:collectFullReleaseDependencies
+w: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/study_tools.kt:1114:9 Variable 'scope' is never used
+w: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/study_tools.kt:1306:36 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/study_tools.kt:1577:32 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/study_tools.kt:1660:53 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/study_tools.kt:1762:36 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/study_tools.kt:1873:41 'NoteAdd: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.NoteAdd
+w: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/take_rest.kt:102:13 Variable 'isBreakMode' is assigned but never accessed
+w: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/take_rest.kt:242:39 Variable 'breakTab' initializer is redundant
+w: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/take_rest.kt:243:37 Variable 'pomTab' initializer is redundant
+w: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/take_rest.kt:323:42 Parameter 'mins' is never used
 
-> Task :app:stripFullReleaseDebugSymbols
-Unable to strip the following libraries, packaging them as they are: libbarhopper_v3.so, libimage_processing_util_jni.so, libpdfium.so, libpdfiumandroid.so.
+> Task :app:processFullReleaseJavaRes
+> Task :app:mergeFullReleaseJavaResource
+> Task :app:compileFullReleaseJavaWithJavac
+> Task :app:mergeFullReleaseGeneratedProguardFiles
+> Task :app:generateFullReleaseLintVitalReportModel
+> Task :app:expandFullReleaseArtProfileWildcards
+> Task :app:lintVitalAnalyzeFullRelease
+> Task :app:minifyFullReleaseWithR8
+WARNING: /home/runner/.gradle/caches/8.9/transforms/1e9b4b35712a5c8ba91be5ffcf8238cc/transformed/play-services-location-21.2.0-runtime.jar: R8: The companion object Companion could not be found in class com.google.android.gms.internal.location.zze
+ERROR: Missing classes detected while running R8. Please add the missing classes or apply additional keep rules that are generated in /home/runner/work/RasFocus-final/RasFocus-final/app/build/outputs/mapping/fullRelease/missing_rules.txt.
+ERROR: R8: Missing class javax.el.BeanELResolver (referenced from: void net.engio.mbassy.dispatch.el.StandardELResolutionContext.<init>(java.lang.Object))
+Missing class javax.el.ELContext (referenced from: boolean net.engio.mbassy.dispatch.el.ElFilter.evalExpression(java.lang.String, net.engio.mbassy.dispatch.el.StandardELResolutionContext, net.engio.mbassy.subscription.SubscriptionContext, java.lang.Object) and 2 other contexts)
+Missing class javax.el.ELResolver (referenced from: javax.el.ELResolver net.engio.mbassy.dispatch.el.StandardELResolutionContext.resolver)
+Missing class javax.el.ExpressionFactory (referenced from: javax.el.ExpressionFactory net.engio.mbassy.dispatch.el.ElFilter$ExpressionFactoryHolder.ELFactory and 5 other contexts)
+Missing class javax.el.FunctionMapper (referenced from: javax.el.FunctionMapper net.engio.mbassy.dispatch.el.StandardELResolutionContext.functionMapper and 2 other contexts)
+Missing class javax.el.ValueExpression (referenced from: javax.el.ValueExpression net.engio.mbassy.dispatch.el.StandardELResolutionContext$MsgMapper.msgExpression and 2 other contexts)
+Missing class javax.el.VariableMapper (referenced from: javax.el.VariableMapper net.engio.mbassy.dispatch.el.StandardELResolutionContext.variableMapper and 2 other contexts)
+Missing class org.ietf.jgss.GSSContext (referenced from: org.ietf.jgss.GSSContext com.hierynomus.smbj.auth.SpnegoAuthenticator.gssContext and 2 other contexts)
+Missing class org.ietf.jgss.GSSCredential (referenced from: org.ietf.jgss.GSSCredential com.hierynomus.smbj.auth.GSSAuthenticationContext.getCreds() and 1 other context)
+Missing class org.ietf.jgss.GSSException (referenced from: com.hierynomus.smbj.auth.AuthenticateResponse com.hierynomus.smbj.auth.SpnegoAuthenticator.authenticateSession(com.hierynomus.smbj.auth.GSSAuthenticationContext, byte[], com.hierynomus.smbj.connection.ConnectionContext))
+Missing class org.ietf.jgss.GSSManager (referenced from: com.hierynomus.smbj.auth.AuthenticateResponse com.hierynomus.smbj.auth.SpnegoAuthenticator.authenticateSession(com.hierynomus.smbj.auth.GSSAuthenticationContext, byte[], com.hierynomus.smbj.connection.ConnectionContext))
+Missing class org.ietf.jgss.GSSName (referenced from: com.hierynomus.smbj.auth.AuthenticateResponse com.hierynomus.smbj.auth.SpnegoAuthenticator.authenticateSession(com.hierynomus.smbj.auth.GSSAuthenticationContext, byte[], com.hierynomus.smbj.connection.ConnectionContext))
+Missing class org.ietf.jgss.Oid (referenced from: com.hierynomus.smbj.auth.AuthenticateResponse com.hierynomus.smbj.auth.SpnegoAuthenticator.authenticateSession(com.hierynomus.smbj.auth.GSSAuthenticationContext, byte[], com.hierynomus.smbj.connection.ConnectionContext))
 
-> Task :app:extractFullReleaseNativeSymbolTables FROM-CACHE
-> Task :app:mergeFullReleaseNativeDebugMetadata NO-SOURCE
-> Task :app:mergeFullReleaseResources FROM-CACHE
-> Task :app:sdkFullReleaseDependencyData
-> Task :app:processFullReleaseMainManifest
-> Task :app:processFullReleaseManifest
-> Task :app:processFullReleaseManifestForPackage
-note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
-
-note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
-
-> Task :app:processFullReleaseResources
-> Task :app:kspFullReleaseKotlin
-> Task :app:compileFullReleaseKotlin
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:390:40 'when' expression must be exhaustive, add necessary 'is Saf' branch or 'else' branch instead
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/SmbFileManager.kt:31:33 Unresolved reference: shareLocator
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/SmbFileManager.kt:32:26 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/SmbFileManager.kt:32:65 Unresolved reference: it
-
-> Task :app:compileFullReleaseKotlin FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785908935075.json
+> Task :app:minifyFullReleaseWithR8 FAILED
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785909749744.json
 
 FAILURE: Build failed with an exception.
 
 * What went wrong:
-Execution failed for task ':app:compileFullReleaseKotlin'.
-> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
-   > Compilation error. See log for more details
+Execution failed for task ':app:minifyFullReleaseWithR8'.
+> A failure occurred while executing com.android.build.gradle.internal.tasks.R8Task$R8Runnable
+   > Compilation failed to complete
 
 * Try:
 > Run with --stacktrace option to get the stack trace.
@@ -78,6 +71,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 3m 48s
-32 actionable tasks: 22 executed, 10 from cache
+BUILD FAILED in 8m 1s
+40 actionable tasks: 30 executed, 10 from cache
 Configuration cache entry stored.
