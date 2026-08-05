@@ -225,6 +225,11 @@ dependencies {
         exclude(group = "com.android.support", module = "support-annotations")
         exclude(group = "com.android.support", module = "animated-vector-drawable")
         exclude(group = "com.android.support", module = "appcompat-v7")
+        // FIX: bcprov-jdk15to18 (pulled transitively by smbj, ftpserver-core, etc.)
+        // conflicts with bcprov-jdk18on (pulled by google-api-client-android).
+        // Both JARs have hundreds of identical org.bouncycastle classes → duplicate class error.
+        // bcprov-jdk18on is a full superset of jdk15to18, so globally excluding jdk15to18 is safe.
+        exclude(group = "org.bouncycastle", module = "bcprov-jdk15to18")
     }
 
     implementation("androidx.work:work-runtime-ktx:2.9.0")
