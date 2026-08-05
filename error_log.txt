@@ -1,76 +1,8 @@
 ╔══════════════════════════════════════════╗
-║      LAST BUILD: ERROR ❌                ║
-║   Push করার আগে এই error fix করুন।     ║
+║        LAST BUILD: SUCCESS ✅            ║
 ╚══════════════════════════════════════════╝
 
-=== KOTLIN ERRORS ===
+Build passed at: 2026-08-05 06:39:08 UTC
+Run: #663  |  Commit: f32064f1cc82f1c88fc14a2b8ea83ee6a9484c3e
 
-=== UNRESOLVED / TYPE ERRORS ===
-
-=== BUILD FAILURE ===
-> Task :app:minifyFullReleaseWithR8 FAILED
-* What went wrong:
-Execution failed for task ':app:minifyFullReleaseWithR8'.
-BUILD FAILED in 8m 1s
-
-=== LAST 60 LINES ===
-w: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/study_tools.kt:1114:9 Variable 'scope' is never used
-w: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/study_tools.kt:1306:36 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
-w: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/study_tools.kt:1577:32 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
-w: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/study_tools.kt:1660:53 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
-w: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/study_tools.kt:1762:36 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
-w: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/study_tools.kt:1873:41 'NoteAdd: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.NoteAdd
-w: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/take_rest.kt:102:13 Variable 'isBreakMode' is assigned but never accessed
-w: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/take_rest.kt:242:39 Variable 'breakTab' initializer is redundant
-w: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/take_rest.kt:243:37 Variable 'pomTab' initializer is redundant
-w: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/take_rest.kt:323:42 Parameter 'mins' is never used
-
-> Task :app:processFullReleaseJavaRes
-> Task :app:mergeFullReleaseJavaResource
-> Task :app:compileFullReleaseJavaWithJavac
-> Task :app:mergeFullReleaseGeneratedProguardFiles
-> Task :app:generateFullReleaseLintVitalReportModel
-> Task :app:expandFullReleaseArtProfileWildcards
-> Task :app:lintVitalAnalyzeFullRelease
-> Task :app:minifyFullReleaseWithR8
-WARNING: /home/runner/.gradle/caches/8.9/transforms/1e9b4b35712a5c8ba91be5ffcf8238cc/transformed/play-services-location-21.2.0-runtime.jar: R8: The companion object Companion could not be found in class com.google.android.gms.internal.location.zze
-ERROR: Missing classes detected while running R8. Please add the missing classes or apply additional keep rules that are generated in /home/runner/work/RasFocus-final/RasFocus-final/app/build/outputs/mapping/fullRelease/missing_rules.txt.
-ERROR: R8: Missing class javax.el.BeanELResolver (referenced from: void net.engio.mbassy.dispatch.el.StandardELResolutionContext.<init>(java.lang.Object))
-Missing class javax.el.ELContext (referenced from: boolean net.engio.mbassy.dispatch.el.ElFilter.evalExpression(java.lang.String, net.engio.mbassy.dispatch.el.StandardELResolutionContext, net.engio.mbassy.subscription.SubscriptionContext, java.lang.Object) and 2 other contexts)
-Missing class javax.el.ELResolver (referenced from: javax.el.ELResolver net.engio.mbassy.dispatch.el.StandardELResolutionContext.resolver)
-Missing class javax.el.ExpressionFactory (referenced from: javax.el.ExpressionFactory net.engio.mbassy.dispatch.el.ElFilter$ExpressionFactoryHolder.ELFactory and 5 other contexts)
-Missing class javax.el.FunctionMapper (referenced from: javax.el.FunctionMapper net.engio.mbassy.dispatch.el.StandardELResolutionContext.functionMapper and 2 other contexts)
-Missing class javax.el.ValueExpression (referenced from: javax.el.ValueExpression net.engio.mbassy.dispatch.el.StandardELResolutionContext$MsgMapper.msgExpression and 2 other contexts)
-Missing class javax.el.VariableMapper (referenced from: javax.el.VariableMapper net.engio.mbassy.dispatch.el.StandardELResolutionContext.variableMapper and 2 other contexts)
-Missing class org.ietf.jgss.GSSContext (referenced from: org.ietf.jgss.GSSContext com.hierynomus.smbj.auth.SpnegoAuthenticator.gssContext and 2 other contexts)
-Missing class org.ietf.jgss.GSSCredential (referenced from: org.ietf.jgss.GSSCredential com.hierynomus.smbj.auth.GSSAuthenticationContext.getCreds() and 1 other context)
-Missing class org.ietf.jgss.GSSException (referenced from: com.hierynomus.smbj.auth.AuthenticateResponse com.hierynomus.smbj.auth.SpnegoAuthenticator.authenticateSession(com.hierynomus.smbj.auth.GSSAuthenticationContext, byte[], com.hierynomus.smbj.connection.ConnectionContext))
-Missing class org.ietf.jgss.GSSManager (referenced from: com.hierynomus.smbj.auth.AuthenticateResponse com.hierynomus.smbj.auth.SpnegoAuthenticator.authenticateSession(com.hierynomus.smbj.auth.GSSAuthenticationContext, byte[], com.hierynomus.smbj.connection.ConnectionContext))
-Missing class org.ietf.jgss.GSSName (referenced from: com.hierynomus.smbj.auth.AuthenticateResponse com.hierynomus.smbj.auth.SpnegoAuthenticator.authenticateSession(com.hierynomus.smbj.auth.GSSAuthenticationContext, byte[], com.hierynomus.smbj.connection.ConnectionContext))
-Missing class org.ietf.jgss.Oid (referenced from: com.hierynomus.smbj.auth.AuthenticateResponse com.hierynomus.smbj.auth.SpnegoAuthenticator.authenticateSession(com.hierynomus.smbj.auth.GSSAuthenticationContext, byte[], com.hierynomus.smbj.connection.ConnectionContext))
-
-> Task :app:minifyFullReleaseWithR8 FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1785909749744.json
-
-FAILURE: Build failed with an exception.
-
-* What went wrong:
-Execution failed for task ':app:minifyFullReleaseWithR8'.
-> A failure occurred while executing com.android.build.gradle.internal.tasks.R8Task$R8Runnable
-   > Compilation failed to complete
-
-* Try:
-> Run with --stacktrace option to get the stack trace.
-> Run with --info or --debug option to get more log output.
-> Run with --scan to get full insights.
-> Get more help at https://help.gradle.org.
-
-Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
-
-You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
-
-For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
-
-BUILD FAILED in 8m 1s
-40 actionable tasks: 30 executed, 10 from cache
-Configuration cache entry stored.
+No errors. Safe to push.
