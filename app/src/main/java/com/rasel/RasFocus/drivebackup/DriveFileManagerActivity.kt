@@ -204,7 +204,18 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
     }
 
     BackHandler {
-        if (navStack.size > 1) navStack = navStack.dropLast(1) else onClose()
+        if (navStack.size > 1) {
+            val prevFolder = navStack.dropLast(1).last()
+            // Pre-load cache before navStack changes — prevents black/blank flash
+            val cached = DriveCacheManager.loadFileList(context, accountName, prevFolder.first)
+            if (cached != null) {
+                files = cached
+                isLoading = false
+            }
+            navStack = navStack.dropLast(1)
+        } else {
+            onClose()
+        }
     }
 
     // ── Context menu (long-press) ──────────────────────────────────────────────
@@ -370,7 +381,17 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
                 },
                 navigationIcon = {
                     IconButton(onClick = {
-                        if (navStack.size > 1) navStack = navStack.dropLast(1) else onClose()
+                        if (navStack.size > 1) {
+                            val prevFolder = navStack.dropLast(1).last()
+                            val cached = DriveCacheManager.loadFileList(context, accountName, prevFolder.first)
+                            if (cached != null) {
+                                files = cached
+                                isLoading = false
+                            }
+                            navStack = navStack.dropLast(1)
+                        } else {
+                            onClose()
+                        }
                     }) { Icon(Icons.Default.ArrowBack, "Back") }
                 },
                 actions = {
@@ -577,9 +598,31 @@ private suspend fun loadFolder(
     onError: (String, Boolean) -> Unit,
     onLoading: (Boolean) -> Unit
 ) {
-    onLoading(true)
     DriveCacheManager.init(context)
 
+    // ── Show cached data instantly (no loading flash) ─────────────────────────
+    val cachedImmediate = DriveCacheManager.loadFileList(context, accountName, folderId)
+    if (cachedImmediate != null) {
+        onFiles(cachedImmediate)
+        // Still refresh in background if online — but don't show loading spinner
+        if (DriveCacheManager.isOnline(context)) {
+            val result = withContext(Dispatchers.IO) {
+                DriveFileManager.listFiles(context, accountName, folderId)
+            }
+            if (result != null) {
+                val sorted = result.sortedWith(
+                    compareBy({ it.mimeType != "application/vnd.google-apps.folder" },
+                              { it.name?.lowercase() ?: "" })
+                )
+                DriveCacheManager.saveFileList(context, accountName, folderId, sorted)
+                onFiles(sorted)
+            }
+        }
+        return
+    }
+
+    // ── No cache — show loading spinner and fetch ─────────────────────────────
+    onLoading(true)
     if (DriveCacheManager.isOnline(context)) {
         val result = withContext(Dispatchers.IO) {
             DriveFileManager.listFiles(context, accountName, folderId)
@@ -592,23 +635,11 @@ private suspend fun loadFolder(
             DriveCacheManager.saveFileList(context, accountName, folderId, sorted)
             onFiles(sorted)
         } else {
-            // Online but API failed — fall back to cache
-            val cached = DriveCacheManager.loadFileList(context, accountName, folderId)
-            if (cached != null) {
-                onFiles(cached)
-            } else {
-                onError(DriveFileManager.lastError ?: "Unknown error",
-                    DriveFileManager.lastRecoveryIntent != null)
-            }
+            onError(DriveFileManager.lastError ?: "Unknown error",
+                DriveFileManager.lastRecoveryIntent != null)
         }
     } else {
-        // Offline — serve from cache
-        val cached = DriveCacheManager.loadFileList(context, accountName, folderId)
-        if (cached != null) {
-            onFiles(cached)
-        } else {
-            onError("No internet and no cached data for this folder.", false)
-        }
+        onError("No internet and no cached data for this folder.", false)
     }
     onLoading(false)
 }
