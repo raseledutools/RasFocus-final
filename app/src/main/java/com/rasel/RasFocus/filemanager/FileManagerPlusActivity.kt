@@ -44,6 +44,7 @@ import androidx.core.content.FileProvider
 sealed class NavState {
     object Home : NavState()
     data class Local(val path: String) : NavState()
+    data class Category(val type: String) : NavState()
     object CloudAccounts : NavState()
     data class Cloud(val accountName: String, val folderId: String, val pathName: String) : NavState()
     data class Remote(val serverId: String, val path: String) : NavState()
@@ -264,7 +265,8 @@ fun HomeScreen() {
             currentNavState == NavState.SecureVault ||
             currentNavState == NavState.StorageAnalyzer ||
             currentNavState == NavState.AppManager ||
-            currentNavState == NavState.DriveOfflineSettings -> {
+            currentNavState == NavState.DriveOfflineSettings ||
+            currentNavState is NavState.Category -> {
                 currentNavState = NavState.Home
             }
             currentNavState is NavState.Cloud -> {
@@ -379,6 +381,7 @@ fun HomeScreen() {
                                 text = when (val state = currentNavState) {
                                     is NavState.Home -> "File Manager +"
                                     is NavState.Local -> state.path.substringAfterLast("/")
+                                    is NavState.Category -> state.type
                                     is NavState.CloudAccounts -> "Cloud Locations"
                                     is NavState.Cloud -> state.pathName
                                     is NavState.Remote -> state.path
@@ -729,22 +732,32 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             val base = LocalFileManager.mainStoragePath
-            fun countDir(path: String): String {
-                val f = java.io.File(path)
-                if (!f.exists()) return ""
-                val files = f.listFiles() ?: return ""
-                val count = files.size
-                val size = files.sumOf { if (it.isFile) it.length() else 0L }
+            
+            // Format stat string
+            fun formatStats(stats: Pair<Int, Long>): String {
+                val (count, size) = stats
                 val sizeStr = if (size > 0) formatFileSize(size) else ""
-                return if (sizeStr.isNotEmpty()) "$sizeStr ($count)" else "($count)"
+                return if (sizeStr.isNotEmpty()) "$sizeStr ($count)" else if (count > 0) "($count)" else ""
             }
-            downloadsCount = countDir("$base/Download")
-            imagesCount    = countDir("$base/DCIM").ifEmpty { countDir("$base/Pictures") }
-            audioCount     = countDir("$base/Music")
-            videosCount    = countDir("$base/Movies").ifEmpty { countDir("$base/Video") }
-            docsCount      = countDir("$base/Documents")
-            newFilesCount  = ""
-            appsCount      = ""
+
+            downloadsCount = formatStats(CategoryUtils.getCategoryStats(context, "Downloads").let {
+                // For downloads, we still prefer direct file count from the Download directory
+                // because MediaStore doesn't have a reliable single "Downloads" category on all OS versions.
+                val f = java.io.File("$base/Download")
+                if (f.exists()) {
+                    val files = f.listFiles() ?: emptyArray()
+                    val c = files.size
+                    val s = files.sumOf { if (it.isFile) it.length() else 0L }
+                    Pair(c, s)
+                } else Pair(0, 0L)
+            })
+
+            imagesCount    = formatStats(CategoryUtils.getCategoryStats(context, "Images"))
+            audioCount     = formatStats(CategoryUtils.getCategoryStats(context, "Audio"))
+            videosCount    = formatStats(CategoryUtils.getCategoryStats(context, "Videos"))
+            docsCount      = formatStats(CategoryUtils.getCategoryStats(context, "Documents"))
+            newFilesCount  = formatStats(CategoryUtils.getCategoryStats(context, "New files"))
+            appsCount      = formatStats(CategoryUtils.getCategoryStats(context, "Apps"))
             cloudCount     = ""
         }
     }
@@ -768,43 +781,23 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                 else openStoragePermissionSettings()
             }
             "Images" -> {
-                if (hasStorageAccess()) {
-                    val dcim = java.io.File("$base/DCIM")
-                    val pics = java.io.File("$base/Pictures")
-                    val path = when {
-                        dcim.exists() -> "$base/DCIM"
-                        pics.exists() -> "$base/Pictures"
-                        else          -> base
-                    }
-                    onNavigate(NavState.Local(path))
-                } else openStoragePermissionSettings()
+                if (hasStorageAccess()) onNavigate(NavState.Category("Images"))
+                else openStoragePermissionSettings()
             }
-            "Audio"     -> { if (hasStorageAccess()) onNavigate(NavState.Local("$base/Music")) else openStoragePermissionSettings() }
+            "Audio"     -> { if (hasStorageAccess()) onNavigate(NavState.Category("Audio")) else openStoragePermissionSettings() }
             "Videos"    -> {
-                if (hasStorageAccess()) {
-                    val movies = java.io.File("$base/Movies")
-                    val video  = java.io.File("$base/Video")
-                    val path = when {
-                        movies.exists() -> "$base/Movies"
-                        video.exists()  -> "$base/Video"
-                        else            -> base
-                    }
-                    onNavigate(NavState.Local(path))
-                } else openStoragePermissionSettings()
+                if (hasStorageAccess()) onNavigate(NavState.Category("Videos"))
+                else openStoragePermissionSettings()
             }
             "Documents" -> {
-                if (hasStorageAccess()) {
-                    val docs = java.io.File("$base/Documents")
-                    if (!docs.exists()) docs.mkdirs()
-                    onNavigate(NavState.Local(docs.absolutePath))
-                } else openStoragePermissionSettings()
+                if (hasStorageAccess()) onNavigate(NavState.Category("Documents"))
+                else openStoragePermissionSettings()
             }
             "Apps" -> {
                 onNavigate(NavState.AppManager)
             }
             "New files" -> {
-                // Recent downloads
-                if (hasStorageAccess()) onNavigate(NavState.Local("$base/Download"))
+                if (hasStorageAccess()) onNavigate(NavState.Category("New files"))
                 else openStoragePermissionSettings()
             }
             "Cloud"     -> onNavigate(NavState.CloudAccounts)
