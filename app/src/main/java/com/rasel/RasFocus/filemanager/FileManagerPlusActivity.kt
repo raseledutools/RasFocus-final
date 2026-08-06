@@ -674,7 +674,9 @@ fun HomeScreen() {
                                 // Launch FTP browser to that device's IP (assuming they host FTP on 2121)
                                 // We could use Smb or FTP. Assuming FTP on 2121 for now.
                                 val tempServerId = "p2p_ftp_${state.ip}"
-                                RemoteStore.addServer(RemoteServer(tempServerId, "FTP", state.deviceName, state.ip, 2121, "anonymous", ""))
+                                if (RemoteStore.servers.none { it.id == tempServerId }) {
+                                    RemoteStore.servers.add(RemoteServer(tempServerId, state.deviceName, state.ip, 2121, "anonymous", ""))
+                                }
                                 currentNavState = NavState.Remote(tempServerId, "/")
                             }
                         )
