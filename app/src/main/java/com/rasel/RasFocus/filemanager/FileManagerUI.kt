@@ -1613,7 +1613,7 @@ fun SelectionBottomBar(
             SelectionAction(icon = Icons.Default.FolderZip,     label = "Zip",       onClick = onZip)
             SelectionAction(icon = Icons.Default.FolderOpen,    label = "Unzip",     onClick = onUnzip)
             if (showMergePdf) {
-                SelectionAction(icon = androidx.compose.material.icons.filled.PictureAsPdf, label = "Merge", onClick = onMergePdf)
+                SelectionAction(icon = Icons.Default.PictureAsPdf, label = "Merge", onClick = onMergePdf)
             }
             SelectionAction(icon = Icons.Default.Lock,          label = "Secure",    onClick = onSecure)
             SelectionAction(icon = Icons.Default.Info,          label = "Info",      onClick = onProperties)
