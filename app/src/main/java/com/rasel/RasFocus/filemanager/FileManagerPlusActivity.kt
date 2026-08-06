@@ -288,7 +288,7 @@ fun HomeScreen() {
             currentNavState is NavState.Cloud -> {
                 val state = currentNavState as NavState.Cloud
                 if (cloudBackStack.isNotEmpty()) {
-                    val prev = cloudBackStack.removeLast()
+                    val prev = cloudBackStack.removeAt(cloudBackStack.size - 1)
                     currentNavState = NavState.Cloud(state.accountName, prev.first, prev.second)
                 } else if (state.folderId != "root") {
                     cloudBackStack.clear()
@@ -322,7 +322,7 @@ fun HomeScreen() {
             currentNavState is NavState.Saf -> {
                 // SAF/eDrive subfolder back — pop the SAF backstack instead of going to Home
                 if (safBackStack.isNotEmpty()) {
-                    currentNavState = NavState.Saf(safBackStack.removeLast())
+                    currentNavState = NavState.Saf(safBackStack.removeAt(safBackStack.size - 1))
                 } else {
                     safBackStack.clear()
                     currentNavState = NavState.Home
@@ -438,7 +438,7 @@ fun HomeScreen() {
                                         currentNavState is NavState.Cloud -> {
                                             val state = currentNavState as NavState.Cloud
                                             if (cloudBackStack.isNotEmpty()) {
-                                                val prev = cloudBackStack.removeLast()
+                                                val prev = cloudBackStack.removeAt(cloudBackStack.size - 1)
                                                 currentNavState = NavState.Cloud(state.accountName, prev.first, prev.second)
                                             } else if (state.folderId != "root") {
                                                 cloudBackStack.clear()
@@ -602,7 +602,7 @@ fun HomeScreen() {
                         onBack = {
                             val freshState = currentNavState as? NavState.Cloud ?: return@CloudFileScreen
                             if (cloudBackStack.isNotEmpty()) {
-                                val prev = cloudBackStack.removeLast()
+                                val prev = cloudBackStack.removeAt(cloudBackStack.size - 1)
                                 currentNavState = NavState.Cloud(freshState.accountName, prev.first, prev.second)
                             } else if (freshState.folderId == "root") {
                                 cloudBackStack.clear()
@@ -670,7 +670,7 @@ fun HomeScreen() {
                         },
                         onBack = {
                             if (safBackStack.isNotEmpty()) {
-                                currentNavState = NavState.Saf(safBackStack.removeLast())
+                                currentNavState = NavState.Saf(safBackStack.removeAt(safBackStack.size - 1))
                             } else {
                                 safBackStack.clear()
                                 currentNavState = NavState.Home
