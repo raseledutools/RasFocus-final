@@ -151,7 +151,6 @@ class UniversalViewerActivity : ComponentActivity() {
                 setDataAndType(uri, mimeType)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 // Forward the original URI grant so the target Activity
                 // can open it even after process death/recreation
                 if (uri.scheme == "content") {

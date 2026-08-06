@@ -40,6 +40,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -770,18 +771,6 @@ private fun ReminderListItem(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Checkbox
-            Box(
-                modifier = Modifier.size(22.dp).clip(CircleShape)
-                    .border(2.dp, if (reminder.isCompleted) RmTeal else RmDivider, CircleShape)
-                    .background(if (reminder.isCompleted) RmTeal else Color.Transparent)
-                    .clickable { onComplete() },
-                contentAlignment = Alignment.Center
-            ) {
-                if (reminder.isCompleted)
-                    Icon(Icons.Default.Check, contentDescription = null, tint = RmWhite, modifier = Modifier.size(14.dp))
-            }
-            Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     reminder.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
@@ -800,72 +789,27 @@ private fun ReminderListItem(
                     }
                 }
                 Spacer(Modifier.height(6.dp))
-                // ── Double-button: Activate / Deactivate ──
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    // ACTIVATE button
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(
-                                if (reminder.isActive) activeColor else activeColor.copy(alpha = 0.12f)
-                            )
-                            .border(
-                                1.dp,
-                                if (reminder.isActive) activeColor else activeColor.copy(alpha = 0.4f),
-                                RoundedCornerShape(8.dp)
-                            )
-                            .clickable(enabled = !reminder.isActive) { onToggleActive() }
-                            .padding(horizontal = 10.dp, vertical = 4.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.PlayArrow,
-                                contentDescription = "Activate",
-                                tint = if (reminder.isActive) RmWhite else activeColor,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(Modifier.width(3.dp))
-                            Text(
-                                "Active",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (reminder.isActive) RmWhite else activeColor
-                            )
-                        }
-                    }
-                    // DEACTIVATE button
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(
-                                if (!reminder.isActive) inactiveColor else inactiveColor.copy(alpha = 0.12f)
-                            )
-                            .border(
-                                1.dp,
-                                if (!reminder.isActive) inactiveColor else inactiveColor.copy(alpha = 0.4f),
-                                RoundedCornerShape(8.dp)
-                            )
-                            .clickable(enabled = reminder.isActive) { onToggleActive() }
-                            .padding(horizontal = 10.dp, vertical = 4.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.Pause,
-                                contentDescription = "Deactivate",
-                                tint = if (!reminder.isActive) RmWhite else inactiveColor,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(Modifier.width(3.dp))
-                            Text(
-                                "Inactive",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (!reminder.isActive) RmWhite else inactiveColor
-                            )
-                        }
-                    }
+                // ── Active Toggle ──
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(
+                        checked = reminder.isActive,
+                        onCheckedChange = { onToggleActive() },
+                        modifier = Modifier.scale(0.85f),
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = RmWhite,
+                            checkedTrackColor = activeColor,
+                            uncheckedThumbColor = RmWhite,
+                            uncheckedTrackColor = inactiveColor,
+                            uncheckedBorderColor = Color.Transparent
+                        )
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        if (reminder.isActive) "Active" else "Inactive",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = if (reminder.isActive) activeColor else RmTextSub
+                    )
                 }
             }
             Spacer(Modifier.width(6.dp))
