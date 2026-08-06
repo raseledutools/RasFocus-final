@@ -149,9 +149,34 @@ fun LightPdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
         renderJobs.values.forEach { it.cancel() }; renderJobs.clear()
         withContext(Dispatchers.IO) {
             try {
-                val pfd      = context.contentResolver.openFileDescriptor(uri, "r")
-                    ?: throw IllegalStateException("File খুলতে পারিনি")
-                val renderer = PdfRenderer(pfd)
+                val pfd = try {
+                    context.contentResolver.openFileDescriptor(uri, "r")
+                } catch (_: Exception) { null }
+                
+                val renderer = if (pfd != null) {
+                    if (pfd.statSize == -1L) {
+                        try { pfd.close() } catch (_: Exception) {}
+                        null
+                    } else {
+                        try { PdfRenderer(pfd) }
+                        catch (_: Exception) {
+                            try { pfd.close() } catch (_: Exception) {}
+                            null
+                        }
+                    }
+                } else null ?: run {
+                    val tmp = java.io.File(context.cacheDir, "pdf_fb_${System.currentTimeMillis()}.pdf")
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        tmp.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    } ?: throw IllegalStateException("File খুলতে পারিনি")
+                    val pfd2 = android.os.ParcelFileDescriptor.open(
+                        tmp, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
+                    PdfRenderer(pfd2).also {
+                        tmp.delete()
+                    }
+                }
                 val count    = renderer.pageCount
                 withContext(Dispatchers.Main) {
                     bitmaps.clear()

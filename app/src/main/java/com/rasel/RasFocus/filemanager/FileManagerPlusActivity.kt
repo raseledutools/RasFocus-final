@@ -348,6 +348,7 @@ fun HomeScreen() {
                 DrawerContent(
                     onNavigate = { newState ->
                         cloudBackStack.clear()
+                        safBackStack.clear()
                         currentNavState = newState
                         scope.launch { drawerState.close() }
                     }
@@ -360,6 +361,7 @@ fun HomeScreen() {
                 val needsGlobalHeader = currentNavState !is NavState.Local &&
                     currentNavState !is NavState.Cloud &&
                     currentNavState !is NavState.Remote &&
+                    currentNavState !is NavState.Saf &&
                     currentNavState != NavState.RecycleBin &&
                     currentNavState != NavState.SecureVault &&
                     currentNavState != NavState.StorageAnalyzer &&

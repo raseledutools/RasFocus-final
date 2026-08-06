@@ -332,10 +332,16 @@ fun NativePdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
                         context.contentResolver.openFileDescriptor(uri, "r")
                     } catch (_: Exception) { null }
                     if (pfd != null) {
-                        try { pdfCore.newDocument(pfd) }
-                        catch (_: Exception) {
+                        if (pfd.statSize == -1L) {
+                            // File is likely a pipe or stream (unseekable). Close it and fallback to copy.
                             try { pfd.close() } catch (_: Exception) {}
                             null
+                        } else {
+                            try { pdfCore.newDocument(pfd) }
+                            catch (_: Exception) {
+                                try { pfd.close() } catch (_: Exception) {}
+                                null
+                            }
                         }
                     } else null
                 } ?: run {
