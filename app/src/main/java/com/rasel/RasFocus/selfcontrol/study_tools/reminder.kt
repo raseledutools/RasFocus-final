@@ -554,10 +554,14 @@ fun ReminderScreen(onBack: () -> Unit) {
     }
     var activeTab      by remember { mutableStateOf(0) }
     var selectedFilter by remember { mutableStateOf("All") }
-    var reminders      by remember { mutableStateOf(listOf<ReminderItem>()) }
-    var nextId         by remember { mutableStateOf(9200) }
+    var reminders      by remember { mutableStateOf(ReminderStorage.load(context)) }
+    var nextId         by remember { mutableStateOf((reminders.maxOfOrNull { it.id } ?: 9200) + 1) }
     var showAddDialog  by remember { mutableStateOf(false) }
     var editItem       by remember { mutableStateOf<ReminderItem?>(null) }
+    
+    LaunchedEffect(reminders) {
+        ReminderStorage.save(context, reminders)
+    }
     var showSettings   by remember { mutableStateOf(false) }
     var showQuickDlg   by remember { mutableStateOf(false) }
 
@@ -1198,12 +1202,12 @@ fun ReminderAddDialog(
                 ) {
                     Button(
                         onClick = {
-                            if (title.isBlank()) return@Button
+                            val finalTitle = if (title.isBlank()) "Unnamed" else title.trim()
                             val parsedAmount = customAmount.toIntOrNull()?.coerceAtLeast(1) ?: 1
                             onSave(
                                 ReminderItem(
                                     id = initial?.id ?: 0,
-                                    title = title.trim(),
+                                    title = finalTitle,
                                     description = description.trim(),
                                     triggerMillis = buildTrigger(),
                                     repeatType = repeatType,

@@ -22,6 +22,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.apache.commons.net.ftp.FTPClient
 import org.apache.commons.net.ftp.FTPFile
+import com.rasel.RasFocus.p2p.P2PDiscoveryManager
+import com.rasel.RasFocus.p2p.P2PConnectionManager
+import androidx.compose.runtime.collectAsState
+import androidx.compose.material.icons.filled.Wifi
 
 data class RemoteServer(
     val id: String,
@@ -41,6 +45,8 @@ object RemoteStore {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RemoteConnectionsScreen(
+    p2pDiscovery: P2PDiscoveryManager,
+    p2pConnection: P2PConnectionManager,
     onNavigate: (NavState) -> Unit,
     onBack: () -> Unit
 ) {
@@ -65,28 +71,70 @@ fun RemoteConnectionsScreen(
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
-        if (RemoteStore.servers.isEmpty()) {
+        val discoveredDevices by p2pDiscovery.discoveredDevices.collectAsState()
+
+        if (RemoteStore.servers.isEmpty() && discoveredDevices.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text("No remote connections added.", color = Color.Gray)
+                Text("No remote connections added & no nearby devices found.", color = Color.Gray)
             }
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
-                items(RemoteStore.servers) { server ->
-                    ListItem(
-                        headlineContent = { Text(server.name) },
-                        supportingContent = { Text("${server.protocol} • ${server.host}:${server.port}") },
-                        leadingContent = { 
-                            Icon(
-                                if (server.protocol == "SMB") Icons.Default.Folder else Icons.Default.Computer, 
-                                contentDescription = null, 
-                                tint = Color(0xFF1565C0)
-                            ) 
-                        },
-                        modifier = Modifier.clickable {
-                            onNavigate(NavState.Remote(server.id, if (server.protocol == "SMB") "" else "/"))
-                        }
-                    )
-                    Divider()
+                if (discoveredDevices.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = "Nearby Devices (Auto-Discovered)",
+                            color = Color(0xFF1565C0),
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                            modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 8.dp)
+                        )
+                    }
+                    items(discoveredDevices) { device ->
+                        ListItem(
+                            headlineContent = { Text(device.name) },
+                            supportingContent = { Text("${device.ip}:${device.port}") },
+                            leadingContent = { 
+                                Icon(
+                                    Icons.Default.Wifi, 
+                                    contentDescription = null, 
+                                    tint = Color(0xFF388E3C)
+                                ) 
+                            },
+                            modifier = Modifier.clickable {
+                                // Connect as client and open chat
+                                p2pConnection.connectToDevice(device.ip, device.port, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO))
+                                onNavigate(NavState.P2PChat(device.name, device.ip, device.port))
+                            }
+                        )
+                        Divider()
+                    }
+                }
+
+                if (RemoteStore.servers.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = "Saved Servers",
+                            color = Color(0xFF1565C0),
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                            modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 8.dp)
+                        )
+                    }
+                    items(RemoteStore.servers) { server ->
+                        ListItem(
+                            headlineContent = { Text(server.name) },
+                            supportingContent = { Text("${server.protocol} • ${server.host}:${server.port}") },
+                            leadingContent = { 
+                                Icon(
+                                    if (server.protocol == "SMB") Icons.Default.Folder else Icons.Default.Computer, 
+                                    contentDescription = null, 
+                                    tint = Color(0xFF1565C0)
+                                ) 
+                            },
+                            modifier = Modifier.clickable {
+                                onNavigate(NavState.Remote(server.id, if (server.protocol == "SMB") "" else "/"))
+                            }
+                        )
+                        Divider()
+                    }
                 }
             }
         }

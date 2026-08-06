@@ -49,6 +49,7 @@ sealed class NavState {
     data class Cloud(val accountName: String, val folderId: String, val pathName: String) : NavState()
     object RemoteConnections : NavState()
     data class Remote(val serverId: String, val path: String) : NavState()
+    data class P2PChat(val deviceName: String, val ip: String, val port: Int) : NavState()
     object RecycleBin : NavState()
     object SecureVault : NavState()
     object StorageAnalyzer : NavState()
@@ -260,13 +261,31 @@ fun HomeScreen() {
     var searchQuery by remember { mutableStateOf("") }
 
     // Cloud subfolder backstack: list of (folderId, pathName) pairs
-    // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Cloud backstack Ã¢â‚¬â€ subfolder Ã Â¦Â¥Ã Â§â€¡Ã Â¦â€¢Ã Â§â€¡ proper back navigation Ã Â¦ÂÃ Â¦Â° Ã Â¦Å“Ã Â¦Â¨Ã Â§ÂÃ Â¦Â¯ Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    // â”€â”€â”€ Cloud backstack â”€ subfolder à¦¥à§‡à¦•à§‡ proper back navigation à¦ à¦° à¦œà¦¨à§à¦¯ â”€â”€â”€â”€â”€â”€â”€
     val cloudBackStack = remember { mutableStateListOf<Pair<String, String>>() }
 
-    // SAF/eDrive subfolder backstack — each entry is the parent-folder URI string
+    // SAF/eDrive subfolder backstack â€” each entry is the parent-folder URI string
     val safBackStack = remember { mutableStateListOf<String>() }
 
-    // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ BackHandler Ã¢â‚¬â€ Android system back button Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    // P2P Auto-Discovery and Connection
+    val p2pDiscovery = remember { com.rasel.RasFocus.p2p.P2PDiscoveryManager(context) }
+    val p2pConnection = remember { com.rasel.RasFocus.p2p.P2PConnectionManager(java.io.File(LocalFileManager.mainStoragePath, "Download")) }
+    
+    LaunchedEffect(Unit) {
+        val port = (50000..60000).random()
+        p2pConnection.startServer(port, this)
+        p2pDiscovery.registerService(port)
+        p2pDiscovery.discoverServices()
+    }
+    
+    DisposableEffect(Unit) {
+        onDispose {
+            p2pDiscovery.stop()
+            p2pConnection.stop()
+        }
+    }
+
+    // â”€â”€â”€ BackHandler â”€ Android system back button â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     val activity = androidx.compose.ui.platform.LocalContext.current as? androidx.activity.ComponentActivity
 
     BackHandler(enabled = true) {
@@ -282,6 +301,7 @@ fun HomeScreen() {
             currentNavState == NavState.AppManager ||
             currentNavState == NavState.DriveOfflineSettings ||
             currentNavState is NavState.TextEditor ||
+            currentNavState is NavState.P2PChat ||
             currentNavState is NavState.Category -> {
                 currentNavState = NavState.Home
             }
@@ -424,6 +444,7 @@ fun HomeScreen() {
                                     is NavState.DriveOfflineSettings -> "Offline Settings"
                                     is NavState.FtpServer -> "Access from PC"
                                     is NavState.RemoteConnections -> "Remote Connections"
+                                    is NavState.P2PChat -> "Chat with ${state.deviceName}"
                                     is NavState.TextEditor -> state.path.substringAfterLast("/")
                                     is NavState.Saf -> state.uri.substringAfterLast("%2F").substringAfterLast("/")
                                     else -> ""
@@ -620,9 +641,26 @@ fun HomeScreen() {
                         searchQuery = if (showSearchBar) searchQuery else ""
                     )
                     is NavState.RemoteConnections -> RemoteConnectionsScreen(
+                        p2pDiscovery = p2pDiscovery,
+                        p2pConnection = p2pConnection,
                         onNavigate = { newState -> currentNavState = newState },
                         onBack = { currentNavState = NavState.Home }
                     )
+                    is NavState.P2PChat -> {
+                        val device = com.rasel.RasFocus.p2p.DiscoveredDevice(state.deviceName, state.ip, state.port)
+                        com.rasel.RasFocus.p2p.P2PChatScreen(
+                            device = device,
+                            connectionManager = p2pConnection,
+                            onBack = { currentNavState = NavState.RemoteConnections },
+                            onBrowseFolders = {
+                                // Launch FTP browser to that device's IP (assuming they host FTP on 2121)
+                                // We could use Smb or FTP. Assuming FTP on 2121 for now.
+                                val tempServerId = "p2p_ftp_${state.ip}"
+                                RemoteStore.addServer(RemoteServer(tempServerId, "FTP", state.deviceName, state.ip, 2121, "anonymous", ""))
+                                currentNavState = NavState.Remote(tempServerId, "/")
+                            }
+                        )
+                    }
                     is NavState.Remote -> RemoteFileScreen(
                         serverId = state.serverId,
                         initialPath = state.path,
