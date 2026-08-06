@@ -379,7 +379,7 @@ fun ScanToPdfScreen(onBack: () -> Unit) {
                     ) {
                         items(imagesArray.size) { index ->
                             Box(
-                                modifier = Modifier.aspectRatio(0.75f).background(Color.White, RoundedCornerShape(16.dp)).border(1.dp, Color(0xFFF3F4F6), RoundedCornerShape(16.dp)).shadow(4.dp, RoundedCornerShape(16.dp))
+                                modifier = Modifier.aspectRatio(0.75f).shadow(4.dp, RoundedCornerShape(16.dp)).background(Color.White, RoundedCornerShape(16.dp)).border(1.dp, Color(0xFFF3F4F6), RoundedCornerShape(16.dp))
                             ) {
                                 FilteredPreviewImage(context, imagesArray[index], currentFilter)
                                 IconButton(

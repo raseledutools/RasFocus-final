@@ -117,7 +117,14 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
                     action = android.content.Intent.ACTION_VIEW
                     setDataAndType(uri, internalMime)
                     addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    // FIX: Removed FLAG_ACTIVITY_NEW_TASK — it was putting the viewer
+                    // in a separate task so back-press jumped to the launcher/main screen
+                    // instead of returning to the file browser. Without NEW_TASK the
+                    // viewer stays in the same task so back works correctly.
+                    // ClipData forwards the URI grant on Android 12+ correctly.
+                    if (uri.scheme == "content") {
+                        clipData = android.content.ClipData.newRawUri("", uri)
+                    }
                 }
                 context.startActivity(intent)
                 return
