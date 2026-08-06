@@ -82,19 +82,13 @@ fun SafFileScreen(
                             },
                             modifier = Modifier.clickable {
                                 if (file.isDirectory) {
-                                    // Navigate deeper using the child's URI
+                                    // Navigate deeper — parent pushes current URI onto backstack
                                     onNavigate(NavState.Saf(file.uri.toString()))
                                 } else {
-                                    // Open file
-                                    val intent = Intent(Intent.ACTION_VIEW).apply {
-                                        setDataAndType(file.uri, context.contentResolver.getType(file.uri) ?: "*/*")
-                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    }
-                                    try {
-                                        context.startActivity(intent)
-                                    } catch (e: Exception) {
-                                        e.printStackTrace()
-                                    }
+                                    // Open file via UniversalViewerActivity (RasFocus internal viewers)
+                                    // instead of the system chooser so PDF/DOCX/image etc. open
+                                    // directly inside the app without a picker dialog.
+                                    openSafFile(context, file.uri)
                                 }
                             }
                         )
@@ -103,5 +97,46 @@ fun SafFileScreen(
                 }
             }
         }
+    }
+}
+
+/**
+ * Open a SAF (content://) URI using RasFocus's UniversalViewerActivity.
+ * Falls back to the system chooser only if UniversalViewerActivity is not found
+ * (should never happen in a normal build).
+ */
+private fun openSafFile(context: android.content.Context, uri: Uri) {
+    val mimeType = context.contentResolver.getType(uri) ?: "*/*"
+
+    // Try to route through the internal viewer first
+    val pkg = context.packageName.replace(".combo", "")
+    val cls = try {
+        Class.forName("$pkg.selfcontrol.study_tools.UniversalViewerActivity")
+    } catch (_: ClassNotFoundException) { null }
+
+    if (cls != null) {
+        val intent = Intent(context, cls).apply {
+            action = Intent.ACTION_VIEW
+            setDataAndType(uri, mimeType)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            // Carry the grant forward so the viewer can read the file
+            clipData = android.content.ClipData.newRawUri("", uri)
+        }
+        try {
+            context.startActivity(intent)
+            return
+        } catch (_: Exception) { /* fall through to system chooser */ }
+    }
+
+    // System chooser fallback
+    val fallback = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(uri, mimeType)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    try {
+        context.startActivity(fallback)
+    } catch (e: Exception) {
+        android.widget.Toast.makeText(context, "Cannot open file: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
     }
 }

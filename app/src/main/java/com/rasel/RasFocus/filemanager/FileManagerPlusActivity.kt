@@ -263,6 +263,9 @@ fun HomeScreen() {
     // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Cloud backstack Ã¢â‚¬â€ subfolder Ã Â¦Â¥Ã Â§â€¡Ã Â¦â€¢Ã Â§â€¡ proper back navigation Ã Â¦ÂÃ Â¦Â° Ã Â¦Å“Ã Â¦Â¨Ã Â§ÂÃ Â¦Â¯ Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     val cloudBackStack = remember { mutableStateListOf<Pair<String, String>>() }
 
+    // SAF/eDrive subfolder backstack — each entry is the parent-folder URI string
+    val safBackStack = remember { mutableStateListOf<String>() }
+
     // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ BackHandler Ã¢â‚¬â€ Android system back button Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     val activity = androidx.compose.ui.platform.LocalContext.current as? androidx.activity.ComponentActivity
 
@@ -313,6 +316,15 @@ fun HomeScreen() {
                 if (!isAtRoot) {
                     currentNavState = NavState.Local(parent!!.absolutePath)
                 } else {
+                    currentNavState = NavState.Home
+                }
+            }
+            currentNavState is NavState.Saf -> {
+                // SAF/eDrive subfolder back — pop the SAF backstack instead of going to Home
+                if (safBackStack.isNotEmpty()) {
+                    currentNavState = NavState.Saf(safBackStack.removeLast())
+                } else {
+                    safBackStack.clear()
                     currentNavState = NavState.Home
                 }
             }
@@ -647,8 +659,23 @@ fun HomeScreen() {
                     )
                     is NavState.Saf -> SafFileScreen(
                         uriString = state.uri,
-                        onNavigate = { newState -> currentNavState = newState },
-                        onBack = { currentNavState = NavState.Home }
+                        onNavigate = { newState ->
+                            // Push current URI onto backstack before navigating deeper
+                            if (newState is NavState.Saf) {
+                                safBackStack.add(state.uri)
+                            } else {
+                                safBackStack.clear()
+                            }
+                            currentNavState = newState
+                        },
+                        onBack = {
+                            if (safBackStack.isNotEmpty()) {
+                                currentNavState = NavState.Saf(safBackStack.removeLast())
+                            } else {
+                                safBackStack.clear()
+                                currentNavState = NavState.Home
+                            }
+                        }
                     )
                 }
             }
