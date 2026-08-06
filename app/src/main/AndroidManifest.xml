@@ -36,6 +36,7 @@
 <uses-permission android:name="android.permission.BIND_VPN_SERVICE" />
 <uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" />
 <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+<uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 
 <!-- RasBrowser (FamilyBrowser) required permissions -->
 <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />

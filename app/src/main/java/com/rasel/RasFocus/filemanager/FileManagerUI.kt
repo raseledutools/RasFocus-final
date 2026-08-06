@@ -641,7 +641,23 @@ fun LocalFileScreen(
 
         // ── Footer: selection action bar — always below content ────────────────
         if (selectedFiles.isNotEmpty()) {
+            val allPdf = selectedFiles.all { it.lowercase().endsWith(".pdf") }
+            val showMergePdf = selectedFiles.size > 1 && allPdf
+
             SelectionBottomBar(
+                showMergePdf = showMergePdf,
+                onMergePdf = {
+                    scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        val filesToMerge = selectedFiles.map { File(it) }
+                        val destFile = File(path, "Merged_${System.currentTimeMillis()}.pdf")
+                        val success = PdfHelper.mergePdfs(context, filesToMerge, destFile)
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            Toast.makeText(context, if (success) "Merged successfully" else "Merge failed", Toast.LENGTH_SHORT).show()
+                            selectedFiles = emptySet()
+                            rawFiles = LocalFileManager.listFiles(path)
+                        }
+                    }
+                },
                 onCopy = {
                     onSetClipboard(ClipboardState("Local", selectedFiles.toList(), isCut = false))
                     selectedFiles = emptySet()
@@ -1571,7 +1587,8 @@ fun SelectionBottomBar(
     onZip: () -> Unit = {},
     onUnzip: () -> Unit = {},
     onMergePdf: () -> Unit = {},
-    onSecure: () -> Unit = {}
+    onSecure: () -> Unit = {},
+    showMergePdf: Boolean = false
 ) {
     Surface(
         color = Color(0xFF1A6B6B),
@@ -1595,6 +1612,9 @@ fun SelectionBottomBar(
             SelectionAction(icon = Icons.Default.Delete,        label = "Delete",    onClick = onDelete)
             SelectionAction(icon = Icons.Default.FolderZip,     label = "Zip",       onClick = onZip)
             SelectionAction(icon = Icons.Default.FolderOpen,    label = "Unzip",     onClick = onUnzip)
+            if (showMergePdf) {
+                SelectionAction(icon = androidx.compose.material.icons.filled.PictureAsPdf, label = "Merge", onClick = onMergePdf)
+            }
             SelectionAction(icon = Icons.Default.Lock,          label = "Secure",    onClick = onSecure)
             SelectionAction(icon = Icons.Default.Info,          label = "Info",      onClick = onProperties)
             Spacer(Modifier.width(4.dp))
