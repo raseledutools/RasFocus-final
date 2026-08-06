@@ -562,10 +562,22 @@ fun NativePdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
                                         offsetX = if (newScale > 1f) offsetX + panChange.x else 0f
                                         offsetY = if (newScale > 1f) offsetY + panChange.y else 0f
                                         scale   = newScale
+
+                                        val maxOffsetX = (size.width * scale - size.width) / 2f
+                                        offsetX = offsetX.coerceIn(-maxOffsetX, maxOffsetX)
+
                                         event.changes.forEach { if (it.positionChanged()) it.consume() }
+                                    } else if (event.changes.size == 1 && scale > 1f) {
+                                        val panChange = event.calculatePan()
+                                        offsetX += panChange.x
+
+                                        val maxOffsetX = (size.width * scale - size.width) / 2f
+                                        offsetX = offsetX.coerceIn(-maxOffsetX, maxOffsetX)
+                                        
+                                        // We DO NOT consume the event for 1-finger drag.
+                                        // LazyColumn will naturally handle the Y movement (vertical scroll)
+                                        // while we handle the X movement (horizontal pan) simultaneously!
                                     }
-                                    // single finger → never consume, LazyColumn
-                                    // scrolls freely at any zoom level (WPS style)
                                 } while (event.changes.any { it.pressed })
                             }
                         }
