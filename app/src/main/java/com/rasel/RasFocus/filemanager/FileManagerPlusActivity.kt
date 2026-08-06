@@ -582,20 +582,22 @@ fun HomeScreen() {
                         onNavigate = { newState ->
                             // subfolder navigate Ã Â¦â€¢Ã Â¦Â°Ã Â¦Â¾Ã Â¦Â° Ã Â¦Â¸Ã Â¦Â®Ã Â¦Â¯Ã Â¦Â¼ current state Ã Â¦â€¢Ã Â§â€¡ backstack Ã Â¦Â  push Ã Â¦â€¢Ã Â¦Â°Ã Â§â€¹
                             if (newState is NavState.Cloud) {
-                                cloudBackStack.add(Pair(state.folderId, state.pathName))
+                                val fresh1 = currentNavState as? NavState.Cloud
+                                if (fresh1 != null) { cloudBackStack.add(Pair(fresh1.folderId, fresh1.pathName)) }
                             }
                             currentNavState = newState
                         },
                         onBack = {
+                            val freshState = currentNavState as? NavState.Cloud ?: return@CloudFileScreen
                             if (cloudBackStack.isNotEmpty()) {
                                 val prev = cloudBackStack.removeLast()
-                                currentNavState = NavState.Cloud(state.accountName, prev.first, prev.second)
-                            } else if (state.folderId == "root") {
+                                currentNavState = NavState.Cloud(freshState.accountName, prev.first, prev.second)
+                            } else if (freshState.folderId == "root") {
                                 cloudBackStack.clear()
                                 currentNavState = NavState.CloudAccounts
                             } else {
                                 cloudBackStack.clear()
-                                currentNavState = NavState.Cloud(state.accountName, "root", "My Drive")
+                                currentNavState = NavState.Cloud(freshState.accountName, "root", "My Drive")
                             }
                         },
                         clipboard = clipboard,

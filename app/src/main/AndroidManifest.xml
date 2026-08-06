@@ -853,7 +853,9 @@
         <activity
             android:name=".filemanager.FileManagerPlusActivity"
             android:exported="false"
-            android:theme="@style/Theme.RasFocus" />
+            android:theme="@style/Theme.RasFocus"
+            android:launchMode="singleTop"
+            android:taskAffinity="${applicationId}.filemanager" />
         <service
             android:name=".filemanager.FileOperationService"
             android:exported="false"
