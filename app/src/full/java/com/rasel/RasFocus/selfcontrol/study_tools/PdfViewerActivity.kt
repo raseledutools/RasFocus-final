@@ -250,6 +250,7 @@ fun NativePdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
     // PdfiumCore instance
     val pdfCore  = remember { PdfiumCore(context) }
     var pdfDoc   by remember { mutableStateOf<PdfDocument?>(null) }
+    var activePfd by remember { mutableStateOf<android.os.ParcelFileDescriptor?>(null) }
 
     val listState = rememberLazyListState()
     val screenW   = context.resources.displayMetrics.widthPixels
@@ -327,6 +328,7 @@ fun NativePdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
                 // Primary: ParcelFileDescriptor (zero-copy, fastest).
                 // Fallback: copy to temp file so pdfium gets a seekable real fd
                 // (avoids "not in PDF format" when URI wraps a pipe/socket fd).
+                var tempPfd: android.os.ParcelFileDescriptor? = null
                 val doc: PdfDocument = run {
                     val pfd = try {
                         context.contentResolver.openFileDescriptor(uri, "r")
@@ -337,8 +339,11 @@ fun NativePdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
                             try { pfd.close() } catch (_: Exception) {}
                             null
                         } else {
-                            try { pdfCore.newDocument(pfd) }
-                            catch (_: Exception) {
+                            try { 
+                                val d = pdfCore.newDocument(pfd)
+                                tempPfd = pfd
+                                d
+                            } catch (_: Exception) {
                                 try { pfd.close() } catch (_: Exception) {}
                                 null
                             }
@@ -353,10 +358,14 @@ fun NativePdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
                     } ?: throw IllegalStateException("File খুলতে পারিনি")
                     val pfd2 = android.os.ParcelFileDescriptor.open(
                         tmp, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
-                    try { pdfCore.newDocument(pfd2) }
-                    finally { tmp.deleteOnExit() }
+                    try { 
+                        val d = pdfCore.newDocument(pfd2)
+                        tempPfd = pfd2
+                        d
+                    } finally { tmp.deleteOnExit() }
                 }
                 pdfDoc    = doc
+                activePfd = tempPfd
                 val count = doc.getPageCount()
 
                 withContext(Dispatchers.Main) {
@@ -482,6 +491,7 @@ fun NativePdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
             bitmapCache.evictAll()
             pages.forEach { it?.textPage?.close() }
             pdfDoc?.let { pdfCore.closeDocument(it) }
+            try { activePfd?.close() } catch (_: Exception) {}
         }
     }
 
