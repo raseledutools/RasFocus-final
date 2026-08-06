@@ -116,6 +116,7 @@
         android:launchMode="singleTop"
         android:hardwareAccelerated="true"
         android:theme="@style/Theme.RasFocus"
+        android:taskAffinity="${applicationId}.filemanager"
         android:configChanges="orientation|screenSize|keyboardHidden">
 
         <!-- PDF -->
@@ -320,6 +321,7 @@
         android:launchMode="singleTop"
         android:hardwareAccelerated="true"
         android:theme="@style/Theme.RasFocus"
+        android:taskAffinity="${applicationId}.filemanager"
         android:configChanges="orientation|screenSize|keyboardHidden" />
 
     <activity
@@ -329,6 +331,7 @@
         android:launchMode="singleTop"
         android:hardwareAccelerated="true"
         android:theme="@style/Theme.RasFocus"
+        android:taskAffinity="${applicationId}.filemanager"
         android:configChanges="orientation|screenSize|keyboardHidden" />
 
     <activity
@@ -338,6 +341,7 @@
         android:launchMode="singleTop"
         android:hardwareAccelerated="true"
         android:theme="@style/Theme.RasFocus"
+        android:taskAffinity="${applicationId}.filemanager"
         android:configChanges="orientation|screenSize|keyboardHidden" />
 
     <activity
@@ -347,6 +351,7 @@
         android:launchMode="singleTop"
         android:hardwareAccelerated="true"
         android:theme="@style/Theme.RasFocus"
+        android:taskAffinity="${applicationId}.filemanager"
         android:configChanges="orientation|screenSize|keyboardHidden" />
 
     <activity
@@ -356,6 +361,7 @@
         android:launchMode="singleTop"
         android:hardwareAccelerated="true"
         android:theme="@style/Theme.RasFocus"
+        android:taskAffinity="${applicationId}.filemanager"
         android:configChanges="orientation|screenSize|keyboardHidden" />
 
     <activity
@@ -365,6 +371,7 @@
         android:launchMode="singleTop"
         android:hardwareAccelerated="true"
         android:theme="@style/Theme.RasFocus"
+        android:taskAffinity="${applicationId}.filemanager"
         android:configChanges="orientation|screenSize|keyboardHidden" />
 
     <!-- Combo module viewers — internal only -->
@@ -375,6 +382,7 @@
         android:launchMode="singleTop"
         android:hardwareAccelerated="true"
         android:theme="@style/Theme.RasFocus"
+        android:taskAffinity="${applicationId}.filemanager"
         android:configChanges="orientation|screenSize|keyboardHidden" />
     <activity
         android:name=".combo.selfcontrol.study_tools.PptxViewerActivity"
@@ -383,6 +391,7 @@
         android:launchMode="singleTop"
         android:hardwareAccelerated="true"
         android:theme="@style/Theme.RasFocus"
+        android:taskAffinity="${applicationId}.filemanager"
         android:configChanges="orientation|screenSize|keyboardHidden" />
     <activity
         android:name=".combo.selfcontrol.study_tools.DocxViewerActivity"
@@ -391,6 +400,7 @@
         android:launchMode="singleTop"
         android:hardwareAccelerated="true"
         android:theme="@style/Theme.RasFocus"
+        android:taskAffinity="${applicationId}.filemanager"
         android:configChanges="orientation|screenSize|keyboardHidden" />
     <activity
         android:name=".combo.selfcontrol.study_tools.XlsxViewerActivity"
@@ -399,6 +409,7 @@
         android:launchMode="singleTop"
         android:hardwareAccelerated="true"
         android:theme="@style/Theme.RasFocus"
+        android:taskAffinity="${applicationId}.filemanager"
         android:configChanges="orientation|screenSize|keyboardHidden" />
 
     <!-- ✅ Credential Manager — Google Sign-In এর জন্য required -->

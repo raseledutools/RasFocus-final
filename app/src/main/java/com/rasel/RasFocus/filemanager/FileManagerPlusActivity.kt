@@ -82,46 +82,60 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
             file
         )
 
-        // â”€â”€ Known types: directly launch RasFocus internal viewers â”€â”€
-        // Skips the system "Open with" chooser â†’ always gets in-app viewer
-        // (pdfium for PDF, ImageViewerActivity for images, etc.)
-        val internalMime: String? = when (ext) {
-            "pdf" -> "application/pdf"
-            "jpg", "jpeg" -> "image/jpeg"
-            "png" -> "image/png"
-            "webp" -> "image/webp"
-            "gif" -> "image/gif"
-            "bmp" -> "image/bmp"
-            "heic", "heif" -> "image/heic"
-            "docx", "doc" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            "pptx", "ppt" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-            "xlsx", "xls" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            "txt", "md", "kt", "java", "py", "js", "ts", "json", "xml", "csv",
-            "html", "css", "sh", "c", "cpp", "h", "rs", "go", "rb", "yaml", "yml" -> "text/plain"
-            else -> null
-        }
+        // FIX: Direct viewer launch — bypass UniversalViewerActivity completely.
+        // Previously we routed through UniversalViewerActivity which then launched
+        // the real viewer and called finish(). The problem:
+        //   1. Class.forName() could fail due to combo-vs-non-combo package mismatch
+        //   2. Even when it worked, the intermediate Activity created a task boundary:
+        //      UniversalViewerActivity has no taskAffinity so it joined the main app
+        //      task, while FileManagerPlusActivity lives in the ".filemanager" task —
+        //      back press jumped to the main screen instead of the file browser.
+        // Fix: resolve the viewer class directly here and launch it in ONE hop.
+        // All viewer activities now have taskAffinity="${applicationId}.filemanager"
+        // in the manifest so they join the file manager task and back works correctly.
 
-        if (internalMime != null) {
-            if (internalMime == "text/plain" && onNavigate != null) {
+        // Text/code files → in-app text editor via Compose navigation (no Activity hop)
+        if (ext in setOf("txt","md","kt","java","py","js","ts","json","xml","csv",
+                         "html","css","sh","c","cpp","h","rs","go","rb","yaml","yml")) {
+            if (onNavigate != null) {
                 onNavigate(NavState.TextEditor(file.absolutePath))
                 return
             }
+        }
 
-            // Route through UniversalViewerActivity â†’ correct internal viewer
-            val pkg = context.packageName.replace(".combo", "")
-            val cls = try {
-                Class.forName("$pkg.selfcontrol.study_tools.UniversalViewerActivity")
-            } catch (_: ClassNotFoundException) { null }
+        // Map extension → fully-qualified viewer class name
+        val basePkg = context.packageName.replace(".combo", "")
+        val viewerClassName: String? = when (ext) {
+            "pdf"                         -> "$basePkg.selfcontrol.study_tools.PdfViewerActivity"
+            "jpg","jpeg","png","webp",
+            "gif","bmp","heic","heif"     -> "$basePkg.selfcontrol.study_tools.ImageViewerActivity"
+            "docx","doc"                  -> "$basePkg.selfcontrol.study_tools.DocxViewerActivity"
+            "pptx","ppt"                  -> "$basePkg.selfcontrol.study_tools.PptxViewerActivity"
+            "xlsx","xls"                  -> "$basePkg.selfcontrol.study_tools.XlsxViewerActivity"
+            else                          -> null
+        }
+
+        val mimeType: String = when (ext) {
+            "pdf"       -> "application/pdf"
+            "jpg","jpeg"-> "image/jpeg"
+            "png"       -> "image/png"
+            "webp"      -> "image/webp"
+            "gif"       -> "image/gif"
+            "bmp"       -> "image/bmp"
+            "heic","heif"-> "image/heic"
+            "docx","doc"-> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            "pptx","ppt"-> "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            "xlsx","xls"-> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            else        -> android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "*/*"
+        }
+
+        if (viewerClassName != null) {
+            val cls = try { Class.forName(viewerClassName) } catch (_: ClassNotFoundException) { null }
             if (cls != null) {
                 val intent = android.content.Intent(context, cls).apply {
                     action = android.content.Intent.ACTION_VIEW
-                    setDataAndType(uri, internalMime)
+                    setDataAndType(uri, mimeType)
                     addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    // FIX: Removed FLAG_ACTIVITY_NEW_TASK — it was putting the viewer
-                    // in a separate task so back-press jumped to the launcher/main screen
-                    // instead of returning to the file browser. Without NEW_TASK the
-                    // viewer stays in the same task so back works correctly.
-                    // ClipData forwards the URI grant on Android 12+ correctly.
                     if (uri.scheme == "content") {
                         clipData = android.content.ClipData.newRawUri("", uri)
                     }
@@ -131,9 +145,7 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
             }
         }
 
-        // â”€â”€ Fallback: system chooser for unknown/unsupported types â”€â”€
-        val mimeType = android.webkit.MimeTypeMap.getSingleton()
-            .getMimeTypeFromExtension(ext) ?: "*/*"
+        // Fallback: system chooser for unsupported types
         val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
             setDataAndType(uri, mimeType)
             addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -143,7 +155,6 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
         android.widget.Toast.makeText(context, "Cannot open file: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
     }
 }
-
 fun shareLocalFile(context: android.content.Context, file: java.io.File) {
     try {
         val uri = androidx.core.content.FileProvider.getUriForFile(
