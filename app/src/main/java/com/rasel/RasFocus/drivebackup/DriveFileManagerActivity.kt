@@ -99,18 +99,32 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
 
     NavHost(
         navController = navController,
-        startDestination = "folder/{folderId}/{folderName}",
+        startDestination = "folder/root/My%20Drive",
     ) {
+        // Root folder — fixed start destination
+        composable(route = "folder/root/My%20Drive") {
+            DriveFolderScreen(
+                folderId    = "root",
+                folderName  = "My Drive",
+                accountName = accountName,
+                onNavigateToFolder = { id, name ->
+                    val encoded = URLEncoder.encode(name, "UTF-8")
+                    navController.navigate("folder/$id/$encoded")
+                },
+                onBack = onClose  // root এ back = Drive বন্ধ
+            )
+        }
+        // Subfolders — dynamic route
         composable(
             route = "folder/{folderId}/{folderName}",
             arguments = listOf(
-                navArgument("folderId")   { type = NavType.StringType; defaultValue = "root" },
-                navArgument("folderName") { type = NavType.StringType; defaultValue = "My Drive" }
+                navArgument("folderId")   { type = NavType.StringType },
+                navArgument("folderName") { type = NavType.StringType }
             )
         ) { backStackEntry ->
             val folderId   = backStackEntry.arguments?.getString("folderId")   ?: "root"
             val folderName = backStackEntry.arguments?.getString("folderName")
-                ?.let { URLDecoder.decode(it, "UTF-8") } ?: "My Drive"
+                ?.let { URLDecoder.decode(it, "UTF-8") } ?: "Folder"
 
             DriveFolderScreen(
                 folderId    = folderId,
@@ -121,6 +135,8 @@ fun DriveFileManagerScreen(onClose: () -> Unit) {
                     navController.navigate("folder/$id/$encoded")
                 },
                 onBack = {
+                    // popBackStack() → parent folder এ যায়
+                    // false return মানে back stack খালি → Drive বন্ধ
                     if (!navController.popBackStack()) onClose()
                 }
             )
@@ -233,6 +249,11 @@ fun DriveFolderScreen(
             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).build()
         cm.registerNetworkCallback(req, cb)
         onDispose { cm.unregisterNetworkCallback(cb) }
+    }
+
+    // ── Hardware back button — NavController এ delegate করো ─────────────────
+    androidx.activity.compose.BackHandler(enabled = true) {
+        onBack()
     }
 
     // ── Load folder once on entry ──────────────────────────────────────────────
