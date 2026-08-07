@@ -58,6 +58,9 @@ sealed class NavState {
     object FtpServer : NavState()
     data class TextEditor(val path: String) : NavState()
     data class Saf(val uri: String) : NavState()
+    // ── In-app viewers — back returns to the folder that opened them ──────────
+    data class PdfViewer(val path: String) : NavState()
+    data class ImageViewer(val path: String) : NavState()
 }
 
 // â”€â”€ Shared utility functions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -84,6 +87,18 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
                 onNavigate(NavState.TextEditor(file.absolutePath))
                 return
             }
+        }
+
+        // ── In-app PDF viewer (pinch-zoom, no Activity, back = folder) ────────
+        if (ext == "pdf" && onNavigate != null) {
+            onNavigate(NavState.PdfViewer(file.absolutePath))
+            return
+        }
+
+        // ── In-app Image viewer (no Activity, back = folder) ─────────────────
+        if (ext in setOf("jpg","jpeg","png","webp","gif","bmp","heic","heif") && onNavigate != null) {
+            onNavigate(NavState.ImageViewer(file.absolutePath))
+            return
         }
 
         val uri = androidx.core.content.FileProvider.getUriForFile(
@@ -389,6 +404,15 @@ fun HomeScreen() {
             currentNavState is NavState.Category -> {
                 currentNavState = NavState.Home
             }
+            // ── Viewers: back → the folder that contained the file ─────────────
+            currentNavState is NavState.PdfViewer -> {
+                val parent = java.io.File((currentNavState as NavState.PdfViewer).path).parent
+                currentNavState = if (parent != null) NavState.Local(parent) else NavState.Home
+            }
+            currentNavState is NavState.ImageViewer -> {
+                val parent = java.io.File((currentNavState as NavState.ImageViewer).path).parent
+                currentNavState = if (parent != null) NavState.Local(parent) else NavState.Home
+            }
             currentNavState is NavState.Cloud -> {
                 val state = currentNavState as NavState.Cloud
                 if (cloudBackStack.isNotEmpty()) {
@@ -466,6 +490,8 @@ fun HomeScreen() {
                     currentNavState !is NavState.Cloud &&
                     currentNavState !is NavState.Remote &&
                     currentNavState !is NavState.Saf &&
+                    currentNavState !is NavState.PdfViewer &&
+                    currentNavState !is NavState.ImageViewer &&
                     currentNavState != NavState.RecycleBin &&
                     currentNavState != NavState.SecureVault &&
                     currentNavState != NavState.StorageAnalyzer &&
@@ -781,6 +807,22 @@ fun HomeScreen() {
                             } else {
                                 currentNavState = NavState.Home 
                             }
+                        }
+                    )
+                    // ── In-app PDF viewer — back = parent folder ──────────────
+                    is NavState.PdfViewer -> PdfViewerScreen(
+                        pdfPath = state.path,
+                        onBack = {
+                            val parent = java.io.File(state.path).parent
+                            currentNavState = if (parent != null) NavState.Local(parent) else NavState.Home
+                        }
+                    )
+                    // ── In-app Image viewer — back = parent folder ────────────
+                    is NavState.ImageViewer -> ImageViewerScreen(
+                        imagePath = state.path,
+                        onBack = {
+                            val parent = java.io.File(state.path).parent
+                            currentNavState = if (parent != null) NavState.Local(parent) else NavState.Home
                         }
                     )
                     is NavState.Saf -> SafFileScreen(
