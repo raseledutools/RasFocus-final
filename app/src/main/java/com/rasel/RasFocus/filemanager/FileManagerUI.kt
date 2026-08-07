@@ -1,5 +1,10 @@
 package com.rasel.RasFocus.filemanager
 
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.runtime.collectAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -1727,6 +1732,54 @@ fun ActiveOperationsBar(operations: List<FileOperation>) {
 
 
 
+
+
+
+
+@Composable
+fun FileOperationsBanner(modifier: Modifier = Modifier) {
+    val operations by FileOperationManager.operations.collectAsState()
+    val activeOps = operations.filter { !it.isComplete && !it.isCancelled && !it.isError }
+
+    AnimatedVisibility(
+        visible = activeOps.isNotEmpty(),
+        enter = expandVertically(),
+        exit = shrinkVertically(),
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                .padding(16.dp)
+        ) {
+            Text("Active Operations ()", fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(8.dp))
+            activeOps.forEach { op ->
+                val progress = if (op.totalBytes > 0) op.bytesProcessed.toFloat() / op.totalBytes else 0f
+                val typeName = if (op.type == OperationType.MOVE) "Moving" else "Copying"
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "$typeName: ",
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        LinearProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier.fillMaxWidth(),
+                            trackColor = MaterialTheme.colorScheme.surfaceColorAtElevation(4.dp)
+                        )
+                    }
+                    IconButton(onClick = { FileOperationManager.updateOperation(op.id) { it.copy(isCancelled = true) } }) {
+                        Icon(Icons.Default.Close, contentDescription = "Cancel")
+                    }
+                }
+            }
+        }
+    }
+}
 
 
 
