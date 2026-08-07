@@ -4,57 +4,93 @@
 ╚══════════════════════════════════════════╝
 
 === KOTLIN ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:53:7 Redeclaration: FMPdfViewerActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:19:7 Redeclaration: FMPdfViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:55:7 Redeclaration: FMPdfViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:66:13 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:114:20 Redeclaration: ViewMode
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:119:1 Conflicting overloads: public fun FMUnifiedPdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt, public fun FMUnifiedPdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:55:7 Redeclaration: FMPdfViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:66:13 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:114:20 Redeclaration: ViewMode
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:119:1 Conflicting overloads: public fun FMUnifiedPdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt, public fun FMUnifiedPdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:135:51 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:135:60 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:248:31 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:248:40 No method 'equals(Any?): Boolean' available
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:248:43 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:248:52 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:251:13 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:251:22 No method 'equals(Any?): Boolean' available
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:251:25 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:251:34 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:348:29 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:348:38 No method 'equals(Any?): Boolean' available
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:348:41 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:348:50 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:423:48 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:423:57 No method 'equals(Any?): Boolean' available
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:423:60 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:423:69 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:423:79 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:423:88 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:423:104 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:423:113 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:430:51 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:430:60 No method 'equals(Any?): Boolean' available
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:430:63 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:430:72 Cannot access 'ViewMode': it is private in file
 
 === UNRESOLVED / TYPE ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:53:7 Redeclaration: FMPdfViewerActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:19:7 Redeclaration: FMPdfViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:55:7 Redeclaration: FMPdfViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:66:13 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:114:20 Redeclaration: ViewMode
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:55:7 Redeclaration: FMPdfViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:66:13 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:114:20 Redeclaration: ViewMode
 
 === BUILD FAILURE ===
 > Task :app:compileFullReleaseKotlin FAILED
 * What went wrong:
 Execution failed for task ':app:compileFullReleaseKotlin'.
-BUILD FAILED in 3m 23s
+BUILD FAILED in 2m 34s
 
 === LAST 60 LINES ===
-> Task :app:generateFullReleaseBuildConfig
-> Task :app:packageFullReleaseResources FROM-CACHE
-> Task :app:parseFullReleaseLocalResources FROM-CACHE
-> Task :app:mergeFullReleaseAssets FROM-CACHE
-> Task :app:mapFullReleaseSourceSetPaths
-> Task :app:checkFullReleaseAarMetadata
-> Task :app:validateSigningFullRelease
-> Task :app:writeFullReleaseAppMetadata
-> Task :app:compressFullReleaseAssets FROM-CACHE
-> Task :app:writeFullReleaseSigningConfigVersions
-> Task :app:checkFullReleaseDuplicateClasses
-> Task :app:mergeFullReleaseArtProfile
-> Task :app:collectFullReleaseDependencies
-> Task :app:mergeFullReleaseNativeLibs
-
-> Task :app:stripFullReleaseDebugSymbols
-Unable to strip the following libraries, packaging them as they are: libbarhopper_v3.so, libimage_processing_util_jni.so, libpdfium.so, libpdfiumandroid.so.
-
-> Task :app:extractFullReleaseNativeSymbolTables FROM-CACHE
-> Task :app:mergeFullReleaseNativeDebugMetadata NO-SOURCE
-> Task :app:sdkFullReleaseDependencyData
-> Task :app:mergeFullReleaseResources FROM-CACHE
-> Task :app:processFullReleaseMainManifest
-> Task :app:processFullReleaseManifest
-> Task :app:processFullReleaseManifestForPackage
-note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
-
-note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
-
-> Task :app:processFullReleaseResources
-> Task :app:kspFullReleaseKotlin
-> Task :app:compileFullReleaseKotlin
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:53:7 Redeclaration: FMPdfViewerActivity
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:19:7 Redeclaration: FMPdfViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:114:20 Redeclaration: ViewMode
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:119:1 Conflicting overloads: public fun FMUnifiedPdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt, public fun FMUnifiedPdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:55:7 Redeclaration: FMPdfViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:66:13 Overload resolution ambiguity: 
+public fun FMUnifiedPdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt
+public fun FMUnifiedPdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:114:20 Redeclaration: ViewMode
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:119:1 Conflicting overloads: public fun FMUnifiedPdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt, public fun FMUnifiedPdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:135:51 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:135:60 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:248:31 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:248:40 No method 'equals(Any?): Boolean' available
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:248:43 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:248:52 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:251:13 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:251:22 No method 'equals(Any?): Boolean' available
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:251:25 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:251:34 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:348:29 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:348:38 No method 'equals(Any?): Boolean' available
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:348:41 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:348:50 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:423:48 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:423:57 No method 'equals(Any?): Boolean' available
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:423:60 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:423:69 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:423:79 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:423:88 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:423:104 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:423:113 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:430:51 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:430:60 No method 'equals(Any?): Boolean' available
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:430:63 Cannot access 'ViewMode': it is private in file
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:430:72 Cannot access 'ViewMode': it is private in file
 
 > Task :app:compileFullReleaseKotlin FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1786080983316.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1786082305291.json
 
 FAILURE: Build failed with an exception.
 
@@ -75,6 +111,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 3m 23s
+BUILD FAILED in 2m 34s
 32 actionable tasks: 22 executed, 10 from cache
 Configuration cache entry stored.
