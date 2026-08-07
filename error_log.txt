@@ -4,60 +4,73 @@
 ╚══════════════════════════════════════════╝
 
 === KOTLIN ERRORS ===
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:116:7 Redeclaration: PdfViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:730:45 Unresolved reference: addServer
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:730:107 Type mismatch: inferred type is String but Int was expected
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:730:117 The integer literal does not conform to the expected type String
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:19:7 Redeclaration: PdfViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:45:69 Unresolved reference: dp
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:49:65 Unresolved reference: dp
 
 === UNRESOLVED / TYPE ERRORS ===
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:116:7 Redeclaration: PdfViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:730:45 Unresolved reference: addServer
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:730:107 Type mismatch: inferred type is String but Int was expected
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:19:7 Redeclaration: PdfViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:45:69 Unresolved reference: dp
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:49:65 Unresolved reference: dp
 
 === BUILD FAILURE ===
-> Task :app:processFullReleaseMainManifest FAILED
+> Task :app:compileFullReleaseKotlin FAILED
 * What went wrong:
-Execution failed for task ':app:processFullReleaseMainManifest'.
-BUILD FAILED in 24s
+Execution failed for task ':app:compileFullReleaseKotlin'.
+BUILD FAILED in 3m 22s
 
 === LAST 60 LINES ===
-> Task :app:processFullReleaseGoogleServices FROM-CACHE
-> Task :app:javaPreCompileFullRelease FROM-CACHE
-> Task :app:extractProguardFiles
-> Task :app:buildKotlinToolingMetadata
-> Task :app:extractDeepLinksFullRelease FROM-CACHE
-> Task :app:generateFullReleaseBuildConfig
-> Task :app:packageFullReleaseResources
-> Task :app:mapFullReleaseSourceSetPaths
-> Task :app:checkFullReleaseAarMetadata
-> Task :app:parseFullReleaseLocalResources
 > Task :app:validateSigningFullRelease
 > Task :app:writeFullReleaseAppMetadata
 > Task :app:writeFullReleaseSigningConfigVersions
-> Task :app:mergeFullReleaseArtProfile
 > Task :app:checkFullReleaseDuplicateClasses
+> Task :app:checkFullReleaseAarMetadata
+> Task :app:mergeFullReleaseAssets FROM-CACHE
+> Task :app:compressFullReleaseAssets FROM-CACHE
 > Task :app:mergeFullReleaseNativeLibs
 > Task :app:collectFullReleaseDependencies
-> Task :app:mergeFullReleaseAssets FROM-CACHE
 
 > Task :app:stripFullReleaseDebugSymbols
 Unable to strip the following libraries, packaging them as they are: libbarhopper_v3.so, libimage_processing_util_jni.so, libpdfium.so, libpdfiumandroid.so.
 
 > Task :app:extractFullReleaseNativeSymbolTables FROM-CACHE
-> Task :app:compressFullReleaseAssets FROM-CACHE
 > Task :app:mergeFullReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:mergeFullReleaseResources FROM-CACHE
 > Task :app:sdkFullReleaseDependencyData
+> Task :app:processFullReleaseMainManifest
+> Task :app:processFullReleaseManifest
+> Task :app:processFullReleaseManifestForPackage
+note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
 
-> Task :app:processFullReleaseMainManifest FAILED
-/home/runner/work/RasFocus-final/RasFocus-final/app/src/main/AndroidManifest.xml:865:9-868:53 Error:
-	Element activity#com.rasel.RasFocus.selfcontrol.study_tools.PdfViewerActivity at AndroidManifest.xml:865:9-868:53 duplicated with element declared at AndroidManifest.xml:316:5-323:73
-/home/runner/work/RasFocus-final/RasFocus-final/app/src/main/AndroidManifest.xml Error:
-	Validation failed, exiting
+note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
 
-See https://developer.android.com/r/studio-ui/build/manifest-merger for more information about the manifest merger.
+> Task :app:processFullReleaseResources
+> Task :app:kspFullReleaseKotlin
+> Task :app:compileFullReleaseKotlin
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:116:7 Redeclaration: PdfViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:730:45 Unresolved reference: addServer
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:730:107 Type mismatch: inferred type is String but Int was expected
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:730:117 The integer literal does not conform to the expected type String
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:19:7 Redeclaration: PdfViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:45:69 Unresolved reference: dp
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfViewerActivity.kt:49:65 Unresolved reference: dp
 
-
-> Task :app:mergeFullReleaseResources
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1786095979721.json
+> Task :app:compileFullReleaseKotlin FAILED
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1786096377048.json
 
 FAILURE: Build failed with an exception.
 
 * What went wrong:
-Execution failed for task ':app:processFullReleaseMainManifest'.
-> Manifest merger failed with multiple errors, see logs
+Execution failed for task ':app:compileFullReleaseKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
 
 * Try:
 > Run with --stacktrace option to get the stack trace.
@@ -71,6 +84,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 24s
-27 actionable tasks: 20 executed, 7 from cache
+BUILD FAILED in 3m 22s
+32 actionable tasks: 22 executed, 10 from cache
 Configuration cache entry stored.
