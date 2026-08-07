@@ -1,8 +1,121 @@
 ╔══════════════════════════════════════════╗
-║        LAST BUILD: SUCCESS ✅            ║
+║      LAST BUILD: ERROR ❌                ║
+║   Push করার আগে এই error fix করুন।     ║
 ╚══════════════════════════════════════════╝
 
-Build passed at: 2026-08-07 05:13:27 UTC
-Run: #707  |  Commit: 59c5f859a5781c15a48cedbd16e287936f8a311f
+=== KOTLIN ERRORS ===
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:151:18 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:164:13 Expecting an element
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:165:5 Expecting an element
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:186:26 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:187:93 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:188:58 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:190:21 Expecting an element
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:197:87 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:198:71 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:204:71 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:227:51 Expecting ')'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:265:74 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:269:144 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:282:19 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:305:56 Expecting ')'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:314:59 Expecting ')'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:335:30 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:336:91 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:337:62 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:338:73 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:370:74 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:401:51 Expecting ')'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:401:51 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:404:34 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:405:81 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:406:105 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:420:66 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:421:111 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:458:21 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:465:15 Expecting an element
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:465:36 Expecting ','
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:466:20 Expecting ')'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:466:21 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:467:21 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:468:19 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:469:19 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:470:20 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:471:21 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:472:19 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:473:19 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:552:19 Expecting ')'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:552:19 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:559:67 Expecting '}'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:559:67 Expecting 'catch' or 'finally'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:559:67 Expecting ')'
 
-No errors. Safe to push.
+=== UNRESOLVED / TYPE ERRORS ===
+
+=== BUILD FAILURE ===
+> Task :app:kspFullReleaseKotlin FAILED
+* What went wrong:
+Execution failed for task ':app:kspFullReleaseKotlin'.
+BUILD FAILED in 38s
+
+=== LAST 60 LINES ===
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:204:71 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:227:51 Expecting ')'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:265:74 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:269:144 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:282:19 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:305:56 Expecting ')'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:314:59 Expecting ')'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:335:30 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:336:91 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:337:62 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:338:73 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:370:74 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:401:51 Expecting ')'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:401:51 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:404:34 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:405:81 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:406:105 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:420:66 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:421:111 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:458:21 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:465:15 Expecting an element
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:465:36 Expecting ','
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:466:20 Expecting ')'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:466:21 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:467:21 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:468:19 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:469:19 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:470:20 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:471:21 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:472:19 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:473:19 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:552:19 Expecting ')'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:552:19 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:559:67 Expecting '}'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:559:67 Expecting 'catch' or 'finally'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/ScanToPdfScreen.kt:559:67 Expecting ')'
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1786079805944.json
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:kspFullReleaseKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 38s
+31 actionable tasks: 24 executed, 7 from cache
+Configuration cache entry stored.
