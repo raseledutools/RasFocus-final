@@ -2,7 +2,7 @@ package com.rasel.RasFocus.combo.selfcontrol.study_tools
 
 import android.content.ContentUris
 import android.content.Intent
-import com.rasel.RasFocus.combo.selfcontrol.study_tools.PdfViewerActivity
+import com.rasel.RasFocus.filemanager.FMPdfViewerActivity
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -647,7 +647,7 @@ private fun WpsRecentRow(
 
                     when (item.type.lowercase()) {
                         "pdf" -> {
-                            val intent = android.content.Intent(context, PdfViewerActivity::class.java).apply {
+                            val intent = android.content.Intent(context, FMPdfViewerActivity::class.java).apply {
                                 action = android.content.Intent.ACTION_VIEW
                                 setDataAndType(openUri, "application/pdf")
                                 addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)

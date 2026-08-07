@@ -309,20 +309,7 @@
     </activity>
 
     <!-- Internal-only activities (no intent-filters = not shown in picker) -->
-    <!-- FIX: singleTask+taskAffinity="" caused crash when launched from
-         UniversalViewerActivity (also singleTask) — Android tried to route
-         to the task root but the content URI grant didn't transfer, causing
-         SecurityException / instant crash. singleTop is correct: one instance
-         per task, reuses via onNewIntent when the same PDF is reopened. -->
-    <activity
-        android:name=".selfcontrol.study_tools.PdfViewerActivity"
-        android:label="RasFocus PDF"
-        android:exported="false"
-        android:launchMode="singleTop"
-        android:hardwareAccelerated="true"
-        android:theme="@style/Theme.RasFocus"
-        android:taskAffinity="${applicationId}.filemanager"
-        android:configChanges="orientation|screenSize|keyboardHidden" />
+    <!-- PdfViewerActivity removed — PDF opens via FMPdfViewerActivity -->
 
     <activity
         android:name=".selfcontrol.study_tools.PptxViewerActivity"
@@ -374,16 +361,7 @@
         android:taskAffinity="${applicationId}.filemanager"
         android:configChanges="orientation|screenSize|keyboardHidden" />
 
-    <!-- Combo module viewers — internal only -->
-    <activity
-        android:name=".combo.selfcontrol.study_tools.PdfViewerActivity"
-        android:label="RasFocus PDF"
-        android:exported="false"
-        android:launchMode="singleTop"
-        android:hardwareAccelerated="true"
-        android:theme="@style/Theme.RasFocus"
-        android:taskAffinity="${applicationId}.filemanager"
-        android:configChanges="orientation|screenSize|keyboardHidden" />
+    <!-- Combo module viewers — internal only (PdfViewerActivity removed) -->
     <activity
         android:name=".combo.selfcontrol.study_tools.PptxViewerActivity"
         android:label="RasFocus Presentation"

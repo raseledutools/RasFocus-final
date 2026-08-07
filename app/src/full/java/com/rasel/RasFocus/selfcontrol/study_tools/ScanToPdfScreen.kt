@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import com.rasel.RasFocus.filemanager.FMPdfViewerActivity
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -440,7 +441,7 @@ fun ScanToPdfScreen(onBack: () -> Unit) {
                     docs.forEach { doc ->
                         Card(
                             modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp).clickable {
-                                val intent = Intent(context, PdfViewerActivity::class.java).apply {
+                                val intent = Intent(context, FMPdfViewerActivity::class.java).apply {
                                     putExtra("pdf_path", doc.path)
                                     putExtra("pdf_name", doc.name)
                                 }

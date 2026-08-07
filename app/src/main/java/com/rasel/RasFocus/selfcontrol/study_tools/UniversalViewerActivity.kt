@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
+import com.rasel.RasFocus.filemanager.FMPdfViewerActivity
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UniversalViewerActivity
@@ -25,13 +26,13 @@ import androidx.core.view.WindowCompat
 //   PDF, DOCX, PPTX, XLSX, XLS, JPG, PNG, WEBP, GIF, TXT, MD, and more.
 //
 // Strategy:
-//   • PDF             → PdfViewerActivity (direct)
+//   • PDF             → FMPdfViewerActivity (direct)
 //   • DOCX / DOC      → DocxViewerActivity (converts to PDF internally)
 //   • PPTX / PPT      → PptxViewerActivity (converts to PDF internally)
 //   • XLSX / XLS      → XlsxViewerActivity (converts to PDF internally)
-//   • Images          → wrap in a 1-page PDF → PdfViewerActivity
+//   • Images          → ImageViewerActivity
 //   • TXT / MD / code → TextViewerActivity
-//   • Unknown         → try PdfViewerActivity, fall back to TextViewerActivity
+//   • Unknown         → FMPdfViewerActivity
 //
 // Having ONE activity declared in the manifest means Android shows
 // "RasFocus" exactly once in the "Open with" picker regardless of file type.
@@ -92,7 +93,7 @@ class UniversalViewerActivity : ComponentActivity() {
                 }
                 when (fileType) {
                     FileType.PDF -> {
-                        openByClassName("${packageName.replace(".combo","")}.selfcontrol.study_tools.PdfViewerActivity", uri, "application/pdf")
+                        openDirect(FMPdfViewerActivity::class.java, uri, "application/pdf")
                     }
                     FileType.DOCX -> {
                         openDirect(DocxViewerActivity::class.java, uri, mimeType.ifEmpty {
@@ -117,7 +118,7 @@ class UniversalViewerActivity : ComponentActivity() {
                         openDirect(TextViewerActivity::class.java, uri, mimeType.ifEmpty { "text/plain" })
                     }
                     FileType.UNKNOWN -> {
-                        openByClassName("${packageName.replace(".combo","")}.selfcontrol.study_tools.PdfViewerActivity", uri, "application/pdf")
+                        openDirect(FMPdfViewerActivity::class.java, uri, "application/pdf")
                     }
                 }
             }

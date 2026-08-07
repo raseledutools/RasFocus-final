@@ -16,7 +16,7 @@
         <intent
             android:action="android.intent.action.VIEW"
             android:targetPackage="com.rasel.RasFocus"
-            android:targetClass="com.rasel.RasFocus.selfcontrol.study_tools.PdfViewerActivity" />
+            android:targetClass="com.rasel.RasFocus.filemanager.FMPdfViewerActivity" />
 
         <categories android:name="android.shortcut.conversation" />
 
