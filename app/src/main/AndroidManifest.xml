@@ -874,11 +874,6 @@
             android:foregroundServiceType="dataSync" />
 
         <activity
-            android:name=".selfcontrol.study_tools.PdfViewerActivity"
-            android:exported="false"
-            android:theme="@style/Theme.RasFocus" />
-
-        <activity
             android:name=".filemanager.FMPdfViewerActivity"
             android:exported="false"
             android:theme="@style/Theme.RasFocus" />
