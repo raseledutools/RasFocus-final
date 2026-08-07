@@ -262,6 +262,18 @@ fun LocalFileScreen(
     var isGridView by remember { mutableStateOf(false) }
     var localSearchQuery by remember { mutableStateOf(searchQuery) }
     val operations by FileOperationManager.operations.collectAsState()
+    // Track the last paste operation so we can auto-refresh when it finishes
+    var pendingOpId by remember { mutableStateOf<String?>(null) }
+
+    // Auto-refresh when the pending paste/move operation completes
+    LaunchedEffect(operations, pendingOpId) {
+        val id = pendingOpId ?: return@LaunchedEffect
+        val op = operations.find { it.id == id }
+        if (op != null && (op.isComplete || op.isError || op.isCancelled)) {
+            pendingOpId = null
+            refreshFiles()
+        }
+    }
 
     // Dialog states
     var showRenameDialog by remember { mutableStateOf(false) }
@@ -630,8 +642,8 @@ fun LocalFileScreen(
                                     context.startService(intent)
                                 }
                                 onSetClipboard(null)
-                                // We don't refresh rawFiles immediately because the operation runs in background.
-                                // We might need a way to refresh it later or listen for completion.
+                                // Track this op so LaunchedEffect can auto-refresh when done
+                                pendingOpId = opId
                             }
                         )
                     }
@@ -737,8 +749,8 @@ fun LocalFileScreen(
                 }
             )
         }
-        
-        ActiveOperationsBar(operations = operations)
+        // Note: ActiveOperationsBar is now rendered globally in HomeScreen
+        // so it appears on every screen (Local, Cloud, etc.)
     }
 }
 

@@ -40,6 +40,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
+import androidx.compose.runtime.collectAsState
 
 sealed class NavState {
     object Home : NavState()
@@ -302,6 +303,13 @@ class FileManagerPlusActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         SafFileManager.init(this)
         requestStoragePermissionIfNeeded()
+        // Android 13+ (TIRAMISU) requires POST_NOTIFICATIONS runtime permission
+        // for foreground service notifications to appear in status bar
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 9001)
+            }
+        }
         setContent {
             MaterialTheme {
                 HomeScreen()
@@ -673,7 +681,9 @@ fun HomeScreen() {
             },
             containerColor = MaterialTheme.colorScheme.background
         ) { paddingValues ->
-            Box(modifier = Modifier.padding(paddingValues)) {
+            val globalOps by FileOperationManager.operations.collectAsState()
+            Column(modifier = Modifier.padding(paddingValues)) {
+                Box(modifier = Modifier.weight(1f)) {
                 when (val state = currentNavState) {
                     is NavState.Home -> MainGridContent(
                         onNavigate = { newState ->
@@ -837,6 +847,9 @@ fun HomeScreen() {
                         }
                     )
                 }
+                } // end Box weight(1f)
+                // ── Global progress bar — visible on every screen during file ops ──
+                ActiveOperationsBar(operations = globalOps)
             }
         }
     }
