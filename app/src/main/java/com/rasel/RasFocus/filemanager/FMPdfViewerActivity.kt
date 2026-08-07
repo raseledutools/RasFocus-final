@@ -7,7 +7,7 @@ import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.animation.*
+
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
@@ -374,14 +374,10 @@ fun FMUnifiedPdfViewer(
                 }
 
                 // ── Top bar ───────────────────────────────────────────────────
-                AnimatedVisibility(
-                    visible  = controlsVisible,
-                    enter    = slideInVertically { -it } + fadeIn(),
-                    exit     = slideOutVertically { -it } + fadeOut(),
-                    modifier = Modifier.align(Alignment.TopCenter)
-                ) {
+                if (controlsVisible) {
                     Row(
-                        Modifier
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
                             .fillMaxWidth()
                             .background(FM_BG.copy(alpha = 0.93f))
                             .windowInsetsPadding(WindowInsets.statusBars)
@@ -440,17 +436,12 @@ fun FMUnifiedPdfViewer(
                 }
 
                 // ── Zoom reset FAB ────────────────────────────────────────────
-                AnimatedVisibility(
-                    visible  = scale > 1.05f,
-                    enter    = fadeIn(),
-                    exit     = fadeOut(),
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
-                ) {
+                if (scale > 1.05f) {
                     FloatingActionButton(
                         onClick        = { scale = 1f; offsetX = 0f },
                         containerColor = FM_BG2,
                         contentColor   = FM_INDIGO2,
-                        modifier       = Modifier.size(42.dp),
+                        modifier       = Modifier.align(Alignment.BottomEnd).padding(16.dp).size(42.dp),
                         shape          = CircleShape
                     ) {
                         Icon(Icons.Default.ZoomOut, null, modifier = Modifier.size(20.dp))
