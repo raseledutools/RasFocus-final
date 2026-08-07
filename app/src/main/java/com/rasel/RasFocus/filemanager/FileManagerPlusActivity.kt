@@ -117,7 +117,6 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
                             action = android.content.Intent.ACTION_VIEW
                             data   = uri
                             addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                             putExtra(com.rasel.RasFocus.filemanager.WebViewPdfActivity.EXTRA_LAYER_LABEL, file.name)
                         }
                         context.startActivity(wvIntent)
@@ -138,7 +137,6 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
                                 action = android.content.Intent.ACTION_VIEW
                                 setDataAndType(uri, internalMime)
                                 addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                             }
                             context.startActivity(legacyIntent)
                             return
@@ -152,7 +150,6 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
                         action = android.content.Intent.ACTION_VIEW
                         setDataAndType(uri, internalMime)
                         addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
                     context.startActivity(intent)
                     return
@@ -170,7 +167,6 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
                         action = android.content.Intent.ACTION_VIEW
                         data   = uri
                         addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                         putExtra(com.rasel.RasFocus.filemanager.WebViewPdfActivity.EXTRA_LAYER_LABEL, file.name)
                     }
                     context.startActivity(wvIntent)
@@ -188,7 +184,6 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
                     action = android.content.Intent.ACTION_VIEW
                     setDataAndType(uri, internalMime)
                     addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 context.startActivity(intent)
                 return
