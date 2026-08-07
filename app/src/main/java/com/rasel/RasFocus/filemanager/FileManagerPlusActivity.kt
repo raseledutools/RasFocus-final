@@ -106,8 +106,79 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
                 onNavigate(NavState.TextEditor(file.absolutePath))
                 return
             }
+            if (internalMime == "application/pdf") {
+                // Read which layer the user chose in Study Tools
+                val prefs = android.preference.PreferenceManager.getDefaultSharedPreferences(context)
+                val engine = prefs.getString("pdf_engine", "pdfium_compose") ?: "pdfium_compose"
+                when (engine) {
+                    "webview" -> {
+                        // Layer 3: WebView (Google Docs viewer)
+                        val wvIntent = android.content.Intent(context, com.rasel.RasFocus.filemanager.WebViewPdfActivity::class.java).apply {
+                            action = android.content.Intent.ACTION_VIEW
+                            data   = uri
+                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            putExtra(com.rasel.RasFocus.filemanager.WebViewPdfActivity.EXTRA_LAYER_LABEL, file.name)
+                        }
+                        context.startActivity(wvIntent)
+                        return
+                    }
+                    "chooser" -> {
+                        // Layer 4: System chooser – fall through to the bottom chooser
+                    }
+                    "pdfium_legacy" -> {
+                        // Layer 2: UniversalViewerActivity (old flow)
+                        val pkg = context.packageName.replace(".combo", "")
+                        val cls = try {
+                            Class.forName("$pkg.selfcontrol.study_tools.UniversalViewerActivity",
+                                true, context.classLoader)
+                        } catch (_: ClassNotFoundException) { null }
+                        if (cls != null) {
+                            val legacyIntent = android.content.Intent(context, cls).apply {
+                                action = android.content.Intent.ACTION_VIEW
+                                setDataAndType(uri, internalMime)
+                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            context.startActivity(legacyIntent)
+                            return
+                        }
+                        // fallthrough to compose if legacy class not found
+                    }
+                }
+                // Layer 1 (default): Pdfium Compose – FMPdfViewerActivity
+                if (engine != "chooser") {
+                    val intent = android.content.Intent(context, com.rasel.RasFocus.filemanager.FMPdfViewerActivity::class.java).apply {
+                        action = android.content.Intent.ACTION_VIEW
+                        setDataAndType(uri, internalMime)
+                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                    return
+                }
+                // chooser: fall through to system chooser below
+            }
 
-            // Route through UniversalViewerActivity â†’ correct internal viewer
+            // ── WebView layer also handles Office files (DOCX/PPTX/XLSX) ───────
+            // If user selected WebView layer, all office formats go to Google Docs viewer
+            val officeExts = setOf("docx","doc","pptx","ppt","xlsx","xls")
+            if (ext in officeExts) {
+                val prefs = android.preference.PreferenceManager.getDefaultSharedPreferences(context)
+                if (prefs.getString("pdf_engine", "pdfium_compose") == "webview") {
+                    val wvIntent = android.content.Intent(context, com.rasel.RasFocus.filemanager.WebViewPdfActivity::class.java).apply {
+                        action = android.content.Intent.ACTION_VIEW
+                        data   = uri
+                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        putExtra(com.rasel.RasFocus.filemanager.WebViewPdfActivity.EXTRA_LAYER_LABEL, file.name)
+                    }
+                    context.startActivity(wvIntent)
+                    return
+                }
+            }
+
+            // Route through UniversalViewerActivity -> correct internal viewer
             val pkg = context.packageName.replace(".combo", "")
             val cls = try {
                 Class.forName("$pkg.selfcontrol.study_tools.UniversalViewerActivity")
