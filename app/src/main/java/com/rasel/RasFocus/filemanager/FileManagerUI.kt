@@ -483,10 +483,22 @@ fun LocalFileScreen(
                     if (selectedFiles.isNotEmpty()) {
                         scope.launch(Dispatchers.IO) {
                             val filesToZip = selectedFiles.map { File(it) }
-                            val zipFile = File(path, "archive_${System.currentTimeMillis()}.zip")
-                            val success = LocalFileManager.zipFiles(filesToZip, zipFile)
+                            var zipFile = File(path, "archive_${System.currentTimeMillis()}.zip")
+                            var success = LocalFileManager.zipFiles(filesToZip, zipFile)
+                            var fallbackUsed = false
+                            if (!success) {
+                                val fallback = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOCUMENTS), "RasFocus")
+                                fallback.mkdirs()
+                                zipFile = File(fallback, zipFile.name)
+                                success = LocalFileManager.zipFiles(filesToZip, zipFile)
+                                fallbackUsed = success
+                            }
                             withContext(Dispatchers.Main) {
-                                Toast.makeText(context, if (success) "Zipped successfully" else "Failed to zip", Toast.LENGTH_SHORT).show()
+                                if (success) {
+                                    Toast.makeText(context, if (fallbackUsed) "Saved to internal Documents/RasFocus due to SD card limits" else "Zipped successfully", Toast.LENGTH_LONG).show()
+                                } else {
+                                    Toast.makeText(context, "Failed to zip", Toast.LENGTH_SHORT).show()
+                                }
                                 selectedFiles = emptySet()
                                 rawFiles = LocalFileManager.listFiles(path)
                             }
@@ -496,15 +508,28 @@ fun LocalFileScreen(
                 onUnzip = if (showUnzip) { {
                     scope.launch(Dispatchers.IO) {
                         var success = true
+                        var fallbackUsed = false
                         for (item in selectedFiles) {
                             val zipFile = File(item)
                             if (zipFile.extension.lowercase() == "zip") {
-                                val targetDir = File(path, zipFile.nameWithoutExtension)
-                                if (!LocalFileManager.unzipFile(zipFile, targetDir)) success = false
+                                var targetDir = File(path, zipFile.nameWithoutExtension)
+                                if (!LocalFileManager.unzipFile(zipFile, targetDir)) {
+                                    val fallback = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOCUMENTS), "RasFocus/${zipFile.nameWithoutExtension}")
+                                    fallback.mkdirs()
+                                    if (LocalFileManager.unzipFile(zipFile, fallback)) {
+                                        fallbackUsed = true
+                                    } else {
+                                        success = false
+                                    }
+                                }
                             }
                         }
                         withContext(Dispatchers.Main) {
-                            Toast.makeText(context, if (success) "Unzipped successfully" else "Unzip failed", Toast.LENGTH_SHORT).show()
+                            if (success) {
+                                Toast.makeText(context, if (fallbackUsed) "Unzipped to internal Documents/RasFocus due to SD card limits" else "Unzipped successfully", Toast.LENGTH_LONG).show()
+                            } else {
+                                Toast.makeText(context, "Unzip failed", Toast.LENGTH_SHORT).show()
+                            }
                             selectedFiles = emptySet()
                             rawFiles = LocalFileManager.listFiles(path)
                         }
@@ -513,10 +538,22 @@ fun LocalFileScreen(
                 onMergePdf = if (showMerge) { {
                     scope.launch(Dispatchers.IO) {
                         val filesToMerge = selectedFiles.map { File(it) }
-                        val destFile = File(path, "Merged_${System.currentTimeMillis()}.pdf")
-                        val success = PdfHelper.mergePdfs(context, filesToMerge, destFile)
+                        var destFile = File(path, "Merged_${System.currentTimeMillis()}.pdf")
+                        var success = PdfHelper.mergePdfs(context, filesToMerge, destFile)
+                        var fallbackUsed = false
+                        if (!success) {
+                            val fallback = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOCUMENTS), "RasFocus")
+                            fallback.mkdirs()
+                            destFile = File(fallback, destFile.name)
+                            success = PdfHelper.mergePdfs(context, filesToMerge, destFile)
+                            fallbackUsed = success
+                        }
                         withContext(Dispatchers.Main) {
-                            Toast.makeText(context, if (success) "Merged successfully" else "Merge failed", Toast.LENGTH_SHORT).show()
+                            if (success) {
+                                Toast.makeText(context, if (fallbackUsed) "Merged & saved to internal Documents/RasFocus due to SD limits" else "Merged successfully", Toast.LENGTH_LONG).show()
+                            } else {
+                                Toast.makeText(context, "Merge failed", Toast.LENGTH_SHORT).show()
+                            }
                             selectedFiles = emptySet()
                             rawFiles = LocalFileManager.listFiles(path)
                         }
@@ -525,11 +562,22 @@ fun LocalFileScreen(
                 onPdfToImages = if (showPdfToImages) { {
                     scope.launch(Dispatchers.IO) {
                         val pdfFile = File(selectedFiles.first())
-                        val targetDir = File(path, pdfFile.nameWithoutExtension)
+                        var targetDir = File(path, pdfFile.nameWithoutExtension)
                         targetDir.mkdirs()
-                        val success = PdfHelper.pdfToImages(context, pdfFile, targetDir)
+                        var success = PdfHelper.pdfToImages(context, pdfFile, targetDir)
+                        var fallbackUsed = false
+                        if (!success) {
+                            targetDir = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOCUMENTS), "RasFocus/${pdfFile.nameWithoutExtension}")
+                            targetDir.mkdirs()
+                            success = PdfHelper.pdfToImages(context, pdfFile, targetDir)
+                            fallbackUsed = success
+                        }
                         withContext(Dispatchers.Main) {
-                            Toast.makeText(context, if (success) "PDF converted to images" else "Conversion failed", Toast.LENGTH_SHORT).show()
+                            if (success) {
+                                Toast.makeText(context, if (fallbackUsed) "Images saved to internal Documents/RasFocus due to SD limits" else "PDF converted to images", Toast.LENGTH_LONG).show()
+                            } else {
+                                Toast.makeText(context, "Conversion failed", Toast.LENGTH_SHORT).show()
+                            }
                             selectedFiles = emptySet()
                             rawFiles = LocalFileManager.listFiles(path)
                         }
@@ -538,10 +586,22 @@ fun LocalFileScreen(
                 onImagesToPdf = if (showImagesToPdf) { {
                     scope.launch(Dispatchers.IO) {
                         val images = selectedFiles.map { File(it) }
-                        val pdfDest = File(path, "images_${System.currentTimeMillis()}.pdf")
-                        val success = PdfHelper.imagesToPdf(context, images, pdfDest)
+                        var pdfDest = File(path, "images_${System.currentTimeMillis()}.pdf")
+                        var success = PdfHelper.imagesToPdf(context, images, pdfDest)
+                        var fallbackUsed = false
+                        if (!success) {
+                            val fallback = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOCUMENTS), "RasFocus")
+                            fallback.mkdirs()
+                            pdfDest = File(fallback, pdfDest.name)
+                            success = PdfHelper.imagesToPdf(context, images, pdfDest)
+                            fallbackUsed = success
+                        }
                         withContext(Dispatchers.Main) {
-                            Toast.makeText(context, if (success) "Images converted to PDF" else "Conversion failed", Toast.LENGTH_SHORT).show()
+                            if (success) {
+                                Toast.makeText(context, if (fallbackUsed) "PDF saved to internal Documents/RasFocus due to SD limits" else "Images converted to PDF", Toast.LENGTH_LONG).show()
+                            } else {
+                                Toast.makeText(context, "Conversion failed", Toast.LENGTH_SHORT).show()
+                            }
                             selectedFiles = emptySet()
                             rawFiles = LocalFileManager.listFiles(path)
                         }
