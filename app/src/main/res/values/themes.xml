@@ -2,6 +2,14 @@
 <resources>
     <style name="Theme.RasFocus" parent="Theme.AppCompat.NoActionBar" />
 
+    <!-- FileManager + viewer activities: dark bg so the window is instantly
+         visible (no white/black flash while Compose inflates). -->
+    <style name="Theme.RasFocus.FileManager" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">#0D0D1A</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:windowIsTranslucent">false</item>
+    </style>
+
     <!-- Facebook Activity — windowBackground টা Facebook এর bg color (#f0f2f5) দিয়ে
          set করা হচ্ছে যাতে Activity open হওয়ার সাথে সাথেই white flash না দেখায়।
          WebView load হওয়ার আগের মুহূর্তেই Android এই background দেখায়। -->

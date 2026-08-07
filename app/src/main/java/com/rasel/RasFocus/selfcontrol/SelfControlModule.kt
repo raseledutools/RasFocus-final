@@ -677,7 +677,7 @@ fun TopHeader(navController: NavController? = null, onMenuClick: () -> Unit = {}
             Spacer(Modifier.height(16.dp))
             PremiumFeatureWrapper(
                 featureName = "File Manager +",
-                onClick = { val intent = Intent(context, com.rasel.RasFocus.filemanager.FileManagerPlusActivity::class.java); intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK); context.startActivity(intent) }
+                onClick = { val intent = Intent(context, com.rasel.RasFocus.filemanager.FileManagerPlusActivity::class.java); context.startActivity(intent) }
             ) {
                 DriveFileManagerCard(context)
             }
@@ -694,7 +694,6 @@ fun DriveFileManagerCard(context: Context) {
         Modifier.fillMaxWidth().padding(horizontal = 20.dp),
         onClick = {
             val intent = Intent(context, com.rasel.RasFocus.filemanager.FileManagerPlusActivity::class.java)
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
             context.startActivity(intent)
         }
     ) {

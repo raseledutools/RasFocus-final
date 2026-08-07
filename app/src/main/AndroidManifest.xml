@@ -854,9 +854,9 @@
         <activity
             android:name=".filemanager.FileManagerPlusActivity"
             android:exported="false"
-            android:theme="@style/Theme.RasFocus"
+            android:theme="@style/Theme.RasFocus.FileManager"
             android:launchMode="singleTop"
-            android:taskAffinity="${applicationId}.filemanager" />
+            android:hardwareAccelerated="true" />
         <service
             android:name=".filemanager.FileOperationService"
             android:exported="false"
@@ -865,14 +865,15 @@
         <activity
             android:name=".filemanager.FMPdfViewerActivity"
             android:exported="false"
-            android:theme="@style/Theme.RasFocus" />
+            android:hardwareAccelerated="true"
+            android:theme="@style/Theme.RasFocus.FileManager" />
 
         <!-- PDF Layer 3: WebView (Google Docs viewer) -->
         <activity
             android:name=".filemanager.WebViewPdfActivity"
             android:exported="false"
             android:hardwareAccelerated="true"
-            android:theme="@style/Theme.RasFocus" />
+            android:theme="@style/Theme.RasFocus.FileManager" />
     </application>
 
 </manifest>
