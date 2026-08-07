@@ -90,9 +90,15 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
         }
 
         // ── In-app PDF viewer (pinch-zoom, no Activity, back = folder) ────────
+        // Switch OFF (webview) হলে FMPdfViewerActivity এ যাবে, তাই early return skip
         if (ext == "pdf" && onNavigate != null) {
-            onNavigate(NavState.PdfViewer(file.absolutePath))
-            return
+            val prefs = android.preference.PreferenceManager.getDefaultSharedPreferences(context)
+            val engine = prefs.getString("pdf_engine", "pdfium_compose") ?: "pdfium_compose"
+            if (engine == "pdfium_compose") {
+                onNavigate(NavState.PdfViewer(file.absolutePath))
+                return
+            }
+            // webview/chooser → fall through to Activity-based opening below
         }
 
         // ── In-app Image viewer (no Activity, back = folder) ─────────────────
