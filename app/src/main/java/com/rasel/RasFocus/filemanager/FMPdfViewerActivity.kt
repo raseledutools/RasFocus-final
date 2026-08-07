@@ -41,7 +41,7 @@ import io.legere.pdfiumandroid.PdfiumCore
 import kotlinx.coroutines.*
 import kotlin.math.roundToInt
 
-// ─── Colors (same as existing FMPdfViewerActivity full variant) ───────────────
+// ─── Colors ───────────────────────────────────────────────────────────────────
 private val FM_BG      = Color(0xFF111111)
 private val FM_BG2     = Color(0xFF1A1A1A)
 private val FM_WHITE   = Color(0xFFF0EFFF)
@@ -114,7 +114,15 @@ class FMPdfViewerActivity : ComponentActivity() {
 private enum class ViewMode { VERTICAL, HORIZONTAL }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MAIN COMPOSABLE — same logic for ANY source (storage, Drive cache, SAF, etc.)
+// MAIN COMPOSABLE — same logic for local files, Drive cache, SAF, content://
+//
+// Features:
+//   • Full screen — no buttons inside PDF, controls only on tap (auto-hide 3.5s)
+//   • Pinch zoom (1x–8x) + pan + double-tap zoom toggle
+//   • Zoom reset FAB appears ONLY when zoomed in
+//   • Vertical / horizontal mode toggle (in top bar, visible on tap)
+//   • Page counter in top bar
+//   • Drive PDF and local PDF use identical rendering logic (URI-based)
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 fun FMUnifiedPdfViewer(
@@ -136,18 +144,19 @@ fun FMUnifiedPdfViewer(
     var controlsVisible by remember { mutableStateOf(false) }
     var autoHideJob  by remember { mutableStateOf<Job?>(null) }
 
-    // Zoom/pan — shared
+    // Zoom/pan — shared across all pages
     var scale        by remember { mutableFloatStateOf(1f) }
     var offsetX      by remember { mutableFloatStateOf(0f) }
+    var offsetY      by remember { mutableFloatStateOf(0f) }
 
     // Pdfium
     val pdfCore      = remember { PdfiumCore(context) }
     var pdfDoc       by remember { mutableStateOf<PdfDocument?>(null) }
     var activePfd    by remember { mutableStateOf<android.os.ParcelFileDescriptor?>(null) }
 
-    val vertListState = rememberLazyListState()
+    val vertListState  = rememberLazyListState()
     val horizListState = rememberLazyListState()
-    val renderJobs   = remember { mutableMapOf<Int, Job>() }
+    val renderJobs     = remember { mutableMapOf<Int, Job>() }
 
     // ── Auto-hide controls ────────────────────────────────────────────────────
     fun scheduleHide() {
@@ -160,7 +169,7 @@ fun FMUnifiedPdfViewer(
         else scheduleHide()
     }
 
-    // ── Render one page ───────────────────────────────────────────────────────
+    // ── Render one page via Pdfium ────────────────────────────────────────────
     fun renderPage(doc: PdfDocument, i: Int) {
         if (i < 0 || i >= pages.size) return
         if (pages.getOrNull(i) != null) return
@@ -183,26 +192,25 @@ fun FMUnifiedPdfViewer(
         }
     }
 
-    // ── Load PDF from URI — works for ANY scheme ──────────────────────────────
+    // ── Load PDF — works for any URI scheme (content://, file://, Drive cache) ─
     LaunchedEffect(uri) {
         if (uri == null) { isLoading = false; errorMsg = "ফাইল পাওয়া যায়নি"; return@LaunchedEffect }
         isLoading = true
         renderJobs.values.forEach { it.cancel() }
         renderJobs.clear()
         pages.clear()
+        scale = 1f; offsetX = 0f; offsetY = 0f
 
         withContext(Dispatchers.IO) {
             try {
-                // Copy to cache temp file — works for content://, file://, Drive cache file, etc.
                 val tmp = java.io.File(context.cacheDir, "fm_view_${System.currentTimeMillis()}.pdf")
                 context.contentResolver.openInputStream(uri)?.use { inp ->
                     tmp.outputStream().use { out -> inp.copyTo(out) }
                 } ?: run {
-                    // file:// scheme — try direct open
                     val path = uri.path
                     if (path != null) java.io.File(path).inputStream().use { inp ->
                         tmp.outputStream().use { out -> inp.copyTo(out) }
-                    } else throw Exception("URI açılamadı")
+                    } else throw Exception("URI খোলা যায়নি")
                 }
 
                 val pfd = android.os.ParcelFileDescriptor.open(
@@ -221,7 +229,6 @@ fun FMUnifiedPdfViewer(
                     totalPages  = count
                     currentPage = 1
                     isLoading   = false
-                    // Render first 3 pages immediately
                     for (i in 0 until minOf(3, count)) renderPage(doc, i)
                 }
             } catch (e: Exception) {
@@ -233,7 +240,7 @@ fun FMUnifiedPdfViewer(
         }
     }
 
-    // ── Lazy preload on scroll (vertical) ────────────────────────────────────
+    // ── Lazy preload — vertical ───────────────────────────────────────────────
     val visibleIdxV by remember { derivedStateOf { vertListState.firstVisibleItemIndex } }
     LaunchedEffect(visibleIdxV) { if (totalPages > 0) currentPage = visibleIdxV + 1 }
     LaunchedEffect(visibleIdxV, pdfDoc) {
@@ -242,7 +249,7 @@ fun FMUnifiedPdfViewer(
             renderPage(doc, i)
     }
 
-    // ── Lazy preload on scroll (horizontal) ──────────────────────────────────
+    // ── Lazy preload — horizontal ─────────────────────────────────────────────
     val visibleIdxH by remember { derivedStateOf { horizListState.firstVisibleItemIndex } }
     LaunchedEffect(visibleIdxH) {
         if (totalPages > 0 && viewMode == ViewMode.HORIZONTAL) currentPage = visibleIdxH + 1
@@ -264,7 +271,7 @@ fun FMUnifiedPdfViewer(
         }
     }
 
-    // ── System bars ───────────────────────────────────────────────────────────
+    // ── System bars — hidden when controls hidden, shown when controls visible ─
     val window = (context as? android.app.Activity)?.window
     val view   = androidx.compose.ui.platform.LocalView.current
     DisposableEffect(window) {
@@ -281,12 +288,14 @@ fun FMUnifiedPdfViewer(
         if (controlsVisible) {
             c.show(WindowInsetsCompat.Type.systemBars())
         } else {
-            c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            c.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             c.hide(WindowInsetsCompat.Type.systemBars())
         }
     }
 
-    // ── Pinch-zoom + pan modifier ─────────────────────────────────────────────
+    // ── Pinch-zoom + pan gesture modifier ────────────────────────────────────
+    // Works on the full Box; zoom is applied via graphicsLayer on the content.
     val zoomPanModifier = Modifier.pointerInput(viewMode) {
         awaitEachGesture {
             awaitFirstDown(requireUnconsumed = false)
@@ -297,30 +306,39 @@ fun FMUnifiedPdfViewer(
                         val zoom = event.calculateZoom()
                         val pan  = event.calculatePan()
                         val ns   = (scale * zoom).coerceIn(1f, 8f)
-                        val maxX = (size.width * ns - size.width) / 2f
+                        val maxX = ((size.width  * ns - size.width)  / 2f).coerceAtLeast(0f)
+                        val maxY = ((size.height * ns - size.height) / 2f).coerceAtLeast(0f)
                         offsetX  = if (ns > 1f) (offsetX + pan.x).coerceIn(-maxX, maxX) else 0f
+                        offsetY  = if (ns > 1f) (offsetY + pan.y).coerceIn(-maxY, maxY) else 0f
                         scale    = ns
                         event.changes.forEach { if (it.positionChanged()) it.consume() }
                     }
                     event.changes.size == 1 && scale > 1.05f -> {
                         val pan  = event.calculatePan()
-                        val maxX = (size.width * scale - size.width) / 2f
+                        val maxX = ((size.width  * scale - size.width)  / 2f).coerceAtLeast(0f)
+                        val maxY = ((size.height * scale - size.height) / 2f).coerceAtLeast(0f)
                         offsetX  = (offsetX + pan.x).coerceIn(-maxX, maxX)
+                        offsetY  = (offsetY + pan.y).coerceIn(-maxY, maxY)
+                        event.changes.forEach { if (it.positionChanged()) it.consume() }
                     }
                 }
             } while (event.changes.any { it.pressed })
         }
     }
 
+    // Tap = toggle controls; Double-tap = zoom in/out
     val tapModifier = Modifier.pointerInput(Unit) {
         detectTapGestures(
-            onTap = { toggleControls() },
-            onDoubleTap = { tap ->
-                if (scale > 1.2f) { scale = 1f; offsetX = 0f }
-                else {
+            onTap        = { toggleControls() },
+            onDoubleTap  = { tap ->
+                if (scale > 1.2f) {
+                    scale = 1f; offsetX = 0f; offsetY = 0f
+                } else {
                     scale   = 2.5f
-                    offsetX = ((size.width / 2f - tap.x) * 1.5f)
-                        .coerceIn(-(size.width * 1.5f / 2f), size.width * 1.5f / 2f)
+                    val maxX = ((size.width  * 2.5f - size.width)  / 2f).coerceAtLeast(0f)
+                    val maxY = ((size.height * 2.5f - size.height) / 2f).coerceAtLeast(0f)
+                    offsetX = ((size.width  / 2f - tap.x) * 1.5f).coerceIn(-maxX, maxX)
+                    offsetY = ((size.height / 2f - tap.y) * 1.5f).coerceIn(-maxY, maxY)
                 }
             }
         )
@@ -329,41 +347,49 @@ fun FMUnifiedPdfViewer(
     // ── UI Root ───────────────────────────────────────────────────────────────
     Box(Modifier.fillMaxSize().background(FM_BG)) {
         when {
-            isLoading -> FMLoadingView(fileName)
+            isLoading       -> FMLoadingView(fileName)
             errorMsg.isNotEmpty() -> FMErrorView(errorMsg, onClose)
             else -> {
-                // Zoom wrapper
+                // ── Gesture wrapper — covers full screen ──────────────────────
                 Box(
                     Modifier
                         .fillMaxSize()
                         .then(zoomPanModifier)
                         .then(tapModifier)
                 ) {
+                    // Content scaled + translated via graphicsLayer
                     Box(
                         Modifier
                             .wrapContentSize(Alignment.Center, unbounded = true)
-                            .graphicsLayer(scaleX = scale, scaleY = scale, translationX = offsetX, clip = false)
+                            .graphicsLayer(
+                                scaleX       = scale,
+                                scaleY       = scale,
+                                translationX = offsetX,
+                                translationY = offsetY,
+                                clip         = false
+                            )
                     ) {
                         // ── VERTICAL MODE ─────────────────────────────────────
                         if (viewMode == ViewMode.VERTICAL) {
                             LazyColumn(
                                 state               = vertListState,
                                 modifier            = Modifier.fillMaxSize(),
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
-                                contentPadding      = PaddingValues(bottom = 72.dp)
+                                verticalArrangement = Arrangement.spacedBy(2.dp),
+                                // No top/bottom padding — truly full page
+                                contentPadding      = PaddingValues(0.dp)
                             ) {
                                 itemsIndexed(pages) { _, bmp ->
                                     FMPageItem(bmp)
                                 }
                             }
                         }
-                        // ── HORIZONTAL MODE ───────────────────────────────────
+                        // ── HORIZONTAL / SINGLE-PAGE MODE ─────────────────────
                         else {
                             LazyRow(
                                 state                 = horizListState,
                                 modifier              = Modifier.fillMaxSize(),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                contentPadding        = PaddingValues(horizontal = 4.dp)
+                                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                contentPadding        = PaddingValues(0.dp)
                             ) {
                                 itemsIndexed(pages) { _, bmp ->
                                     FMPageItemHorizontal(bmp)
@@ -373,7 +399,8 @@ fun FMUnifiedPdfViewer(
                     }
                 }
 
-                // ── Top bar ───────────────────────────────────────────────────
+                // ── Top bar — visible only on tap, auto-hides ─────────────────
+                // Contains: back, filename, page counter, mode toggle
                 AnimatedVisibility(
                     visible  = controlsVisible,
                     enter    = slideInVertically { -it } + fadeIn(),
@@ -383,14 +410,20 @@ fun FMUnifiedPdfViewer(
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .background(FM_BG.copy(alpha = 0.93f))
+                            .background(FM_BG.copy(alpha = 0.90f))
                             .windowInsetsPadding(WindowInsets.statusBars)
                             .padding(horizontal = 4.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // Back button
                         IconButton(onClick = onClose, modifier = Modifier.size(44.dp)) {
-                            Icon(Icons.Default.ArrowBack, null, tint = FM_WHITE, modifier = Modifier.size(22.dp))
+                            Icon(
+                                Icons.Default.ArrowBack, null,
+                                tint     = FM_WHITE,
+                                modifier = Modifier.size(22.dp)
+                            )
                         }
+                        // File name
                         Text(
                             fileName,
                             color      = FM_WHITE,
@@ -400,7 +433,7 @@ fun FMUnifiedPdfViewer(
                             overflow   = TextOverflow.Ellipsis,
                             modifier   = Modifier.weight(1f).padding(start = 2.dp)
                         )
-                        // Page counter
+                        // Page counter badge
                         if (totalPages > 0) {
                             Box(
                                 Modifier
@@ -417,20 +450,20 @@ fun FMUnifiedPdfViewer(
                             }
                             Spacer(Modifier.width(4.dp))
                         }
-                        // View mode toggle button
+                        // View mode toggle (vertical ↔ horizontal)
                         IconButton(
-                            onClick = {
-                                viewMode = if (viewMode == ViewMode.VERTICAL) ViewMode.HORIZONTAL else ViewMode.VERTICAL
-                                scale   = 1f
-                                offsetX = 0f
+                            onClick  = {
+                                viewMode = if (viewMode == ViewMode.VERTICAL)
+                                    ViewMode.HORIZONTAL else ViewMode.VERTICAL
+                                scale = 1f; offsetX = 0f; offsetY = 0f
                             },
                             modifier = Modifier.size(44.dp)
                         ) {
                             Icon(
                                 imageVector = if (viewMode == ViewMode.VERTICAL)
-                                    Icons.Default.ViewColumn   // vertical → tap to go horizontal
+                                    Icons.Default.ViewColumn
                                 else
-                                    Icons.Default.ViewStream,  // horizontal → tap to go vertical
+                                    Icons.Default.ViewStream,
                                 contentDescription = "Toggle view mode",
                                 tint     = FM_INDIGO2,
                                 modifier = Modifier.size(22.dp)
@@ -439,15 +472,19 @@ fun FMUnifiedPdfViewer(
                     }
                 }
 
-                // ── Zoom reset FAB ────────────────────────────────────────────
+                // ── Zoom reset FAB — appears ONLY when zoomed, no tap required ─
+                // Bottom-end corner; small and unobtrusive
                 AnimatedVisibility(
                     visible  = scale > 1.05f,
                     enter    = fadeIn(),
                     exit     = fadeOut(),
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(16.dp)
+                        .windowInsetsPadding(WindowInsets.navigationBars)
                 ) {
                     FloatingActionButton(
-                        onClick        = { scale = 1f; offsetX = 0f },
+                        onClick        = { scale = 1f; offsetX = 0f; offsetY = 0f },
                         containerColor = FM_BG2,
                         contentColor   = FM_INDIGO2,
                         modifier       = Modifier.size(42.dp),
@@ -494,7 +531,6 @@ private fun FMPageItem(bmp: Bitmap?) {
 @Composable
 private fun FMPageItemHorizontal(bmp: Bitmap?) {
     val screenW = LocalContext.current.resources.displayMetrics.widthPixels
-    val screenH = LocalContext.current.resources.displayMetrics.heightPixels
     val density = LocalDensity.current
 
     if (bmp == null) {
@@ -512,7 +548,6 @@ private fun FMPageItemHorizontal(bmp: Bitmap?) {
             )
         }
     } else {
-        // Full page height, centered, letter-box if needed
         Image(
             bitmap             = bmp.asImageBitmap(),
             contentDescription = null,
@@ -554,7 +589,10 @@ private fun FMLoadingView(fileName: String) {
 @Composable
 private fun FMErrorView(msg: String, onClose: () -> Unit) {
     Box(Modifier.fillMaxSize().background(FM_BG), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier            = Modifier.padding(32.dp)
+        ) {
             Text("⚠️", fontSize = 40.sp)
             Spacer(Modifier.height(12.dp))
             Text(msg, color = Color(0xFFFF5C5C), fontSize = 13.sp)

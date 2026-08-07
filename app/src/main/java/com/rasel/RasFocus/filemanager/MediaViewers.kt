@@ -83,200 +83,20 @@ fun ImageViewerScreen(
     }
 }
 
-// ── PDF Viewer — per-page pinch zoom + page counter + zoom buttons ─────────────
-@OptIn(ExperimentalMaterial3Api::class)
+// ── PDF Viewer — delegates to FMUnifiedPdfViewer (Pdfium, full-screen, gesture zoom) ──
+// Local file: path → Uri.fromFile → FMUnifiedPdfViewer (same engine as Drive PDFs)
 @Composable
 fun PdfViewerScreen(
     pdfPath: String,
     onBack: () -> Unit
 ) {
-    val file = File(pdfPath)
-    var pdfRenderer by remember { mutableStateOf<PdfRenderer?>(null) }
-    var fileDescriptor by remember { mutableStateOf<ParcelFileDescriptor?>(null) }
-    val pdfMutex = remember { kotlinx.coroutines.sync.Mutex() }
-    val listState = rememberLazyListState()
-    val scope = rememberCoroutineScope()
-
-    // Global zoom — applies to all pages uniformly
-    var globalZoom by remember { mutableFloatStateOf(1f) }
-
-    // Current visible page (1-based for display)
-    val currentPage by remember {
-        derivedStateOf { listState.firstVisibleItemIndex + 1 }
-    }
-    val totalPages by remember(pdfRenderer) {
-        derivedStateOf { pdfRenderer?.pageCount ?: 0 }
-    }
-
-    // Show/hide top bar on scroll
-    var barsVisible by remember { mutableStateOf(true) }
-    var lastScrollOffset by remember { mutableIntStateOf(0) }
-    LaunchedEffect(listState.firstVisibleItemScrollOffset) {
-        val delta = listState.firstVisibleItemScrollOffset - lastScrollOffset
-        if (delta > 30) barsVisible = false
-        else if (delta < -30) barsVisible = true
-        lastScrollOffset = listState.firstVisibleItemScrollOffset
-    }
-
-    DisposableEffect(pdfPath) {
-        try {
-            fileDescriptor = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
-            pdfRenderer = PdfRenderer(fileDescriptor!!)
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        onDispose {
-            pdfRenderer?.close()
-            fileDescriptor?.close()
-        }
-    }
-
-    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF3A3A3A))) {
-
-        // ── Page list ─────────────────────────────────────────────────────────
-        if (pdfRenderer != null) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                contentPadding = PaddingValues(vertical = 8.dp)
-            ) {
-                items(pdfRenderer!!.pageCount) { index ->
-                    ZoomablePdfPage(
-                        pdfRenderer = pdfRenderer!!,
-                        pageIndex = index,
-                        mutex = pdfMutex,
-                        globalZoom = globalZoom
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                }
-            }
-        } else {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("PDF লোড করা সম্ভব হয়নি", color = Color.Red, fontSize = 14.sp)
-            }
-        }
-
-        // ── Top bar — back + filename ─────────────────────────────────────────
-        AnimatedVisibility(
-            visible = barsVisible,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier.align(Alignment.TopCenter)
-        ) {
-            Surface(
-                color = Color(0xE6000000),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .statusBarsPadding()
-                        .padding(horizontal = 4.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
-                    }
-                    Text(
-                        text = file.name,
-                        color = Color.White,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
-        }
-
-        // ── Bottom bar — page counter + zoom controls ─────────────────────────
-        AnimatedVisibility(
-            visible = barsVisible && totalPages > 0,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier.align(Alignment.BottomCenter)
-        ) {
-            Surface(
-                color = Color(0xE6000000),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .navigationBarsPadding()
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    // Page counter
-                    Text(
-                        text = "$currentPage / $totalPages",
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-
-                    // Zoom controls
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        // Zoom out
-                        IconButton(
-                            onClick = { globalZoom = (globalZoom - 0.25f).coerceAtLeast(0.5f) },
-                            modifier = Modifier
-                                .size(36.dp)
-                                .background(Color.White.copy(alpha = 0.15f), CircleShape)
-                        ) {
-                            Icon(Icons.Default.ZoomOut, contentDescription = "Zoom Out",
-                                tint = Color.White, modifier = Modifier.size(20.dp))
-                        }
-
-                        // Zoom percentage
-                        Surface(
-                            color = Color.White.copy(alpha = 0.15f),
-                            shape = RoundedCornerShape(6.dp)
-                        ) {
-                            Text(
-                                text = "${(globalZoom * 100).toInt()}%",
-                                color = Color.White,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                            )
-                        }
-
-                        // Zoom in
-                        IconButton(
-                            onClick = { globalZoom = (globalZoom + 0.25f).coerceAtMost(4f) },
-                            modifier = Modifier
-                                .size(36.dp)
-                                .background(Color.White.copy(alpha = 0.15f), CircleShape)
-                        ) {
-                            Icon(Icons.Default.ZoomIn, contentDescription = "Zoom In",
-                                tint = Color.White, modifier = Modifier.size(20.dp))
-                        }
-
-                        // Reset zoom
-                        if (globalZoom != 1f) {
-                            TextButton(onClick = { globalZoom = 1f }) {
-                                Text("Reset", color = Color(0xFF80CBC4), fontSize = 12.sp)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Tap center to toggle bars
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .pointerInput(Unit) {
-                    detectTapGestures(onTap = { barsVisible = !barsVisible })
-                }
-        )
-    }
+    val uri      = remember(pdfPath) { android.net.Uri.fromFile(java.io.File(pdfPath)) }
+    val fileName = remember(pdfPath) { java.io.File(pdfPath).name }
+    FMUnifiedPdfViewer(
+        uri      = uri,
+        fileName = fileName,
+        onClose  = onBack
+    )
 }
 
 // ── Single PDF page — per-page pinch zoom + pan ────────────────────────────────
