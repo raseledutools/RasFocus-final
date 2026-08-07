@@ -199,14 +199,23 @@ class UniversalViewerActivity : ComponentActivity() {
         finish()
     }
 
-    // Use class name string so PdfViewerActivity (flavor-only) resolves at runtime
+    // Use class name string so PdfViewerActivity (flavor-only) resolves at runtime.
+    // MUST use classLoader from the application context — plain Class.forName() uses
+    // the system/bootstrap classloader which cannot see app classes and always throws
+    // ClassNotFoundException for Activity subclasses on Android.
     private fun openByClassName(className: String, uri: Uri, mimeType: String) {
         try {
-            val cls = Class.forName(className)
+            val cls = Class.forName(className, true, classLoader)
             openDirect(cls, uri, mimeType)
         } catch (e: ClassNotFoundException) {
-            android.widget.Toast.makeText(this, "Viewer not available in this version.", android.widget.Toast.LENGTH_SHORT).show()
-            finish()
+            // Fallback: try application classLoader
+            try {
+                val cls2 = Class.forName(className, true, application.classLoader)
+                openDirect(cls2, uri, mimeType)
+            } catch (e2: ClassNotFoundException) {
+                android.widget.Toast.makeText(this, "PDF viewer not available in this version.", android.widget.Toast.LENGTH_SHORT).show()
+                finish()
+            }
         }
     }
 
