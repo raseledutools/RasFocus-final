@@ -836,6 +836,7 @@ fun HomeScreen() {
                             }
                         }
                     )
+                    else -> {}
                     } // end baseState when
 
                     // Render viewer state ON TOP
