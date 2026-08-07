@@ -114,7 +114,15 @@ class FMPdfViewerActivity : ComponentActivity() {
 private enum class ViewMode { VERTICAL, HORIZONTAL }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MAIN COMPOSABLE
+// MAIN COMPOSABLE — same logic for local files, Drive cache, SAF, content://
+//
+// Features:
+//   • Full screen — no buttons inside PDF, controls only on tap (auto-hide 3.5s)
+//   • Pinch zoom (1x–8x) + pan + double-tap zoom toggle
+//   • Zoom reset FAB appears ONLY when zoomed in
+//   • Vertical / horizontal mode toggle (in top bar, visible on tap)
+//   • Page counter in top bar
+//   • Drive PDF and local PDF use identical rendering logic (URI-based)
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 fun FMUnifiedPdfViewer(
@@ -184,9 +192,7 @@ fun FMUnifiedPdfViewer(
         }
     }
 
-    // ── Load PDF — works for any URI scheme ───────────────────────────────────
-    // FIX: file:// URI → directly open as File (avoids contentResolver crash on API 24+)
-    //      content:// URI → copy to cache via contentResolver (unchanged)
+    // ── Load PDF — works for any URI scheme (content://, file://, Drive cache) ─
     LaunchedEffect(uri) {
         if (uri == null) { isLoading = false; errorMsg = "ফাইল পাওয়া যায়নি"; return@LaunchedEffect }
         isLoading = true
@@ -197,36 +203,22 @@ fun FMUnifiedPdfViewer(
 
         withContext(Dispatchers.IO) {
             try {
-                val pfd: android.os.ParcelFileDescriptor
-
-                when (uri.scheme) {
-                    // ── file:// → direct File open, no contentResolver needed ──
-                    "file" -> {
-                        val file = uri.path?.let { java.io.File(it) }
-                            ?: throw Exception("Invalid file path")
-                        if (!file.exists()) throw Exception("ফাইল নেই: ${file.name}")
-                        pfd = android.os.ParcelFileDescriptor.open(
-                            file, android.os.ParcelFileDescriptor.MODE_READ_ONLY
-                        )
-                    }
-                    // ── content:// → copy to cache first (SAF, Drive, etc.) ──
-                    else -> {
-                        val tmp = java.io.File(
-                            context.cacheDir,
-                            "fm_view_${System.currentTimeMillis()}.pdf"
-                        )
-                        context.contentResolver.openInputStream(uri)?.use { inp ->
-                            tmp.outputStream().use { out -> inp.copyTo(out) }
-                        } ?: throw Exception("URI খোলা যায়নি")
-
-                        pfd = android.os.ParcelFileDescriptor.open(
-                            tmp, android.os.ParcelFileDescriptor.MODE_READ_ONLY
-                        )
-                        try { tmp.delete() } catch (_: Exception) {}
-                    }
+                val tmp = java.io.File(context.cacheDir, "fm_view_${System.currentTimeMillis()}.pdf")
+                context.contentResolver.openInputStream(uri)?.use { inp ->
+                    tmp.outputStream().use { out -> inp.copyTo(out) }
+                } ?: run {
+                    val path = uri.path
+                    if (path != null) java.io.File(path).inputStream().use { inp ->
+                        tmp.outputStream().use { out -> inp.copyTo(out) }
+                    } else throw Exception("URI খোলা যায়নি")
                 }
 
-                val doc   = pdfCore.newDocument(pfd)
+                val pfd = android.os.ParcelFileDescriptor.open(
+                    tmp, android.os.ParcelFileDescriptor.MODE_READ_ONLY
+                )
+                val doc = pdfCore.newDocument(pfd)
+                try { tmp.delete() } catch (_: Exception) {}
+
                 pdfDoc    = doc
                 activePfd = pfd
                 val count = doc.getPageCount()
@@ -279,7 +271,7 @@ fun FMUnifiedPdfViewer(
         }
     }
 
-    // ── System bars ───────────────────────────────────────────────────────────
+    // ── System bars — hidden when controls hidden, shown when controls visible ─
     val window = (context as? android.app.Activity)?.window
     val view   = androidx.compose.ui.platform.LocalView.current
     DisposableEffect(window) {
@@ -303,6 +295,7 @@ fun FMUnifiedPdfViewer(
     }
 
     // ── Pinch-zoom + pan gesture modifier ────────────────────────────────────
+    // Works on the full Box; zoom is applied via graphicsLayer on the content.
     val zoomPanModifier = Modifier.pointerInput(viewMode) {
         awaitEachGesture {
             awaitFirstDown(requireUnconsumed = false)
@@ -357,12 +350,14 @@ fun FMUnifiedPdfViewer(
             isLoading       -> FMLoadingView(fileName)
             errorMsg.isNotEmpty() -> FMErrorView(errorMsg, onClose)
             else -> {
+                // ── Gesture wrapper — covers full screen ──────────────────────
                 Box(
                     Modifier
                         .fillMaxSize()
                         .then(zoomPanModifier)
                         .then(tapModifier)
                 ) {
+                    // Content scaled + translated via graphicsLayer
                     Box(
                         Modifier
                             .wrapContentSize(Alignment.Center, unbounded = true)
@@ -374,18 +369,22 @@ fun FMUnifiedPdfViewer(
                                 clip         = false
                             )
                     ) {
+                        // ── VERTICAL MODE ─────────────────────────────────────
                         if (viewMode == ViewMode.VERTICAL) {
                             LazyColumn(
                                 state               = vertListState,
                                 modifier            = Modifier.fillMaxSize(),
                                 verticalArrangement = Arrangement.spacedBy(2.dp),
+                                // No top/bottom padding — truly full page
                                 contentPadding      = PaddingValues(0.dp)
                             ) {
                                 itemsIndexed(pages) { _, bmp ->
                                     FMPageItem(bmp)
                                 }
                             }
-                        } else {
+                        }
+                        // ── HORIZONTAL / SINGLE-PAGE MODE ─────────────────────
+                        else {
                             LazyRow(
                                 state                 = horizListState,
                                 modifier              = Modifier.fillMaxSize(),
@@ -400,6 +399,8 @@ fun FMUnifiedPdfViewer(
                     }
                 }
 
+                // ── Top bar — visible only on tap, auto-hides ─────────────────
+                // Contains: back, filename, page counter, mode toggle
                 AnimatedVisibility(
                     visible  = controlsVisible,
                     enter    = slideInVertically { -it } + fadeIn(),
@@ -414,6 +415,7 @@ fun FMUnifiedPdfViewer(
                             .padding(horizontal = 4.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // Back button
                         IconButton(onClick = onClose, modifier = Modifier.size(44.dp)) {
                             Icon(
                                 Icons.Default.ArrowBack, null,
@@ -421,6 +423,7 @@ fun FMUnifiedPdfViewer(
                                 modifier = Modifier.size(22.dp)
                             )
                         }
+                        // File name
                         Text(
                             fileName,
                             color      = FM_WHITE,
@@ -430,6 +433,7 @@ fun FMUnifiedPdfViewer(
                             overflow   = TextOverflow.Ellipsis,
                             modifier   = Modifier.weight(1f).padding(start = 2.dp)
                         )
+                        // Page counter badge
                         if (totalPages > 0) {
                             Box(
                                 Modifier
@@ -446,6 +450,7 @@ fun FMUnifiedPdfViewer(
                             }
                             Spacer(Modifier.width(4.dp))
                         }
+                        // View mode toggle (vertical ↔ horizontal)
                         IconButton(
                             onClick  = {
                                 viewMode = if (viewMode == ViewMode.VERTICAL)
@@ -467,6 +472,8 @@ fun FMUnifiedPdfViewer(
                     }
                 }
 
+                // ── Zoom reset FAB — appears ONLY when zoomed, no tap required ─
+                // Bottom-end corner; small and unobtrusive
                 AnimatedVisibility(
                     visible  = scale > 1.05f,
                     enter    = fadeIn(),
