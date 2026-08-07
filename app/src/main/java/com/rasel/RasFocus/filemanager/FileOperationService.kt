@@ -165,7 +165,7 @@ class FileOperationService : Service() {
         val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentTitle("File Operation")
             .setContentText(text)
             .setContentIntent(pendingIntent)
@@ -208,3 +208,4 @@ class FileOperationService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 }
+

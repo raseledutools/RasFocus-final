@@ -56,7 +56,7 @@ fun RecycleBinScreen(onBack: () -> Unit) {
                                         Icon(Icons.Default.Restore, contentDescription = "Restore", tint = Color(0xFF4CAF50))
                                     }
                                     IconButton(onClick = {
-                                        file.delete()
+                                        file.deleteRecursively()
                                         trashFiles = File(LocalFileManager.trashPath).listFiles()?.filter { !it.name.equals(".nomedia") } ?: emptyList()
                                     }) {
                                         Icon(Icons.Default.DeleteForever, contentDescription = "Delete Forever", tint = Color.Red)
@@ -70,3 +70,4 @@ fun RecycleBinScreen(onBack: () -> Unit) {
         }
     }
 }
+

@@ -1493,105 +1493,6 @@ fun FileManagerHeader(
                             overflow = TextOverflow.Ellipsis
                         )
                         if (subtitle.isNotEmpty()) {
-                            Text(
-                                text = subtitle,
-                                color = Color.White.copy(alpha = 0.75f),
-                                fontSize = 11.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-                    IconButton(onClick = { isSearchExpanded = true }) {
-                        Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
-                    }
-                    IconButton(onClick = onToggleGrid) {
-                        Icon(
-                            if (isGridView) Icons.Default.ViewList else Icons.Default.GridView,
-                            contentDescription = "Toggle View",
-                            tint = Color.White
-                        )
-                    }
-                    IconButton(onClick = onNewFolder) {
-                        Icon(
-                            Icons.Default.CreateNewFolder,
-                            contentDescription = "New folder",
-                            tint = Color.White
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-// ── Paste FAB with count badge ─────────────────────────────────────────────────
-@Composable
-fun PasteFloatingButton(
-    itemCount: Int,
-    isCut: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Box(modifier = modifier) {
-        ExtendedFloatingActionButton(
-            onClick = onClick,
-            containerColor = Color(0xFF00796B),
-            contentColor = Color.White,
-            icon = {
-                Icon(Icons.Default.ContentPaste, contentDescription = "Paste")
-            },
-            text = {
-                Text(
-                    text = if (isCut) "Move $itemCount item${if (itemCount != 1) "s" else ""} here"
-                           else "Paste $itemCount item${if (itemCount != 1) "s" else ""} here",
-                    fontSize = 13.sp
-                )
-            }
-        )
-    }
-}
-
-// ── Selection top bar ──────────────────────────────────────────────────────────
-@Composable
-fun SelectionTopBar(
-    selectedCount: Int,
-    totalCount: Int,
-    onClose: () -> Unit,
-    onSelectAll: () -> Unit,
-    onDeselectAll: () -> Unit = {}
-) {
-    Surface(
-        color = Color(0xFF1A6B6B),
-        shadowElevation = 4.dp,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onClose) {
-                Icon(Icons.Default.Close, contentDescription = "Cancel selection", tint = Color.White, modifier = Modifier.size(22.dp))
-            }
-            Text(
-                text = "$selectedCount/$totalCount",
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp,
-                modifier = Modifier.weight(1f).padding(start = 4.dp)
-            )
-            IconButton(onClick = onSelectAll) {
-                Icon(imageVector = Icons.Default.SelectAll, contentDescription = "Select all", tint = Color.White, modifier = Modifier.size(26.dp))
-            }
-            IconButton(onClick = onDeselectAll) {
-                Icon(imageVector = Icons.Default.Deselect, contentDescription = "Deselect all", tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(26.dp))
-            }
-        }
-    }
-}
-
 // ── Selection bottom bar (extended) ───────────────────────────────────────────
 @Composable
 fun SelectionBottomBar(
@@ -1780,6 +1681,10 @@ fun FileOperationsBanner(modifier: Modifier = Modifier) {
         }
     }
 }
+
+
+
+
 
 
 
