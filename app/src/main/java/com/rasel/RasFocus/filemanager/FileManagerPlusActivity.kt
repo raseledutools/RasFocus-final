@@ -117,12 +117,12 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
             else          -> null
         }
 
-        if (internalMime != null) {
-            if (internalMime == "text/plain" && onNavigate != null) {
+        if (mimeType != null) {
+            if (mimeType == "text/plain" && onNavigate != null) {
                 onNavigate(NavState.TextEditor(file.absolutePath))
                 return
             }
-            if (internalMime == "application/pdf") {
+            if (mimeType == "application/pdf") {
                 // Read which layer the user chose in Study Tools
                 val prefs = android.preference.PreferenceManager.getDefaultSharedPreferences(context)
                 val engine = prefs.getString("pdf_engine", "pdfium_compose") ?: "pdfium_compose"
@@ -152,7 +152,7 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
                         if (cls != null) {
                             val legacyIntent = android.content.Intent(context, cls).apply {
                                 action = android.content.Intent.ACTION_VIEW
-                                setDataAndType(uri, internalMime)
+                                setDataAndType(uri, mimeType)
                                 addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                             }
@@ -166,7 +166,7 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
                 if (engine != "chooser") {
                     val intent = android.content.Intent(context, com.rasel.RasFocus.filemanager.FMPdfViewerActivity::class.java).apply {
                         action = android.content.Intent.ACTION_VIEW
-                        setDataAndType(uri, internalMime)
+                        setDataAndType(uri, mimeType)
                         addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
@@ -202,16 +202,16 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
             if (cls != null) {
                 val intent = android.content.Intent(context, cls).apply {
                     action = android.content.Intent.ACTION_VIEW
-                    setDataAndType(uri, internalMime)
+                    setDataAndType(uri, mimeType)
                     addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                     if (uri.scheme == "content") {
                         clipData = android.content.ClipData.newRawUri("", uri)
                     }
                 }
+                context.startActivity(intent)
+                return
             }
-            context.startActivity(intent)
-            return
         }
 
         // Fallback: system chooser for unsupported types
