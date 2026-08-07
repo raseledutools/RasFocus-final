@@ -58,6 +58,9 @@ sealed class NavState {
     object FtpServer : NavState()
     data class TextEditor(val path: String) : NavState()
     data class Saf(val uri: String) : NavState()
+    data class ImageViewer(val path: String, val folderPath: String) : NavState()
+    data class PdfViewer(val path: String, val folderPath: String) : NavState()
+    data class MediaPlayer(val path: String, val folderPath: String) : NavState()
 }
 
 // â”€â”€ Shared utility functions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -106,6 +109,23 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
                 onNavigate(NavState.TextEditor(file.absolutePath))
                 return
             }
+
+            // ── Image files → NavState.ImageViewer (in-app, back returns to folder) ──
+            val imageExts = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "heif")
+            if (ext in imageExts && onNavigate != null) {
+                val folderPath = file.parent ?: file.absolutePath
+                onNavigate(NavState.ImageViewer(file.absolutePath, folderPath))
+                return
+            }
+
+            // ── Audio/Video files → NavState.MediaPlayer (in-app, back returns to folder) ──
+            val mediaExts = setOf("mp4", "mkv", "avi", "mov", "webm", "3gp", "mp3", "wav", "ogg", "flac", "aac", "m4a")
+            if (ext in mediaExts && onNavigate != null) {
+                val folderPath = file.parent ?: file.absolutePath
+                onNavigate(NavState.MediaPlayer(file.absolutePath, folderPath))
+                return
+            }
+
             if (internalMime == "application/pdf") {
                 // Read which layer the user chose in Study Tools
                 val prefs = android.preference.PreferenceManager.getDefaultSharedPreferences(context)
@@ -144,8 +164,14 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
                         // fallthrough to compose if legacy class not found
                     }
                 }
-                // Layer 1 (default): Pdfium Compose – FMPdfViewerActivity
+                // Layer 1 (default): Pdfium Compose – NavState.PdfViewer (in-app, back returns to folder)
                 if (engine != "chooser") {
+                    if (onNavigate != null) {
+                        val folderPath = file.parent ?: file.absolutePath
+                        onNavigate(NavState.PdfViewer(file.absolutePath, folderPath))
+                        return
+                    }
+                    // fallback if no onNavigate (e.g. called from cloud without nav)
                     val intent = android.content.Intent(context, com.rasel.RasFocus.filemanager.FMPdfViewerActivity::class.java).apply {
                         action = android.content.Intent.ACTION_VIEW
                         setDataAndType(uri, internalMime)
@@ -371,6 +397,18 @@ fun HomeScreen() {
             currentNavState is NavState.Category -> {
                 currentNavState = NavState.Home
             }
+            currentNavState is NavState.ImageViewer -> {
+                val s = currentNavState as NavState.ImageViewer
+                currentNavState = NavState.Local(s.folderPath)
+            }
+            currentNavState is NavState.PdfViewer -> {
+                val s = currentNavState as NavState.PdfViewer
+                currentNavState = NavState.Local(s.folderPath)
+            }
+            currentNavState is NavState.MediaPlayer -> {
+                val s = currentNavState as NavState.MediaPlayer
+                currentNavState = NavState.Local(s.folderPath)
+            }
             currentNavState is NavState.Cloud -> {
                 val state = currentNavState as NavState.Cloud
                 if (cloudBackStack.isNotEmpty()) {
@@ -448,6 +486,9 @@ fun HomeScreen() {
                     currentNavState !is NavState.Cloud &&
                     currentNavState !is NavState.Remote &&
                     currentNavState !is NavState.Saf &&
+                    currentNavState !is NavState.ImageViewer &&
+                    currentNavState !is NavState.PdfViewer &&
+                    currentNavState !is NavState.MediaPlayer &&
                     currentNavState != NavState.RecycleBin &&
                     currentNavState != NavState.SecureVault &&
                     currentNavState != NavState.StorageAnalyzer &&
@@ -762,6 +803,18 @@ fun HomeScreen() {
                                 currentNavState = NavState.Home 
                             }
                         }
+                    )
+                    is NavState.ImageViewer -> ImageViewerScreen(
+                        imagePath = state.path,
+                        onBack = { currentNavState = NavState.Local(state.folderPath) }
+                    )
+                    is NavState.PdfViewer -> FMPdfViewerScreen(
+                        filePath = state.path,
+                        onBack = { currentNavState = NavState.Local(state.folderPath) }
+                    )
+                    is NavState.MediaPlayer -> AudioVideoPlayerScreen(
+                        mediaPath = state.path,
+                        onBack = { currentNavState = NavState.Local(state.folderPath) }
                     )
                     is NavState.Saf -> SafFileScreen(
                         uriString = state.uri,

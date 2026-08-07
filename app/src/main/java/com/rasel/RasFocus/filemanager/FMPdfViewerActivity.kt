@@ -267,3 +267,56 @@ fun ZoomablePdfPage(
         }
     }
 }
+
+// ── FMPdfViewerScreen ─────────────────────────────────────────────────────────
+// Composable wrapper for PdfZoomViewer — opens a file path directly.
+// Used from HomeScreen's NavState.PdfViewer so back returns to the folder.
+@Composable
+fun FMPdfViewerScreen(filePath: String, onBack: () -> Unit) {
+    val file = java.io.File(filePath)
+    var pdfRenderer by remember { mutableStateOf<android.graphics.pdf.PdfRenderer?>(null) }
+    var loadError by remember { mutableStateOf(false) }
+
+    DisposableEffect(filePath) {
+        var pfd: android.os.ParcelFileDescriptor? = null
+        try {
+            pfd = android.os.ParcelFileDescriptor.open(
+                file, android.os.ParcelFileDescriptor.MODE_READ_ONLY
+            )
+            pdfRenderer = android.graphics.pdf.PdfRenderer(pfd!!)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            loadError = true
+        }
+        onDispose {
+            pdfRenderer?.close()
+            pfd?.close()
+        }
+    }
+
+    when {
+        loadError -> {
+            androidx.compose.foundation.layout.Box(
+                modifier = androidx.compose.ui.Modifier
+                    .fillMaxSize()
+                    .background(androidx.compose.ui.graphics.Color(0xFF0D0D1A)),
+                contentAlignment = androidx.compose.ui.Alignment.Center
+            ) {
+                androidx.compose.material3.Text("Failed to open PDF.", color = androidx.compose.ui.graphics.Color.Red)
+            }
+        }
+        pdfRenderer != null -> {
+            PdfZoomViewer(pdfRenderer = pdfRenderer!!, onBack = onBack)
+        }
+        else -> {
+            androidx.compose.foundation.layout.Box(
+                modifier = androidx.compose.ui.Modifier
+                    .fillMaxSize()
+                    .background(androidx.compose.ui.graphics.Color(0xFF0D0D1A)),
+                contentAlignment = androidx.compose.ui.Alignment.Center
+            ) {
+                androidx.compose.material3.CircularProgressIndicator(color = androidx.compose.ui.graphics.Color(0xFF6C63FF))
+            }
+        }
+    }
+}
