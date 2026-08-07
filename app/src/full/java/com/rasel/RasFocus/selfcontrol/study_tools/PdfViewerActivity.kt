@@ -325,45 +325,17 @@ fun NativePdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
 
         withContext(Dispatchers.IO) {
             try {
-                // Primary: ParcelFileDescriptor (zero-copy, fastest).
-                // Fallback: copy to temp file so pdfium gets a seekable real fd
-                // (avoids "not in PDF format" when URI wraps a pipe/socket fd).
-                var tempPfd: android.os.ParcelFileDescriptor? = null
-                val doc: PdfDocument = run {
-                    val pfd = try {
-                        context.contentResolver.openFileDescriptor(uri, "r")
-                    } catch (_: Exception) { null }
-                    if (pfd != null) {
-                        if (pfd.statSize == -1L) {
-                            // File is likely a pipe or stream (unseekable). Close it and fallback to copy.
-                            try { pfd.close() } catch (_: Exception) {}
-                            null
-                        } else {
-                            try { 
-                                val d = pdfCore.newDocument(pfd)
-                                tempPfd = pfd
-                                d
-                            } catch (_: Exception) {
-                                try { pfd.close() } catch (_: Exception) {}
-                                null
-                            }
-                        }
-                    } else null
-                } ?: run {
-                    val tmp = java.io.File(context.cacheDir, "pdf_fb_${System.currentTimeMillis()}.pdf")
-                    context.contentResolver.openInputStream(uri)?.use { input ->
-                        tmp.outputStream().use { output ->
-                            input.copyTo(output)
-                        }
-                    } ?: throw IllegalStateException("File খুলতে পারিনি")
-                    val pfd2 = android.os.ParcelFileDescriptor.open(
-                        tmp, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
-                    try { 
-                        val d = pdfCore.newDocument(pfd2)
-                        tempPfd = pfd2
-                        d
-                    } finally { tmp.deleteOnExit() }
-                }
+                // Always copy to cache → guarantees seekable real FD for pdfium,
+                // works for every URI scheme / file manager "Open With" flow.
+                val tmp = java.io.File(context.cacheDir, "pdf_${System.currentTimeMillis()}.pdf")
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    tmp.outputStream().use { it2 -> input.copyTo(it2) }
+                } ?: throw IllegalStateException("File খুলতে পারিনি")
+                val pfd = android.os.ParcelFileDescriptor.open(
+                    tmp, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
+                val doc: PdfDocument = pdfCore.newDocument(pfd)
+                var tempPfd: android.os.ParcelFileDescriptor? = pfd
+                try { tmp.delete() } catch (_: Exception) {}  // FD keeps data alive
                 pdfDoc    = doc
                 activePfd = tempPfd
                 val count = doc.getPageCount()

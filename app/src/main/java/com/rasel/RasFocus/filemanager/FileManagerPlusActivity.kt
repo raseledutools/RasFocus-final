@@ -76,29 +76,45 @@ fun formatDate(timestamp: Long): String {
 fun openLocalFile(context: android.content.Context, file: java.io.File, onNavigate: ((NavState) -> Unit)? = null) {
     try {
         val ext = file.extension.lowercase()
+
+        // Text/code files → in-app TextEditor (no Activity needed)
+        if (ext in setOf("txt","md","kt","java","py","js","ts","json","xml","csv",
+                         "html","css","sh","c","cpp","h","rs","go","rb","yaml","yml")) {
+            if (onNavigate != null) {
+                onNavigate(NavState.TextEditor(file.absolutePath))
+                return
+            }
+        }
+
         val uri = androidx.core.content.FileProvider.getUriForFile(
             context,
             "${context.packageName}.fileprovider",
             file
         )
 
-        // â”€â”€ Known types: directly launch RasFocus internal viewers â”€â”€
-        // Skips the system "Open with" chooser â†’ always gets in-app viewer
-        // (pdfium for PDF, ImageViewerActivity for images, etc.)
-        val internalMime: String? = when (ext) {
-            "pdf" -> "application/pdf"
-            "jpg", "jpeg" -> "image/jpeg"
-            "png" -> "image/png"
-            "webp" -> "image/webp"
-            "gif" -> "image/gif"
-            "bmp" -> "image/bmp"
-            "heic", "heif" -> "image/heic"
-            "docx", "doc" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            "pptx", "ppt" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-            "xlsx", "xls" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            "txt", "md", "kt", "java", "py", "js", "ts", "json", "xml", "csv",
-            "html", "css", "sh", "c", "cpp", "h", "rs", "go", "rb", "yaml", "yml" -> "text/plain"
-            else -> null
+        // Known viewer types → UniversalViewerActivity (which dispatches to the
+        // correct internal viewer: PdfViewerActivity, ImageViewerActivity, etc.)
+        // Using UniversalViewerActivity instead of Class.forName(PdfViewerActivity)
+        // because PdfViewerActivity only exists in the `full` flavor source set and
+        // Class.forName() fails at runtime when the classloader context is wrong.
+        // UniversalViewerActivity is in main/ so it is always resolvable.
+        //
+        // taskAffinity="${applicationId}.filemanager" is set on BOTH
+        // UniversalViewerActivity AND all downstream viewers in the manifest,
+        // so the whole chain stays in the file manager task and back-press
+        // correctly returns to the file browser.
+        val mimeType: String? = when (ext) {
+            "pdf"         -> "application/pdf"
+            "jpg","jpeg"  -> "image/jpeg"
+            "png"         -> "image/png"
+            "webp"        -> "image/webp"
+            "gif"         -> "image/gif"
+            "bmp"         -> "image/bmp"
+            "heic","heif" -> "image/heic"
+            "docx","doc"  -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            "pptx","ppt"  -> "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            "xlsx","xls"  -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            else          -> null
         }
 
         if (internalMime != null) {
@@ -189,17 +205,20 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
                     setDataAndType(uri, internalMime)
                     addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    if (uri.scheme == "content") {
+                        clipData = android.content.ClipData.newRawUri("", uri)
+                    }
                 }
-                context.startActivity(intent)
-                return
             }
+            context.startActivity(intent)
+            return
         }
 
-        // â”€â”€ Fallback: system chooser for unknown/unsupported types â”€â”€
-        val mimeType = android.webkit.MimeTypeMap.getSingleton()
+        // Fallback: system chooser for unsupported types
+        val fallbackMime = android.webkit.MimeTypeMap.getSingleton()
             .getMimeTypeFromExtension(ext) ?: "*/*"
         val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, mimeType)
+            setDataAndType(uri, fallbackMime)
             addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         context.startActivity(intent)
@@ -207,28 +226,22 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
         android.widget.Toast.makeText(context, "Cannot open file: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
     }
 }
-
 fun shareLocalFile(context: android.content.Context, file: java.io.File) {
     try {
         val uri = androidx.core.content.FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.fileprovider",
-            file
-        )
-        val ext = file.extension.lowercase()
-        val mimeType = android.webkit.MimeTypeMap.getSingleton()
-            .getMimeTypeFromExtension(ext) ?: "*/*"
+            context, "${context.packageName}.fileprovider", file)
+        val mime = android.webkit.MimeTypeMap.getSingleton()
+            .getMimeTypeFromExtension(file.extension.lowercase()) ?: "*/*"
         val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-            type = mimeType
+            type = mime
             putExtra(android.content.Intent.EXTRA_STREAM, uri)
             addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         context.startActivity(android.content.Intent.createChooser(intent, "Share ${file.name}"))
     } catch (e: Exception) {
-        android.widget.Toast.makeText(context, "Cannot share file: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+        android.widget.Toast.makeText(context, "Cannot share: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
     }
 }
-
 fun shareLocalFiles(context: android.content.Context, files: List<java.io.File>) {
     if (files.size == 1) {
         shareLocalFile(context, files.first())
@@ -727,7 +740,9 @@ fun HomeScreen() {
                                 // Launch FTP browser to that device's IP (assuming they host FTP on 2121)
                                 // We could use Smb or FTP. Assuming FTP on 2121 for now.
                                 val tempServerId = "p2p_ftp_${state.ip}"
-                                RemoteStore.addServer(RemoteServer(tempServerId, "FTP", state.deviceName, state.ip, 2121, "anonymous", ""))
+                                if (RemoteStore.servers.none { it.id == tempServerId }) {
+                                    RemoteStore.servers.add(RemoteServer(tempServerId, state.deviceName, state.ip, 2121, "anonymous", ""))
+                                }
                                 currentNavState = NavState.Remote(tempServerId, "/")
                             }
                         )

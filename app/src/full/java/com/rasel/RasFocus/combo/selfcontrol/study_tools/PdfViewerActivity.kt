@@ -321,32 +321,16 @@ fun NativePdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
 
         withContext(Dispatchers.IO) {
             try {
-                // Primary: ParcelFileDescriptor (zero-copy, fastest).
-                // Fallback: copy to temp file so pdfium gets a seekable real fd
-                // (avoids "not in PDF format" when the URI wraps a pipe/socket).
-                val doc: PdfDocument = run {
-                    val pfd = try {
-                        context.contentResolver.openFileDescriptor(uri, "r")
-                    } catch (_: Exception) { null }
-                    if (pfd != null) {
-                        try { pdfCore.newDocument(pfd) }
-                        catch (_: Exception) {
-                            try { pfd.close() } catch (_: Exception) {}
-                            null
-                        }
-                    } else null
-                } ?: run {
-                    val tmp = java.io.File(context.cacheDir, "pdf_fb_${System.currentTimeMillis()}.pdf")
-                    context.contentResolver.openInputStream(uri)?.use { input ->
-                        tmp.outputStream().use { output ->
-                            input.copyTo(output)
-                        }
-                    } ?: throw IllegalStateException("File খুলতে পারিনি")
-                    val pfd2 = android.os.ParcelFileDescriptor.open(
-                        tmp, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
-                    try { pdfCore.newDocument(pfd2) }
-                    finally { tmp.deleteOnExit() }
-                }
+                // Always copy to cache → guarantees seekable real FD for pdfium,
+                // works for every URI scheme / file manager "Open With" flow.
+                val tmp = java.io.File(context.cacheDir, "pdf_${System.currentTimeMillis()}.pdf")
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    tmp.outputStream().use { it2 -> input.copyTo(it2) }
+                } ?: throw IllegalStateException("File খুলতে পারিনি")
+                val pfd = android.os.ParcelFileDescriptor.open(
+                    tmp, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
+                val doc: PdfDocument = pdfCore.newDocument(pfd)
+                try { tmp.delete() } catch (_: Exception) {}  // FD keeps data alive
                 pdfDoc    = doc
                 val count = doc.getPageCount()
 

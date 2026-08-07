@@ -5,10 +5,10 @@ import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Bundle
-import android.os.ParcelFileDescriptor
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
@@ -38,16 +38,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Light-flavour PDF Viewer — uses android.graphics.pdf.PdfRenderer (no pdfium)
-// Available on all Android 5+ devices. No native .so deps needed.
-// ─────────────────────────────────────────────────────────────────────────────
+import java.io.File
 
 class PdfViewerActivity : ComponentActivity() {
 
-    private val uriState      = mutableStateOf<Uri?>(null)
+    private val uriState = mutableStateOf<Uri?>(null)
     private val fileNameState = mutableStateOf("PDF")
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -57,17 +55,19 @@ class PdfViewerActivity : ComponentActivity() {
         loadFromIntent(intent)
         setContent {
             MaterialTheme {
-                LightPdfViewer(
-                    uri      = uriState.value,
+                PdfViewer(
+                    uri = uriState.value,
                     fileName = fileNameState.value,
-                    onClose  = { finish() }
+                    onClose = { finish() }
                 )
             }
         }
     }
 
     override fun onNewIntent(intent: android.content.Intent) {
-        super.onNewIntent(intent); setIntent(intent); loadFromIntent(intent)
+        super.onNewIntent(intent)
+        setIntent(intent)
+        loadFromIntent(intent)
     }
 
     private fun loadFromIntent(intent: android.content.Intent?) {
@@ -77,115 +77,88 @@ class PdfViewerActivity : ComponentActivity() {
             else -> null
         }
         if (uri != null && uri.scheme == "content") {
-            try { contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-            catch (_: SecurityException) {}
-            catch (_: Exception) {} // IllegalArgumentException on some ROMs — never crash
+            try {
+                contentResolver.takePersistableUriPermission(
+                    uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (_: Exception) {}
         }
         uriState.value = uri
-        fileNameState.value = uri?.let { getFileNameFromUri(it) } ?: "PDF"
+        fileNameState.value = uri?.let { getFileName(it) } ?: "PDF"
     }
 
-    private fun getFileNameFromUri(uri: Uri): String {
+    private fun getFileName(uri: Uri): String {
         var name: String? = null
         if (uri.scheme == "content") {
             try {
-                contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                    if (cursor.moveToFirst()) {
-                        val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                        if (idx >= 0) name = cursor.getString(idx)
+                contentResolver.query(uri, null, null, null, null)?.use { c ->
+                    if (c.moveToFirst()) {
+                        val idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                        if (idx >= 0) name = c.getString(idx)
                     }
                 }
-            } catch (e: Exception) {
-                // Ignore query exceptions
-            }
+            } catch (_: Exception) {}
         }
         return name ?: uri.lastPathSegment?.substringAfterLast('/') ?: "PDF"
     }
 }
 
 @Composable
-fun LightPdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
+fun PdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
     val context = LocalContext.current
     val scope   = rememberCoroutineScope()
 
-    // Nullable list — null slot = not rendered yet (placeholder shown instead)
-    val bitmaps  = remember { mutableStateListOf<Bitmap?>() }
-    var total    by remember { mutableIntStateOf(0) }
-    var current  by remember { mutableIntStateOf(1) }
-    var loading  by remember { mutableStateOf(true) }
-    var errorMsg by remember { mutableStateOf("") }
-    var controls by remember { mutableStateOf(false) }
-    var scale    by remember { mutableFloatStateOf(1f) }
-    var offsetX  by remember { mutableFloatStateOf(0f) }
+    val bitmaps     = remember { mutableStateListOf<Bitmap?>() }
+    var total       by remember { mutableIntStateOf(0) }
+    var current     by remember { mutableIntStateOf(1) }
+    var loading     by remember { mutableStateOf(true) }
+    var errorMsg    by remember { mutableStateOf("") }
+    var showControls by remember { mutableStateOf(true) }
+    var scale       by remember { mutableFloatStateOf(1f) }
+    var offsetX     by remember { mutableFloatStateOf(0f) }
 
-    val listState  = rememberLazyListState()
-    val screenW    = context.resources.displayMetrics.widthPixels
+    val listState = rememberLazyListState()
+    val screenW   = context.resources.displayMetrics.widthPixels
+    var renderer  by remember { mutableStateOf<PdfRenderer?>(null) }
+    val renderJobs = remember { mutableMapOf<Int, Job>() }
 
-    // Renderer held in a ref so viewport watcher can access it
-    var pdfRenderer by remember { mutableStateOf<PdfRenderer?>(null) }
-    val renderJobs  = remember { mutableMapOf<Int, kotlinx.coroutines.Job>() }
-
-    fun renderPage(renderer: PdfRenderer, i: Int) {
-        if (i < 0 || i >= bitmaps.size) return
-        if (bitmaps[i] != null) return
-        if (renderJobs[i]?.isActive == true) return
-        renderJobs[i] = scope.launch(Dispatchers.IO) {
+    fun renderPage(r: PdfRenderer, idx: Int) {
+        if (idx < 0 || idx >= bitmaps.size) return
+        if (bitmaps[idx] != null) return
+        if (renderJobs[idx]?.isActive == true) return
+        renderJobs[idx] = scope.launch(Dispatchers.IO) {
             try {
-                val page  = renderer.openPage(i)
+                val page  = r.openPage(idx)
                 val ratio = page.height.toFloat() / page.width.toFloat()
                 val bmpW  = screenW
                 val bmpH  = (screenW * ratio).toInt().coerceAtLeast(1)
-                val bmp   = Bitmap.createBitmap(bmpW, bmpH, Bitmap.Config.RGB_565) // half memory
+                val bmp   = Bitmap.createBitmap(bmpW, bmpH, Bitmap.Config.RGB_565)
                 bmp.eraseColor(Color.WHITE)
                 page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                 page.close()
-                withContext(Dispatchers.Main) { if (i < bitmaps.size) bitmaps[i] = bmp }
-            } catch (_: Exception) { /* page stays placeholder */ }
+                withContext(Dispatchers.Main) { if (idx < bitmaps.size) bitmaps[idx] = bmp }
+            } catch (_: Exception) {}
         }
     }
 
     LaunchedEffect(uri) {
         if (uri == null) { loading = false; errorMsg = "ফাইল পাওয়া যায়নি"; return@LaunchedEffect }
-        renderJobs.values.forEach { it.cancel() }; renderJobs.clear()
+        renderJobs.values.forEach { it.cancel() }; renderJobs.clear(); bitmaps.clear()
         withContext(Dispatchers.IO) {
             try {
-                val pfd = try {
-                    context.contentResolver.openFileDescriptor(uri, "r")
-                } catch (_: Exception) { null }
-                
-                val renderer = if (pfd != null) {
-                    if (pfd.statSize == -1L) {
-                        try { pfd.close() } catch (_: Exception) {}
-                        null
-                    } else {
-                        try { PdfRenderer(pfd) }
-                        catch (_: Exception) {
-                            try { pfd.close() } catch (_: Exception) {}
-                            null
-                        }
-                    }
-                } else null ?: run {
-                    val tmp = java.io.File(context.cacheDir, "pdf_fb_${System.currentTimeMillis()}.pdf")
-                    context.contentResolver.openInputStream(uri)?.use { input ->
-                        tmp.outputStream().use { output ->
-                            input.copyTo(output)
-                        }
-                    } ?: throw IllegalStateException("File খুলতে পারিনি")
-                    val pfd2 = android.os.ParcelFileDescriptor.open(
-                        tmp, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
-                    PdfRenderer(pfd2).also {
-                        tmp.delete()
-                    }
-                }
-                val count    = renderer.pageCount
+                // Copy to cache → sidesteps ALL URI permission / scheme issues
+                val tmp = File(context.cacheDir, "pv_${System.currentTimeMillis()}.pdf")
+                context.contentResolver.openInputStream(uri)?.use { it.copyTo(tmp.outputStream()) }
+                    ?: throw IllegalStateException("Cannot read URI")
+                val pfd = android.os.ParcelFileDescriptor.open(
+                    tmp, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
+                val r = PdfRenderer(pfd)
+                try { tmp.delete() } catch (_: Exception) {}   // FD keeps data alive on Linux
+                val count = r.pageCount
                 withContext(Dispatchers.Main) {
-                    bitmaps.clear()
                     repeat(count) { bitmaps.add(null) }
-                    total   = count
-                    loading = false
-                    pdfRenderer = renderer
-                    // Render first 3 pages immediately for instant feel
-                    for (i in 0 until minOf(3, count)) renderPage(renderer, i)
+                    total = count; renderer = r; loading = false
+                    for (i in 0 until minOf(3, count)) renderPage(r, i)
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) { loading = false; errorMsg = "PDF খোলা যায়নি: ${e.message}" }
@@ -195,95 +168,90 @@ fun LightPdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
 
     val visibleIdx by remember { derivedStateOf { listState.firstVisibleItemIndex } }
     LaunchedEffect(visibleIdx) { current = visibleIdx + 1 }
-
-    // Render pages near viewport on-demand
-    LaunchedEffect(visibleIdx, pdfRenderer) {
-        val renderer = pdfRenderer ?: return@LaunchedEffect
-        for (i in (visibleIdx - 1).coerceAtLeast(0)
-                  ..(visibleIdx + 2).coerceAtMost(total - 1)) {
-            renderPage(renderer, i)
-        }
+    LaunchedEffect(visibleIdx, renderer) {
+        val r = renderer ?: return@LaunchedEffect
+        for (i in (visibleIdx - 1).coerceAtLeast(0)..(visibleIdx + 3).coerceAtMost(total - 1))
+            renderPage(r, i)
     }
+    DisposableEffect(Unit) { onDispose { renderJobs.values.forEach { it.cancel() }; renderer?.close() } }
 
-    DisposableEffect(Unit) {
-        onDispose {
-            renderJobs.values.forEach { it.cancel() }
-            pdfRenderer?.close()
-        }
-    }
+    val BG    = ComposeColor(0xFF0D0D14)
+    val WHITE = ComposeColor(0xFFF0EFFF)
 
-    val VA_BG = ComposeColor(0xFF111111); val VA_WHITE = ComposeColor(0xFFF5F5F5)
-
-    Box(Modifier.fillMaxSize().background(VA_BG).systemBarsPadding()) {
+    Box(Modifier.fillMaxSize().background(BG).systemBarsPadding()) {
         when {
-            // Removed loading indicator to reduce visual transitions
-            loading -> Box(Modifier.fillMaxSize())
-            errorMsg.isNotEmpty() -> Text(errorMsg, color = ComposeColor.Red, modifier = Modifier.align(Alignment.Center))
-            total == 0 -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = ComposeColor(0xFF6C63FF))
+            loading -> CircularProgressIndicator(
+                Modifier.align(Alignment.Center), color = ComposeColor(0xFF6C63FF))
+
+            errorMsg.isNotEmpty() -> Column(
+                Modifier.align(Alignment.Center).padding(32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("⚠️", fontSize = 40.sp)
+                Spacer(Modifier.height(12.dp))
+                Text(errorMsg, color = ComposeColor(0xFFFF5C5C), fontSize = 14.sp)
+                Spacer(Modifier.height(20.dp))
+                Button(onClick = onClose) { Text("← ফিরে যান") }
+            }
+
             else -> {
-                // FIX: graphicsLayer on LazyColumn itself clips content — horizontal
-                // pan after zoom gets cut off at screen edge. Move graphicsLayer to a
-                // wrapper Box with wrapContentSize(unbounded=true) so translated content
-                // can extend past screen bounds without clipping.
-                val transformState = rememberTransformableState { zc, pc, _ ->
+                val ts = rememberTransformableState { zc, pc, _ ->
                     scale   = (scale * zc).coerceIn(1f, 5f)
                     offsetX = if (scale > 1f) offsetX + pc.x else 0f
                 }
                 Box(
-                    Modifier
-                        .fillMaxSize()
-                        .transformable(transformState)
-                        .pointerInput(Unit) { detectTapGestures(onTap = { controls = !controls },
-                            onDoubleTap = { if (scale > 1f) { scale = 1f; offsetX = 0f } else scale = 2.5f }) }
+                    Modifier.fillMaxSize().transformable(ts)
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onTap = { showControls = !showControls },
+                                onDoubleTap = { if (scale > 1f) { scale = 1f; offsetX = 0f } else scale = 2.5f }
+                            )
+                        }
                 ) {
-                Box(
-                    Modifier
-                        .wrapContentSize(Alignment.Center, unbounded = true)
+                    Box(Modifier.wrapContentSize(Alignment.Center, unbounded = true)
                         .graphicsLayer(scaleX = scale, scaleY = scale, translationX = offsetX, clip = false)
-                ) {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(vertical = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    itemsIndexed(bitmaps) { _, bmp ->
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .background(ComposeColor.White)
-                                // Approximate A4 aspect ratio placeholder so scroll height stays stable
-                                .then(if (bmp == null) Modifier.aspectRatio(0.707f) else Modifier)
+                    ) {
+                        LazyColumn(state = listState, modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(vertical = 4.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            if (bmp != null) {
-                                Image(bitmap = bmp.asImageBitmap(), contentDescription = null,
-                                    contentScale = ContentScale.FillWidth, modifier = Modifier.fillMaxWidth())
-                            } else {
-                                // Loading placeholder
-                                Box(Modifier.fillMaxSize().background(ComposeColor(0xFFEEEEEE))) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.align(Alignment.Center).size(32.dp),
-                                        color = ComposeColor(0xFF6C63FF), strokeWidth = 2.dp
-                                    )
+                            itemsIndexed(bitmaps) { _, bmp ->
+                                Box(
+                                    Modifier.fillMaxWidth().background(ComposeColor.White)
+                                        .then(if (bmp == null) Modifier.aspectRatio(0.707f) else Modifier)
+                                ) {
+                                    if (bmp != null) {
+                                        Image(bmp.asImageBitmap(), null,
+                                            contentScale = ContentScale.FillWidth,
+                                            modifier = Modifier.fillMaxWidth())
+                                    } else {
+                                        Box(Modifier.fillMaxSize().background(ComposeColor(0xFFEEEEEE))) {
+                                            CircularProgressIndicator(
+                                                Modifier.align(Alignment.Center).size(28.dp),
+                                                color = ComposeColor(0xFF6C63FF), strokeWidth = 2.dp)
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
-                } // close inner graphicsLayer Box
-                } // close outer touch Box
 
-                androidx.compose.animation.AnimatedVisibility(visible = controls, enter = fadeIn(), exit = fadeOut(),
+                AnimatedVisibility(showControls, enter = fadeIn(), exit = fadeOut(),
                     modifier = Modifier.align(Alignment.TopCenter)) {
-                    Row(Modifier.fillMaxWidth().background(VA_BG.copy(0.93f)).padding(horizontal = 6.dp, vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = onClose, modifier = Modifier.size(42.dp)) {
-                            Icon(Icons.Default.ArrowBack, null, tint = VA_WHITE, modifier = Modifier.size(22.dp))
+                    Row(Modifier.fillMaxWidth().background(BG.copy(0.92f))
+                        .padding(horizontal = 4.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = onClose, modifier = Modifier.size(44.dp)) {
+                            Icon(Icons.Default.ArrowBack, null, tint = WHITE, modifier = Modifier.size(22.dp))
                         }
-                        Text(fileName, color = VA_WHITE, fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                        Text("$current/$total", color = VA_WHITE.copy(0.6f), fontSize = 11.sp,
-                            modifier = Modifier.padding(end = 12.dp))
+                        Text(fileName, color = WHITE, fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold, maxLines = 1,
+                            overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                        if (total > 0)
+                            Text("$current / $total", color = WHITE.copy(0.6f), fontSize = 11.sp,
+                                modifier = Modifier.padding(end = 12.dp))
                     }
                 }
             }
