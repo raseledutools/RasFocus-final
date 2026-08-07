@@ -685,7 +685,19 @@ fun HomeScreen() {
             val globalOps by FileOperationManager.operations.collectAsState()
             Column(modifier = Modifier.padding(paddingValues)) {
                 Box(modifier = Modifier.weight(1f)) {
-                when (val state = currentNavState) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    val baseState = when (val state = currentNavState) {
+                        is NavState.ImageViewer -> NavState.Local(state.folderPath)
+                        is NavState.PdfViewer -> NavState.Local(state.folderPath)
+                        is NavState.MediaPlayer -> NavState.Local(state.folderPath)
+                        is NavState.TextEditor -> {
+                            val parent = java.io.File(state.path).parent
+                            if (parent != null) NavState.Local(parent) else NavState.Home
+                        }
+                        else -> currentNavState
+                    }
+
+                    when (val state = baseState) {
                     is NavState.Home -> MainGridContent(
                         onNavigate = { newState ->
                             cloudBackStack.clear()
@@ -803,30 +815,7 @@ fun HomeScreen() {
                     is NavState.DriveOfflineSettings -> DriveOfflineSettingsScreen(
                         onBack = { currentNavState = NavState.Home }
                     )
-                    is NavState.TextEditor -> TextEditorScreen(
-                        path = state.path,
-                        onBack = { 
-                            // Go back to the directory containing this file
-                            val parent = java.io.File(state.path).parent
-                            if (parent != null) {
-                                currentNavState = NavState.Local(parent)
-                            } else {
-                                currentNavState = NavState.Home 
-                            }
-                        }
-                    )
-                    is NavState.ImageViewer -> ImageViewerScreen(
-                        imagePath = state.path,
-                        onBack = { currentNavState = NavState.Local(state.folderPath) }
-                    )
-                    is NavState.PdfViewer -> FMPdfViewerScreen(
-                        filePath = state.path,
-                        onBack = { currentNavState = NavState.Local(state.folderPath) }
-                    )
-                    is NavState.MediaPlayer -> AudioVideoPlayerScreen(
-                        mediaPath = state.path,
-                        onBack = { currentNavState = NavState.Local(state.folderPath) }
-                    )
+
                     is NavState.Saf -> SafFileScreen(
                         uriString = state.uri,
                         onNavigate = { newState ->
@@ -847,7 +836,36 @@ fun HomeScreen() {
                             }
                         }
                     )
-                }
+                    } // end baseState when
+
+                    // Render viewer state ON TOP
+                    when (val state = currentNavState) {
+                        is NavState.ImageViewer -> ImageViewerScreen(
+                            imagePath = state.path,
+                            onBack = { currentNavState = NavState.Local(state.folderPath) }
+                        )
+                        is NavState.PdfViewer -> FMPdfViewerScreen(
+                            filePath = state.path,
+                            onBack = { currentNavState = NavState.Local(state.folderPath) }
+                        )
+                        is NavState.MediaPlayer -> AudioVideoPlayerScreen(
+                            mediaPath = state.path,
+                            onBack = { currentNavState = NavState.Local(state.folderPath) }
+                        )
+                        is NavState.TextEditor -> TextEditorScreen(
+                            path = state.path,
+                            onBack = { 
+                                val parent = java.io.File(state.path).parent
+                                if (parent != null) {
+                                    currentNavState = NavState.Local(parent)
+                                } else {
+                                    currentNavState = NavState.Home 
+                                }
+                            }
+                        )
+                        else -> {}
+                    }
+                } // end layered Box
                 } // end Box weight(1f)
                 // ── Global progress bar — visible on every screen during file ops ──
                 ActiveOperationsBar(operations = globalOps)
