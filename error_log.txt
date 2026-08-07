@@ -1,8 +1,76 @@
 ╔══════════════════════════════════════════╗
-║        LAST BUILD: SUCCESS ✅            ║
+║      LAST BUILD: ERROR ❌                ║
+║   Push করার আগে এই error fix করুন।     ║
 ╚══════════════════════════════════════════╝
 
-Build passed at: 2026-08-07 02:54:46 UTC
-Run: #702  |  Commit: b688df8e91b36149e55178c839b765952bae0241
+=== KOTLIN ERRORS ===
 
-No errors. Safe to push.
+=== UNRESOLVED / TYPE ERRORS ===
+
+=== BUILD FAILURE ===
+> Task :app:processFullReleaseMainManifest FAILED
+* What went wrong:
+Execution failed for task ':app:processFullReleaseMainManifest'.
+BUILD FAILED in 19s
+
+=== LAST 60 LINES ===
+> Task :app:javaPreCompileFullRelease FROM-CACHE
+> Task :app:mergeFullReleaseJniLibFolders FROM-CACHE
+> Task :app:createFullReleaseCompatibleScreenManifests
+> Task :app:buildKotlinToolingMetadata
+> Task :app:extractProguardFiles
+> Task :app:packageFullReleaseResources FROM-CACHE
+> Task :app:generateFullReleaseBuildConfig
+> Task :app:extractDeepLinksFullRelease FROM-CACHE
+> Task :app:parseFullReleaseLocalResources FROM-CACHE
+> Task :app:mergeFullReleaseArtProfile
+> Task :app:mapFullReleaseSourceSetPaths
+> Task :app:validateSigningFullRelease
+> Task :app:writeFullReleaseAppMetadata
+> Task :app:checkFullReleaseAarMetadata
+> Task :app:mergeFullReleaseAssets FROM-CACHE
+> Task :app:writeFullReleaseSigningConfigVersions
+> Task :app:compressFullReleaseAssets FROM-CACHE
+> Task :app:checkFullReleaseDuplicateClasses
+> Task :app:collectFullReleaseDependencies
+> Task :app:mergeFullReleaseNativeLibs
+> Task :app:sdkFullReleaseDependencyData
+
+> Task :app:stripFullReleaseDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libbarhopper_v3.so, libimage_processing_util_jni.so, libpdfium.so, libpdfiumandroid.so.
+
+> Task :app:extractFullReleaseNativeSymbolTables FROM-CACHE
+> Task :app:mergeFullReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:mergeFullReleaseResources FROM-CACHE
+
+> Task :app:processFullReleaseMainManifest FAILED
+/home/runner/work/RasFocus-final/RasFocus-final/app/src/main/AndroidManifest.xml:876:9-879:53 Error:
+	Element activity#com.rasel.RasFocus.selfcontrol.study_tools.PdfViewerActivity at AndroidManifest.xml:876:9-879:53 duplicated with element declared at AndroidManifest.xml:317:5-325:73
+/home/runner/work/RasFocus-final/RasFocus-final/app/src/main/AndroidManifest.xml Error:
+	Validation failed, exiting
+
+See https://developer.android.com/r/studio-ui/build/manifest-merger for more information about the manifest merger.
+
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1786073587374.json
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:processFullReleaseMainManifest'.
+> Manifest merger failed with multiple errors, see logs
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 19s
+27 actionable tasks: 17 executed, 10 from cache
+Configuration cache entry stored.
