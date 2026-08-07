@@ -1074,22 +1074,21 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
     androidx.compose.foundation.lazy.LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF2F2F7)),
-        contentPadding = PaddingValues(bottom = 16.dp)
+            .background(Color.White),
+        contentPadding = PaddingValues(top = 16.dp, bottom = 16.dp)
     ) {
         item {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 StorageTopCard(
                     label = "Main storage",
                     subtitle = mainStorageInfo.usedText,
-                    icon = Icons.Default.PhoneAndroid,
-                    iconColor = Color(0xFF5C6BC0),
-                    progress = mainStorageInfo.progress,
+                    icon = Icons.Default.Storage,
+                    iconColor = Color(0xFF90A4AE),
                     modifier = Modifier.weight(1f),
                     onClick = { navigate("Main storage") }
                 )
@@ -1097,8 +1096,7 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                     label = "SD card",
                     subtitle = if (sdInfo.total > 0) sdInfo.usedText else "Not found",
                     icon = Icons.Default.SdStorage,
-                    iconColor = Color(0xFF388E3C),
-                    progress = sdInfo.progress,
+                    iconColor = Color(0xFF5C6BC0),
                     modifier = Modifier.weight(1f),
                     onClick = { navigate("SD card") }
                 )
@@ -1108,21 +1106,17 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                     onClick = {
                         driveAccounts = CloudAccountManager.getAccounts(context)
                         if (driveAccounts.isEmpty()) {
-                            // αªòαºïαª¿αºï account αª¿αºçαªç ΓåÆ add αªòαª░αªñαºç CloudAccounts αªÅ αª»αª╛αªô
                             onNavigate(NavState.CloudAccounts)
                         } else if (driveAccounts.size == 1) {
-                            // Single account ΓåÆ directly open
                             val acc = driveAccounts.first()
                             selectedDriveAccount = acc
                             drivePrefs.edit().putString("selected_account", acc).apply()
                             onNavigate(NavState.Cloud(acc, "root", "My Drive"))
                         } else {
-                            // Multiple accounts ΓåÆ show picker
                             showDrivePickerSheet = true
                         }
                     },
                     onLongClick = {
-                        // Long press ΓåÆ always show picker to change account
                         driveAccounts = CloudAccountManager.getAccounts(context)
                         if (driveAccounts.isNotEmpty()) showDrivePickerSheet = true
                         else onNavigate(NavState.CloudAccounts)
@@ -1132,15 +1126,20 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
         }
 
         val categoryItems = listOf(
-            GridItemData("Images",    imagesCount,   Icons.Default.Image)        to Color(0xFFAD1457),
-            GridItemData("Audio",     audioCount,    Icons.Default.Audiotrack)   to Color(0xFF1565C0),
-            GridItemData("Videos",    videosCount,   Icons.Default.VideoLibrary) to Color(0xFF6A1B9A),
-            GridItemData("Documents", docsCount,     Icons.Default.Description)  to Color(0xFF37474F),
-            GridItemData("Apps",      appsCount,     Icons.Default.Android)      to Color(0xFF00838F),
-            GridItemData("New files", newFilesCount, Icons.Default.Schedule)     to Color(0xFF4E342E),
+            GridItemData("Downloads", downloadsCount, Icons.Default.Download)    to Color(0xFFF57C00),
+            GridItemData("Images",    imagesCount,   Icons.Default.Image)        to Color(0xFF8E24AA),
+            GridItemData("Audio",     audioCount,    Icons.Default.Audiotrack)   to Color(0xFF00897B),
+            GridItemData("Videos",    videosCount,   Icons.Default.VideoLibrary) to Color(0xFFE53935),
+            GridItemData("Documents", docsCount,     Icons.Default.Description)  to Color(0xFF1976D2),
+            GridItemData("Apps",      appsCount,     Icons.Default.Android)      to Color(0xFF8BC34A),
+            GridItemData("New files", newFilesCount, Icons.Default.Schedule)     to Color(0xFF78909C),
+            GridItemData("Cloud",     cloudCount,    Icons.Default.Cloud)        to Color(0xFF42A5F5),
+            GridItemData("Remote",    "",            Icons.Default.Computer)     to Color(0xFF8D6E63),
+            GridItemData("Access from...", "",       Icons.Default.Devices)      to Color(0xFF607D8B)
         )
 
         item {
+            Spacer(modifier = Modifier.height(8.dp))
             Column(modifier = Modifier.padding(horizontal = 12.dp)) {
                 for (row in categoryItems.chunked(3)) {
                     Row(
@@ -1159,42 +1158,8 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                         }
                         repeat(3 - row.size) { Spacer(modifier = Modifier.weight(1f)) }
                     }
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
                 }
-            }
-        }
-
-        item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                CategoryCard(
-                    label = "Cloud",
-                    subtitle = cloudCount,
-                    icon = Icons.Default.Cloud,
-                    iconColor = Color(0xFF1565C0),
-                    modifier = Modifier.weight(1f),
-                    onClick = { navigate("Cloud") }
-                )
-                CategoryCard(
-                    label = "Remote",
-                    subtitle = "",
-                    icon = Icons.Default.Computer,
-                    iconColor = Color(0xFF4E342E),
-                    modifier = Modifier.weight(1f),
-                    onClick = { navigate("Remote") }
-                )
-                CategoryCard(
-                    label = "Access from...",
-                    subtitle = "",
-                    icon = Icons.Default.Devices,
-                    iconColor = Color(0xFF37474F),
-                    modifier = Modifier.weight(1f),
-                    onClick = { navigate("Access from...") }
-                )
             }
         }
     }
@@ -1230,53 +1195,39 @@ fun MyDriveTopCard(
     onLongClick: () -> Unit = {}
 ) {
     val driveBlue = Color(0xFF1A73E8)
-    Card(
+    Column(
         modifier = modifier
             .combinedClickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = androidx.compose.material.ripple.rememberRipple(bounded = false),
                 onClick = onClick,
                 onLongClick = onLongClick
-            ),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        shape = RoundedCornerShape(14.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            )
+            .padding(top = 8.dp, bottom = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
-            horizontalAlignment = Alignment.Start
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(driveBlue.copy(alpha = 0.12f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.CloudQueue,
-                    contentDescription = "My Drive",
-                    tint = driveBlue,
-                    modifier = Modifier.size(26.dp)
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = "My Drive",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = if (selectedAccount != null)
-                    selectedAccount.substringBefore("@").take(12)
-                else
-                    "Tap to connect",
-                fontSize = 10.sp,
-                color = if (selectedAccount != null) driveBlue else Color.Gray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
+        Icon(
+            imageVector = Icons.Default.CloudQueue,
+            contentDescription = "My Drive",
+            tint = driveBlue,
+            modifier = Modifier.size(68.dp)
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = "My Drive",
+            fontSize = 15.sp,
+            color = Color(0xFF202020),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = if (selectedAccount != null) selectedAccount.substringBefore("@").take(12) else "Tap to connect",
+            fontSize = 12.sp,
+            color = Color(0xFF808080),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -1405,62 +1356,41 @@ fun StorageTopCard(
     subtitle: String,
     icon: ImageVector,
     iconColor: Color,
-    progress: Float,
     modifier: Modifier = Modifier,
-    showProgress: Boolean = true,
     onClick: () -> Unit
 ) {
-    Card(
-        modifier = modifier.clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        shape = RoundedCornerShape(14.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
-            horizontalAlignment = Alignment.Start
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(iconColor.copy(alpha = 0.12f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = label,
-                    tint = iconColor,
-                    modifier = Modifier.size(26.dp)
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = label,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+    Column(
+        modifier = modifier
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = androidx.compose.material.ripple.rememberRipple(bounded = false),
+                onClick = onClick
             )
-            if (subtitle.isNotEmpty()) {
-                Text(
-                    text = subtitle,
-                    fontSize = 10.sp,
-                    color = Color.Gray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            if (showProgress && progress > 0f) {
-                Spacer(Modifier.height(6.dp))
-                LinearProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)),
-                    color = if (progress > 0.9f) Color(0xFFE53935) else iconColor,
-                    trackColor = iconColor.copy(alpha = 0.15f)
-                )
-            }
-        }
+            .padding(top = 8.dp, bottom = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = iconColor,
+            modifier = Modifier.size(68.dp)
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = label,
+            fontSize = 15.sp,
+            color = Color(0xFF202020),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = subtitle.ifEmpty { " " },
+            fontSize = 12.sp,
+            color = Color(0xFF808080),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -1474,48 +1404,46 @@ fun CategoryCard(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    Card(
-        modifier = modifier.clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        shape = RoundedCornerShape(14.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 14.dp),
-            horizontalAlignment = Alignment.Start
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(iconColor.copy(alpha = 0.12f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = label,
-                    tint = iconColor,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = label,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+    Column(
+        modifier = modifier
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = androidx.compose.material.ripple.rememberRipple(bounded = false),
+                onClick = onClick
             )
-            if (subtitle.isNotEmpty()) {
-                Text(
-                    text = subtitle,
-                    fontSize = 10.sp,
-                    color = Color.Gray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+            .padding(vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .size(76.dp)
+                .background(Color.White, RoundedCornerShape(22.dp))
+                .border(1.dp, Color(0xFFE8E8E8), RoundedCornerShape(22.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = iconColor,
+                modifier = Modifier.size(36.dp)
+            )
         }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = label,
+            fontSize = 15.sp,
+            color = Color(0xFF202020),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = subtitle.ifEmpty { " " },
+            fontSize = 12.sp,
+            color = Color(0xFF808080),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 

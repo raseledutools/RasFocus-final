@@ -1334,123 +1334,139 @@ fun FileListItem(
     val ext = name.substringAfterLast('.', "").lowercase()
     var showMenu by remember { mutableStateOf(false) }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(if (isSelected) Color(0xFFB2DFDB) else Color.Transparent)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)),
-            contentAlignment = Alignment.Center
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(if (isSelected) Color(0xFFB2DFDB) else Color.White)
+                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            val isImage = ext in listOf("jpg","jpeg","png","gif","bmp","webp","heic","heif")
-            val isVideo = ext in listOf("mp4","mkv","avi","mov","webm","3gp")
-            val isApk = ext == "apk"
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(6.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                val isImage = ext in listOf("jpg","jpeg","png","gif","bmp","webp","heic","heif")
+                val isVideo = ext in listOf("mp4","mkv","avi","mov","webm","3gp")
+                val isApk = ext == "apk"
 
-            var apkIcon by remember(localFile) { mutableStateOf<android.graphics.drawable.Drawable?>(null) }
-            val context = androidx.compose.ui.platform.LocalContext.current
+                var apkIcon by remember(localFile) { mutableStateOf<android.graphics.drawable.Drawable?>(null) }
+                val context = androidx.compose.ui.platform.LocalContext.current
 
-            if (localFile != null && isApk) {
-                LaunchedEffect(localFile) {
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        val pm = context.packageManager
-                        val pi = pm.getPackageArchiveInfo(localFile!!.absolutePath, 0)
-                        pi?.applicationInfo?.let {
-                            it.sourceDir = localFile!!.absolutePath
-                            it.publicSourceDir = localFile!!.absolutePath
-                            apkIcon = it.loadIcon(pm)
-                        }
-                    }
-                }
-            }
-
-            if (localFile != null && (isImage || isVideo || apkIcon != null)) {
-                AsyncImage(
-                    model = coil.request.ImageRequest.Builder(context)
-                        .data(if (apkIcon != null) apkIcon else localFile)
-                        .crossfade(false) // instant load
-                        .size(96)
-                        .apply {
-                            if (isVideo) {
-                                decoderFactory(coil.decode.VideoFrameDecoder.Factory())
+                if (localFile != null && isApk) {
+                    LaunchedEffect(localFile) {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            val pm = context.packageManager
+                            val pi = pm.getPackageArchiveInfo(localFile!!.absolutePath, 0)
+                            pi?.applicationInfo?.let {
+                                it.sourceDir = localFile!!.absolutePath
+                                it.publicSourceDir = localFile!!.absolutePath
+                                apkIcon = it.loadIcon(pm)
                             }
                         }
-                        .build(),
-                    contentDescription = name,
-                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                    error = androidx.compose.ui.graphics.painter.ColorPainter(
-                        androidx.compose.ui.graphics.Color(0xFFEEEEEE)
+                    }
+                }
+
+                if (localFile != null && (isImage || isVideo || apkIcon != null)) {
+                    AsyncImage(
+                        model = coil.request.ImageRequest.Builder(context)
+                            .data(if (apkIcon != null) apkIcon else localFile)
+                            .crossfade(false)
+                            .size(96)
+                            .apply {
+                                if (isVideo) {
+                                    decoderFactory(coil.decode.VideoFrameDecoder.Factory())
+                                }
+                            }
+                            .build(),
+                        contentDescription = name,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                        error = androidx.compose.ui.graphics.painter.ColorPainter(
+                            androidx.compose.ui.graphics.Color(0xFFEEEEEE)
+                        )
                     )
+                    if (isVideo) {
+                        Icon(
+                            imageVector = Icons.Default.PlayCircleOutline,
+                            contentDescription = null,
+                            tint = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.85f),
+                            modifier = Modifier.size(22.dp).align(Alignment.Center)
+                        )
+                    }
+                } else {
+                    FileTypeIcon(ext = ext, isDirectory = isDirectory, sizeDp = 48, fileName = name)
+                }
+            }
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = name,
+                    fontSize = 16.sp,
+                    color = Color.Black,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    fontWeight = FontWeight.Normal
                 )
-                if (isVideo) {
-                    Icon(
-                        imageVector = Icons.Default.PlayCircleOutline,
-                        contentDescription = null,
-                        tint = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.85f),
-                        modifier = Modifier.size(22.dp).align(Alignment.Center)
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (size.isNotEmpty()) size else if (isDirectory) "0 items" else "",
+                        fontSize = 13.sp,
+                        color = Color.Gray
+                    )
+                    Text(
+                        text = date,
+                        fontSize = 13.sp,
+                        color = Color.Gray
                     )
                 }
-            } else {
-                FileTypeIcon(ext = ext, isDirectory = isDirectory, sizeDp = 40)
             }
-        }
 
-        Spacer(modifier = Modifier.width(14.dp))
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = name,
-                fontSize = 15.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                fontWeight = if (isDirectory) FontWeight.Medium else FontWeight.Normal
-            )
-            Spacer(modifier = Modifier.height(3.dp))
-            Row {
-                Text(text = date, fontSize = 11.sp, color = Color.Gray)
-                if (size.isNotEmpty()) {
-                    Text(text = " · $size", fontSize = 11.sp, color = Color.Gray)
-                }
+            if (syncIcon != null) {
+                Spacer(Modifier.width(8.dp))
+                Icon(
+                    imageVector = syncIcon,
+                    contentDescription = "Sync state",
+                    tint = syncIconTint,
+                    modifier = Modifier.size(18.dp)
+                )
             }
-        }
 
-        if (syncIcon != null) {
-            Spacer(Modifier.width(8.dp))
-            Icon(
-                imageVector = syncIcon,
-                contentDescription = "Sync state",
-                tint = syncIconTint,
-                modifier = Modifier.size(18.dp)
-            )
-        }
-
-        if (onPropertiesClick != null || onShareClick != null) {
-            Box {
-                IconButton(onClick = { showMenu = true }, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.Default.MoreVert, contentDescription = "More options", tint = Color.Gray, modifier = Modifier.size(18.dp))
-                }
-                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                    if (onShareClick != null && !isDirectory) {
-                        DropdownMenuItem(
-                            text = { Text("Share") },
-                            leadingIcon = { Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                            onClick = { showMenu = false; onShareClick() }
-                        )
+            if (onPropertiesClick != null || onShareClick != null) {
+                Box {
+                    IconButton(onClick = { showMenu = true }, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "More options", tint = Color.Gray, modifier = Modifier.size(18.dp))
                     }
-                    if (onPropertiesClick != null) {
-                        DropdownMenuItem(
-                            text = { Text("Properties") },
-                            leadingIcon = { Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                            onClick = { showMenu = false; onPropertiesClick() }
-                        )
+                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                        if (onShareClick != null && !isDirectory) {
+                            DropdownMenuItem(
+                                text = { Text("Share") },
+                                leadingIcon = { Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                onClick = { showMenu = false; onShareClick() }
+                            )
+                        }
+                        if (onPropertiesClick != null) {
+                            DropdownMenuItem(
+                                text = { Text("Properties") },
+                                leadingIcon = { Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                onClick = { showMenu = false; onPropertiesClick() }
+                            )
+                        }
                     }
                 }
             }
         }
+        HorizontalDivider(color = Color(0xFFF0F0F0), thickness = 1.dp)
     }
 }
 
@@ -1740,9 +1756,9 @@ private fun SelectionAction(
 
 // ── FileTypeIcon ───────────────────────────────────────────────────────────────
 @Composable
-fun FileTypeIcon(ext: String, isDirectory: Boolean, sizeDp: Int = 40) {
+fun FileTypeIcon(ext: String, isDirectory: Boolean, sizeDp: Int = 40, fileName: String = "") {
     val (icon, tint) = when {
-        isDirectory -> Icons.Default.Folder to Color(0xFFFFA726)
+        isDirectory -> Icons.Default.Folder to Color(0xFFEBA953)
         ext == "pdf" -> Icons.Default.PictureAsPdf to Color(0xFFE53935)
         ext in listOf("jpg", "jpeg", "png", "gif", "bmp", "webp", "heic") ->
             Icons.Default.Image to Color(0xFF1E88E5)
@@ -1765,12 +1781,43 @@ fun FileTypeIcon(ext: String, isDirectory: Boolean, sizeDp: Int = 40) {
             Icons.Default.TextSnippet to Color(0xFF78909C)
         else -> Icons.Default.InsertDriveFile to Color(0xFF90A4AE)
     }
-    Icon(
-        imageVector = icon,
-        contentDescription = null,
-        tint = tint,
-        modifier = Modifier.size(sizeDp.dp)
-    )
+    
+    Box(contentAlignment = Alignment.Center) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(sizeDp.dp)
+        )
+        
+        if (isDirectory && fileName.isNotEmpty()) {
+            val badgeIcon = when (fileName.lowercase()) {
+                "dcim", "pictures", "images" -> Icons.Default.CameraAlt
+                "download", "downloads" -> Icons.Default.Download
+                "documents", "document" -> Icons.Default.Description
+                "music", "audio" -> Icons.Default.MusicNote
+                "movies", "video" -> Icons.Default.Movie
+                "android" -> Icons.Default.Android
+                else -> null
+            }
+            if (badgeIcon != null) {
+                Box(
+                    modifier = Modifier
+                        .padding(top = (sizeDp * 0.15f).dp)
+                        .background(Color.White, RoundedCornerShape(3.dp))
+                        .padding(1.5.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = badgeIcon,
+                        contentDescription = null,
+                        tint = Color(0xFF2196F3),
+                        modifier = Modifier.size((sizeDp * 0.35f).dp)
+                    )
+                }
+            }
+        }
+    }
 }
 
 
