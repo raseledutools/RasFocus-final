@@ -58,9 +58,6 @@ sealed class NavState {
     object FtpServer : NavState()
     data class TextEditor(val path: String) : NavState()
     data class Saf(val uri: String) : NavState()
-    // ── In-app viewers — back returns to the folder that opened them ──────────
-    data class PdfViewer(val path: String) : NavState()
-    data class ImageViewer(val path: String) : NavState()
 }
 
 // â”€â”€ Shared utility functions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -79,71 +76,37 @@ fun formatDate(timestamp: Long): String {
 fun openLocalFile(context: android.content.Context, file: java.io.File, onNavigate: ((NavState) -> Unit)? = null) {
     try {
         val ext = file.extension.lowercase()
-
-        // Text/code files → in-app TextEditor (no Activity needed)
-        if (ext in setOf("txt","md","kt","java","py","js","ts","json","xml","csv",
-                         "html","css","sh","c","cpp","h","rs","go","rb","yaml","yml")) {
-            if (onNavigate != null) {
-                onNavigate(NavState.TextEditor(file.absolutePath))
-                return
-            }
-        }
-
-        // ── In-app PDF viewer (pinch-zoom, no Activity, back = folder) ────────
-        // Switch OFF (webview) হলে FMPdfViewerActivity এ যাবে, তাই early return skip
-        if (ext == "pdf" && onNavigate != null) {
-            val prefs = android.preference.PreferenceManager.getDefaultSharedPreferences(context)
-            val engine = prefs.getString("pdf_engine", "pdfium_compose") ?: "pdfium_compose"
-            if (engine == "pdfium_compose") {
-                onNavigate(NavState.PdfViewer(file.absolutePath))
-                return
-            }
-            // webview/chooser → fall through to Activity-based opening below
-        }
-
-        // ── In-app Image viewer (no Activity, back = folder) ─────────────────
-        if (ext in setOf("jpg","jpeg","png","webp","gif","bmp","heic","heif") && onNavigate != null) {
-            onNavigate(NavState.ImageViewer(file.absolutePath))
-            return
-        }
-
         val uri = androidx.core.content.FileProvider.getUriForFile(
             context,
             "${context.packageName}.fileprovider",
             file
         )
 
-        // Known viewer types → UniversalViewerActivity (which dispatches to the
-        // correct internal viewer: PdfViewerActivity, ImageViewerActivity, etc.)
-        // Using UniversalViewerActivity instead of Class.forName(PdfViewerActivity)
-        // because PdfViewerActivity only exists in the `full` flavor source set and
-        // Class.forName() fails at runtime when the classloader context is wrong.
-        // UniversalViewerActivity is in main/ so it is always resolvable.
-        //
-        // taskAffinity="${applicationId}.filemanager" is set on BOTH
-        // UniversalViewerActivity AND all downstream viewers in the manifest,
-        // so the whole chain stays in the file manager task and back-press
-        // correctly returns to the file browser.
-        val mimeType: String? = when (ext) {
-            "pdf"         -> "application/pdf"
-            "jpg","jpeg"  -> "image/jpeg"
-            "png"         -> "image/png"
-            "webp"        -> "image/webp"
-            "gif"         -> "image/gif"
-            "bmp"         -> "image/bmp"
-            "heic","heif" -> "image/heic"
-            "docx","doc"  -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            "pptx","ppt"  -> "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-            "xlsx","xls"  -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            else          -> null
+        // â”€â”€ Known types: directly launch RasFocus internal viewers â”€â”€
+        // Skips the system "Open with" chooser â†’ always gets in-app viewer
+        // (pdfium for PDF, ImageViewerActivity for images, etc.)
+        val internalMime: String? = when (ext) {
+            "pdf" -> "application/pdf"
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "webp" -> "image/webp"
+            "gif" -> "image/gif"
+            "bmp" -> "image/bmp"
+            "heic", "heif" -> "image/heic"
+            "docx", "doc" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            "pptx", "ppt" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            "xlsx", "xls" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            "txt", "md", "kt", "java", "py", "js", "ts", "json", "xml", "csv",
+            "html", "css", "sh", "c", "cpp", "h", "rs", "go", "rb", "yaml", "yml" -> "text/plain"
+            else -> null
         }
 
-        if (mimeType != null) {
-            if (mimeType == "text/plain" && onNavigate != null) {
+        if (internalMime != null) {
+            if (internalMime == "text/plain" && onNavigate != null) {
                 onNavigate(NavState.TextEditor(file.absolutePath))
                 return
             }
-            if (mimeType == "application/pdf") {
+            if (internalMime == "application/pdf") {
                 // Read which layer the user chose in Study Tools
                 val prefs = android.preference.PreferenceManager.getDefaultSharedPreferences(context)
                 val engine = prefs.getString("pdf_engine", "pdfium_compose") ?: "pdfium_compose"
@@ -173,7 +136,7 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
                         if (cls != null) {
                             val legacyIntent = android.content.Intent(context, cls).apply {
                                 action = android.content.Intent.ACTION_VIEW
-                                setDataAndType(uri, mimeType)
+                                setDataAndType(uri, internalMime)
                                 addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                             }
@@ -187,7 +150,7 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
                 if (engine != "chooser") {
                     val intent = android.content.Intent(context, com.rasel.RasFocus.filemanager.FMPdfViewerActivity::class.java).apply {
                         action = android.content.Intent.ACTION_VIEW
-                        setDataAndType(uri, mimeType)
+                        setDataAndType(uri, internalMime)
                         addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
@@ -223,23 +186,20 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
             if (cls != null) {
                 val intent = android.content.Intent(context, cls).apply {
                     action = android.content.Intent.ACTION_VIEW
-                    setDataAndType(uri, mimeType)
+                    setDataAndType(uri, internalMime)
                     addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                    if (uri.scheme == "content") {
-                        clipData = android.content.ClipData.newRawUri("", uri)
-                    }
                 }
                 context.startActivity(intent)
                 return
             }
         }
 
-        // Fallback: system chooser for unsupported types
-        val fallbackMime = android.webkit.MimeTypeMap.getSingleton()
+        // â”€â”€ Fallback: system chooser for unknown/unsupported types â”€â”€
+        val mimeType = android.webkit.MimeTypeMap.getSingleton()
             .getMimeTypeFromExtension(ext) ?: "*/*"
         val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, fallbackMime)
+            setDataAndType(uri, mimeType)
             addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         context.startActivity(intent)
@@ -247,22 +207,28 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
         android.widget.Toast.makeText(context, "Cannot open file: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
     }
 }
+
 fun shareLocalFile(context: android.content.Context, file: java.io.File) {
     try {
         val uri = androidx.core.content.FileProvider.getUriForFile(
-            context, "${context.packageName}.fileprovider", file)
-        val mime = android.webkit.MimeTypeMap.getSingleton()
-            .getMimeTypeFromExtension(file.extension.lowercase()) ?: "*/*"
+            context,
+            "${context.packageName}.fileprovider",
+            file
+        )
+        val ext = file.extension.lowercase()
+        val mimeType = android.webkit.MimeTypeMap.getSingleton()
+            .getMimeTypeFromExtension(ext) ?: "*/*"
         val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-            type = mime
+            type = mimeType
             putExtra(android.content.Intent.EXTRA_STREAM, uri)
             addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         context.startActivity(android.content.Intent.createChooser(intent, "Share ${file.name}"))
     } catch (e: Exception) {
-        android.widget.Toast.makeText(context, "Cannot share: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+        android.widget.Toast.makeText(context, "Cannot share file: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
     }
 }
+
 fun shareLocalFiles(context: android.content.Context, files: List<java.io.File>) {
     if (files.size == 1) {
         shareLocalFile(context, files.first())
@@ -410,15 +376,6 @@ fun HomeScreen() {
             currentNavState is NavState.Category -> {
                 currentNavState = NavState.Home
             }
-            // ── Viewers: back → the folder that contained the file ─────────────
-            currentNavState is NavState.PdfViewer -> {
-                val parent = java.io.File((currentNavState as NavState.PdfViewer).path).parent
-                currentNavState = if (parent != null) NavState.Local(parent) else NavState.Home
-            }
-            currentNavState is NavState.ImageViewer -> {
-                val parent = java.io.File((currentNavState as NavState.ImageViewer).path).parent
-                currentNavState = if (parent != null) NavState.Local(parent) else NavState.Home
-            }
             currentNavState is NavState.Cloud -> {
                 val state = currentNavState as NavState.Cloud
                 if (cloudBackStack.isNotEmpty()) {
@@ -496,8 +453,6 @@ fun HomeScreen() {
                     currentNavState !is NavState.Cloud &&
                     currentNavState !is NavState.Remote &&
                     currentNavState !is NavState.Saf &&
-                    currentNavState !is NavState.PdfViewer &&
-                    currentNavState !is NavState.ImageViewer &&
                     currentNavState != NavState.RecycleBin &&
                     currentNavState != NavState.SecureVault &&
                     currentNavState != NavState.StorageAnalyzer &&
@@ -772,9 +727,7 @@ fun HomeScreen() {
                                 // Launch FTP browser to that device's IP (assuming they host FTP on 2121)
                                 // We could use Smb or FTP. Assuming FTP on 2121 for now.
                                 val tempServerId = "p2p_ftp_${state.ip}"
-                                if (RemoteStore.servers.none { it.id == tempServerId }) {
-                                    RemoteStore.servers.add(RemoteServer(tempServerId, state.deviceName, state.ip, 2121, "anonymous", ""))
-                                }
+                                RemoteStore.addServer(RemoteServer(tempServerId, "FTP", state.deviceName, state.ip, 2121, "anonymous", ""))
                                 currentNavState = NavState.Remote(tempServerId, "/")
                             }
                         )
@@ -813,22 +766,6 @@ fun HomeScreen() {
                             } else {
                                 currentNavState = NavState.Home 
                             }
-                        }
-                    )
-                    // ── In-app PDF viewer — back = parent folder ──────────────
-                    is NavState.PdfViewer -> PdfViewerScreen(
-                        pdfPath = state.path,
-                        onBack = {
-                            val parent = java.io.File(state.path).parent
-                            currentNavState = if (parent != null) NavState.Local(parent) else NavState.Home
-                        }
-                    )
-                    // ── In-app Image viewer — back = parent folder ────────────
-                    is NavState.ImageViewer -> ImageViewerScreen(
-                        imagePath = state.path,
-                        onBack = {
-                            val parent = java.io.File(state.path).parent
-                            currentNavState = if (parent != null) NavState.Local(parent) else NavState.Home
                         }
                     )
                     is NavState.Saf -> SafFileScreen(
@@ -1612,41 +1549,6 @@ fun DrawerContent(onNavigate: (NavState) -> Unit) {
             DrawerMenuItem(Icons.Default.Download, "Downloads", Color(0xFFFFA500), onClick = {
                 onNavigate(NavState.Local(LocalFileManager.mainStoragePath + "/Download"))
             })
-        }
-
-        // ── PDF Viewer Switch ─────────────────────────────────────────────────
-        val pdfPrefs = remember {
-            android.preference.PreferenceManager.getDefaultSharedPreferences(context)
-        }
-        var usePdfium by remember {
-            mutableStateOf(pdfPrefs.getString("pdf_engine", "pdfium_compose") != "webview")
-        }
-        Divider()
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column {
-                Text("PDF Viewer", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Color(0xFF1D1B20))
-                Text(
-                    if (usePdfium) "Pdfium (fast)" else "WebView (Google Docs)",
-                    fontSize = 11.sp,
-                    color = Color(0xFF49454F)
-                )
-            }
-            Switch(
-                checked = usePdfium,
-                onCheckedChange = { checked ->
-                    usePdfium = checked
-                    pdfPrefs.edit()
-                        .putString("pdf_engine", if (checked) "pdfium_compose" else "webview")
-                        .apply()
-                },
-                colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFF00796B), checkedTrackColor = Color(0xFF00796B).copy(alpha = 0.4f))
-            )
         }
 
         Box(

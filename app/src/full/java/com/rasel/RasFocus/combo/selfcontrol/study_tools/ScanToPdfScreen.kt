@@ -1,6 +1,6 @@
 package com.rasel.RasFocus.combo.selfcontrol.study_tools
 
-import com.rasel.RasFocus.filemanager.FMPdfViewerActivity
+import com.rasel.RasFocus.selfcontrol.study_tools.PdfViewerActivity
 
 import android.Manifest
 import android.app.Activity
@@ -379,7 +379,7 @@ fun ScanToPdfScreen(onBack: () -> Unit) {
                     ) {
                         items(imagesArray.size) { index ->
                             Box(
-                                modifier = Modifier.aspectRatio(0.75f).shadow(4.dp, RoundedCornerShape(16.dp)).background(Color.White, RoundedCornerShape(16.dp)).border(1.dp, Color(0xFFF3F4F6), RoundedCornerShape(16.dp))
+                                modifier = Modifier.aspectRatio(0.75f).background(Color.White, RoundedCornerShape(16.dp)).border(1.dp, Color(0xFFF3F4F6), RoundedCornerShape(16.dp)).shadow(4.dp, RoundedCornerShape(16.dp))
                             ) {
                                 FilteredPreviewImage(context, imagesArray[index], currentFilter)
                                 IconButton(
@@ -442,7 +442,7 @@ fun ScanToPdfScreen(onBack: () -> Unit) {
                     docs.forEach { doc ->
                         Card(
                             modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp).clickable {
-                                val intent = Intent(context, FMPdfViewerActivity::class.java).apply {
+                                val intent = Intent(context, PdfViewerActivity::class.java).apply {
                                     putExtra("pdf_path", doc.path)
                                     putExtra("pdf_name", doc.name)
                                 }

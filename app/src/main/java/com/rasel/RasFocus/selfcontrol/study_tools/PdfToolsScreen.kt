@@ -42,7 +42,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
 import kotlinx.coroutines.*
-import com.rasel.RasFocus.filemanager.FMPdfViewerActivity
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RasFocus SIGNATURE COLORS  (WPS dark + indigo/amber accent)
@@ -457,6 +456,11 @@ private fun HomeScreen(
                 // ── Thin separator ────────────────────────────────────────────
                 Spacer(Modifier.height(8.dp))
 
+                // ── PDF Viewer Layer Selector ──────────────────────────────────
+                PdfViewerLayerSelector(context = context)
+
+                Spacer(Modifier.height(8.dp))
+
                 // ── Recent / Starred tab row (WPS style) ──────────────────────
                 Row(
                     Modifier
@@ -647,7 +651,7 @@ private fun WpsRecentRow(
 
                     when (item.type.lowercase()) {
                         "pdf" -> {
-                            val intent = android.content.Intent(context, FMPdfViewerActivity::class.java).apply {
+                            val intent = android.content.Intent(context, PdfViewerActivity::class.java).apply {
                                 action = android.content.Intent.ACTION_VIEW
                                 setDataAndType(openUri, "application/pdf")
                                 addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -1533,3 +1537,127 @@ private fun toolFieldColors() = OutlinedTextFieldDefaults.colors(
 // ─────────────────────────────────────────────────────────────────────────────
 // uriToBase64(context, uri) → String?
 // getFileName(context, uri) → String
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PDF VIEWER LAYER SELECTOR
+// Displays 4 styled chips; selection is persisted via SharedPreferences
+// key "pdf_engine". FileManagerPlusActivity reads this key when opening PDFs.
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+internal fun PdfViewerLayerSelector(context: android.content.Context) {
+    val prefs = remember {
+        android.preference.PreferenceManager.getDefaultSharedPreferences(context)
+    }
+    var selected by remember {
+        mutableStateOf(prefs.getString("pdf_engine", "pdfium_compose") ?: "pdfium_compose")
+    }
+
+    // Layer definitions: key, label, emoji, accent color, description
+    data class Layer(val key: String, val label: String, val icon: String, val color: Color, val desc: String)
+
+    val layers = listOf(
+        Layer("pdfium_compose", "Pdfium\nCompose", "⚡", Color(0xFF6C63FF), "Native Compose render"),
+        Layer("pdfium_legacy",  "Pdfium\nLegacy",  "📄", Color(0xFF4DA6FF), "UniversalViewer flow"),
+        Layer("webview",        "WebView",          "🌐", Color(0xFF3FD68F), "Google Docs viewer"),
+        Layer("chooser",        "System\nChooser",  "🔀", Color(0xFFFFB347), "Android open-with"),
+    )
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp)
+    ) {
+        // Section header
+        Row(
+            Modifier.fillMaxWidth().padding(bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "📂  PDF Viewer Layer",
+                fontSize   = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color      = MUTED
+            )
+            Spacer(Modifier.weight(1f))
+            // active badge
+            val active = layers.firstOrNull { it.key == selected }
+            if (active != null) {
+                Box(
+                    Modifier
+                        .background(active.color.copy(0.18f), RoundedCornerShape(6.dp))
+                        .border(1.dp, active.color.copy(0.35f), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        "${active.icon} ${active.label.replace("\n", " ")}",
+                        fontSize = 10.sp,
+                        color    = active.color
+                    )
+                }
+            }
+        }
+
+        // 2×2 grid of chips
+        val rows = layers.chunked(2)
+        rows.forEach { rowItems ->
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                rowItems.forEach { layer ->
+                    val isActive = selected == layer.key
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                if (isActive) layer.color.copy(0.18f)
+                                else          Color(0xFF16161F)
+                            )
+                            .border(
+                                width  = if (isActive) 1.5.dp else 1.dp,
+                                color  = if (isActive) layer.color else Color(0xFF252535),
+                                shape  = RoundedCornerShape(14.dp)
+                            )
+                            .clickable {
+                                selected = layer.key
+                                prefs.edit().putString("pdf_engine", layer.key).apply()
+                            }
+                            .padding(12.dp)
+                    ) {
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(layer.icon, fontSize = 22.sp)
+                                Spacer(Modifier.width(6.dp))
+                                if (isActive) {
+                                    Box(
+                                        Modifier
+                                            .size(8.dp)
+                                            .background(layer.color, CircleShape)
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                layer.label,
+                                fontSize   = 11.sp,
+                                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
+                                color      = if (isActive) layer.color else Color(0xFFF0EFFF).copy(0.80f),
+                                lineHeight = 14.sp
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                layer.desc,
+                                fontSize = 9.sp,
+                                color    = Color(0xFF55556A)
+                            )
+                        }
+                    }
+                }
+                // fill gap if odd count in last row
+                if (rowItems.size == 1) Spacer(Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+    }
+}

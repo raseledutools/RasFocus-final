@@ -17,7 +17,6 @@ import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
-import com.rasel.RasFocus.filemanager.FMPdfViewerActivity
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UniversalViewerActivity
@@ -26,13 +25,13 @@ import com.rasel.RasFocus.filemanager.FMPdfViewerActivity
 //   PDF, DOCX, PPTX, XLSX, XLS, JPG, PNG, WEBP, GIF, TXT, MD, and more.
 //
 // Strategy:
-//   • PDF             → FMPdfViewerActivity (direct)
+//   • PDF             → PdfViewerActivity (direct)
 //   • DOCX / DOC      → DocxViewerActivity (converts to PDF internally)
 //   • PPTX / PPT      → PptxViewerActivity (converts to PDF internally)
 //   • XLSX / XLS      → XlsxViewerActivity (converts to PDF internally)
-//   • Images          → ImageViewerActivity
+//   • Images          → wrap in a 1-page PDF → PdfViewerActivity
 //   • TXT / MD / code → TextViewerActivity
-//   • Unknown         → FMPdfViewerActivity
+//   • Unknown         → try PdfViewerActivity, fall back to TextViewerActivity
 //
 // Having ONE activity declared in the manifest means Android shows
 // "RasFocus" exactly once in the "Open with" picker regardless of file type.
@@ -93,7 +92,7 @@ class UniversalViewerActivity : ComponentActivity() {
                 }
                 when (fileType) {
                     FileType.PDF -> {
-                        openDirect(FMPdfViewerActivity::class.java, uri, "application/pdf")
+                        openByClassName("${packageName.replace(".combo","")}.selfcontrol.study_tools.PdfViewerActivity", uri, "application/pdf")
                     }
                     FileType.DOCX -> {
                         openDirect(DocxViewerActivity::class.java, uri, mimeType.ifEmpty {
@@ -118,7 +117,7 @@ class UniversalViewerActivity : ComponentActivity() {
                         openDirect(TextViewerActivity::class.java, uri, mimeType.ifEmpty { "text/plain" })
                     }
                     FileType.UNKNOWN -> {
-                        openDirect(FMPdfViewerActivity::class.java, uri, "application/pdf")
+                        openByClassName("${packageName.replace(".combo","")}.selfcontrol.study_tools.PdfViewerActivity", uri, "application/pdf")
                     }
                 }
             }
@@ -147,41 +146,16 @@ class UniversalViewerActivity : ComponentActivity() {
 
     private fun openDirect(cls: Class<*>, uri: Uri, mimeType: String) {
         try {
-            // FIX: Take persistable grant BEFORE launching the viewer so the URI
-            // stays valid even after this Activity finishes. Without this, the
-            // content:// grant was bound to UniversalViewerActivity's lifetime —
-            // the moment finish() ran the grant expired and PdfViewerActivity
-            // got a SecurityException when it tried to open the file, causing
-            // an instant crash or a blank/frozen viewer screen.
-            if (uri.scheme == "content") {
-                try {
-                    contentResolver.takePersistableUriPermission(
-                        uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
-                    )
-                } catch (_: SecurityException) {
-                    // Source didn't offer persistable grant — not fatal,
-                    // the inline FLAG_GRANT_READ_URI_PERMISSION on the Intent
-                    // will carry the grant to the child activity directly.
-                } catch (_: Exception) { /* ignore */ }
-            }
-
             startActivity(Intent(this, cls).apply {
                 action = Intent.ACTION_VIEW
                 setDataAndType(uri, mimeType)
-                // FLAG_GRANT_READ_URI_PERMISSION forwards the grant to the
-                // receiving Activity even when this Activity finishes immediately.
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                // ClipData is required on Android 12+ for the grant to transfer
-                // correctly when the intent carries a content:// URI.
+                addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                // Forward the original URI grant so the target Activity
+                // can open it even after process death/recreation
                 if (uri.scheme == "content") {
                     clipData = android.content.ClipData.newRawUri("", uri)
                 }
-                // FIX: Do NOT use FLAG_ACTIVITY_NEW_TASK here.
-                // Launching into a new task breaks the URI grant chain on
-                // Android 10+ (the grant is tied to the calling task).
-                // Without NEW_TASK, the viewer Activity joins the same task
-                // so back-press returns to the correct previous screen instead
-                // of dropping the user to the launcher / main screen.
             })
         } catch (e: Exception) {
             android.widget.Toast.makeText(
@@ -190,33 +164,17 @@ class UniversalViewerActivity : ComponentActivity() {
                 android.widget.Toast.LENGTH_SHORT
             ).show()
         }
-        // FIX: Don't finish() immediately — let the OS animate the transition
-        // first. Calling finish() before the new Activity is fully created can
-        // sometimes cause the URI grant to be revoked before PdfViewerActivity
-        // reads the file descriptor, producing a silent crash on some ROMs.
-        // overridePendingTransition(0, 0) makes the hand-off invisible so the
-        // user doesn't see a flicker of the UniversalViewerActivity background.
-        overridePendingTransition(0, 0)
         finish()
     }
 
-    // Use class name string so PdfViewerActivity (flavor-only) resolves at runtime.
-    // MUST use classLoader from the application context — plain Class.forName() uses
-    // the system/bootstrap classloader which cannot see app classes and always throws
-    // ClassNotFoundException for Activity subclasses on Android.
+    // Use class name string so PdfViewerActivity (flavor-only) resolves at runtime
     private fun openByClassName(className: String, uri: Uri, mimeType: String) {
         try {
-            val cls = Class.forName(className, true, classLoader)
+            val cls = Class.forName(className)
             openDirect(cls, uri, mimeType)
         } catch (e: ClassNotFoundException) {
-            // Fallback: try application classLoader
-            try {
-                val cls2 = Class.forName(className, true, application.classLoader)
-                openDirect(cls2, uri, mimeType)
-            } catch (e2: ClassNotFoundException) {
-                android.widget.Toast.makeText(this, "PDF viewer not available in this version.", android.widget.Toast.LENGTH_SHORT).show()
-                finish()
-            }
+            android.widget.Toast.makeText(this, "Viewer not available in this version.", android.widget.Toast.LENGTH_SHORT).show()
+            finish()
         }
     }
 

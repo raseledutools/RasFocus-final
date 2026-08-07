@@ -1,4 +1,4 @@
-package com.rasel.RasFocus.filemanager
+package com.rasel.RasFocus.selfcontrol.study_tools
 
 import android.net.Uri
 import android.os.Bundle
@@ -14,9 +14,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.sync.Mutex
-import androidx.compose.ui.unit.dp
+import com.rasel.RasFocus.filemanager.PdfPage
 
-class FMPdfViewerActivity : ComponentActivity() {
+class PdfViewerActivity : ComponentActivity() {
     private var pfd: ParcelFileDescriptor? = null
     private var pdfRenderer: PdfRenderer? = null
 
@@ -37,21 +37,21 @@ class FMPdfViewerActivity : ComponentActivity() {
 
         setContent {
             val mutex = remember { Mutex() }
-            Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFFF5F5F5)) {
+            Surface(modifier = Modifier.fillMaxSize(), color = Color.LightGray) {
                 if (pdfRenderer != null) {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        contentPadding = PaddingValues(vertical = 16.dp)
+                        contentPadding = PaddingValues(vertical = 8.dp)
                     ) {
                         items(pdfRenderer!!.pageCount) { index ->
                             PdfPage(pdfRenderer = pdfRenderer!!, pageIndex = index, mutex = mutex)
-                            Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
                         }
                     }
                 } else {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("Failed to open PDF from File Manager.", color = Color.Red)
+                        Text("Failed to load PDF", color = Color.Red)
                     }
                 }
             }
