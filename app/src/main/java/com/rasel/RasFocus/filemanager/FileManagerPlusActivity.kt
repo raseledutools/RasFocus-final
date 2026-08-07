@@ -1608,6 +1608,41 @@ fun DrawerContent(onNavigate: (NavState) -> Unit) {
             })
         }
 
+        // ── PDF Viewer Switch ─────────────────────────────────────────────────
+        val pdfPrefs = remember {
+            android.preference.PreferenceManager.getDefaultSharedPreferences(context)
+        }
+        var usePdfium by remember {
+            mutableStateOf(pdfPrefs.getString("pdf_engine", "pdfium_compose") != "webview")
+        }
+        Divider()
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column {
+                Text("PDF Viewer", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Color(0xFF1D1B20))
+                Text(
+                    if (usePdfium) "Pdfium (fast)" else "WebView (Google Docs)",
+                    fontSize = 11.sp,
+                    color = Color(0xFF49454F)
+                )
+            }
+            Switch(
+                checked = usePdfium,
+                onCheckedChange = { checked ->
+                    usePdfium = checked
+                    pdfPrefs.edit()
+                        .putString("pdf_engine", if (checked) "pdfium_compose" else "webview")
+                        .apply()
+                },
+                colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFF00796B), checkedTrackColor = Color(0xFF00796B).copy(alpha = 0.4f))
+            )
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()
