@@ -265,16 +265,6 @@ fun LocalFileScreen(
     // Track the last paste operation so we can auto-refresh when it finishes
     var pendingOpId by remember { mutableStateOf<String?>(null) }
 
-    // Auto-refresh when the pending paste/move operation completes
-    LaunchedEffect(operations, pendingOpId) {
-        val id = pendingOpId ?: return@LaunchedEffect
-        val op = operations.find { it.id == id }
-        if (op != null && (op.isComplete || op.isError || op.isCancelled)) {
-            pendingOpId = null
-            refreshFiles()
-        }
-    }
-
     // Dialog states
     var showRenameDialog by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<File?>(null) }
@@ -299,6 +289,16 @@ fun LocalFileScreen(
             withContext(kotlinx.coroutines.Dispatchers.Main) {
                 rawFiles = result
             }
+        }
+    }
+
+    // Auto-refresh when the pending paste/move operation completes
+    LaunchedEffect(operations, pendingOpId) {
+        val id = pendingOpId ?: return@LaunchedEffect
+        val op = operations.find { it.id == id }
+        if (op != null && (op.isComplete || op.isError || op.isCancelled)) {
+            pendingOpId = null
+            refreshFiles()
         }
     }
 
