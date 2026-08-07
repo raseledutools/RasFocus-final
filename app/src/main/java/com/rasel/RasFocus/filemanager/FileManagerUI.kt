@@ -1205,7 +1205,7 @@ fun CloudFileScreen(
                                                 if (isCached) {
                                                     val localFile = DriveCacheManager.getCachedFile(context, file.id, file.name)
                                                     if (localFile != null) {
-                                                        openLocalFile(context, localFile)
+                                                        openLocalFile(context, localFile, onNavigate)
                                                         return@launch
                                                     }
                                                 }

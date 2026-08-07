@@ -401,10 +401,18 @@ fun HomeScreen() {
             currentNavState == NavState.StorageAnalyzer ||
             currentNavState == NavState.AppManager ||
             currentNavState == NavState.DriveOfflineSettings ||
-            currentNavState is NavState.TextEditor ||
             currentNavState is NavState.P2PChat ||
             currentNavState is NavState.Category -> {
                 currentNavState = NavState.Home
+            }
+            currentNavState is NavState.TextEditor -> {
+                val s = currentNavState as NavState.TextEditor
+                val parent = java.io.File(s.path).parent
+                if (parent != null && java.io.File(parent).exists()) {
+                    currentNavState = NavState.Local(parent)
+                } else {
+                    currentNavState = NavState.Home
+                }
             }
             currentNavState is NavState.ImageViewer -> {
                 val s = currentNavState as NavState.ImageViewer

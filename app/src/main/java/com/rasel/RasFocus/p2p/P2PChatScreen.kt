@@ -1,7 +1,10 @@
 package com.rasel.RasFocus.p2p
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -51,6 +54,30 @@ fun P2PChatScreen(
     val audioPlayer = remember { AudioPlayerHelper() }
     var isRecording by remember { mutableStateOf(false) }
 
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let {
+            scope.launch(Dispatchers.IO) {
+                try {
+                    val inputStream = context.contentResolver.openInputStream(uri)
+                    val fileName = getFileNameFromUri(context, uri) ?: "file_${System.currentTimeMillis()}"
+                    val tempFile = File(context.cacheDir, fileName)
+                    inputStream?.use { input ->
+                        tempFile.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    if (tempFile.exists() && tempFile.length() > 0) {
+                        connectionManager.sendFile(tempFile)
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+    }
+
     val recordPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
@@ -62,15 +89,27 @@ fun P2PChatScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(device.name, color = Color.White) },
+                title = { 
+                    Column {
+                        Text(device.name, color = Color.White, style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            text = if (connectionManager.isConnected) "Connected (${device.ip})" else "P2P Session (${device.ip})",
+                            color = Color.White.copy(alpha = 0.8f),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
                     }
                 },
                 actions = {
+                    IconButton(onClick = { filePickerLauncher.launch("*/*") }) {
+                        Icon(Icons.Default.AttachFile, contentDescription = "Send File", tint = Color.White)
+                    }
                     IconButton(onClick = onBrowseFolders) {
-                        Icon(Icons.Default.Folder, contentDescription = "Browse Folders", tint = Color.White)
+                        Icon(Icons.Default.Folder, contentDescription = "Browse Shared Folders", tint = Color.White)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF128C7E))
@@ -100,6 +139,12 @@ fun P2PChatScreen(
                     .padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                IconButton(
+                    onClick = { filePickerLauncher.launch("*/*") }
+                ) {
+                    Icon(Icons.Default.AttachFile, contentDescription = "Attach File", tint = Color(0xFF128C7E))
+                }
+
                 OutlinedTextField(
                     value = messageText,
                     onValueChange = { messageText = it },
@@ -162,6 +207,18 @@ fun P2PChatScreen(
             }
         }
     }
+}
+
+private fun getFileNameFromUri(context: Context, uri: Uri): String? {
+    var name: String? = null
+    val cursor = context.contentResolver.query(uri, null, null, null, null)
+    cursor?.use {
+        if (it.moveToFirst()) {
+            val index = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (index != -1) name = it.getString(index)
+        }
+    }
+    return name
 }
 
 @Composable

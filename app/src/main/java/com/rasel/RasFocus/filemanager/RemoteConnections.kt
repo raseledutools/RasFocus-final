@@ -51,11 +51,13 @@ fun RemoteConnectionsScreen(
     onBack: () -> Unit
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
+    var showManualIpDialog by remember { mutableStateOf(false) }
+    val myIp = remember { P2PDiscoveryManager.getLocalIpAddress() }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Remote Connections", color = Color.White) },
+                title = { Text("Remote & P2P Connections", color = Color.White) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
@@ -73,71 +75,211 @@ fun RemoteConnectionsScreen(
     ) { padding ->
         val discoveredDevices by p2pDiscovery.discoveredDevices.collectAsState()
 
-        if (RemoteStore.servers.isEmpty() && discoveredDevices.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text("No remote connections added & no nearby devices found.", color = Color.Gray)
-            }
-        } else {
-            LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
-                if (discoveredDevices.isNotEmpty()) {
-                    item {
-                        Text(
-                            text = "Nearby Devices (Auto-Discovered)",
-                            color = Color(0xFF1565C0),
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                            modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 8.dp)
-                        )
-                    }
-                    items(discoveredDevices) { device ->
-                        ListItem(
-                            headlineContent = { Text(device.name) },
-                            supportingContent = { Text("${device.ip}:${device.port}") },
-                            leadingContent = { 
+        LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
+            // P2P Info Header Card
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1565C0).copy(alpha = 0.1f)),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
-                                    Icons.Default.Wifi, 
-                                    contentDescription = null, 
-                                    tint = Color(0xFF388E3C)
-                                ) 
-                            },
-                            modifier = Modifier.clickable {
-                                // Connect as client and open chat
-                                p2pConnection.connectToDevice(device.ip, device.port, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO))
-                                onNavigate(NavState.P2PChat(device.name, device.ip, device.port))
+                                    Icons.Default.Wifi,
+                                    contentDescription = null,
+                                    tint = Color(0xFF1565C0),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = "P2P Local Connection",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = Color(0xFF1565C0),
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                )
                             }
+                            IconButton(onClick = {
+                                p2pDiscovery.discoverServices()
+                            }) {
+                                Icon(
+                                    Icons.Default.Add, // or refresh indicator
+                                    contentDescription = "Scan",
+                                    tint = Color(0xFF1565C0)
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "My Device IP: $myIp",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                         )
-                        Divider()
+                        Text(
+                            text = "Share this IP with other RasFocus devices on your Wi-Fi/Hotspot to connect.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        )
+
+                        Spacer(Modifier.height(12.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = { p2pDiscovery.discoverServices() },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0)),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Re-Scan Nearby")
+                            }
+                            OutlinedButton(
+                                onClick = { showManualIpDialog = true },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Connect by IP")
+                            }
+                        }
                     }
                 }
+            }
 
-                if (RemoteStore.servers.isNotEmpty()) {
-                    item {
+            // Discovered Devices Section
+            item {
+                Text(
+                    text = "Nearby Devices (Auto-Discovered)",
+                    color = Color(0xFF1565C0),
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp)
+                )
+            }
+
+            if (discoveredDevices.isEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
                         Text(
-                            text = "Saved Servers",
-                            color = Color(0xFF1565C0),
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                            modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 8.dp)
+                            "Scanning for nearby RasFocus devices...\nMake sure both devices are on the same Wi-Fi or Hotspot.",
+                            color = Color.Gray,
+                            style = MaterialTheme.typography.bodyMedium,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
                     }
-                    items(RemoteStore.servers) { server ->
-                        ListItem(
-                            headlineContent = { Text(server.name) },
-                            supportingContent = { Text("${server.protocol} • ${server.host}:${server.port}") },
-                            leadingContent = { 
-                                Icon(
-                                    if (server.protocol == "SMB") Icons.Default.Folder else Icons.Default.Computer, 
-                                    contentDescription = null, 
-                                    tint = Color(0xFF1565C0)
-                                ) 
-                            },
-                            modifier = Modifier.clickable {
-                                onNavigate(NavState.Remote(server.id, if (server.protocol == "SMB") "" else "/"))
+                }
+            } else {
+                items(discoveredDevices) { device ->
+                    ListItem(
+                        headlineContent = { Text(device.name) },
+                        supportingContent = { Text("${device.ip}:${device.port}") },
+                        leadingContent = { 
+                            Icon(
+                                Icons.Default.Wifi, 
+                                contentDescription = null, 
+                                tint = Color(0xFF388E3C)
+                            ) 
+                        },
+                        trailingContent = {
+                            Button(
+                                onClick = {
+                                    p2pConnection.connectToDevice(device.ip, device.port, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO))
+                                    onNavigate(NavState.P2PChat(device.name, device.ip, device.port))
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF388E3C))
+                            ) {
+                                Text("Connect")
                             }
-                        )
-                        Divider()
-                    }
+                        },
+                        modifier = Modifier.clickable {
+                            p2pConnection.connectToDevice(device.ip, device.port, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO))
+                            onNavigate(NavState.P2PChat(device.name, device.ip, device.port))
+                        }
+                    )
+                    Divider()
+                }
+            }
+
+            // Saved Servers Section
+            if (RemoteStore.servers.isNotEmpty()) {
+                item {
+                    Text(
+                        text = "Saved Servers (FTP / SMB)",
+                        color = Color(0xFF1565C0),
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 8.dp)
+                    )
+                }
+                items(RemoteStore.servers) { server ->
+                    ListItem(
+                        headlineContent = { Text(server.name) },
+                        supportingContent = { Text("${server.protocol} • ${server.host}:${server.port}") },
+                        leadingContent = { 
+                            Icon(
+                                if (server.protocol == "SMB") Icons.Default.Folder else Icons.Default.Computer, 
+                                contentDescription = null, 
+                                tint = Color(0xFF1565C0)
+                            ) 
+                        },
+                        modifier = Modifier.clickable {
+                            onNavigate(NavState.Remote(server.id, if (server.protocol == "SMB") "" else "/"))
+                        }
+                    )
+                    Divider()
                 }
             }
         }
+    }
+
+    if (showManualIpDialog) {
+        var inputIp by remember { mutableStateOf("") }
+        var inputPort by remember { mutableStateOf("50000") }
+
+        AlertDialog(
+            onDismissRequest = { showManualIpDialog = false },
+            title = { Text("Connect to Device by IP") },
+            text = {
+                Column {
+                    Text("Enter the IP Address shown on the target device:", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = inputIp,
+                        onValueChange = { inputIp = it },
+                        label = { Text("IP Address (e.g. 192.168.1.100)") },
+                        singleLine = true
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = inputPort,
+                        onValueChange = { inputPort = it },
+                        label = { Text("Port (Default: 50000-60000)") },
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val port = inputPort.toIntOrNull() ?: 50000
+                    if (inputIp.isNotBlank()) {
+                        p2pConnection.connectToDevice(inputIp.trim(), port, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO))
+                        onNavigate(NavState.P2PChat("Device ($inputIp)", inputIp.trim(), port))
+                        showManualIpDialog = false
+                    }
+                }) {
+                    Text("Connect")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showManualIpDialog = false }) { Text("Cancel") }
+            }
+        )
     }
 
     if (showAddDialog) {
