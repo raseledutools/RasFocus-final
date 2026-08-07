@@ -464,12 +464,107 @@ fun LocalFileScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         // ── Header ─────────────────────────────────────────────────────────────
         if (selectedFiles.isNotEmpty()) {
+            val showMerge = selectedFiles.size > 1 && selectedFiles.all { it.lowercase().endsWith(".pdf") }
+            val showUnzip = selectedFiles.size == 1 && selectedFiles.first().lowercase().endsWith(".zip")
+            val showPdfToImages = selectedFiles.size == 1 && selectedFiles.first().lowercase().endsWith(".pdf")
+            val showImagesToPdf = selectedFiles.isNotEmpty() && selectedFiles.all { it.lowercase().endsWith(".jpg") || it.lowercase().endsWith(".png") || it.lowercase().endsWith(".jpeg") }
+            
             SelectionTopBar(
                 selectedCount = selectedFiles.size,
                 totalCount = rawFiles.size,
                 onClose = { selectedFiles = emptySet() },
                 onSelectAll = { selectedFiles = rawFiles.map { it.absolutePath }.toSet() },
-                onDeselectAll = { selectedFiles = emptySet() }
+                onDeselectAll = { selectedFiles = emptySet() },
+                onZip = {
+                    if (selectedFiles.isNotEmpty()) {
+                        scope.launch(Dispatchers.IO) {
+                            val filesToZip = selectedFiles.map { File(it) }
+                            val zipFile = File(path, "archive_${System.currentTimeMillis()}.zip")
+                            val success = LocalFileManager.zipFiles(filesToZip, zipFile)
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(context, if (success) "Zipped successfully" else "Failed to zip", Toast.LENGTH_SHORT).show()
+                                selectedFiles = emptySet()
+                                rawFiles = LocalFileManager.listFiles(path)
+                            }
+                        }
+                    }
+                },
+                onUnzip = if (showUnzip) { {
+                    scope.launch(Dispatchers.IO) {
+                        var success = true
+                        for (item in selectedFiles) {
+                            val zipFile = File(item)
+                            if (zipFile.extension.lowercase() == "zip") {
+                                val targetDir = File(path, zipFile.nameWithoutExtension)
+                                if (!LocalFileManager.unzipFile(zipFile, targetDir)) success = false
+                            }
+                        }
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, if (success) "Unzipped successfully" else "Unzip failed", Toast.LENGTH_SHORT).show()
+                            selectedFiles = emptySet()
+                            rawFiles = LocalFileManager.listFiles(path)
+                        }
+                    }
+                } } else null,
+                onMergePdf = if (showMerge) { {
+                    scope.launch(Dispatchers.IO) {
+                        val filesToMerge = selectedFiles.map { File(it) }
+                        val destFile = File(path, "Merged_${System.currentTimeMillis()}.pdf")
+                        val success = PdfHelper.mergePdfs(context, filesToMerge, destFile)
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, if (success) "Merged successfully" else "Merge failed", Toast.LENGTH_SHORT).show()
+                            selectedFiles = emptySet()
+                            rawFiles = LocalFileManager.listFiles(path)
+                        }
+                    }
+                } } else null,
+                onPdfToImages = if (showPdfToImages) { {
+                    scope.launch(Dispatchers.IO) {
+                        val pdfFile = File(selectedFiles.first())
+                        val targetDir = File(path, pdfFile.nameWithoutExtension)
+                        targetDir.mkdirs()
+                        val success = PdfHelper.pdfToImages(context, pdfFile, targetDir)
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, if (success) "PDF converted to images" else "Conversion failed", Toast.LENGTH_SHORT).show()
+                            selectedFiles = emptySet()
+                            rawFiles = LocalFileManager.listFiles(path)
+                        }
+                    }
+                } } else null,
+                onImagesToPdf = if (showImagesToPdf) { {
+                    scope.launch(Dispatchers.IO) {
+                        val images = selectedFiles.map { File(it) }
+                        val pdfDest = File(path, "images_${System.currentTimeMillis()}.pdf")
+                        val success = PdfHelper.imagesToPdf(context, images, pdfDest)
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, if (success) "Images converted to PDF" else "Conversion failed", Toast.LENGTH_SHORT).show()
+                            selectedFiles = emptySet()
+                            rawFiles = LocalFileManager.listFiles(path)
+                        }
+                    }
+                } } else null,
+                onSecure = {
+                    scope.launch(Dispatchers.IO) {
+                        var success = true
+                        for (item in selectedFiles) {
+                            val file = File(item)
+                            if (!LocalFileManager.moveToVault(file)) success = false
+                        }
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, if (success) "Secured in vault" else "Failed to secure", Toast.LENGTH_SHORT).show()
+                            selectedFiles = emptySet()
+                            rawFiles = LocalFileManager.listFiles(path)
+                        }
+                    }
+                },
+                onProperties = {
+                    if (selectedFiles.size == 1) {
+                        propertiesTarget = File(selectedFiles.first())
+                        selectedFiles = emptySet()
+                    } else {
+                        Toast.makeText(context, "Select one item for properties", Toast.LENGTH_SHORT).show()
+                    }
+                }
             )
         } else {
             FileManagerHeader(
@@ -658,23 +753,7 @@ fun LocalFileScreen(
 
         // ── Footer: selection action bar — always below content ────────────────
         if (selectedFiles.isNotEmpty()) {
-            val allPdf = selectedFiles.all { it.lowercase().endsWith(".pdf") }
-            val showMergePdf = selectedFiles.size > 1 && allPdf
-
             SelectionBottomBar(
-                showMergePdf = showMergePdf,
-                onMergePdf = {
-                    scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                        val filesToMerge = selectedFiles.map { File(it) }
-                        val destFile = File(path, "Merged_${System.currentTimeMillis()}.pdf")
-                        val success = PdfHelper.mergePdfs(context, filesToMerge, destFile)
-                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                            Toast.makeText(context, if (success) "Merged successfully" else "Merge failed", Toast.LENGTH_SHORT).show()
-                            selectedFiles = emptySet()
-                            rawFiles = LocalFileManager.listFiles(path)
-                        }
-                    }
-                },
                 onCopy = {
                     onSetClipboard(ClipboardState("Local", selectedFiles.toList(), isCut = false))
                     selectedFiles = emptySet()
@@ -692,14 +771,6 @@ fun LocalFileScreen(
                     }
                 },
                 onDelete = { showDeleteDialog = true },
-                onProperties = {
-                    if (selectedFiles.size == 1) {
-                        propertiesTarget = File(selectedFiles.first())
-                        selectedFiles = emptySet()
-                    } else {
-                        Toast.makeText(context, "Select only one item to view properties", Toast.LENGTH_SHORT).show()
-                    }
-                },
                 onShare = {
                     val filesToShare = selectedFiles.map { File(it) }.filter { !it.isDirectory }
                     if (filesToShare.isNotEmpty()) {
@@ -707,49 +778,6 @@ fun LocalFileScreen(
                         selectedFiles = emptySet()
                     } else {
                         Toast.makeText(context, "Cannot share folders", Toast.LENGTH_SHORT).show()
-                    }
-                },
-                onZip = {
-                    scope.launch(Dispatchers.IO) {
-                        val filesToZip = selectedFiles.map { File(it) }
-                        val zipFile = File(path, "archive_${System.currentTimeMillis()}.zip")
-                        val success = LocalFileManager.zipFiles(filesToZip, zipFile)
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(context, if (success) "Zipped successfully" else "Failed to zip", Toast.LENGTH_SHORT).show()
-                            selectedFiles = emptySet()
-                            rawFiles = LocalFileManager.listFiles(path)
-                        }
-                    }
-                },
-                onUnzip = {
-                    scope.launch(Dispatchers.IO) {
-                        var success = true
-                        for (item in selectedFiles) {
-                            val zipFile = File(item)
-                            if (zipFile.extension.lowercase() == "zip") {
-                                val targetDir = File(path, zipFile.nameWithoutExtension)
-                                if (!LocalFileManager.unzipFile(zipFile, targetDir)) success = false
-                            }
-                        }
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(context, if (success) "Unzipped successfully" else "Unzip failed", Toast.LENGTH_SHORT).show()
-                            selectedFiles = emptySet()
-                            rawFiles = LocalFileManager.listFiles(path)
-                        }
-                    }
-                },
-                onSecure = {
-                    scope.launch(Dispatchers.IO) {
-                        var success = true
-                        for (item in selectedFiles) {
-                            val file = File(item)
-                            if (!LocalFileManager.moveToVault(file)) success = false
-                        }
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(context, if (success) "Secured in vault" else "Failed to secure", Toast.LENGTH_SHORT).show()
-                            selectedFiles = emptySet()
-                            rawFiles = LocalFileManager.listFiles(path)
-                        }
                     }
                 }
             )
@@ -976,7 +1004,25 @@ fun CloudFileScreen(
                 totalCount = rawFiles.size,
                 onClose = { selectedFiles = emptySet() },
                 onSelectAll = { selectedFiles = rawFiles.map { it.id }.toSet() },
-                onDeselectAll = { selectedFiles = emptySet() }
+                onDeselectAll = { selectedFiles = emptySet() },
+                onProperties = {
+                    if (selectedFiles.size == 1) {
+                        val fileId = selectedFiles.first()
+                        val file = rawFiles.find { it.id == fileId }
+                        if (file != null) {
+                            val sb = java.lang.StringBuilder()
+                            sb.appendLine("Name: ${file.name}")
+                            sb.appendLine("Type: ${if (file.mimeType == "application/vnd.google-apps.folder") "Folder" else file.mimeType ?: "Unknown"}")
+                            if (file.size != null) sb.appendLine("Size: ${formatFileSize(file.size.toLong())}")
+                            if (file.modifiedTime != null) sb.appendLine("Modified: ${formatDate(file.modifiedTime.value)}")
+                            sb.appendLine("Drive ID: ${file.id}")
+                            Toast.makeText(context, sb.toString().trimEnd(), Toast.LENGTH_LONG).show()
+                        }
+                        selectedFiles = emptySet()
+                    } else {
+                        Toast.makeText(context, "Select only one item", Toast.LENGTH_SHORT).show()
+                    }
+                }
             )
         } else {
             FileManagerHeader(
@@ -1239,24 +1285,6 @@ fun CloudFileScreen(
                     }
                 },
                 onDelete = { showDeleteDialog = true },
-                onProperties = {
-                    if (selectedFiles.size == 1) {
-                        val fileId = selectedFiles.first()
-                        val file = rawFiles.find { it.id == fileId }
-                        if (file != null) {
-                            val sb = StringBuilder()
-                            sb.appendLine("Name: ${file.name}")
-                            sb.appendLine("Type: ${if (file.mimeType == "application/vnd.google-apps.folder") "Folder" else file.mimeType ?: "Unknown"}")
-                            if (file.size != null) sb.appendLine("Size: ${formatFileSize(file.size.toLong())}")
-                            if (file.modifiedTime != null) sb.appendLine("Modified: ${formatDate(file.modifiedTime.value)}")
-                            sb.appendLine("Drive ID: ${file.id}")
-                            Toast.makeText(context, sb.toString().trimEnd(), Toast.LENGTH_LONG).show()
-                        }
-                        selectedFiles = emptySet()
-                    } else {
-                        Toast.makeText(context, "Select only one item", Toast.LENGTH_SHORT).show()
-                    }
-                },
                 onShare = {
                     scope.launch {
                         val filesToShare = selectedFiles.mapNotNull { fileId ->
@@ -1493,6 +1521,174 @@ fun FileManagerHeader(
                             overflow = TextOverflow.Ellipsis
                         )
                         if (subtitle.isNotEmpty()) {
+                            Text(
+                                text = subtitle,
+                                color = Color.White.copy(alpha = 0.75f),
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                    IconButton(onClick = { isSearchExpanded = true }) {
+                        Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
+                    }
+                    IconButton(onClick = onToggleGrid) {
+                        Icon(
+                            if (isGridView) Icons.Default.ViewList else Icons.Default.GridView,
+                            contentDescription = "Toggle View",
+                            tint = Color.White
+                        )
+                    }
+                    IconButton(onClick = onNewFolder) {
+                        Icon(
+                            Icons.Default.CreateNewFolder,
+                            contentDescription = "New folder",
+                            tint = Color.White
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ── Paste FAB with count badge ─────────────────────────────────────────────────
+@Composable
+fun PasteFloatingButton(
+    itemCount: Int,
+    isCut: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Box(modifier = modifier) {
+        ExtendedFloatingActionButton(
+            onClick = onClick,
+            containerColor = Color(0xFF00796B),
+            contentColor = Color.White,
+            icon = {
+                Icon(Icons.Default.ContentPaste, contentDescription = "Paste")
+            },
+            text = {
+                Text(
+                    text = if (isCut) "Move $itemCount item${if (itemCount != 1) "s" else ""} here"
+                           else "Paste $itemCount item${if (itemCount != 1) "s" else ""} here",
+                    fontSize = 13.sp
+                )
+            }
+        )
+    }
+}
+
+// ── Selection top bar ──────────────────────────────────────────────────────────
+@Composable
+fun SelectionTopBar(
+    selectedCount: Int,
+    totalCount: Int,
+    onClose: () -> Unit,
+    onSelectAll: () -> Unit,
+    onDeselectAll: () -> Unit = {},
+    onZip: (() -> Unit)? = null,
+    onUnzip: (() -> Unit)? = null,
+    onMergePdf: (() -> Unit)? = null,
+    onPdfToImages: (() -> Unit)? = null,
+    onImagesToPdf: (() -> Unit)? = null,
+    onSecure: (() -> Unit)? = null,
+    onProperties: (() -> Unit)? = null
+) {
+    var showMoreMenu by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+
+    Surface(
+        color = Color(0xFF1A6B6B),
+        shadowElevation = 4.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onClose) {
+                Icon(Icons.Default.Close, contentDescription = "Cancel selection", tint = Color.White, modifier = Modifier.size(22.dp))
+            }
+            Text(
+                text = "$selectedCount/$totalCount",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                modifier = Modifier.weight(1f).padding(start = 4.dp)
+            )
+            IconButton(onClick = onSelectAll) {
+                Icon(imageVector = Icons.Default.SelectAll, contentDescription = "Select all", tint = Color.White, modifier = Modifier.size(26.dp))
+            }
+            IconButton(onClick = onDeselectAll) {
+                Icon(imageVector = Icons.Default.Deselect, contentDescription = "Deselect all", tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(26.dp))
+            }
+            
+            androidx.compose.foundation.layout.Box {
+                IconButton(onClick = { showMoreMenu = true }) {
+                    Icon(imageVector = Icons.Default.MoreVert, contentDescription = "More Options", tint = Color.White)
+                }
+                androidx.compose.material3.DropdownMenu(
+                    expanded = showMoreMenu,
+                    onDismissRequest = { showMoreMenu = false }
+                ) {
+                    if (onZip != null) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("Zip") },
+                            onClick = { showMoreMenu = false; onZip() },
+                            leadingIcon = { Icon(Icons.Default.FolderZip, null) }
+                        )
+                    }
+                    if (onUnzip != null) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("Unzip") },
+                            onClick = { showMoreMenu = false; onUnzip() },
+                            leadingIcon = { Icon(Icons.Default.FolderOpen, null) }
+                        )
+                    }
+                    if (onMergePdf != null) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("Merge PDFs") },
+                            onClick = { showMoreMenu = false; onMergePdf() },
+                            leadingIcon = { Icon(Icons.Default.PictureAsPdf, null) }
+                        )
+                    }
+                    if (onPdfToImages != null) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("PDF to Images") },
+                            onClick = { showMoreMenu = false; onPdfToImages() },
+                            leadingIcon = { Icon(Icons.Default.Image, null) }
+                        )
+                    }
+                    if (onImagesToPdf != null) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("Images to PDF") },
+                            onClick = { showMoreMenu = false; onImagesToPdf() },
+                            leadingIcon = { Icon(Icons.Default.PictureAsPdf, null) }
+                        )
+                    }
+                    if (onSecure != null) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("Secure") },
+                            onClick = { showMoreMenu = false; onSecure() },
+                            leadingIcon = { Icon(Icons.Default.Lock, null) }
+                        )
+                    }
+                    if (onProperties != null) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("Properties") },
+                            onClick = { showMoreMenu = false; onProperties() },
+                            leadingIcon = { Icon(Icons.Default.Info, null) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 // ── Selection bottom bar (extended) ───────────────────────────────────────────
 @Composable
 fun SelectionBottomBar(
@@ -1500,13 +1696,7 @@ fun SelectionBottomBar(
     onMove: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
-    onProperties: () -> Unit = {},
-    onShare: () -> Unit = {},
-    onZip: () -> Unit = {},
-    onUnzip: () -> Unit = {},
-    onMergePdf: () -> Unit = {},
-    onSecure: () -> Unit = {},
-    showMergePdf: Boolean = false
+    onShare: () -> Unit = {}
 ) {
     Surface(
         color = Color(0xFF1A6B6B),
@@ -1517,25 +1707,15 @@ fun SelectionBottomBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(horizontal = 2.dp, vertical = 6.dp)
-                .horizontalScroll(androidx.compose.foundation.rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                .padding(horizontal = 2.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Spacer(Modifier.width(4.dp))
             SelectionAction(icon = Icons.Default.ContentCopy,  label = "Copy",       onClick = onCopy)
             SelectionAction(icon = Icons.Default.DriveFileMove, label = "Move",      onClick = onMove)
             SelectionAction(icon = Icons.Default.Share,         label = "Share",     onClick = onShare)
             SelectionAction(icon = Icons.Default.Edit,          label = "Rename",    onClick = onRename)
             SelectionAction(icon = Icons.Default.Delete,        label = "Delete",    onClick = onDelete)
-            SelectionAction(icon = Icons.Default.FolderZip,     label = "Zip",       onClick = onZip)
-            SelectionAction(icon = Icons.Default.FolderOpen,    label = "Unzip",     onClick = onUnzip)
-            if (showMergePdf) {
-                SelectionAction(icon = Icons.Default.PictureAsPdf, label = "Merge", onClick = onMergePdf)
-            }
-            SelectionAction(icon = Icons.Default.Lock,          label = "Secure",    onClick = onSecure)
-            SelectionAction(icon = Icons.Default.Info,          label = "Info",      onClick = onProperties)
-            Spacer(Modifier.width(4.dp))
         }
     }
 }
@@ -1681,10 +1861,6 @@ fun FileOperationsBanner(modifier: Modifier = Modifier) {
         }
     }
 }
-
-
-
-
 
 
 
