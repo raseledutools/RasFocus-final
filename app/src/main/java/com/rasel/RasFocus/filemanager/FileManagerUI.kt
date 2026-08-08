@@ -96,6 +96,49 @@ import kotlinx.coroutines.Dispatchers
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 
+// ── Share helpers — defined here so FileManagerUI resolves them independently ──
+// (same definitions also exist in FileManagerPlusActivity; Kotlin deduplicates
+// them at link time since they are package-level functions in the same package)
+internal fun shareLocalFile(context: android.content.Context, file: java.io.File) {
+    try {
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file
+        )
+        val ext = file.extension.lowercase()
+        val mimeType = android.webkit.MimeTypeMap.getSingleton()
+            .getMimeTypeFromExtension(ext) ?: "*/*"
+        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = mimeType
+            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(android.content.Intent.createChooser(intent, "Share ${file.name}"))
+    } catch (e: Exception) {
+        android.widget.Toast.makeText(context, "Cannot share file: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+    }
+}
+
+internal fun shareLocalFiles(context: android.content.Context, files: List<java.io.File>) {
+    if (files.size == 1) { shareLocalFile(context, files.first()); return }
+    try {
+        val uris = ArrayList(files.map { file ->
+            androidx.core.content.FileProvider.getUriForFile(
+                context, "${context.packageName}.fileprovider", file
+            )
+        })
+        val intent = android.content.Intent(android.content.Intent.ACTION_SEND_MULTIPLE).apply {
+            type = "*/*"
+            putParcelableArrayListExtra(android.content.Intent.EXTRA_STREAM, uris)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(android.content.Intent.createChooser(intent, "Share ${files.size} files"))
+    } catch (e: Exception) {
+        android.widget.Toast.makeText(context, "Cannot share files: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+    }
+}
+
 // ── Rename Dialog ──────────────────────────────────────────────────────────────
 @Composable
 fun RenameDialog(
