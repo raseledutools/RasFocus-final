@@ -778,39 +778,7 @@ fun LocalFileScreen(
                     }
 
                     // ── Paste FAB — only when clipboard active & no selection ─
-                    if (clipboard != null && selectedFiles.isEmpty()) {
-                        PasteFloatingButton(
-                            itemCount = clipboard.items.size,
-                            isCut = clipboard.isCut,
-                            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 16.dp),
-                            onClick = {
-                                val opId = java.util.UUID.randomUUID().toString()
-                                val op = FileOperation(
-                                    id = opId,
-                                    type = if (clipboard.isCut) OperationType.MOVE else OperationType.COPY,
-                                    sourceCount = clipboard.items.size,
-                                    itemsProcessed = 0
-                                )
-                                FileOperationManager.addOperation(op)
-                                val intent = android.content.Intent(context, FileOperationService::class.java).apply {
-                                    action = "ACTION_START"
-                                    putExtra("OP_ID", opId)
-                                    putStringArrayListExtra("SOURCE_PATHS", ArrayList(clipboard.items))
-                                    putExtra("DEST_PATH", path)
-                                    putExtra("IS_CUT", clipboard.isCut)
-                                    putExtra("SOURCE_ENV", clipboard.sourceEnv)
-                                }
-                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                    context.startForegroundService(intent)
-                                } else {
-                                    context.startService(intent)
-                                }
-                                onSetClipboard(null)
-                                // Track this op so LaunchedEffect can auto-refresh when done
-                                pendingOpId = opId
-                            }
-                        )
-                    }
+
                 }
             }
         }
@@ -901,6 +869,39 @@ fun LocalFileScreen(
                 onProperties = {
                     if (selectedFiles.size == 1) { propertiesTarget = File(selectedFiles.first()); selectedFiles = emptySet() }
                     else Toast.makeText(context, "Select one item for properties", Toast.LENGTH_SHORT).show()
+                }
+            )
+        }
+        // ── Paste footer bar ─────────────────────────────────────────────────────
+        if (clipboard != null && selectedFiles.isEmpty()) {
+            PasteFooterBar(
+                isCut = clipboard.isCut,
+                itemCount = clipboard.items.size,
+                onCancel = { onSetClipboard(null) },
+                onPaste = {
+                    val opId = java.util.UUID.randomUUID().toString()
+                    val op = FileOperation(
+                        id = opId,
+                        type = if (clipboard.isCut) OperationType.MOVE else OperationType.COPY,
+                        sourceCount = clipboard.items.size,
+                        itemsProcessed = 0
+                    )
+                    FileOperationManager.addOperation(op)
+                    val intent = android.content.Intent(context, FileOperationService::class.java).apply {
+                        action = "ACTION_START"
+                        putExtra("OP_ID", opId)
+                        putStringArrayListExtra("SOURCE_PATHS", ArrayList(clipboard.items))
+                        putExtra("DEST_PATH", path)
+                        putExtra("IS_CUT", clipboard.isCut)
+                        putExtra("SOURCE_ENV", clipboard.sourceEnv)
+                    }
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        context.startForegroundService(intent)
+                    } else {
+                        context.startService(intent)
+                    }
+                    onSetClipboard(null)
+                    pendingOpId = opId
                 }
             )
         }
@@ -1305,89 +1306,58 @@ fun CloudFileScreen(
                         item { Spacer(Modifier.height(80.dp)) }
                     }
 
-                    if (clipboard != null && selectedFiles.isEmpty()) {
-                        PasteFloatingButton(
-                            itemCount = clipboard.items.size,
-                            isCut = clipboard.isCut,
-                            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 16.dp),
-                            onClick = {
-                                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                    var success = true
-                                    if (clipboard.sourceEnv == "Local") {
-                                        for (item in clipboard.items) {
-                                            val src = java.io.File(item)
-                                            
-                                            // UI: Inject dummy uploading file
-                                            val dummyFile = com.google.api.services.drive.model.File()
-                                            dummyFile.id = "uploading_${System.currentTimeMillis()}_${src.name}"
-                                            dummyFile.name = src.name
-                                            dummyFile.mimeType = if (src.isDirectory) "application/vnd.google-apps.folder" else "application/octet-stream"
-                                            
-                                            withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                                val newList = rawFiles.toMutableList()
-                                                newList.add(0, dummyFile)
-                                                rawFiles = newList
-                                            }
-                                            
-                                            if (src.isDirectory) {
-                                                if (!DriveFileManager.uploadFolder(context, accountName, src, folderId)) success = false
-                                            } else {
-                                                if (DriveFileManager.uploadFile(context, accountName, src, folderId) == null) success = false
-                                            }
-                                            if (clipboard.isCut) try { src.deleteRecursively() } catch (_: Exception) {}
-                                        }
-                                    } else if (clipboard.sourceEnv == "Cloud") {
-                                        val srcAccount = clipboard.accountName ?: accountName
-                                        val isCrossAccount = srcAccount != accountName
-                                        for (i in clipboard.items.indices) {
-                                            val id   = clipboard.items[i]
-                                            val name = clipboard.itemNames.getOrNull(i) ?: "file"
-                                            val mime = clipboard.itemMimeTypes.getOrNull(i) ?: ""
-                                            val isFolder = mime == "application/vnd.google-apps.folder"
+            }
+            }
+        }
 
-                                            val ok = when {
-                                                clipboard.isCut && !isCrossAccount -> {
-                                                    // Same account move — fast API call
-                                                    DriveFileManager.moveFile(context, srcAccount, id, folderId, "root") != null
-                                                }
-                                                isCrossAccount -> {
-                                                    // Cross-account: download from src, upload to dest
-                                                    DriveFileManager.crossAccountCopyFile(
-                                                        context, srcAccount, accountName,
-                                                        id, name, folderId, isFolder
-                                                    ).also {
-                                                        // Cut: delete from source after successful copy
-                                                        if (it && clipboard.isCut)
-                                                            DriveFileManager.deleteFile(context, srcAccount, id)
-                                                    }
-                                                }
-                                                isFolder -> {
-                                                    // Same account, folder copy — recursive
-                                                    DriveFileManager.copyFolderRecursive(
-                                                        context, srcAccount, id, name, folderId
-                                                    )
-                                                }
-                                                else -> {
-                                                    // Same account, file copy
-                                                    DriveFileManager.copyFile(context, srcAccount, id, folderId) != null
-                                                }
-                                            }
-                                            if (!ok) success = false
-                                        }
-                                    }
-                                    withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                        Toast.makeText(context, if (success) "Pasted successfully" else "Some items failed to paste", Toast.LENGTH_SHORT).show()
-                                        onSetClipboard(null)
-                                        isLoading = true
-                                        rawFiles = DriveFileManager.listFiles(context, accountName, folderId) ?: emptyList()
-                                        isLoading = false
-                                    }
+        // ── Paste footer bar (cloud) ─────────────────────────────────────────────
+        if (clipboard != null && selectedFiles.isEmpty()) {
+            PasteFooterBar(
+                isCut = clipboard.isCut,
+                itemCount = clipboard.items.size,
+                onCancel = { onSetClipboard(null) },
+                onPaste = {
+                    scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        var success = true
+                        if (clipboard.sourceEnv == "Local") {
+                            for (item in clipboard.items) {
+                                val src = java.io.File(item)
+                                if (src.isDirectory) {
+                                    if (!DriveFileManager.uploadFolder(context, accountName, src, folderId)) success = false
+                                } else {
+                                    if (DriveFileManager.uploadFile(context, accountName, src, folderId) == null) success = false
                                 }
+                                if (clipboard.isCut) try { src.deleteRecursively() } catch (_: Exception) {}
                             }
-                        )
+                        } else if (clipboard.sourceEnv == "Cloud") {
+                            val srcAccount = clipboard.accountName ?: accountName
+                            val isCrossAccount = srcAccount != accountName
+                            for (i in clipboard.items.indices) {
+                                val id   = clipboard.items[i]
+                                val name = clipboard.itemNames.getOrNull(i) ?: "file"
+                                val mime = clipboard.itemMimeTypes.getOrNull(i) ?: ""
+                                val isFolder = mime == "application/vnd.google-apps.folder"
+                                val ok = when {
+                                    clipboard.isCut && !isCrossAccount -> DriveFileManager.moveFile(context, srcAccount, id, folderId, "root") != null
+                                    isCrossAccount -> DriveFileManager.crossAccountCopyFile(context, srcAccount, accountName, id, name, folderId, isFolder).also {
+                                        if (it && clipboard.isCut) DriveFileManager.deleteFile(context, srcAccount, id)
+                                    }
+                                    isFolder -> DriveFileManager.copyFolderRecursive(context, srcAccount, id, name, folderId)
+                                    else -> DriveFileManager.copyFile(context, srcAccount, id, folderId) != null
+                                }
+                                if (!ok) success = false
+                            }
+                        }
+                        withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            Toast.makeText(context, if (success) "Pasted successfully" else "Some items failed", Toast.LENGTH_SHORT).show()
+                            onSetClipboard(null)
+                            isLoading = true
+                            rawFiles = DriveFileManager.listFiles(context, accountName, folderId) ?: emptyList()
+                            isLoading = false
+                        }
                     }
                 }
-            }
+            )
         }
 
         // ── Footer: selection action bar — always pinned at bottom ────────────
@@ -1718,30 +1688,61 @@ fun FileManagerHeader(
     }
 }
 
-// ── Paste FAB with count badge ─────────────────────────────────────────────────
+// ── Paste Footer Bar — Cancel + Paste (full width, 2 buttons) ────────────────
 @Composable
-fun PasteFloatingButton(
-    itemCount: Int,
+fun PasteFooterBar(
     isCut: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
+    itemCount: Int,
+    onCancel: () -> Unit,
+    onPaste: () -> Unit
 ) {
-    Box(modifier = modifier) {
-        ExtendedFloatingActionButton(
-            onClick = onClick,
-            containerColor = Color(0xFF00796B),
-            contentColor = Color.White,
-            icon = {
-                Icon(Icons.Default.ContentPaste, contentDescription = "Paste")
-            },
-            text = {
+    Surface(
+        color = Color(0xFF1A5C5C),
+        shadowElevation = 12.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .height(64.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            // Cancel
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clickable { onCancel() },
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Close, contentDescription = "Cancel",
+                    tint = Color.White, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Cancel", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            }
+            // Divider
+            Box(modifier = Modifier.width(1.dp).fillMaxHeight().padding(vertical = 12.dp)
+                .background(Color.White.copy(alpha = 0.3f)))
+            // Paste
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clickable { onPaste() },
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.ContentPaste, contentDescription = "Paste",
+                    tint = Color.White, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(8.dp))
                 Text(
-                    text = if (isCut) "Move $itemCount item${if (itemCount != 1) "s" else ""} here"
-                           else "Paste $itemCount item${if (itemCount != 1) "s" else ""} here",
-                    fontSize = 13.sp
+                    text = if (isCut) "Move here" else "Paste",
+                    color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium
                 )
             }
-        )
+        }
     }
 }
 
