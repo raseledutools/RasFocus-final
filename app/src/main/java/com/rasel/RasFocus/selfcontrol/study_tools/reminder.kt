@@ -192,10 +192,32 @@ object ReminderAlarmPlayer {
     private var stopTimer: java.util.Timer? = null
     private var vibrator: Vibrator? = null
     private var vibratorManager: VibratorManager? = null
+    private var audioManager: android.media.AudioManager? = null
+    private var audioFocusRequest: android.media.AudioFocusRequest? = null
 
     fun play(context: Context, ringtoneUri: Uri, durationEnum: RingtoneDuration, withVib: Boolean) {
         stop()
-        
+
+        // Request audio focus FIRST — prevents mixing with other audio
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+        audioManager = am
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val req = android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+                .setWillPauseWhenDucked(true)
+                .build()
+            audioFocusRequest = req
+            am.requestAudioFocus(req)
+        } else {
+            @Suppress("DEPRECATION")
+            am.requestAudioFocus(null, android.media.AudioManager.STREAM_ALARM, android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+        }
+
         if (withVib) {
             try {
                 val pattern = longArrayOf(0, 1000, 1000)
@@ -216,26 +238,38 @@ object ReminderAlarmPlayer {
         }
 
         try {
-            player = MediaPlayer().apply {
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build()
-                )
-                setDataSource(context, ringtoneUri)
-                // ONE_MINUTE: loop করে ১ মিনিট বাজবে, তারপর auto-stop
-                // CONTINUOUS: ইউজার dismiss না করা পর্যন্ত loop চলবে
-                isLooping = true
-                prepare()
-                start()
+            val mp = MediaPlayer()
+            mp.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+            )
+            mp.setDataSource(context, ringtoneUri)
+            mp.isLooping = true
+            mp.setOnPreparedListener { p ->
+                // শুধু prepared হওয়ার পরেই start — mix আর হবে না
+                player = p
+                p.start()
+                if (durationEnum == RingtoneDuration.ONE_MINUTE) {
+                    stopTimer = java.util.Timer()
+                    stopTimer?.schedule(object : java.util.TimerTask() {
+                        override fun run() { stop() }
+                    }, 60_000L)
+                }
             }
-            if (durationEnum == RingtoneDuration.ONE_MINUTE) {
-                stopTimer = java.util.Timer()
-                stopTimer?.schedule(object : java.util.TimerTask() {
-                    override fun run() { stop() }
-                }, 60_000L)
+            mp.setOnErrorListener { _, _, _ ->
+                // fallback: system default alarm
+                try {
+                    val fallbackUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                        ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                    if (fallbackUri != null && fallbackUri != ringtoneUri) {
+                        play(context, fallbackUri, durationEnum, false)
+                    }
+                } catch (_: Exception) {}
+                true
             }
+            mp.prepareAsync()  // non-blocking — no more main-thread hang
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -256,6 +290,17 @@ object ReminderAlarmPlayer {
             player?.run { if (isPlaying) stop(); release() }
         } catch (_: Exception) {}
         player = null
+        // Release audio focus
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                audioFocusRequest?.let { audioManager?.abandonAudioFocusRequest(it) }
+            } else {
+                @Suppress("DEPRECATION")
+                audioManager?.abandonAudioFocus(null)
+            }
+        } catch (_: Exception) {}
+        audioManager = null
+        audioFocusRequest = null
     }
 }
 
@@ -263,9 +308,9 @@ object ReminderAlarmPlayer {
 fun ensureReminderChannel(context: Context) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         val ch = NotificationChannel(RM_CHANNEL_ID, RM_CHANNEL_NAME, NotificationManager.IMPORTANCE_HIGH).apply {
-            enableVibration(true)
-            vibrationPattern = longArrayOf(0, 500, 200, 500)
-            // Sound is played via MediaPlayer in receiver, not through channel
+            // Vibration and sound handled by ReminderAlarmPlayer — disable here to prevent double-vibrate/sound mix
+            enableVibration(false)
+            setSound(null, null)
         }
         (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(ch)
     }
