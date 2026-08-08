@@ -718,7 +718,7 @@ fun LocalFileScreen(
                                 FileListItem(
                                     name = file.name,
                                     isDirectory = file.isDirectory,
-                                    size = if (file.isDirectory) "" else formatFileSize(file.length()),
+                                    size = if (file.isDirectory) "${file.list()?.size ?: 0} items" else formatFileSize(file.length()),
                                     date = formatDate(file.lastModified()),
                                     isSelected = isSelected,
                                     isGrid = true,
@@ -749,7 +749,7 @@ fun LocalFileScreen(
                                 FileListItem(
                                     name = file.name,
                                     isDirectory = file.isDirectory,
-                                    size = if (file.isDirectory) "" else formatFileSize(file.length()),
+                                    size = if (file.isDirectory) "${file.list()?.size ?: 0} items" else formatFileSize(file.length()),
                                     date = formatDate(file.lastModified()),
                                     isSelected = isSelected,
                                     isGrid = false,
@@ -1484,7 +1484,7 @@ fun FileListItem(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (size.isNotEmpty()) size else if (isDirectory) "0 items" else "",
+                        text = size,
                         fontSize = 13.sp,
                         color = Color.Gray
                     )
