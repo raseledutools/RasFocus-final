@@ -1173,7 +1173,16 @@ fun CloudFileScreen(
                             FileListItem(
                                 name = file.name,
                                 isDirectory = isDir,
-                                size = if (isDir || file.size == null) "" else formatFileSize(file.size.toLong()),
+                                size = when {
+                                    isDir -> {
+                                        val cachedList = DriveCacheManager.loadFileList(context, accountName, file.id)
+                                        if (cachedList != null && cachedList.isNotEmpty()) "${cachedList.size} items"
+                                        else if (DriveCacheManager.hasCachedList(accountName, file.id)) "0 items"
+                                        else ""
+                                    }
+                                    file.size != null -> formatFileSize(file.size.toLong())
+                                    else -> ""
+                                },
                                 date = if (isUploading) "Uploading..." else (file.modifiedTime?.value?.let { formatDate(it) } ?: ""),
                                 isSelected = isSelected,
                                 syncIcon = when {
