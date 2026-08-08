@@ -11,7 +11,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -112,15 +111,17 @@ private const val RERENDER_DEBOUNCE_MS = 200L
 fun PdfZoomViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit) {
     val pageCount = pdfRenderer.pageCount
 
-    // ── Global zoom / pan state ───────────────────────────────────────────────
-    var zoom   by remember { mutableStateOf(1f) }
-    var offsetX by remember { mutableStateOf(0f) }  // horizontal pan only
+    // ── Global zoom / pan state — shared across ALL pages ────────────────────
+    // zoom: two-finger pinch scales ALL pages simultaneously
+    // offsetX: horizontal pan applied to the whole document (only when zoomed)
+    var zoom    by remember { mutableStateOf(1f) }
+    var offsetX by remember { mutableStateOf(0f) }
     val listState = rememberLazyListState()
 
-    // Container size — needed to clamp horizontal pan boundary
+    // Container width — needed to clamp horizontal pan so page never disappears
     var containerWidthPx by remember { mutableStateOf(0f) }
 
-    // Clamp offsetX so page never goes too far off-screen
+    // Clamp offsetX so the page never goes fully off-screen
     fun clampOffsetX(ox: Float, z: Float): Float {
         val maxPan = containerWidthPx * (z - 1f) / 2f
         return ox.coerceIn(-maxPan, maxPan)
@@ -147,15 +148,18 @@ fun PdfZoomViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit) {
                 .onGloballyPositioned { coords ->
                     containerWidthPx = coords.size.width.toFloat()
                 }
-                // ── Custom gesture: pinch=zoom, single-finger horizontal=pan, vertical=scroll
+                // ── PINCH ZOOM + SINGLE-FINGER HORIZONTAL PAN WHEN ZOOMED ────
+                // Two fingers  → zoom all pages + optional horizontal pan
+                // One finger   → if zoomed: horizontal drag pans; vertical drag scrolls list
+                // One finger   → if zoom==1: LazyColumn handles everything normally
                 .pointerInput(Unit) {
                     awaitEachGesture {
-                        // Wait for first finger down
                         awaitFirstDown(requireUnconsumed = false)
 
-                        var lastZoom = zoom
-                        var prevCentroid = Offset.Zero
-                        var isFirstEvent = true
+                        var currentZoom = zoom
+                        // Track whether first-event direction is decided
+                        var directionLocked = false   // true once we know H vs V
+                        var isHorizontal    = false
 
                         do {
                             val event = awaitPointerEvent()
@@ -165,43 +169,47 @@ fun PdfZoomViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit) {
                             val fingerCount = event.changes.count { it.pressed }
 
                             if (fingerCount >= 2) {
-                                // ── Pinch to zoom (smooth, no scroll interference) ──
+                                // ── PINCH: zoom + horizontal pan ─────────────────
+                                directionLocked = false   // reset after pinch
+                                isHorizontal    = false
+
                                 val zoomChange = event.calculateZoom()
-                                val pan = event.calculatePan()
-                                val newZoom = (lastZoom * zoomChange).coerceIn(MIN_ZOOM, MAX_ZOOM)
-                                lastZoom = newZoom
-                                zoom = newZoom
-                                // Horizontal pan during pinch
+                                val pan        = event.calculatePan()
+
+                                val newZoom = (currentZoom * zoomChange).coerceIn(MIN_ZOOM, MAX_ZOOM)
+                                currentZoom = newZoom
+                                zoom        = newZoom
+
+                                // Allow panning horizontally while pinching
                                 offsetX = clampOffsetX(offsetX + pan.x, newZoom)
+
                                 event.changes.forEach { it.consume() }
 
-                            } else if (fingerCount == 1) {
+                            } else if (fingerCount == 1 && zoom > 1.01f) {
+                                // ── SINGLE FINGER while zoomed ───────────────────
                                 val change = event.changes.firstOrNull() ?: break
-                                val delta = change.position - change.previousPosition
+                                val delta  = change.position - change.previousPosition
 
-                                if (zoom > 1.01f) {
-                                    // Zoomed in: horizontal drag = pan, vertical drag = scroll
-                                    val absDx = abs(delta.x)
-                                    val absDy = abs(delta.y)
-
-                                    if (isFirstEvent) {
-                                        prevCentroid = change.position
-                                        isFirstEvent = false
+                                if (!directionLocked) {
+                                    // Decide direction on first meaningful move
+                                    if (abs(delta.x) > 3f || abs(delta.y) > 3f) {
+                                        isHorizontal    = abs(delta.x) >= abs(delta.y)
+                                        directionLocked = true
                                     }
-
-                                    if (absDx > absDy) {
-                                        // Horizontal — pan the content
-                                        offsetX = clampOffsetX(offsetX + delta.x, zoom)
-                                        change.consume()
-                                    }
-                                    // Vertical — let LazyColumn handle it (don't consume)
                                 }
-                                // zoom == 1: let LazyColumn handle everything
+
+                                if (directionLocked && isHorizontal) {
+                                    // Horizontal → pan the document
+                                    offsetX = clampOffsetX(offsetX + delta.x, zoom)
+                                    change.consume()
+                                }
+                                // Vertical → do NOT consume; LazyColumn scrolls naturally
                             }
+                            // zoom == 1 with single finger → LazyColumn handles everything
                         } while (event.changes.any { it.pressed })
                     }
                 }
-                // Double-tap: toggle 1× ↔ 2.5×
+                // Double-tap: toggle 1× ↔ 2.5× and reset pan
                 .pointerInput(Unit) {
                     detectTapGestures(onDoubleTap = {
                         zoom    = if (zoom < 1.5f) 2.5f else 1f
@@ -209,6 +217,11 @@ fun PdfZoomViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit) {
                     })
                 }
         ) {
+            // ── LazyColumn wrapped in graphicsLayer so ALL pages zoom together ──
+            // scaleX/scaleY on the LazyColumn = every page scales as one surface.
+            // translationX = horizontal pan applied to the whole document.
+            // transformOrigin(0.5, 0) = scale from top-center so pages stay
+            //   anchored at the top while zooming (no jump when pinching).
             LazyColumn(
                 state = listState,
                 modifier = Modifier
@@ -219,6 +232,7 @@ fun PdfZoomViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit) {
                         translationX    = offsetX
                         // No translationY — LazyColumn handles vertical scroll natively
                         transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0f)
+                        clip            = false  // let zoomed content exceed screen bounds
                     },
                 horizontalAlignment = Alignment.CenterHorizontally,
                 contentPadding = PaddingValues(vertical = 8.dp),
@@ -238,7 +252,7 @@ fun PdfZoomViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Per-page composable: renders at (BASE_SCALE × zoom) resolution, debounced.
-// While the new bitmap is being rendered the old one stays visible — no flash.
+// While the new bitmap is loading the old one stays visible — no flash.
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 fun ZoomablePdfPage(
@@ -246,23 +260,20 @@ fun ZoomablePdfPage(
     pageIndex:   Int,
     zoom:        Float
 ) {
-    val mutex    = remember { Mutex() }
-    val scope    = rememberCoroutineScope()
+    val mutex  = remember { Mutex() }
+    val scope  = rememberCoroutineScope()
 
     // Current visible bitmap (may be from a lower zoom level while re-rendering)
-    var bitmap   by remember { mutableStateOf<Bitmap?>(null) }
-    // Track which scale the current bitmap was rendered at
+    var bitmap        by remember { mutableStateOf<Bitmap?>(null) }
     var renderedScale by remember { mutableStateOf(0f) }
     var debounceJob   by remember { mutableStateOf<Job?>(null) }
 
-    // Target render scale: BASE_SCALE × zoom, clamped to reasonable max
+    // Target render scale = BASE_SCALE × zoom, clamped to a safe ceiling
     val targetScale = (BASE_SCALE * zoom).coerceIn(BASE_SCALE, BASE_SCALE * MAX_ZOOM)
 
-    // Re-render whenever zoom changes — debounced so we don't render every frame
+    // Re-render when zoom changes — debounced so we skip mid-pinch frames
     LaunchedEffect(targetScale) {
-        // If the difference from the currently-rendered scale is small, skip
         if (bitmap != null && kotlin.math.abs(targetScale - renderedScale) < 0.15f) return@LaunchedEffect
-
         debounceJob?.cancel()
         debounceJob = scope.launch {
             delay(RERENDER_DEBOUNCE_MS)
@@ -306,12 +317,12 @@ fun ZoomablePdfPage(
 
     if (bitmap != null) {
         Image(
-            bitmap           = bitmap!!.asImageBitmap(),
+            bitmap             = bitmap!!.asImageBitmap(),
             contentDescription = "Page ${pageIndex + 1}",
-            modifier         = Modifier
+            modifier           = Modifier
                 .fillMaxWidth()
                 .background(Color.White),
-            contentScale     = ContentScale.FillWidth
+            contentScale = ContentScale.FillWidth
         )
     } else {
         // Placeholder while loading — preserves A4-ish aspect ratio
@@ -334,7 +345,7 @@ fun ZoomablePdfPage(
 fun FMPdfViewerScreen(filePath: String, onBack: () -> Unit) {
     val file = java.io.File(filePath)
     var pdfRenderer by remember { mutableStateOf<android.graphics.pdf.PdfRenderer?>(null) }
-    var loadError by remember { mutableStateOf(false) }
+    var loadError   by remember { mutableStateOf(false) }
 
     DisposableEffect(filePath) {
         var pfd: android.os.ParcelFileDescriptor? = null
@@ -355,26 +366,26 @@ fun FMPdfViewerScreen(filePath: String, onBack: () -> Unit) {
 
     when {
         loadError -> {
-            androidx.compose.foundation.layout.Box(
-                modifier = androidx.compose.ui.Modifier
+            Box(
+                modifier = Modifier
                     .fillMaxSize()
-                    .background(androidx.compose.ui.graphics.Color(0xFF0D0D1A)),
-                contentAlignment = androidx.compose.ui.Alignment.Center
+                    .background(Color(0xFF0D0D1A)),
+                contentAlignment = Alignment.Center
             ) {
-                androidx.compose.material3.Text("Failed to open PDF.", color = androidx.compose.ui.graphics.Color.Red)
+                Text("Failed to open PDF.", color = Color.Red)
             }
         }
         pdfRenderer != null -> {
             PdfZoomViewer(pdfRenderer = pdfRenderer!!, onBack = onBack)
         }
         else -> {
-            androidx.compose.foundation.layout.Box(
-                modifier = androidx.compose.ui.Modifier
+            Box(
+                modifier = Modifier
                     .fillMaxSize()
-                    .background(androidx.compose.ui.graphics.Color(0xFF0D0D1A)),
-                contentAlignment = androidx.compose.ui.Alignment.Center
+                    .background(Color(0xFF0D0D1A)),
+                contentAlignment = Alignment.Center
             ) {
-                androidx.compose.material3.CircularProgressIndicator(color = androidx.compose.ui.graphics.Color(0xFF6C63FF))
+                CircularProgressIndicator(color = Color(0xFF6C63FF))
             }
         }
     }

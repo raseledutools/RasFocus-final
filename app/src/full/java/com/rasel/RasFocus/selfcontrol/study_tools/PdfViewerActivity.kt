@@ -6,16 +6,10 @@ import android.os.ParcelFileDescriptor
 import android.graphics.pdf.PdfRenderer
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
-import kotlinx.coroutines.sync.Mutex
-import androidx.compose.ui.unit.dp
-import com.rasel.RasFocus.filemanager.PdfPage
+import com.rasel.RasFocus.filemanager.PdfZoomViewer
 
 class PdfViewerActivity : ComponentActivity() {
     private var pfd: ParcelFileDescriptor? = null
@@ -37,21 +31,20 @@ class PdfViewerActivity : ComponentActivity() {
         }
 
         setContent {
-            val mutex = remember { Mutex() }
-            Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFFF5F5F5)) {
+            MaterialTheme {
                 if (pdfRenderer != null) {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        contentPadding = PaddingValues(vertical = 16.dp)
-                    ) {
-                        items(pdfRenderer!!.pageCount) { index ->
-                            PdfPage(pdfRenderer = pdfRenderer!!, pageIndex = index, mutex = mutex)
-                            Spacer(modifier = Modifier.height(16.dp))
-                        }
-                    }
+                    // ── Pinch-to-zoom + all-page zoom + horizontal pan ──
+                    PdfZoomViewer(
+                        pdfRenderer = pdfRenderer!!,
+                        onBack = { finish() }
+                    )
                 } else {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    androidx.compose.foundation.layout.Box(
+                        modifier = androidx.compose.ui.Modifier
+                            .fillMaxSize()
+                            .background(Color(0xFF0D0D1A)),
+                        contentAlignment = androidx.compose.ui.Alignment.Center
+                    ) {
                         Text("Failed to open PDF.", color = Color.Red)
                     }
                 }
@@ -62,9 +55,7 @@ class PdfViewerActivity : ComponentActivity() {
     override fun onNewIntent(newIntent: android.content.Intent) {
         super.onNewIntent(newIntent)
         setIntent(newIntent)
-        // Close old renderer before opening new URI
-        pdfRenderer?.close()
-        pfd?.close()
+        pdfRenderer?.close(); pfd?.close()
         val uri: Uri? = newIntent.data ?: newIntent.getParcelableExtra(android.content.Intent.EXTRA_STREAM)
         if (uri != null) {
             try {
