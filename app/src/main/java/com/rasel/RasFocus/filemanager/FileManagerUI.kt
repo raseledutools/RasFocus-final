@@ -1785,8 +1785,20 @@ fun SelectionBottomBar(
     onMove: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
-    onShare: () -> Unit = {}
+    onShare: () -> Unit = {},
+    onZip: (() -> Unit)? = null,
+    onUnzip: (() -> Unit)? = null,
+    onMergePdf: (() -> Unit)? = null,
+    onPdfToImages: (() -> Unit)? = null,
+    onImagesToPdf: (() -> Unit)? = null,
+    onSecure: (() -> Unit)? = null,
+    onProperties: (() -> Unit)? = null
 ) {
+    var showMoreMenu by remember { mutableStateOf(false) }
+    val hasMore = onZip != null || onUnzip != null || onMergePdf != null ||
+                  onPdfToImages != null || onImagesToPdf != null ||
+                  onSecure != null || onProperties != null
+
     Surface(
         color = Color(0xFF1A6B6B),
         shadowElevation = 12.dp,
@@ -1800,11 +1812,67 @@ fun SelectionBottomBar(
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            SelectionAction(icon = Icons.Default.ContentCopy,  label = "Copy",       onClick = onCopy)
-            SelectionAction(icon = Icons.Default.DriveFileMove, label = "Move",      onClick = onMove)
-            SelectionAction(icon = Icons.Default.Share,         label = "Share",     onClick = onShare)
-            SelectionAction(icon = Icons.Default.Edit,          label = "Rename",    onClick = onRename)
-            SelectionAction(icon = Icons.Default.Delete,        label = "Delete",    onClick = onDelete)
+            SelectionAction(icon = Icons.Default.ContentCopy,   label = "Copy",   onClick = onCopy)
+            SelectionAction(icon = Icons.Default.DriveFileMove, label = "Move",   onClick = onMove)
+            SelectionAction(icon = Icons.Default.Share,         label = "Share",  onClick = onShare)
+            SelectionAction(icon = Icons.Default.Edit,          label = "Rename", onClick = onRename)
+            SelectionAction(icon = Icons.Default.Delete,        label = "Delete", onClick = onDelete)
+            if (hasMore) {
+                Box {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .clickable { showMoreMenu = true }
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.MoreVert, contentDescription = "More",
+                            tint = Color.White, modifier = Modifier.size(22.dp))
+                        Spacer(Modifier.height(2.dp))
+                        Text(text = "More", color = Color.White, fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium)
+                    }
+                    DropdownMenu(
+                        expanded = showMoreMenu,
+                        onDismissRequest = { showMoreMenu = false }
+                    ) {
+                        if (onZip != null) DropdownMenuItem(
+                            text = { Text("Zip") },
+                            leadingIcon = { Icon(Icons.Default.FolderZip, null) },
+                            onClick = { showMoreMenu = false; onZip() }
+                        )
+                        if (onUnzip != null) DropdownMenuItem(
+                            text = { Text("Unzip") },
+                            leadingIcon = { Icon(Icons.Default.FolderOpen, null) },
+                            onClick = { showMoreMenu = false; onUnzip() }
+                        )
+                        if (onMergePdf != null) DropdownMenuItem(
+                            text = { Text("Merge PDFs") },
+                            leadingIcon = { Icon(Icons.Default.PictureAsPdf, null) },
+                            onClick = { showMoreMenu = false; onMergePdf() }
+                        )
+                        if (onPdfToImages != null) DropdownMenuItem(
+                            text = { Text("PDF to Images") },
+                            leadingIcon = { Icon(Icons.Default.Image, null) },
+                            onClick = { showMoreMenu = false; onPdfToImages() }
+                        )
+                        if (onImagesToPdf != null) DropdownMenuItem(
+                            text = { Text("Images to PDF") },
+                            leadingIcon = { Icon(Icons.Default.PictureAsPdf, null) },
+                            onClick = { showMoreMenu = false; onImagesToPdf() }
+                        )
+                        if (onSecure != null) DropdownMenuItem(
+                            text = { Text("Secure to Vault") },
+                            leadingIcon = { Icon(Icons.Default.Lock, null) },
+                            onClick = { showMoreMenu = false; onSecure() }
+                        )
+                        if (onProperties != null) DropdownMenuItem(
+                            text = { Text("Properties") },
+                            leadingIcon = { Icon(Icons.Default.Info, null) },
+                            onClick = { showMoreMenu = false; onProperties() }
+                        )
+                    }
+                }
+            }
         }
     }
 }
