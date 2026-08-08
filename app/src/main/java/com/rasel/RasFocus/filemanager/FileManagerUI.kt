@@ -1439,6 +1439,24 @@ fun CloudFileScreen(
                             }
                         }
                     }
+                },
+                onProperties = {
+                    if (selectedFiles.size == 1) {
+                        val fileId = selectedFiles.first()
+                        val file = rawFiles.find { it.id == fileId }
+                        if (file != null) {
+                            val sb = StringBuilder()
+                            sb.appendLine("Name: ${file.name}")
+                            sb.appendLine("Type: ${if (file.mimeType == "application/vnd.google-apps.folder") "Folder" else file.mimeType ?: "Unknown"}")
+                            if (file.size != null) sb.appendLine("Size: ${formatFileSize(file.size.toLong())}")
+                            if (file.modifiedTime != null) sb.appendLine("Modified: ${formatDate(file.modifiedTime.value)}")
+                            sb.appendLine("Drive ID: ${file.id}")
+                            Toast.makeText(context, sb.toString().trimEnd(), Toast.LENGTH_LONG).show()
+                        }
+                        selectedFiles = emptySet()
+                    } else {
+                        Toast.makeText(context, "Select one item for properties", Toast.LENGTH_SHORT).show()
+                    }
                 }
             )
         }
