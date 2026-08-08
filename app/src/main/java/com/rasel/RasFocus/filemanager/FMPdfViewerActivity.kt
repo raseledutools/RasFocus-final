@@ -9,9 +9,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.rememberTransformableState
-import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -27,6 +30,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +40,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 class FMPdfViewerActivity : ComponentActivity() {
@@ -109,18 +114,17 @@ fun PdfZoomViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit) {
 
     // ── Global zoom / pan state ───────────────────────────────────────────────
     var zoom   by remember { mutableStateOf(1f) }
-    var offset by remember { mutableStateOf(Offset.Zero) }
-
-    val transformState = rememberTransformableState { zoomChange, panChange, _ ->
-        val newZoom = (zoom * zoomChange).coerceIn(MIN_ZOOM, MAX_ZOOM)
-        zoom   = newZoom
-        offset = offset + panChange
-    }
-
-    // Double-tap: toggle between 1× and 2.5×
-    val doubleTapZoom = 2.5f
-
+    var offsetX by remember { mutableStateOf(0f) }  // horizontal pan only
     val listState = rememberLazyListState()
+
+    // Container size — needed to clamp horizontal pan boundary
+    var containerWidthPx by remember { mutableStateOf(0f) }
+
+    // Clamp offsetX so page never goes too far off-screen
+    fun clampOffsetX(ox: Float, z: Float): Float {
+        val maxPan = containerWidthPx * (z - 1f) / 2f
+        return ox.coerceIn(-maxPan, maxPan)
+    }
 
     Scaffold(
         topBar = {
@@ -140,13 +144,68 @@ fun PdfZoomViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit) {
             Modifier
                 .fillMaxSize()
                 .padding(padding)
-                // transformable handles pinch-zoom + pan
-                .transformable(state = transformState)
-                // double-tap to zoom in/out
+                .onGloballyPositioned { coords ->
+                    containerWidthPx = coords.size.width.toFloat()
+                }
+                // ── Custom gesture: pinch=zoom, single-finger horizontal=pan, vertical=scroll
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        // Wait for first finger down
+                        awaitFirstDown(requireUnconsumed = false)
+
+                        var lastZoom = zoom
+                        var prevCentroid = Offset.Zero
+                        var isFirstEvent = true
+
+                        do {
+                            val event = awaitPointerEvent()
+                            val canceled = event.changes.any { it.isConsumed }
+                            if (canceled) break
+
+                            val fingerCount = event.changes.count { it.pressed }
+
+                            if (fingerCount >= 2) {
+                                // ── Pinch to zoom (smooth, no scroll interference) ──
+                                val zoomChange = event.calculateZoom()
+                                val pan = event.calculatePan()
+                                val newZoom = (lastZoom * zoomChange).coerceIn(MIN_ZOOM, MAX_ZOOM)
+                                lastZoom = newZoom
+                                zoom = newZoom
+                                // Horizontal pan during pinch
+                                offsetX = clampOffsetX(offsetX + pan.x, newZoom)
+                                event.changes.forEach { it.consume() }
+
+                            } else if (fingerCount == 1) {
+                                val change = event.changes.firstOrNull() ?: break
+                                val delta = change.position - change.previousPosition
+
+                                if (zoom > 1.01f) {
+                                    // Zoomed in: horizontal drag = pan, vertical drag = scroll
+                                    val absDx = abs(delta.x)
+                                    val absDy = abs(delta.y)
+
+                                    if (isFirstEvent) {
+                                        prevCentroid = change.position
+                                        isFirstEvent = false
+                                    }
+
+                                    if (absDx > absDy) {
+                                        // Horizontal — pan the content
+                                        offsetX = clampOffsetX(offsetX + delta.x, zoom)
+                                        change.consume()
+                                    }
+                                    // Vertical — let LazyColumn handle it (don't consume)
+                                }
+                                // zoom == 1: let LazyColumn handle everything
+                            }
+                        } while (event.changes.any { it.pressed })
+                    }
+                }
+                // Double-tap: toggle 1× ↔ 2.5×
                 .pointerInput(Unit) {
                     detectTapGestures(onDoubleTap = {
-                        zoom   = if (zoom < 1.5f) doubleTapZoom else 1f
-                        offset = Offset.Zero
+                        zoom    = if (zoom < 1.5f) 2.5f else 1f
+                        offsetX = 0f
                     })
                 }
         ) {
@@ -155,10 +214,10 @@ fun PdfZoomViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit) {
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
-                        scaleX        = zoom
-                        scaleY        = zoom
-                        translationX  = offset.x
-                        translationY  = offset.y
+                        scaleX          = zoom
+                        scaleY          = zoom
+                        translationX    = offsetX
+                        // No translationY — LazyColumn handles vertical scroll natively
                         transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0f)
                     },
                 horizontalAlignment = Alignment.CenterHorizontally,
