@@ -402,6 +402,7 @@ fun HomeScreen() {
             currentNavState == NavState.StorageAnalyzer ||
             currentNavState == NavState.AppManager ||
             currentNavState == NavState.DriveOfflineSettings ||
+            currentNavState == NavState.FMSettings ||
             currentNavState is NavState.P2PChat ||
             currentNavState is NavState.Category -> {
                 currentNavState = NavState.Home
@@ -512,6 +513,7 @@ fun HomeScreen() {
                     currentNavState != NavState.StorageAnalyzer &&
                     currentNavState != NavState.AppManager &&
                     currentNavState != NavState.DriveOfflineSettings &&
+                    currentNavState != NavState.FMSettings &&
                     currentNavState != NavState.FtpServer &&
                     currentNavState != NavState.RemoteConnections
                 if (needsGlobalHeader) {
