@@ -991,30 +991,106 @@ fun LocalFileScreen(
                 itemCount = clipboard.items.size,
                 onCancel = { onSetClipboard(null) },
                 onPaste = {
-                    val opId = java.util.UUID.randomUUID().toString()
-                    val op = FileOperation(
-                        id = opId,
-                        type = if (clipboard.isCut) OperationType.MOVE else OperationType.COPY,
-                        sourceCount = clipboard.items.size,
-                        itemsProcessed = 0
-                    )
-                    FileOperationManager.addOperation(op)
-                    val intent = android.content.Intent(context, FileOperationService::class.java).apply {
-                        action = "ACTION_START"
-                        putExtra("OP_ID", opId)
-                        putStringArrayListExtra("SOURCE_PATHS", ArrayList(clipboard.items))
-                        putExtra("DEST_PATH", path)
-                        putExtra("IS_CUT", clipboard.isCut)
-                        putExtra("SOURCE_ENV", clipboard.sourceEnv)
-                    }
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                        context.startForegroundService(intent)
-                    } else {
-                        context.startService(intent)
-                    }
+                    val snap = clipboard
                     onSetClipboard(null)
-                    pendingOpId = opId
-                    showProgressDialog = true
+
+                    if (snap.sourceEnv == "Cloud") {
+                        // ── Drive → Local: download then optionally delete from Drive ──
+                        val opId = java.util.UUID.randomUUID().toString()
+                        FileOperationManager.addOperation(
+                            FileOperation(
+                                id = opId,
+                                type = if (snap.isCut) OperationType.MOVE else OperationType.COPY,
+                                sourceCount = snap.items.size
+                            )
+                        )
+                        val srcAccount = snap.accountName ?: ""
+                        val destDir = java.io.File(path)
+                        if (!destDir.exists()) destDir.mkdirs()
+
+                        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                            withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                android.widget.Toast.makeText(
+                                    context,
+                                    if (snap.isCut) "Moving ${snap.items.size} item(s) from Drive…"
+                                    else "Downloading ${snap.items.size} item(s) from Drive…",
+                                    android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                            var success = true
+                            for (idx in snap.items.indices) {
+                                val fileId = snap.items[idx]
+                                val fileName = snap.itemNames.getOrNull(idx) ?: "file"
+                                val mime = snap.itemMimeTypes.getOrNull(idx) ?: ""
+                                val isFolder = mime == "application/vnd.google-apps.folder"
+
+                                FileOperationManager.updateOperation(opId) {
+                                    it.copy(currentFileName = fileName)
+                                }
+
+                                val ok = if (isFolder) {
+                                    // Download entire folder recursively
+                                    DriveFileManager.downloadFolder(context, srcAccount, fileId, fileName, destDir)
+                                } else {
+                                    // Download single file directly to destDir
+                                    val downloaded = DriveFileManager.downloadFile(context, srcAccount, fileId, fileName, destDir)
+                                    downloaded != null
+                                }
+
+                                if (ok) {
+                                    if (snap.isCut) {
+                                        // Delete from Drive only after successful download
+                                        DriveFileManager.deleteFile(context, srcAccount, fileId)
+                                    }
+                                } else {
+                                    success = false
+                                }
+
+                                FileOperationManager.updateOperation(opId) {
+                                    it.copy(itemsProcessed = it.itemsProcessed + 1)
+                                }
+                            }
+
+                            FileOperationManager.updateOperation(opId) { it.copy(isComplete = true) }
+                            withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                android.widget.Toast.makeText(
+                                    context,
+                                    if (success) "Done!" else "Some items failed to download",
+                                    android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                                // Refresh local file list
+                                rawFiles = LocalFileManager.listFiles(path)
+                            }
+                        }
+                        pendingOpId = opId
+                        showProgressDialog = true
+
+                    } else {
+                        // ── Local → Local: use FileOperationService (existing, works fine) ──
+                        val opId = java.util.UUID.randomUUID().toString()
+                        FileOperationManager.addOperation(
+                            FileOperation(
+                                id = opId,
+                                type = if (snap.isCut) OperationType.MOVE else OperationType.COPY,
+                                sourceCount = snap.items.size
+                            )
+                        )
+                        val intent = android.content.Intent(context, FileOperationService::class.java).apply {
+                            action = "ACTION_START"
+                            putExtra("OP_ID", opId)
+                            putStringArrayListExtra("SOURCE_PATHS", ArrayList(snap.items))
+                            putExtra("DEST_PATH", path)
+                            putExtra("IS_CUT", snap.isCut)
+                            putExtra("SOURCE_ENV", "Local")
+                        }
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                            context.startForegroundService(intent)
+                        } else {
+                            context.startService(intent)
+                        }
+                        pendingOpId = opId
+                        showProgressDialog = true
+                    }
                 }
             )
         }
