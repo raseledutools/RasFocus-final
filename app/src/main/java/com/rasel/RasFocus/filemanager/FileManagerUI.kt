@@ -93,6 +93,8 @@ import android.provider.MediaStore
 import android.graphics.Bitmap
 import android.util.LruCache
 import kotlinx.coroutines.Dispatchers
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 
 // ── Rename Dialog ──────────────────────────────────────────────────────────────
 @Composable
@@ -280,6 +282,10 @@ fun LocalFileScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showNewFolderDialog by remember { mutableStateOf(false) }
     var propertiesTarget by remember { mutableStateOf<File?>(null) }
+    var showProgressDialog by remember { mutableStateOf(false) }
+    val activeProgressOp by remember(operations) {
+        derivedStateOf { operations.firstOrNull { !it.isComplete && !it.isCancelled && !it.isError } }
+    }
 
     // Sorted + filtered files
     val files by remember(rawFiles, sortMode, localSearchQuery) {
@@ -783,6 +789,24 @@ fun LocalFileScreen(
             }
         }
 
+        // ── Copy/Move progress dialog ─────────────────────────────────────────
+        if (showProgressDialog) {
+            val op = activeProgressOp
+            if (op != null) {
+                CopyMoveProgressDialog(
+                    operation = op,
+                    onHide = { showProgressDialog = false },
+                    onCancel = {
+                        FileOperationManager.updateOperation(op.id) { it.copy(isCancelled = true) }
+                        showProgressDialog = false
+                    }
+                )
+            } else {
+                // Operation finished — auto close dialog
+                showProgressDialog = false
+            }
+        }
+
         // ── Footer: selection action bar — always below content ────────────────
         if (selectedFiles.isNotEmpty()) {
             SelectionBottomBar(
@@ -902,6 +926,7 @@ fun LocalFileScreen(
                     }
                     onSetClipboard(null)
                     pendingOpId = opId
+                    showProgressDialog = true
                 }
             )
         }
@@ -1681,6 +1706,160 @@ fun FileManagerHeader(
                             contentDescription = "New folder",
                             tint = Color.White
                         )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ── Copy/Move Progress Dialog ─────────────────────────────────────────────────
+@Composable
+fun CopyMoveProgressDialog(
+    operation: FileOperation,
+    onHide: () -> Unit,
+    onCancel: () -> Unit
+) {
+    val pct = (operation.progress * 100)
+    val pctText = "%.2f%%".format(pct)
+    val elapsedFormatted = run {
+        val s = operation.elapsedSeconds
+        "%d:%02d:%02d".format(s / 3600, (s % 3600) / 60, s % 60)
+    }
+    val speedText = run {
+        val bps = operation.speedBytesPerSec
+        when {
+            bps >= 1024 * 1024 -> "%.1f MB/s".format(bps / (1024.0 * 1024.0))
+            bps >= 1024        -> "%.1f KB/s".format(bps / 1024.0)
+            else               -> "$bps B/s"
+        }
+    }
+    fun fmtBytes(b: Long): String = when {
+        b >= 1024L * 1024 * 1024 -> "%.2f GB".format(b / (1024.0 * 1024 * 1024))
+        b >= 1024L * 1024        -> "%.2f MB".format(b / (1024.0 * 1024))
+        b >= 1024L               -> "%.2f KB".format(b / 1024.0)
+        else                     -> "$b B"
+    }
+    val title = if (operation.type == OperationType.MOVE) "Moving" else "Copying"
+
+    Dialog(
+        onDismissRequest = { /* block dismiss on outside tap */ },
+        properties = DialogProperties(dismissOnClickOutside = false, dismissOnBackPress = false)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = Color(0xFFF5F5F5),
+            shadowElevation = 16.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp)
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+
+                // Title row: "Copying" / "Moving"   +   "12.12%"
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = title,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF111111)
+                    )
+                    Text(
+                        text = pctText,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF111111)
+                    )
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                // From path
+                if (operation.currentSourcePath.isNotBlank()) {
+                    Text(
+                        text = "From : ${operation.currentSourcePath}",
+                        fontSize = 13.sp,
+                        color = Color(0xFF555555),
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(Modifier.height(10.dp))
+                }
+
+                // To path
+                if (operation.currentDestPath.isNotBlank()) {
+                    Text(
+                        text = "To : ${operation.currentDestPath}",
+                        fontSize = 13.sp,
+                        color = Color(0xFF555555),
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(Modifier.height(14.dp))
+                }
+
+                // Size progress + speed
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "${fmtBytes(operation.bytesProcessed)} / ${fmtBytes(operation.totalBytes)}",
+                        fontSize = 14.sp,
+                        color = Color(0xFF444444)
+                    )
+                    Text(
+                        text = speedText,
+                        fontSize = 14.sp,
+                        color = Color(0xFF444444)
+                    )
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                // Progress bar
+                LinearProgressIndicator(
+                    progress = { operation.progress },
+                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                    color = Color(0xFF009688),
+                    trackColor = Color(0xFFCCCCCC)
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                // Item count + elapsed time
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Progress : ${operation.itemsProcessed} / ${operation.sourceCount}",
+                        fontSize = 13.sp,
+                        color = Color(0xFF666666)
+                    )
+                    Text(
+                        text = elapsedFormatted,
+                        fontSize = 13.sp,
+                        color = Color(0xFF666666)
+                    )
+                }
+
+                Spacer(Modifier.height(20.dp))
+
+                // Buttons: Hide | Cancel
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    TextButton(onClick = onHide) {
+                        Text("Hide", color = Color(0xFF009688), fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                    }
+                    TextButton(onClick = onCancel) {
+                        Text("Cancel", color = Color(0xFF009688), fontSize = 16.sp, fontWeight = FontWeight.Medium)
                     }
                 }
             }

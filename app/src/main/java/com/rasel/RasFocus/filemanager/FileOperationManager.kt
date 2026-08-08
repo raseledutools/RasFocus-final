@@ -16,12 +16,18 @@ data class FileOperation(
     val totalBytes: Long = 0L,
     val bytesProcessed: Long = 0L,
     val currentFileName: String = "",
+    val currentSourcePath: String = "",
+    val currentDestPath: String = "",
+    val speedBytesPerSec: Long = 0L,
+    val startTimeMs: Long = System.currentTimeMillis(),
     val isComplete: Boolean = false,
     val isCancelled: Boolean = false,
     val isError: Boolean = false
 ) {
     val progress: Float
         get() = if (totalBytes > 0) (bytesProcessed.toFloat() / totalBytes).coerceIn(0f, 1f) else 0f
+    val elapsedSeconds: Long
+        get() = (System.currentTimeMillis() - startTimeMs) / 1000L
 }
 
 object FileOperationManager {

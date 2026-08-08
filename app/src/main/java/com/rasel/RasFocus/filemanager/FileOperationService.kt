@@ -73,6 +73,8 @@ class FileOperationService : Service() {
 
             var globalBytesProcessed = 0L
             var itemsProcessed = 0
+            var speedWindowStart = System.currentTimeMillis()
+            var speedWindowBytes = 0L
 
             for (path in sources) {
                 val opState = FileOperationManager.operations.value.find { it.id == opId }
@@ -82,12 +84,32 @@ class FileOperationService : Service() {
                 if (!src.exists()) continue
 
                 val dst = File(destDirFile, src.name)
+
+                // Update source/dest paths for dialog display
+                FileOperationManager.updateOperation(opId) {
+                    it.copy(
+                        currentSourcePath = src.absolutePath,
+                        currentDestPath = dst.absolutePath
+                    )
+                }
                 
                 try {
                     copyFileOrDir(src, dst, opId) { bytesCopied ->
                         globalBytesProcessed += bytesCopied
+                        speedWindowBytes += bytesCopied
+                        val now = System.currentTimeMillis()
+                        val elapsed = now - speedWindowStart
+                        val speed = if (elapsed > 0) (speedWindowBytes * 1000L / elapsed) else 0L
+                        // Reset speed window every second
+                        if (elapsed >= 1000L) {
+                            speedWindowStart = now
+                            speedWindowBytes = 0L
+                        }
                         FileOperationManager.updateOperation(opId) {
-                            it.copy(bytesProcessed = globalBytesProcessed)
+                            it.copy(
+                                bytesProcessed = globalBytesProcessed,
+                                speedBytesPerSec = speed
+                            )
                         }
                         updateNotificationProgress(opState?.type ?: OperationType.COPY, globalBytesProcessed, totalBytes)
                     }
