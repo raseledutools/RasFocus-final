@@ -915,9 +915,54 @@ fun LocalFileScreen(
                         scope.launch(Dispatchers.IO) {
                             val filesToMerge = selectedFiles.map { File(it) }
                             var dest = File(path, "Merged_${System.currentTimeMillis()}.pdf")
-                            val success = PdfHelper.mergePdfs(context, filesToMerge, dest)
+                            var success = PdfHelper.mergePdfs(context, filesToMerge, dest)
+                            if (!success) {
+                                val fb = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOCUMENTS), "RasFocus")
+                                fb.mkdirs(); dest = File(fb, dest.name)
+                                success = PdfHelper.mergePdfs(context, filesToMerge, dest)
+                            }
                             withContext(Dispatchers.Main) {
                                 Toast.makeText(context, if (success) "Merged successfully" else "Merge failed", Toast.LENGTH_SHORT).show()
+                                selectedFiles = emptySet(); rawFiles = LocalFileManager.listFiles(path)
+                            }
+                        }
+                    }) else null
+                },
+                onPdfToImages = run {
+                    val canConvert = selectedFiles.size == 1 && selectedFiles.first().lowercase().endsWith(".pdf")
+                    if (canConvert) ({
+                        scope.launch(Dispatchers.IO) {
+                            val pdfFile = File(selectedFiles.first())
+                            var targetDir = File(path, pdfFile.nameWithoutExtension)
+                            targetDir.mkdirs()
+                            var success = PdfHelper.pdfToImages(context, pdfFile, targetDir)
+                            if (!success) {
+                                targetDir = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOCUMENTS), "RasFocus/${pdfFile.nameWithoutExtension}")
+                                targetDir.mkdirs()
+                                success = PdfHelper.pdfToImages(context, pdfFile, targetDir)
+                            }
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(context, if (success) "PDF converted to images" else "Conversion failed", Toast.LENGTH_SHORT).show()
+                                selectedFiles = emptySet(); rawFiles = LocalFileManager.listFiles(path)
+                            }
+                        }
+                    }) else null
+                },
+                onImagesToPdf = run {
+                    val imgExts = listOf("jpg", "jpeg", "png", "bmp", "webp")
+                    val canConvert = selectedFiles.isNotEmpty() && selectedFiles.all { it.substringAfterLast('.').lowercase() in imgExts }
+                    if (canConvert) ({
+                        scope.launch(Dispatchers.IO) {
+                            val images = selectedFiles.map { File(it) }
+                            var pdfDest = File(path, "images_${System.currentTimeMillis()}.pdf")
+                            var success = PdfHelper.imagesToPdf(context, images, pdfDest)
+                            if (!success) {
+                                val fb = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOCUMENTS), "RasFocus")
+                                fb.mkdirs(); pdfDest = File(fb, pdfDest.name)
+                                success = PdfHelper.imagesToPdf(context, images, pdfDest)
+                            }
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(context, if (success) "Images converted to PDF" else "Conversion failed", Toast.LENGTH_SHORT).show()
                                 selectedFiles = emptySet(); rawFiles = LocalFileManager.listFiles(path)
                             }
                         }
