@@ -843,6 +843,64 @@ fun LocalFileScreen(
                     } else {
                         Toast.makeText(context, "Cannot share folders", Toast.LENGTH_SHORT).show()
                     }
+                },
+                onZip = {
+                    scope.launch(Dispatchers.IO) {
+                        val filesToZip = selectedFiles.map { File(it) }
+                        var zipFile = File(path, "archive_${System.currentTimeMillis()}.zip")
+                        var success = LocalFileManager.zipFiles(filesToZip, zipFile)
+                        if (!success) {
+                            val fb = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOCUMENTS), "RasFocus")
+                            fb.mkdirs(); zipFile = File(fb, zipFile.name)
+                            success = LocalFileManager.zipFiles(filesToZip, zipFile)
+                        }
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, if (success) "Zipped successfully" else "Failed to zip", Toast.LENGTH_SHORT).show()
+                            selectedFiles = emptySet(); rawFiles = LocalFileManager.listFiles(path)
+                        }
+                    }
+                },
+                onUnzip = run {
+                    val canUnzip = selectedFiles.size == 1 && selectedFiles.first().lowercase().endsWith(".zip")
+                    if (canUnzip) ({
+                        scope.launch(Dispatchers.IO) {
+                            val zipFile = File(selectedFiles.first())
+                            val targetDir = File(path, zipFile.nameWithoutExtension)
+                            val success = LocalFileManager.unzipFile(zipFile, targetDir)
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(context, if (success) "Unzipped successfully" else "Unzip failed", Toast.LENGTH_SHORT).show()
+                                selectedFiles = emptySet(); rawFiles = LocalFileManager.listFiles(path)
+                            }
+                        }
+                    }) else null
+                },
+                onMergePdf = run {
+                    val canMerge = selectedFiles.size > 1 && selectedFiles.all { it.lowercase().endsWith(".pdf") }
+                    if (canMerge) ({
+                        scope.launch(Dispatchers.IO) {
+                            val filesToMerge = selectedFiles.map { File(it) }
+                            var dest = File(path, "Merged_${System.currentTimeMillis()}.pdf")
+                            val success = PdfHelper.mergePdfs(context, filesToMerge, dest)
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(context, if (success) "Merged successfully" else "Merge failed", Toast.LENGTH_SHORT).show()
+                                selectedFiles = emptySet(); rawFiles = LocalFileManager.listFiles(path)
+                            }
+                        }
+                    }) else null
+                },
+                onSecure = {
+                    scope.launch(Dispatchers.IO) {
+                        var ok = true
+                        for (item in selectedFiles) { if (!LocalFileManager.moveToVault(File(item))) ok = false }
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, if (ok) "Secured in vault" else "Failed to secure", Toast.LENGTH_SHORT).show()
+                            selectedFiles = emptySet(); rawFiles = LocalFileManager.listFiles(path)
+                        }
+                    }
+                },
+                onProperties = {
+                    if (selectedFiles.size == 1) { propertiesTarget = File(selectedFiles.first()); selectedFiles = emptySet() }
+                    else Toast.makeText(context, "Select one item for properties", Toast.LENGTH_SHORT).show()
                 }
             )
         }
