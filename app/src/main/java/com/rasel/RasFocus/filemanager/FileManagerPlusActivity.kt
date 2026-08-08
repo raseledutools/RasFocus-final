@@ -683,7 +683,7 @@ fun HomeScreen() {
                                         leadingIcon = { Icon(Icons.Default.PieChart, null) },
                                         onClick = {
                                             showMoreMenu = false
-                                            onNavigate(NavState.StorageAnalyzer)
+                                            currentNavState = NavState.StorageAnalyzer
                                         }
                                     )
                                     DropdownMenuItem(
@@ -691,7 +691,10 @@ fun HomeScreen() {
                                         leadingIcon = { Icon(Icons.Default.Refresh, null) },
                                         onClick = {
                                             showMoreMenu = false
-                                            refreshTrigger++
+                                            // Force re-navigate to same state to refresh
+                                            val cur = currentNavState
+                                            currentNavState = NavState.Home
+                                            currentNavState = cur
                                         }
                                     )
                                     DropdownMenuItem(
@@ -699,7 +702,7 @@ fun HomeScreen() {
                                         leadingIcon = { Icon(Icons.Default.Settings, null) },
                                         onClick = {
                                             showMoreMenu = false
-                                            onNavigate(NavState.FMSettings)
+                                            currentNavState = NavState.FMSettings
                                         }
                                     )
                                 }
