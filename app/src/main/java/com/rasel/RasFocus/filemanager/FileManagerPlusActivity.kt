@@ -675,10 +675,27 @@ fun HomeScreen() {
                                     )
                                     Divider()
                                     DropdownMenuItem(
-                                        text = { Text("Settings") },
+                                        text = { Text("Analyze Storage") },
+                                        leadingIcon = { Icon(Icons.Default.PieChart, null) },
                                         onClick = {
                                             showMoreMenu = false
-                                            android.widget.Toast.makeText(context, "Settings coming soon", android.widget.Toast.LENGTH_SHORT).show()
+                                            onNavigate(NavState.StorageAnalyzer)
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Refresh") },
+                                        leadingIcon = { Icon(Icons.Default.Refresh, null) },
+                                        onClick = {
+                                            showMoreMenu = false
+                                            refreshTrigger++
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Settings") },
+                                        leadingIcon = { Icon(Icons.Default.Settings, null) },
+                                        onClick = {
+                                            showMoreMenu = false
+                                            onNavigate(NavState.FMSettings)
                                         }
                                     )
                                 }
