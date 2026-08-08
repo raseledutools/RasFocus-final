@@ -1484,13 +1484,13 @@ fun FileListItem(
                 .fillMaxWidth()
                 .background(if (isSelected) Color(0xFFB2DFDB) else Color.White)
                 .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(6.dp)),
+                    .size(56.dp)
+                    .clip(RoundedCornerShape(8.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 val isImage = ext in listOf("jpg","jpeg","png","gif","bmp","webp","heic","heif")
@@ -1542,7 +1542,7 @@ fun FileListItem(
                         )
                     }
                 } else {
-                    FileTypeIcon(ext = ext, isDirectory = isDirectory, sizeDp = 48, fileName = name)
+                    FileTypeIcon(ext = ext, isDirectory = isDirectory, sizeDp = 56, fileName = name)
                 }
             }
 
@@ -1610,7 +1610,12 @@ fun FileListItem(
                 }
             }
         }
-        HorizontalDivider(color = Color(0xFFF0F0F0), thickness = 1.dp)
+        // subtle separator line — lighter than before, only between items
+        HorizontalDivider(
+            color = Color(0xFFEEEEEE),
+            thickness = 0.5.dp,
+            modifier = Modifier.padding(start = 88.dp) // indent past icon+gap
+        )
     }
 }
 
