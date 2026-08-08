@@ -58,6 +58,7 @@ sealed class NavState {
     object AppManager : NavState()
     object DriveOfflineSettings : NavState()
     object FtpServer : NavState()
+    object FMSettings : NavState()
     data class TextEditor(val path: String) : NavState()
     data class Saf(val uri: String) : NavState()
     data class ImageViewer(val path: String, val folderPath: String) : NavState()
@@ -566,6 +567,7 @@ fun HomeScreen() {
                                     is NavState.StorageAnalyzer -> "Storage Analyzer"
                                     is NavState.AppManager -> "App Manager"
                                     is NavState.DriveOfflineSettings -> "Offline Settings"
+                                    is NavState.FMSettings -> "Settings"
                                     is NavState.FtpServer -> "Access from PC"
                                     is NavState.RemoteConnections -> "Remote Connections"
                                     is NavState.P2PChat -> "Chat with ${state.deviceName}"
@@ -838,6 +840,10 @@ fun HomeScreen() {
                         onBack = { currentNavState = NavState.Home }
                     )
                     is NavState.DriveOfflineSettings -> DriveOfflineSettingsScreen(
+                        onBack = { currentNavState = NavState.Home }
+                    )
+
+                    is NavState.FMSettings -> SettingsScreen(
                         onBack = { currentNavState = NavState.Home }
                     )
 
