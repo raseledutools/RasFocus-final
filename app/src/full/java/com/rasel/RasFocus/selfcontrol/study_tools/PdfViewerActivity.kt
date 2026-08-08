@@ -6,8 +6,13 @@ import android.os.ParcelFileDescriptor
 import android.graphics.pdf.PdfRenderer
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.rasel.RasFocus.filemanager.PdfZoomViewer
 
@@ -39,11 +44,11 @@ class PdfViewerActivity : ComponentActivity() {
                         onBack = { finish() }
                     )
                 } else {
-                    androidx.compose.foundation.layout.Box(
-                        modifier = androidx.compose.ui.Modifier
+                    Box(
+                        modifier = Modifier
                             .fillMaxSize()
                             .background(Color(0xFF0D0D1A)),
-                        contentAlignment = androidx.compose.ui.Alignment.Center
+                        contentAlignment = Alignment.Center
                     ) {
                         Text("Failed to open PDF.", color = Color.Red)
                     }
@@ -74,3 +79,4 @@ class PdfViewerActivity : ComponentActivity() {
         pfd?.close()
     }
 }
+
