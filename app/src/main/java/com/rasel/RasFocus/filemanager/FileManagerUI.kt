@@ -1430,30 +1430,42 @@ fun CloudFileScreen(
                 itemCount = clipboard.items.size,
                 onCancel = { onSetClipboard(null) },
                 onPaste = {
+                    // Snapshot clipboard before clearing so lambda keeps correct data
+                    val snap = clipboard
+                    onSetClipboard(null)
                     scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            Toast.makeText(context,
+                                if (snap.isCut) "Moving ${snap.items.size} item(s) to Drive…"
+                                else "Uploading ${snap.items.size} item(s) to Drive…",
+                                Toast.LENGTH_SHORT).show()
+                        }
                         var success = true
-                        if (clipboard.sourceEnv == "Local") {
-                            for (item in clipboard.items) {
+                        if (snap.sourceEnv == "Local") {
+                            for (item in snap.items) {
                                 val src = java.io.File(item)
-                                if (src.isDirectory) {
-                                    if (!DriveFileManager.uploadFolder(context, accountName, src, folderId)) success = false
+                                val ok = if (src.isDirectory) {
+                                    DriveFileManager.uploadFolder(context, accountName, src, folderId)
                                 } else {
-                                    if (DriveFileManager.uploadFile(context, accountName, src, folderId) == null) success = false
+                                    DriveFileManager.uploadFile(context, accountName, src, folderId) != null
                                 }
-                                if (clipboard.isCut) try { src.deleteRecursively() } catch (_: Exception) {}
+                                if (!ok) { success = false } else if (snap.isCut) {
+                                    // Delete local only after successful upload
+                                    try { src.deleteRecursively() } catch (_: Exception) {}
+                                }
                             }
-                        } else if (clipboard.sourceEnv == "Cloud") {
-                            val srcAccount = clipboard.accountName ?: accountName
+                        } else if (snap.sourceEnv == "Cloud") {
+                            val srcAccount = snap.accountName ?: accountName
                             val isCrossAccount = srcAccount != accountName
-                            for (i in clipboard.items.indices) {
-                                val id   = clipboard.items[i]
-                                val name = clipboard.itemNames.getOrNull(i) ?: "file"
-                                val mime = clipboard.itemMimeTypes.getOrNull(i) ?: ""
+                            for (i in snap.items.indices) {
+                                val id   = snap.items[i]
+                                val name = snap.itemNames.getOrNull(i) ?: "file"
+                                val mime = snap.itemMimeTypes.getOrNull(i) ?: ""
                                 val isFolder = mime == "application/vnd.google-apps.folder"
                                 val ok = when {
-                                    clipboard.isCut && !isCrossAccount -> DriveFileManager.moveFile(context, srcAccount, id, folderId, "root") != null
+                                    snap.isCut && !isCrossAccount -> DriveFileManager.moveFile(context, srcAccount, id, folderId, "root") != null
                                     isCrossAccount -> DriveFileManager.crossAccountCopyFile(context, srcAccount, accountName, id, name, folderId, isFolder).also {
-                                        if (it && clipboard.isCut) DriveFileManager.deleteFile(context, srcAccount, id)
+                                        if (it && snap.isCut) DriveFileManager.deleteFile(context, srcAccount, id)
                                     }
                                     isFolder -> DriveFileManager.copyFolderRecursive(context, srcAccount, id, name, folderId)
                                     else -> DriveFileManager.copyFile(context, srcAccount, id, folderId) != null
@@ -1462,8 +1474,7 @@ fun CloudFileScreen(
                             }
                         }
                         withContext(kotlinx.coroutines.Dispatchers.Main) {
-                            Toast.makeText(context, if (success) "Pasted successfully" else "Some items failed", Toast.LENGTH_SHORT).show()
-                            onSetClipboard(null)
+                            Toast.makeText(context, if (success) "Done!" else "Some items failed", Toast.LENGTH_SHORT).show()
                             isLoading = true
                             rawFiles = DriveFileManager.listFiles(context, accountName, folderId) ?: emptyList()
                             isLoading = false
