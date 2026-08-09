@@ -339,6 +339,10 @@ dependencies {
     // Gson
     implementation("com.google.code.gson:gson:2.10.1")
 
+    // Markwon for perfect Markdown rendering
+    implementation("io.noties.markwon:core:4.6.2")
+    implementation("io.noties.markwon:ext-tables:4.6.2")
+
     // AppCompat
     implementation("androidx.appcompat:appcompat:1.7.0")
 

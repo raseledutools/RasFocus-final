@@ -61,6 +61,7 @@ sealed class NavState {
     object FtpServer : NavState()
     object FMSettings : NavState()
     data class TextEditor(val path: String) : NavState()
+    data class MarkdownViewer(val path: String) : NavState()
     data class Saf(val uri: String) : NavState()
     data class ImageViewer(val path: String, val folderPath: String) : NavState()
     data class PdfViewer(val path: String, val folderPath: String) : NavState()
@@ -100,15 +101,17 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
             "gif" -> "image/gif"
             "bmp" -> "image/bmp"
             "heic", "heif" -> "image/heic"
-            "docx", "doc" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            "pptx", "ppt" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-            "xlsx", "xls" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            "txt", "md", "kt", "java", "py", "js", "ts", "json", "xml", "csv",
+            "md", "markdown" -> "text/markdown"
+            "txt", "kt", "java", "py", "js", "ts", "json", "xml", "csv",
             "html", "css", "sh", "c", "cpp", "h", "rs", "go", "rb", "yaml", "yml" -> "text/plain"
             else -> null
         }
 
         if (internalMime != null) {
+            if (internalMime == "text/markdown" && onNavigate != null) {
+                onNavigate(NavState.MarkdownViewer(file.absolutePath))
+                return
+            }
             if (internalMime == "text/plain" && onNavigate != null) {
                 onNavigate(NavState.TextEditor(file.absolutePath))
                 return
@@ -227,7 +230,7 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
             setDataAndType(uri, mimeType)
             addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(intent)
+        context.startActivity(android.content.Intent.createChooser(intent, "Open with"))
     } catch (e: Exception) {
         android.widget.Toast.makeText(context, "Cannot open file: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
     }
@@ -365,6 +368,15 @@ fun HomeScreen() {
             }
             currentNavState is NavState.TextEditor -> {
                 val s = currentNavState as NavState.TextEditor
+                val parent = java.io.File(s.path).parent
+                if (parent != null && java.io.File(parent).exists()) {
+                    currentNavState = NavState.Local(parent)
+                } else {
+                    currentNavState = NavState.Home
+                }
+            }
+            currentNavState is NavState.MarkdownViewer -> {
+                val s = currentNavState as NavState.MarkdownViewer
                 val parent = java.io.File(s.path).parent
                 if (parent != null && java.io.File(parent).exists()) {
                     currentNavState = NavState.Local(parent)
@@ -530,6 +542,7 @@ fun HomeScreen() {
                                     is NavState.RemoteConnections -> "Remote Connections"
                                     is NavState.P2PChat -> "Chat with ${state.deviceName}"
                                     is NavState.TextEditor -> state.path.substringAfterLast("/")
+                                    is NavState.MarkdownViewer -> state.path.substringAfterLast("/")
                                     is NavState.Saf -> state.uri.substringAfterLast("%2F").substringAfterLast("/")
                                     else -> ""
                                 },
@@ -679,6 +692,10 @@ fun HomeScreen() {
                         is NavState.PdfViewer -> NavState.Local(state.folderPath)
                         is NavState.MediaPlayer -> NavState.Local(state.folderPath)
                         is NavState.TextEditor -> {
+                            val parent = java.io.File(state.path).parent
+                            if (parent != null) NavState.Local(parent) else NavState.Home
+                        }
+                        is NavState.MarkdownViewer -> {
                             val parent = java.io.File(state.path).parent
                             if (parent != null) NavState.Local(parent) else NavState.Home
                         }
@@ -846,6 +863,17 @@ fun HomeScreen() {
                             onBack = { currentNavState = NavState.Local(state.folderPath) }
                         )
                         is NavState.TextEditor -> TextEditorScreen(
+                            path = state.path,
+                            onBack = { 
+                                val parent = java.io.File(state.path).parent
+                                if (parent != null) {
+                                    currentNavState = NavState.Local(parent)
+                                } else {
+                                    currentNavState = NavState.Home 
+                                }
+                            }
+                        )
+                        is NavState.MarkdownViewer -> MarkdownViewerScreen(
                             path = state.path,
                             onBack = { 
                                 val parent = java.io.File(state.path).parent
