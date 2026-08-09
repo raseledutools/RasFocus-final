@@ -915,6 +915,7 @@ fun getSdCardStorageInfo(context: android.content.Context): StorageInfo {
     } catch (e: Exception) { StorageInfo(0, 0) }
 }
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Unit) {
     val context = LocalContext.current
