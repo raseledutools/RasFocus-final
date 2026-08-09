@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -922,6 +923,13 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
     var sdInfo by remember { mutableStateOf(StorageInfo(0, 0)) }
     val scope = rememberCoroutineScope()
 
+    // ── Home Shortcuts ─────────────────────────────────────────────────────
+    val shortcutPrefs = remember { context.getSharedPreferences("HomeShortcutPrefs", android.content.Context.MODE_PRIVATE) }
+    var shortcutKeys by remember {
+        mutableStateOf(shortcutPrefs.getStringSet("shortcuts", emptySet()) ?: emptySet())
+    }
+    var showShortcutManager by remember { mutableStateOf(false) }
+
     // ΓöÇΓöÇ My Drive quick-access state ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     val drivePrefs = remember { context.getSharedPreferences("MyDrivePrefs", android.content.Context.MODE_PRIVATE) }
     var selectedDriveAccount by remember {
@@ -1079,6 +1087,9 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
             "Access from..." -> {
                 onNavigate(NavState.FtpServer)
             }
+            "Recycle Bin" -> {
+                onNavigate(NavState.RecycleBin)
+            }
         }
     }
 
@@ -1146,8 +1157,63 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
             GridItemData("New files", newFilesCount, Icons.Default.Schedule)     to Color(0xFF78909C),
             GridItemData("Cloud",     cloudCount,    Icons.Default.Cloud)        to Color(0xFF42A5F5),
             GridItemData("Remote",    "",            Icons.Default.Computer)     to Color(0xFF8D6E63),
-            GridItemData("Access from...", "",       Icons.Default.Devices)      to Color(0xFF607D8B)
+            GridItemData("Access from...", "",       Icons.Default.Devices)      to Color(0xFF607D8B),
+            GridItemData("Recycle Bin", "",          Icons.Default.Delete)       to Color(0xFF757575)
         )
+
+        // ── Home Shortcuts section (shown above the main grid if any shortcuts set) ──
+        if (shortcutKeys.isNotEmpty()) {
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "HOME SHORTCUTS",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF9E9E9E),
+                        letterSpacing = 1.sp
+                    )
+                    Text(
+                        text = "Edit",
+                        fontSize = 13.sp,
+                        color = Color(0xFF1976D2),
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.clickable { showShortcutManager = true }
+                    )
+                }
+                Column(modifier = Modifier.padding(horizontal = 12.dp)) {
+                    val shortcutItems = categoryItems.filter { (data, _) -> data.title in shortcutKeys }
+                    for (row in shortcutItems.chunked(3)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            for ((data, color) in row) {
+                                CategoryCard(
+                                    label = data.title,
+                                    subtitle = data.subtitle,
+                                    icon = data.icon,
+                                    iconColor = color,
+                                    modifier = Modifier.weight(1f),
+                                    onClick = { navigate(data.title) }
+                                )
+                            }
+                            repeat(3 - row.size) { Spacer(modifier = Modifier.weight(1f)) }
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+                    }
+                }
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    color = Color(0xFFEEEEEE)
+                )
+            }
+        }
 
         item {
             Spacer(modifier = Modifier.height(8.dp))
@@ -1173,7 +1239,133 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                 }
             }
         }
+
+        // ── Add Home Shortcut button ─────────────────────────────────────
+        item {
+            OutlinedButton(
+                onClick = { showShortcutManager = true },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .padding(bottom = 8.dp),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.5.dp, Color(0xFF1976D2))
+            ) {
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = null,
+                    tint = Color(0xFF1976D2),
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = "Add home shortcut",
+                    color = Color(0xFF1976D2),
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp
+                )
+            }
+        }
     }
+
+    // ── Home Shortcut Manager BottomSheet ─────────────────────────────────
+    if (showShortcutManager) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { showShortcutManager = false },
+            sheetState = sheetState,
+            containerColor = Color.White,
+            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 32.dp)
+            ) {
+                Text(
+                    text = "Manage Home Shortcuts",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                Text(
+                    text = "Tap to add or remove shortcuts from your home screen",
+                    fontSize = 12.sp,
+                    color = Color(0xFF9E9E9E),
+                    modifier = Modifier.padding(bottom = 14.dp)
+                )
+                val allShortcutOptions = listOf(
+                    GridItemData("Downloads", "", Icons.Default.Download)    to Color(0xFFF57C00),
+                    GridItemData("Images",    "", Icons.Default.Image)       to Color(0xFF8E24AA),
+                    GridItemData("Audio",     "", Icons.Default.Audiotrack)  to Color(0xFF00897B),
+                    GridItemData("Videos",    "", Icons.Default.VideoLibrary)to Color(0xFFE53935),
+                    GridItemData("Documents", "", Icons.Default.Description) to Color(0xFF1976D2),
+                    GridItemData("Apps",      "", Icons.Default.Android)     to Color(0xFF8BC34A),
+                    GridItemData("New files", "", Icons.Default.Schedule)    to Color(0xFF78909C),
+                    GridItemData("Cloud",     "", Icons.Default.Cloud)       to Color(0xFF42A5F5),
+                    GridItemData("Remote",    "", Icons.Default.Computer)    to Color(0xFF8D6E63),
+                    GridItemData("Access from...", "", Icons.Default.Devices)to Color(0xFF607D8B),
+                    GridItemData("Recycle Bin",   "", Icons.Default.Delete)  to Color(0xFF757575)
+                )
+                allShortcutOptions.forEach { (data, color) ->
+                    val isActive = data.title in shortcutKeys
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                val updated = if (isActive) {
+                                    shortcutKeys - data.title
+                                } else {
+                                    shortcutKeys + data.title
+                                }
+                                shortcutKeys = updated
+                                shortcutPrefs.edit().putStringSet("shortcuts", updated).apply()
+                            }
+                            .padding(vertical = 10.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(color.copy(alpha = 0.12f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(data.icon, contentDescription = null, tint = color, modifier = Modifier.size(22.dp))
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Text(data.title, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (isActive) Color(0xFF1976D2) else Color(0xFFE0E0E0)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (isActive) {
+                                Icon(Icons.Default.Check, contentDescription = "Selected", tint = Color.White, modifier = Modifier.size(14.dp))
+                            }
+                        }
+                    }
+                    HorizontalDivider(color = Color(0xFFF3F4F6), thickness = 0.5.dp)
+                }
+                Spacer(Modifier.height(16.dp))
+                Button(
+                    onClick = { showShortcutManager = false },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2))
+                ) {
+                    Text("Done", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                }
+            }
+        }
+    }
+}
 
     // ΓöÇΓöÇ Drive Account Picker BottomSheet ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     if (showDrivePickerSheet) {
