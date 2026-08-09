@@ -62,6 +62,10 @@ sealed class NavState {
     object FMSettings : NavState()
     data class TextEditor(val path: String) : NavState()
     data class MarkdownViewer(val path: String) : NavState()
+    data class DocxViewer(val path: String) : NavState()
+    data class PptxViewer(val path: String) : NavState()
+    data class XlsxViewer(val path: String) : NavState()
+    data class EpubViewer(val path: String) : NavState()
     data class Saf(val uri: String) : NavState()
     data class ImageViewer(val path: String, val folderPath: String) : NavState()
     data class PdfViewer(val path: String, val folderPath: String) : NavState()
@@ -102,6 +106,10 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
             "bmp" -> "image/bmp"
             "heic", "heif" -> "image/heic"
             "md", "markdown" -> "text/markdown"
+            "docx", "doc" -> "application/docx"
+            "pptx", "ppt" -> "application/pptx"
+            "xlsx", "xls" -> "application/xlsx"
+            "epub" -> "application/epub"
             "txt", "kt", "java", "py", "js", "ts", "json", "xml", "csv",
             "html", "css", "sh", "c", "cpp", "h", "rs", "go", "rb", "yaml", "yml" -> "text/plain"
             else -> null
@@ -130,6 +138,23 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
             if (ext in mediaExts && onNavigate != null) {
                 val folderPath = file.parent ?: file.absolutePath
                 onNavigate(NavState.MediaPlayer(file.absolutePath, folderPath))
+                return
+            }
+
+            if (internalMime == "application/docx" && onNavigate != null) {
+                onNavigate(NavState.DocxViewer(file.absolutePath))
+                return
+            }
+            if (internalMime == "application/pptx" && onNavigate != null) {
+                onNavigate(NavState.PptxViewer(file.absolutePath))
+                return
+            }
+            if (internalMime == "application/xlsx" && onNavigate != null) {
+                onNavigate(NavState.XlsxViewer(file.absolutePath))
+                return
+            }
+            if (internalMime == "application/epub" && onNavigate != null) {
+                onNavigate(NavState.EpubViewer(file.absolutePath))
                 return
             }
 
@@ -695,8 +720,16 @@ fun HomeScreen() {
                             val parent = java.io.File(state.path).parent
                             if (parent != null) NavState.Local(parent) else NavState.Home
                         }
-                        is NavState.MarkdownViewer -> {
-                            val parent = java.io.File(state.path).parent
+                        is NavState.MarkdownViewer, is NavState.DocxViewer, is NavState.PptxViewer, is NavState.XlsxViewer, is NavState.EpubViewer -> {
+                            val path = when (state) {
+                                is NavState.MarkdownViewer -> state.path
+                                is NavState.DocxViewer -> state.path
+                                is NavState.PptxViewer -> state.path
+                                is NavState.XlsxViewer -> state.path
+                                is NavState.EpubViewer -> state.path
+                                else -> ""
+                            }
+                            val parent = java.io.File(path).parent
                             if (parent != null) NavState.Local(parent) else NavState.Home
                         }
                         else -> currentNavState
@@ -882,6 +915,37 @@ fun HomeScreen() {
                                 } else {
                                     currentNavState = NavState.Home 
                                 }
+                            }
+                        )
+                        is NavState.DocxViewer -> com.rasel.RasFocus.selfcontrol.study_tools.DocxViewerScreen(
+                            uri = android.net.Uri.fromFile(java.io.File(state.path)),
+                            fileName = java.io.File(state.path).name,
+                            onClose = {
+                                val parent = java.io.File(state.path).parent
+                                currentNavState = if (parent != null) NavState.Local(parent) else NavState.Home 
+                            }
+                        )
+                        is NavState.PptxViewer -> com.rasel.RasFocus.selfcontrol.study_tools.PptxViewerScreen(
+                            uri = android.net.Uri.fromFile(java.io.File(state.path)),
+                            fileName = java.io.File(state.path).name,
+                            onClose = {
+                                val parent = java.io.File(state.path).parent
+                                currentNavState = if (parent != null) NavState.Local(parent) else NavState.Home 
+                            }
+                        )
+                        is NavState.XlsxViewer -> com.rasel.RasFocus.selfcontrol.study_tools.XlsxViewerScreen(
+                            uri = android.net.Uri.fromFile(java.io.File(state.path)),
+                            fileName = java.io.File(state.path).name,
+                            onClose = {
+                                val parent = java.io.File(state.path).parent
+                                currentNavState = if (parent != null) NavState.Local(parent) else NavState.Home 
+                            }
+                        )
+                        is NavState.EpubViewer -> EpubViewerScreen(
+                            path = state.path,
+                            onBack = { 
+                                val parent = java.io.File(state.path).parent
+                                currentNavState = if (parent != null) NavState.Local(parent) else NavState.Home 
                             }
                         )
                         else -> {}

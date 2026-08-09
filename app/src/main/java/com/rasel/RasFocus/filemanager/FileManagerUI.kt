@@ -52,8 +52,9 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.ViewList
-import androidx.compose.ui.window.DialogProperties
+
 import androidx.activity.compose.BackHandler
+import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import androidx.compose.ui.layout.ContentScale
@@ -96,7 +97,7 @@ import android.graphics.Bitmap
 import android.util.LruCache
 import kotlinx.coroutines.Dispatchers
 import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
+
 
 // ── Share helpers — defined here so FileManagerUI resolves them independently ──
 // (same definitions also exist in FileManagerPlusActivity; Kotlin deduplicates
@@ -2245,12 +2246,13 @@ fun SelectionBottomBar(
     onMergePdf: (() -> Unit)? = null,
     onPdfToImages: (() -> Unit)? = null,
     onImagesToPdf: (() -> Unit)? = null,
+    onOpenWith: (() -> Unit)? = null,
     onSecure: (() -> Unit)? = null,
     onProperties: (() -> Unit)? = null
 ) {
     var showMoreMenu by remember { mutableStateOf(false) }
     val hasMore = onZip != null || onUnzip != null || onMergePdf != null ||
-                  onPdfToImages != null || onImagesToPdf != null ||
+                  onPdfToImages != null || onImagesToPdf != null || onOpenWith != null ||
                   onSecure != null || onProperties != null
 
     Surface(
@@ -2289,6 +2291,11 @@ fun SelectionBottomBar(
                         expanded = showMoreMenu,
                         onDismissRequest = { showMoreMenu = false }
                     ) {
+                        if (onOpenWith != null) DropdownMenuItem(
+                            text = { Text("Open With") },
+                            leadingIcon = { Icon(Icons.Default.OpenInNew, null) },
+                            onClick = { showMoreMenu = false; onOpenWith() }
+                        )
                         if (onZip != null) DropdownMenuItem(
                             text = { Text("Zip") },
                             leadingIcon = { Icon(Icons.Default.FolderZip, null) },
