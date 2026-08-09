@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
@@ -127,7 +128,9 @@ fun PdfZoomViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit) {
         return ox.coerceIn(-maxPan, maxPan)
     }
 
+    val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             TopAppBar(
                 title = { Text("PDF Viewer", color = Color.White, fontSize = 16.sp) },
@@ -136,7 +139,8 @@ fun PdfZoomViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF1A1A2E))
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF1A1A2E)),
+                scrollBehavior = scrollBehavior
             )
         },
         containerColor = Color(0xFF1A1A2E)
@@ -281,8 +285,16 @@ fun ZoomablePdfPage(
                 try {
                     mutex.withLock {
                         val page = pdfRenderer.openPage(pageIndex)
-                        val w = (page.width  * targetScale).roundToInt()
-                        val h = (page.height * targetScale).roundToInt()
+                        var w = (page.width  * targetScale).roundToInt()
+                        var h = (page.height * targetScale).roundToInt()
+                        
+                        val maxDim = 3000
+                        if (w > maxDim || h > maxDim) {
+                            val ratio = maxDim.toFloat() / maxOf(w, h)
+                            w = (w * ratio).roundToInt()
+                            h = (h * ratio).roundToInt()
+                        }
+                        
                         val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
                         bmp.eraseColor(android.graphics.Color.WHITE)
                         page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
@@ -302,8 +314,16 @@ fun ZoomablePdfPage(
             try {
                 mutex.withLock {
                     val page = pdfRenderer.openPage(pageIndex)
-                    val w = (page.width  * BASE_SCALE).roundToInt()
-                    val h = (page.height * BASE_SCALE).roundToInt()
+                    var w = (page.width  * BASE_SCALE).roundToInt()
+                    var h = (page.height * BASE_SCALE).roundToInt()
+                    
+                    val maxDim = 3000
+                    if (w > maxDim || h > maxDim) {
+                        val ratio = maxDim.toFloat() / maxOf(w, h)
+                        w = (w * ratio).roundToInt()
+                        h = (h * ratio).roundToInt()
+                    }
+                    
                     val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
                     bmp.eraseColor(android.graphics.Color.WHITE)
                     page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
