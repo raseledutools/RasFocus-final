@@ -1365,9 +1365,8 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
             }
         }
     }
-}
 
-    // ΓöÇΓöÇ Drive Account Picker BottomSheet ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    // ── Drive Account Picker BottomSheet ──────────────────────────────────
     if (showDrivePickerSheet) {
         DriveAccountPickerSheet(
             accounts = driveAccounts,
