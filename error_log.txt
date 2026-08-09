@@ -4,30 +4,31 @@
 ╚══════════════════════════════════════════╝
 
 === KOTLIN ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:55:35 Conflicting import, imported name 'DialogProperties' is ambiguous
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:99:35 Conflicting import, imported name 'DialogProperties' is ambiguous
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:2296:64 Unresolved reference: OpenInNew
 
 === UNRESOLVED / TYPE ERRORS ===
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:2296:64 Unresolved reference: OpenInNew
 
 === BUILD FAILURE ===
 > Task :app:compileFullReleaseKotlin FAILED
 * What went wrong:
 Execution failed for task ':app:compileFullReleaseKotlin'.
-BUILD FAILED in 3m 31s
+BUILD FAILED in 2m 50s
 
 === LAST 60 LINES ===
-> Task :app:extractProguardFiles
+> Task :app:extractDeepLinksFullRelease FROM-CACHE
+> Task :app:generateFullReleaseBuildConfig
 > Task :app:packageFullReleaseResources FROM-CACHE
 > Task :app:parseFullReleaseLocalResources FROM-CACHE
 > Task :app:mapFullReleaseSourceSetPaths
-> Task :app:mergeFullReleaseAssets FROM-CACHE
 > Task :app:checkFullReleaseAarMetadata
-> Task :app:compressFullReleaseAssets FROM-CACHE
 > Task :app:validateSigningFullRelease
 > Task :app:writeFullReleaseAppMetadata
-> Task :app:mergeFullReleaseArtProfile
 > Task :app:writeFullReleaseSigningConfigVersions
+> Task :app:mergeFullReleaseArtProfile
+> Task :app:mergeFullReleaseAssets FROM-CACHE
 > Task :app:checkFullReleaseDuplicateClasses
+> Task :app:compressFullReleaseAssets FROM-CACHE
 > Task :app:mergeFullReleaseNativeLibs
 > Task :app:collectFullReleaseDependencies
 
@@ -36,11 +37,11 @@ Unable to strip the following libraries, packaging them as they are: libbarhoppe
 
 > Task :app:extractFullReleaseNativeSymbolTables FROM-CACHE
 > Task :app:mergeFullReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:mergeFullReleaseResources FROM-CACHE
 > Task :app:sdkFullReleaseDependencyData
 > Task :app:processFullReleaseMainManifest
 > Task :app:processFullReleaseManifest
 > Task :app:processFullReleaseManifestForPackage
-> Task :app:mergeFullReleaseResources
 note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
 
 note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
@@ -48,11 +49,10 @@ note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round ico
 > Task :app:processFullReleaseResources
 > Task :app:kspFullReleaseKotlin
 > Task :app:compileFullReleaseKotlin
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:55:35 Conflicting import, imported name 'DialogProperties' is ambiguous
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:99:35 Conflicting import, imported name 'DialogProperties' is ambiguous
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:2296:64 Unresolved reference: OpenInNew
 
 > Task :app:compileFullReleaseKotlin FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1786289524860.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1786290416244.json
 
 FAILURE: Build failed with an exception.
 
@@ -73,6 +73,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 3m 31s
-32 actionable tasks: 23 executed, 9 from cache
+BUILD FAILED in 2m 50s
+32 actionable tasks: 22 executed, 10 from cache
 Configuration cache entry stored.
