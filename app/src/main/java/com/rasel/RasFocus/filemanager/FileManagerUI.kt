@@ -1659,7 +1659,7 @@ fun FileListItem(
                 .fillMaxWidth()
                 .background(if (isSelected) Color(0xFFB2DFDB) else Color.White)
                 .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-                .padding(horizontal = 16.dp, vertical = 16.dp),
+                .padding(horizontal = 16.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
@@ -1785,11 +1785,9 @@ fun FileListItem(
                 }
             }
         }
-        // subtle separator line — lighter than before, only between items
         HorizontalDivider(
-            color = Color(0xFFEEEEEE),
-            thickness = 0.5.dp,
-            modifier = Modifier.padding(start = 88.dp) // indent past icon+gap
+            color = Color(0xFFBDBDBD),
+            thickness = 0.8.dp
         )
     }
 }
