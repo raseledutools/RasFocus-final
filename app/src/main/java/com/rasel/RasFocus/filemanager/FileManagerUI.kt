@@ -312,6 +312,9 @@ fun LocalFileScreen(
     var rawFiles by remember { mutableStateOf<List<File>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
     var selectedFiles by remember { mutableStateOf<Set<String>>(emptySet()) }
+    BackHandler(enabled = selectedFiles.isNotEmpty()) {
+        selectedFiles = emptySet()
+    }
     var hasPermission by remember { mutableStateOf(LocalFileManager.hasStorageAccess(context)) }
     var isGridView by remember { mutableStateOf(false) }
     var localSearchQuery by remember { mutableStateOf(searchQuery) }
@@ -1033,7 +1036,11 @@ fun LocalFileScreen(
                                     DriveFileManager.downloadFolder(context, srcAccount, fileId, fileName, destDir)
                                 } else {
                                     // Download single file directly to destDir
-                                    val downloaded = DriveFileManager.downloadFile(context, srcAccount, fileId, fileName, destDir)
+                                    val downloaded = DriveFileManager.downloadFile(context, srcAccount, fileId, fileName, destDir) { bytesDownloaded ->
+                                        FileOperationManager.updateOperation(opId) {
+                                            it.copy(bytesProcessed = bytesDownloaded)
+                                        }
+                                    }
                                     downloaded != null
                                 }
 
@@ -1118,6 +1125,9 @@ fun CloudFileScreen(
     var isLoading by remember { mutableStateOf(true) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
     var selectedFiles by remember { mutableStateOf<Set<String>>(emptySet()) }
+    BackHandler(enabled = selectedFiles.isNotEmpty()) {
+        selectedFiles = emptySet()
+    }
     // Offline state
     var isOfflineMode by remember { mutableStateOf(false) }
     var cacheAgeMinutes by remember { mutableStateOf<Long?>(null) }
@@ -2000,12 +2010,20 @@ fun CopyMoveProgressDialog(
                 Spacer(Modifier.height(8.dp))
 
                 // Progress bar
-                LinearProgressIndicator(
-                    progress = { operation.progress },
-                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
-                    color = Color(0xFF009688),
-                    trackColor = Color(0xFFCCCCCC)
-                )
+                if (operation.totalBytes == 0L && operation.progress == 0f) {
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                        color = Color(0xFF009688),
+                        trackColor = Color(0xFFCCCCCC)
+                    )
+                } else {
+                    LinearProgressIndicator(
+                        progress = { operation.progress },
+                        modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                        color = Color(0xFF009688),
+                        trackColor = Color(0xFFCCCCCC)
+                    )
+                }
 
                 Spacer(Modifier.height(8.dp))
 

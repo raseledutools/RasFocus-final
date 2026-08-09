@@ -1413,12 +1413,12 @@ fun MyDriveTopCard(
             imageVector = Icons.Default.CloudQueue,
             contentDescription = "My Drive",
             tint = driveBlue,
-            modifier = Modifier.size(68.dp)
+            modifier = Modifier.size(52.dp)
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(4.dp))
         Text(
             text = "My Drive",
-            fontSize = 15.sp,
+            fontSize = 13.sp,
             color = Color(0xFF202020),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -1426,7 +1426,7 @@ fun MyDriveTopCard(
         Spacer(Modifier.height(2.dp))
         Text(
             text = if (selectedAccount != null) selectedAccount.substringBefore("@").take(12) else "Tap to connect",
-            fontSize = 12.sp,
+            fontSize = 11.sp,
             color = Color(0xFF808080),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -1576,12 +1576,12 @@ fun StorageTopCard(
             imageVector = icon,
             contentDescription = label,
             tint = iconColor,
-            modifier = Modifier.size(68.dp)
+            modifier = Modifier.size(52.dp)
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(4.dp))
         Text(
             text = label,
-            fontSize = 15.sp,
+            fontSize = 13.sp,
             color = Color(0xFF202020),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -1589,7 +1589,7 @@ fun StorageTopCard(
         Spacer(Modifier.height(2.dp))
         Text(
             text = subtitle.ifEmpty { " " },
-            fontSize = 12.sp,
+            fontSize = 11.sp,
             color = Color(0xFF808080),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -1619,22 +1619,22 @@ fun CategoryCard(
     ) {
         Box(
             modifier = Modifier
-                .size(76.dp)
-                .background(Color.White, RoundedCornerShape(22.dp))
-                .border(1.dp, Color(0xFFE8E8E8), RoundedCornerShape(22.dp)),
+                .size(60.dp)
+                .background(Color.White, RoundedCornerShape(18.dp))
+                .border(1.dp, Color(0xFFE8E8E8), RoundedCornerShape(18.dp)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
                 tint = iconColor,
-                modifier = Modifier.size(36.dp)
+                modifier = Modifier.size(28.dp)
             )
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(6.dp))
         Text(
             text = label,
-            fontSize = 15.sp,
+            fontSize = 13.sp,
             color = Color(0xFF202020),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -1642,7 +1642,7 @@ fun CategoryCard(
         Spacer(Modifier.height(2.dp))
         Text(
             text = subtitle.ifEmpty { " " },
-            fontSize = 12.sp,
+            fontSize = 11.sp,
             color = Color(0xFF808080),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis

@@ -98,12 +98,25 @@ object DriveFileManager {
         }
     }
 
-    suspend fun downloadFile(context: Context, accountName: String, fileId: String, fileName: String, outputDir: java.io.File = context.cacheDir): java.io.File? = withContext(Dispatchers.IO) {
+    suspend fun downloadFile(
+        context: Context, 
+        accountName: String, 
+        fileId: String, 
+        fileName: String, 
+        outputDir: java.io.File = context.cacheDir,
+        progressListener: ((bytesDownloaded: Long) -> Unit)? = null
+    ): java.io.File? = withContext(Dispatchers.IO) {
         val driveService = buildDriveService(context, accountName) ?: return@withContext null
         try {
             val destination = java.io.File(outputDir, fileName)
             destination.outputStream().use { out ->
-                driveService.files().get(fileId).executeMediaAndDownloadTo(out)
+                val request = driveService.files().get(fileId)
+                if (progressListener != null) {
+                    request.mediaHttpDownloader.setProgressListener { downloader ->
+                        progressListener(downloader.numBytesDownloaded)
+                    }
+                }
+                request.executeMediaAndDownloadTo(out)
             }
             destination
         } catch (e: Exception) {
@@ -112,7 +125,13 @@ object DriveFileManager {
         }
     }
 
-    suspend fun uploadFile(context: Context, accountName: String, localFile: java.io.File, parentFolderId: String = "root"): com.google.api.services.drive.model.File? = withContext(Dispatchers.IO) {
+    suspend fun uploadFile(
+        context: Context, 
+        accountName: String, 
+        localFile: java.io.File, 
+        parentFolderId: String = "root",
+        progressListener: ((bytesUploaded: Long) -> Unit)? = null
+    ): com.google.api.services.drive.model.File? = withContext(Dispatchers.IO) {
         val driveService = buildDriveService(context, accountName) ?: return@withContext null
         try {
             val fileMetadata = com.google.api.services.drive.model.File()
@@ -120,9 +139,16 @@ object DriveFileManager {
             fileMetadata.parents = listOf(parentFolderId)
             
             val mediaContent = com.google.api.client.http.FileContent(null, localFile)
-            val file = driveService.files().create(fileMetadata, mediaContent)
+            val request = driveService.files().create(fileMetadata, mediaContent)
                 .setFields("id, name")
-                .execute()
+            
+            if (progressListener != null) {
+                request.mediaHttpUploader.setProgressListener { uploader ->
+                    progressListener(uploader.numBytesUploaded)
+                }
+            }
+            
+            val file = request.execute()
             
             lastError = null
             lastRecoveryIntent = null

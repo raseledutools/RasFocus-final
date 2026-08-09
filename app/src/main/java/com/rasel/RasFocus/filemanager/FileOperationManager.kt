@@ -25,7 +25,15 @@ data class FileOperation(
     val isError: Boolean = false
 ) {
     val progress: Float
-        get() = if (totalBytes > 0) (bytesProcessed.toFloat() / totalBytes).coerceIn(0f, 1f) else 0f
+        get() = if (totalBytes > 0) {
+            (bytesProcessed.toFloat() / totalBytes).coerceIn(0f, 1f)
+        } else if (sourceCount > 0) {
+            // Indeterminate-ish behavior: if we have 1 file, keep it at 0% until done
+            // If multiple files, show item progress
+            if (sourceCount == 1) 0f else (itemsProcessed.toFloat() / sourceCount).coerceIn(0f, 1f)
+        } else {
+            0f
+        }
     val elapsedSeconds: Long
         get() = (System.currentTimeMillis() - startTimeMs) / 1000L
 }
