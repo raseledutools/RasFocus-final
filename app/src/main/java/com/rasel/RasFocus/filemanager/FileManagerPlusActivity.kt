@@ -476,6 +476,7 @@ fun HomeScreen() {
 
     ModalNavigationDrawer(
         drawerState = drawerState,
+        gesturesEnabled = currentNavState !is NavState.PdfViewer && currentNavState !is NavState.ImageViewer && currentNavState !is NavState.MediaPlayer && currentNavState !is NavState.TextEditor,
         drawerContent = {
             ModalDrawerSheet(
                 modifier = Modifier.width(300.dp),
@@ -1668,7 +1669,7 @@ fun StorageTopCard(
             imageVector = icon,
             contentDescription = label,
             tint = iconColor,
-            modifier = Modifier.size(52.dp)
+            modifier = Modifier.size(42.dp)
         )
         Spacer(Modifier.height(4.dp))
         Text(
@@ -1711,16 +1712,16 @@ fun CategoryCard(
     ) {
         Box(
             modifier = Modifier
-                .size(60.dp)
-                .background(Color.White, RoundedCornerShape(18.dp))
-                .border(1.dp, Color(0xFFE8E8E8), RoundedCornerShape(18.dp)),
+                .size(50.dp)
+                .background(Color.White, RoundedCornerShape(16.dp))
+                .border(1.dp, Color(0xFFE8E8E8), RoundedCornerShape(16.dp)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
                 tint = iconColor,
-                modifier = Modifier.size(28.dp)
+                modifier = Modifier.size(24.dp)
             )
         }
         Spacer(Modifier.height(6.dp))

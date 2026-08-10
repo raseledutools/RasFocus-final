@@ -1171,16 +1171,11 @@ class YoutubeActivity : ComponentActivity() {
         }
 
         // Normal resume (mini player নেই)
-        // homeWebView লুকাও যদি কোনো কারণে দৃশ্যমান থাকে
-        homeWebView?.visibility = View.GONE
+        homeWebView?.resumeTimers()
+        homeWebView?.onResume()
 
         webView?.resumeTimers()
         webView?.onResume()
-        webView?.apply {
-            visibility = View.VISIBLE
-            alpha = 1f
-            bringToFront()
-        }
     }
 
     /**
