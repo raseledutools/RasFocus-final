@@ -502,6 +502,12 @@ fun HomeScreen() {
                     currentNavState !is NavState.ImageViewer &&
                     currentNavState !is NavState.PdfViewer &&
                     currentNavState !is NavState.MediaPlayer &&
+                    currentNavState !is NavState.Category &&
+                    currentNavState !is NavState.TextEditor &&
+                    currentNavState !is NavState.MarkdownViewer &&
+                    currentNavState !is NavState.DocxViewer &&
+                    currentNavState !is NavState.PptxViewer &&
+                    currentNavState !is NavState.XlsxViewer &&
                     currentNavState != NavState.RecycleBin &&
                     currentNavState != NavState.SecureVault &&
                     currentNavState != NavState.StorageAnalyzer &&
