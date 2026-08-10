@@ -639,10 +639,19 @@ fun LocalFileScreen(
                         }
                     }
                 } } else null,
+                onAddShortcut = {
+                    if (selectedFiles.isNotEmpty()) {
+                        val f = File(selectedFiles.first())
+                        createLauncherShortcut(context, f.absolutePath, f.name)
+                        selectedFiles = emptySet()
+                    }
+                },
                 onImagesToPdf = if (showImagesToPdf) { {
                     scope.launch(Dispatchers.IO) {
                         val images = selectedFiles.map { File(it) }
-                        var pdfDest = File(path, "images_${System.currentTimeMillis()}.pdf")
+                        var convertedDir = File(path, "Converted PDFs")
+                        convertedDir.mkdirs()
+                        var pdfDest = File(convertedDir, "images_${System.currentTimeMillis()}.pdf")
                         var success = PdfHelper.imagesToPdf(context, images, pdfDest)
                         var fallbackUsed = false
                         if (!success) {
@@ -955,13 +964,22 @@ fun LocalFileScreen(
                         }
                     }) else null
                 },
+                onAddShortcut = {
+                    if (selectedFiles.isNotEmpty()) {
+                        val f = File(selectedFiles.first())
+                        createLauncherShortcut(context, f.absolutePath, f.name)
+                        selectedFiles = emptySet()
+                    }
+                },
                 onImagesToPdf = run {
                     val imgExts = listOf("jpg", "jpeg", "png", "bmp", "webp")
                     val canConvert = selectedFiles.isNotEmpty() && selectedFiles.all { it.substringAfterLast('.').lowercase() in imgExts }
                     if (canConvert) ({
                         scope.launch(Dispatchers.IO) {
                             val images = selectedFiles.map { File(it) }
-                            var pdfDest = File(path, "images_${System.currentTimeMillis()}.pdf")
+                            var convertedDir = File(path, "Converted PDFs")
+                            convertedDir.mkdirs()
+                            var pdfDest = File(convertedDir, "images_${System.currentTimeMillis()}.pdf")
                             var success = PdfHelper.imagesToPdf(context, images, pdfDest)
                             if (!success) {
                                 val fb = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOCUMENTS), "RasFocus")
@@ -2138,6 +2156,7 @@ fun SelectionTopBar(
     onMergePdf: (() -> Unit)? = null,
     onPdfToImages: (() -> Unit)? = null,
     onImagesToPdf: (() -> Unit)? = null,
+    onAddShortcut: (() -> Unit)? = null,
     onSecure: (() -> Unit)? = null,
     onProperties: (() -> Unit)? = null
 ) {
@@ -2214,6 +2233,13 @@ fun SelectionTopBar(
                             leadingIcon = { Icon(Icons.Default.PictureAsPdf, null) }
                         )
                     }
+                    if (onAddShortcut != null) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("Add Shortcut") },
+                            onClick = { showMoreMenu = false; onAddShortcut() },
+                            leadingIcon = { Icon(Icons.Default.Link, null) }
+                        )
+                    }
                     if (onSecure != null) {
                         androidx.compose.material3.DropdownMenuItem(
                             text = { Text("Secure") },
@@ -2248,13 +2274,14 @@ fun SelectionBottomBar(
     onPdfToImages: (() -> Unit)? = null,
     onImagesToPdf: (() -> Unit)? = null,
     onOpenWith: (() -> Unit)? = null,
+    onAddShortcut: (() -> Unit)? = null,
     onSecure: (() -> Unit)? = null,
     onProperties: (() -> Unit)? = null
 ) {
     var showMoreMenu by remember { mutableStateOf(false) }
     val hasMore = onZip != null || onUnzip != null || onMergePdf != null ||
                   onPdfToImages != null || onImagesToPdf != null || onOpenWith != null ||
-                  onSecure != null || onProperties != null
+                  onAddShortcut != null || onSecure != null || onProperties != null
 
     Surface(
         color = Color(0xFF1A6B6B),
@@ -2321,6 +2348,11 @@ fun SelectionBottomBar(
                             text = { Text("Images to PDF") },
                             leadingIcon = { Icon(Icons.Default.PictureAsPdf, null) },
                             onClick = { showMoreMenu = false; onImagesToPdf() }
+                        )
+                        if (onAddShortcut != null) DropdownMenuItem(
+                            text = { Text("Add Shortcut") },
+                            leadingIcon = { Icon(Icons.Default.Link, null) },
+                            onClick = { showMoreMenu = false; onAddShortcut() }
                         )
                         if (onSecure != null) DropdownMenuItem(
                             text = { Text("Secure to Vault") },

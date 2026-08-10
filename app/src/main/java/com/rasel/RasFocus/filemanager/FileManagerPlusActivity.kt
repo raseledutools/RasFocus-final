@@ -43,6 +43,34 @@ import kotlinx.coroutines.withContext
 import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
 import androidx.compose.runtime.collectAsState
+import androidx.core.content.pm.ShortcutInfoCompat
+import androidx.core.content.pm.ShortcutManagerCompat
+import androidx.core.graphics.drawable.IconCompat
+import android.widget.Toast
+
+fun createLauncherShortcut(context: android.content.Context, path: String? = null, title: String? = null, iconRes: Int? = null) {
+    if (ShortcutManagerCompat.isRequestPinShortcutSupported(context)) {
+        val intent = Intent(context, FileManagerPlusActivity::class.java).apply {
+            action = Intent.ACTION_MAIN
+            addCategory(Intent.CATEGORY_LAUNCHER)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            if (path != null) {
+                putExtra("shortcut_path", path)
+            }
+        }
+        val label = title ?: "File Manager"
+        val shortcutInfo = ShortcutInfoCompat.Builder(context, path ?: "file_manager_main")
+            .setShortLabel(label)
+            .setLongLabel(label)
+            .setIcon(IconCompat.createWithResource(context, iconRes ?: com.rasel.RasFocus.R.mipmap.ic_launcher))
+            .setIntent(intent)
+            .build()
+        ShortcutManagerCompat.requestPinShortcut(context, shortcutInfo, null)
+        Toast.makeText(context, "Shortcut requested", Toast.LENGTH_SHORT).show()
+    } else {
+        Toast.makeText(context, "Shortcuts not supported on this device", Toast.LENGTH_SHORT).show()
+    }
+}
 
 sealed class NavState {
     object Home : NavState()
@@ -72,7 +100,7 @@ sealed class NavState {
     data class MediaPlayer(val path: String, val folderPath: String) : NavState()
 }
 
-// â”€â”€ Shared utility functions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Shared utility functions ────────────────────────────────────────────────
 fun formatFileSize(size: Long): String {
     if (size <= 0) return "0 B"
     val units = arrayOf("B", "kB", "MB", "GB", "TB")
@@ -94,9 +122,6 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
             file
         )
 
-        // â”€â”€ Known types: directly launch RasFocus internal viewers â”€â”€
-        // Skips the system "Open with" chooser â†’ always gets in-app viewer
-        // (pdfium for PDF, ImageViewerActivity for images, etc.)
         val internalMime: String? = when (ext) {
             "pdf" -> "application/pdf"
             "jpg", "jpeg" -> "image/jpeg"
@@ -125,7 +150,6 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
                 return
             }
 
-            // ── Image files → NavState.ImageViewer (in-app, back returns to folder) ──
             val imageExts = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "heif")
             if (ext in imageExts && onNavigate != null) {
                 val folderPath = file.parent ?: file.absolutePath
@@ -133,7 +157,6 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
                 return
             }
 
-            // ── Audio/Video files → NavState.MediaPlayer (in-app, back returns to folder) ──
             val mediaExts = setOf("mp4", "mkv", "avi", "mov", "webm", "3gp", "mp3", "wav", "ogg", "flac", "aac", "m4a")
             if (ext in mediaExts && onNavigate != null) {
                 val folderPath = file.parent ?: file.absolutePath
@@ -159,12 +182,10 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
             }
 
             if (internalMime == "application/pdf") {
-                // Read which layer the user chose in Study Tools
                 val prefs = android.preference.PreferenceManager.getDefaultSharedPreferences(context)
                 val engine = prefs.getString("pdf_engine", "pdfium_compose") ?: "pdfium_compose"
                 when (engine) {
                     "webview" -> {
-                        // Layer 3: WebView (Google Docs viewer)
                         val wvIntent = android.content.Intent(context, com.rasel.RasFocus.filemanager.WebViewPdfActivity::class.java).apply {
                             action = android.content.Intent.ACTION_VIEW
                             data   = uri
@@ -175,10 +196,8 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
                         return
                     }
                     "chooser" -> {
-                        // Layer 4: System chooser – fall through to the bottom chooser
                     }
                     "pdfium_legacy" -> {
-                        // Layer 2: UniversalViewerActivity (old flow)
                         val pkg = context.packageName.replace(".combo", "")
                         val cls = try {
                             Class.forName("$pkg.selfcontrol.study_tools.UniversalViewerActivity",
@@ -193,17 +212,14 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
                             context.startActivity(legacyIntent)
                             return
                         }
-                        // fallthrough to compose if legacy class not found
                     }
                 }
-                // Layer 1 (default): Pdfium Compose – NavState.PdfViewer (in-app, back returns to folder)
                 if (engine != "chooser") {
                     if (onNavigate != null) {
                         val folderPath = file.parent ?: file.absolutePath
                         onNavigate(NavState.PdfViewer(file.absolutePath, folderPath))
                         return
                     }
-                    // fallback if no onNavigate (e.g. called from cloud without nav)
                     val intent = android.content.Intent(context, com.rasel.RasFocus.filemanager.FMPdfViewerActivity::class.java).apply {
                         action = android.content.Intent.ACTION_VIEW
                         setDataAndType(uri, internalMime)
@@ -212,11 +228,8 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
                     context.startActivity(intent)
                     return
                 }
-                // chooser: fall through to system chooser below
             }
 
-            // ── WebView layer also handles Office files (DOCX/PPTX/XLSX) ───────
-            // If user selected WebView layer, all office formats go to Google Docs viewer
             val officeExts = setOf("docx","doc","pptx","ppt","xlsx","xls")
             if (ext in officeExts) {
                 val prefs = android.preference.PreferenceManager.getDefaultSharedPreferences(context)
@@ -232,7 +245,6 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
                 }
             }
 
-            // Route through UniversalViewerActivity -> correct internal viewer
             val pkg = context.packageName.replace(".combo", "")
             val cls = try {
                 Class.forName("$pkg.selfcontrol.study_tools.UniversalViewerActivity")
@@ -248,7 +260,6 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
             }
         }
 
-        // â”€â”€ Fallback: system chooser for unknown/unsupported types â”€â”€
         val mimeType = android.webkit.MimeTypeMap.getSingleton()
             .getMimeTypeFromExtension(ext) ?: "*/*"
         val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
@@ -262,15 +273,14 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
 }
 
 data class ClipboardState(
-    val sourceEnv: String, // "Local" or "Cloud"
-    val items: List<String>, // paths or fileIds
-    val itemNames: List<String> = emptyList(), // For Cloud files
-    val itemMimeTypes: List<String> = emptyList(), // For Cloud: mimeType per item
+    val sourceEnv: String, 
+    val items: List<String>, 
+    val itemNames: List<String> = emptyList(), 
+    val itemMimeTypes: List<String> = emptyList(), 
     val isCut: Boolean = false,
     val accountName: String? = null
 )
 
-// Sort options
 enum class SortMode { NAME_ASC, NAME_DESC, DATE_ASC, DATE_DESC, SIZE_ASC, SIZE_DESC }
 
 class FileManagerPlusActivity : ComponentActivity() {
@@ -287,10 +297,9 @@ class FileManagerPlusActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val initialPath = intent.getStringExtra("shortcut_path")
         SafFileManager.init(this)
         requestStoragePermissionIfNeeded()
-        // Android 13+ (TIRAMISU) requires POST_NOTIFICATIONS runtime permission
-        // for foreground service notifications to appear in status bar
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 9001)
@@ -298,7 +307,7 @@ class FileManagerPlusActivity : ComponentActivity() {
         }
         setContent {
             MaterialTheme {
-                HomeScreen()
+                HomeScreen(initialPath)
             }
         }
     }
@@ -306,7 +315,6 @@ class FileManagerPlusActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) {
-            // permission Ã Â¦ÂÃ Â¦â€“Ã Â¦Â¨ Ã Â¦â€ Ã Â¦â€ºÃ Â§â€¡
         }
     }
 
@@ -335,25 +343,36 @@ class FileManagerPlusActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen() {
+fun HomeScreen(initialPath: String? = null) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    var currentNavState by remember { mutableStateOf<NavState>(NavState.Home) }
+    var currentNavState by remember { 
+        mutableStateOf<NavState>(
+            if (initialPath != null) {
+                val f = java.io.File(initialPath)
+                if (f.exists() && f.isDirectory) NavState.Local(initialPath) else NavState.Home
+            } else NavState.Home
+        ) 
+    }
+    
+    androidx.compose.runtime.LaunchedEffect(initialPath) {
+        if (initialPath != null) {
+            val f = java.io.File(initialPath)
+            if (f.isFile) {
+                openLocalFile(context, f) { currentNavState = it }
+            }
+        }
+    }
     var clipboard by remember { mutableStateOf<ClipboardState?>(null) }
     var showMoreMenu by remember { mutableStateOf(false) }
     var sortMode by remember { mutableStateOf(SortMode.NAME_ASC) }
     var showSearchBar by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
 
-    // Cloud subfolder backstack: list of (folderId, pathName) pairs
-    // â”€â”€â”€ Cloud backstack â”€ subfolder à¦¥à§‡à¦•à§‡ proper back navigation à¦ à¦° à¦œà¦¨à§à¦¯ â”€â”€â”€â”€â”€â”€â”€
     val cloudBackStack = remember { mutableStateListOf<Pair<String, String>>() }
-
-    // SAF/eDrive subfolder backstack â€” each entry is the parent-folder URI string
     val safBackStack = remember { mutableStateListOf<String>() }
 
-    // P2P Auto-Discovery and Connection
     val p2pDiscovery = remember { com.rasel.RasFocus.p2p.P2PDiscoveryManager(context) }
     val p2pConnection = remember { com.rasel.RasFocus.p2p.P2PConnectionManager(java.io.File(LocalFileManager.mainStoragePath, "Download")) }
     
@@ -371,7 +390,6 @@ fun HomeScreen() {
         }
     }
 
-    // â”€â”€â”€ BackHandler â”€ Android system back button â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     val activity = androidx.compose.ui.platform.LocalContext.current as? androidx.activity.ComponentActivity
 
     BackHandler(enabled = true) {
@@ -456,7 +474,6 @@ fun HomeScreen() {
                 }
             }
             currentNavState is NavState.Saf -> {
-                // SAF/eDrive subfolder back — pop the SAF backstack instead of going to Home
                 if (safBackStack.isNotEmpty()) {
                     currentNavState = NavState.Saf(safBackStack.removeAt(safBackStack.size - 1))
                 } else {
@@ -465,7 +482,6 @@ fun HomeScreen() {
                 }
             }
             currentNavState == NavState.Home && !drawerState.isOpen -> {
-                // Home screen à¦ back à¦•à¦°à¦²à§‡ activity finish à¦•à¦°à§‹ (app à¦¥à§‡à¦•à§‡ à¦¬à§‡à¦° à¦¹à¦“à¦¯à¦¼à¦¾)
                 activity?.finish()
             }
             else -> {
@@ -518,7 +534,6 @@ fun HomeScreen() {
                     currentNavState != NavState.RemoteConnections
                 if (needsGlobalHeader) {
                     if (showSearchBar) {
-                    // Ã¢â€ â‚¬Ã¢â€ â‚¬ Search bar Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬Ã¢â€ â‚¬
                     TopAppBar(
                         title = {
                             OutlinedTextField(
@@ -585,7 +600,6 @@ fun HomeScreen() {
                         navigationIcon = {
                             IconButton(onClick = {
                                 if (currentNavState != NavState.Home) {
-                                    // Back navigation Ã¢â‚¬â€  same as BackHandler
                                     when {
                                         currentNavState is NavState.Cloud -> {
                                             val state = currentNavState as NavState.Cloud
@@ -635,7 +649,6 @@ fun HomeScreen() {
                             }
                         },
                         actions = {
-                            // Search icon Ã¢â‚¬â€  Home Ã Â¦â€ºÃ Â¦Â¾Ã Â¦Â¡Ã Â¦Â¼Ã Â¦Â¾ Ã Â¦Â¸Ã Â¦Â¬ Ã Â¦Å“Ã Â¦Â¾Ã Â¦Â¯Ã Â¦Â¼Ã Â¦â€”Ã Â¦Â¾Ã Â¦Â¯Ã Â¦Â¼ Ã Â¦Â¦Ã Â§â€¡Ã Â¦â€“Ã Â¦Â¾Ã Â¦Â¬Ã Â§â€¡
                             if (currentNavState != NavState.Home) {
                                 IconButton(onClick = { showSearchBar = true }) {
                                     Icon(Icons.Default.Search, contentDescription = "Search", tint = Color(0xFF49454F))
@@ -655,27 +668,27 @@ fun HomeScreen() {
                                     onDismissRequest = { showMoreMenu = false }
                                 ) {
                                     DropdownMenuItem(
-                                        text = { Text("Sort by name Ã¢â€ â€˜", fontWeight = if (sortMode == SortMode.NAME_ASC) FontWeight.Bold else FontWeight.Normal) },
+                                        text = { Text("Sort by name ↑", fontWeight = if (sortMode == SortMode.NAME_ASC) FontWeight.Bold else FontWeight.Normal) },
                                         onClick = { showMoreMenu = false; sortMode = SortMode.NAME_ASC }
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Sort by name Ã¢â€ â€œ", fontWeight = if (sortMode == SortMode.NAME_DESC) FontWeight.Bold else FontWeight.Normal) },
+                                        text = { Text("Sort by name ↓", fontWeight = if (sortMode == SortMode.NAME_DESC) FontWeight.Bold else FontWeight.Normal) },
                                         onClick = { showMoreMenu = false; sortMode = SortMode.NAME_DESC }
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Sort by date Ã¢â€ â€˜", fontWeight = if (sortMode == SortMode.DATE_ASC) FontWeight.Bold else FontWeight.Normal) },
+                                        text = { Text("Sort by date ↑", fontWeight = if (sortMode == SortMode.DATE_ASC) FontWeight.Bold else FontWeight.Normal) },
                                         onClick = { showMoreMenu = false; sortMode = SortMode.DATE_ASC }
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Sort by date Ã¢â€ â€œ", fontWeight = if (sortMode == SortMode.DATE_DESC) FontWeight.Bold else FontWeight.Normal) },
+                                        text = { Text("Sort by date ↓", fontWeight = if (sortMode == SortMode.DATE_DESC) FontWeight.Bold else FontWeight.Normal) },
                                         onClick = { showMoreMenu = false; sortMode = SortMode.DATE_DESC }
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Sort by size Ã¢â€ â€˜", fontWeight = if (sortMode == SortMode.SIZE_ASC) FontWeight.Bold else FontWeight.Normal) },
+                                        text = { Text("Sort by size ↑", fontWeight = if (sortMode == SortMode.SIZE_ASC) FontWeight.Bold else FontWeight.Normal) },
                                         onClick = { showMoreMenu = false; sortMode = SortMode.SIZE_ASC }
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Sort by size Ã¢â€ â€œ", fontWeight = if (sortMode == SortMode.SIZE_DESC) FontWeight.Bold else FontWeight.Normal) },
+                                        text = { Text("Sort by size ↓", fontWeight = if (sortMode == SortMode.SIZE_DESC) FontWeight.Bold else FontWeight.Normal) },
                                         onClick = { showMoreMenu = false; sortMode = SortMode.SIZE_DESC }
                                     )
                                     Divider()
@@ -692,7 +705,6 @@ fun HomeScreen() {
                                         leadingIcon = { Icon(Icons.Default.Refresh, null) },
                                         onClick = {
                                             showMoreMenu = false
-                                            // Force re-navigate to same state to refresh
                                             val cur = currentNavState
                                             currentNavState = NavState.Home
                                             currentNavState = cur
@@ -790,7 +802,6 @@ fun HomeScreen() {
                         folderId = state.folderId,
                         pathName = state.pathName,
                         onNavigate = { newState ->
-                            // subfolder navigate Ã Â¦â€¢Ã Â¦Â°Ã Â¦Â¾Ã Â¦Â° Ã Â¦Â¸Ã Â¦Â®Ã Â¦Â¯Ã Â¦Â¼ current state Ã Â¦â€¢Ã Â§â€¡ backstack Ã Â¦Â  push Ã Â¦â€¢Ã Â¦Â°Ã Â§â€¹
                             if (newState is NavState.Cloud) {
                                 val fresh1 = currentNavState as? NavState.Cloud
                                 if (fresh1 != null) { cloudBackStack.add(Pair(fresh1.folderId, fresh1.pathName)) }
@@ -828,8 +839,6 @@ fun HomeScreen() {
                             connectionManager = p2pConnection,
                             onBack = { currentNavState = NavState.RemoteConnections },
                             onBrowseFolders = {
-                                // Launch FTP browser to that device's IP (assuming they host FTP on 2121)
-                                // We could use Smb or FTP. Assuming FTP on 2121 for now.
                                 val tempServerId = "p2p_ftp_${state.ip}"
                                 RemoteStore.servers.add(RemoteServer(id = tempServerId, name = state.deviceName, host = state.ip, port = 2121, user = "anonymous", pass = "", protocol = "FTP"))
                                 currentNavState = NavState.Remote(tempServerId, "/")
@@ -868,7 +877,6 @@ fun HomeScreen() {
                     is NavState.Saf -> SafFileScreen(
                         uriString = state.uri,
                         onNavigate = { newState ->
-                            // Push current URI onto backstack before navigating deeper
                             if (newState is NavState.Saf) {
                                 safBackStack.add(state.uri)
                             } else {
@@ -886,9 +894,8 @@ fun HomeScreen() {
                         }
                     )
                     else -> {}
-                    } // end baseState when
+                    } 
 
-                    // Render viewer state ON TOP
                     when (val state = currentNavState) {
                         is NavState.ImageViewer -> ImageViewerScreen(
                             imagePath = state.path,
@@ -957,9 +964,8 @@ fun HomeScreen() {
                         )
                         else -> {}
                     }
-                } // end layered Box
-                } // end Box weight(1f)
-                // ── Global progress bar — visible on every screen during file ops ──
+                } 
+                } 
                 ActiveOperationsBar(operations = globalOps)
             }
         }
@@ -982,7 +988,6 @@ data class StorageInfo(val used: Long, val total: Long) {
 
 fun getInternalStorageInfo(): StorageInfo {
     return try {
-        // Environment.getDataDirectory() Ã¢â€ â€™ /data partition (true internal storage)
         val path = Environment.getDataDirectory()
         val stat = StatFs(path.path)
         val total = stat.blockCountLong * stat.blockSizeLong
@@ -1023,14 +1028,12 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
     var sdInfo by remember { mutableStateOf(StorageInfo(0, 0)) }
     val scope = rememberCoroutineScope()
 
-    // ── Home Shortcuts ─────────────────────────────────────────────────────
     val shortcutPrefs = remember { context.getSharedPreferences("HomeShortcutPrefs", android.content.Context.MODE_PRIVATE) }
     var shortcutKeys by remember {
         mutableStateOf(shortcutPrefs.getStringSet("shortcuts", emptySet()) ?: emptySet())
     }
     var showShortcutManager by remember { mutableStateOf(false) }
 
-    // ΓöÇΓöÇ My Drive quick-access state ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     val drivePrefs = remember { context.getSharedPreferences("MyDrivePrefs", android.content.Context.MODE_PRIVATE) }
     var selectedDriveAccount by remember {
         mutableStateOf(drivePrefs.getString("selected_account", null))
@@ -1113,7 +1116,6 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
         withContext(Dispatchers.IO) {
             val base = LocalFileManager.mainStoragePath
             
-            // Format stat string
             fun formatStats(stats: Pair<Int, Long>): String {
                 val (count, size) = stats
                 val sizeStr = if (size > 0) formatFileSize(size) else ""
@@ -1121,8 +1123,6 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
             }
 
             downloadsCount = formatStats(CategoryUtils.getCategoryStats(context, "Downloads").let {
-                // For downloads, we still prefer direct file count from the Download directory
-                // because MediaStore doesn't have a reliable single "Downloads" category on all OS versions.
                 val f = java.io.File("$base/Download")
                 if (f.exists()) {
                     val files = f.listFiles() ?: emptyArray()
@@ -1261,7 +1261,6 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
             GridItemData("Recycle Bin", "",          Icons.Default.Delete)       to Color(0xFF757575)
         )
 
-        // ── Home Shortcuts section (shown above the main grid if any shortcuts set) ──
         if (shortcutKeys.isNotEmpty()) {
             item {
                 Row(
@@ -1275,8 +1274,8 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                         text = "HOME SHORTCUTS",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF9E9E9E),
-                        letterSpacing = 1.sp
+                        color = Color(0xFF1976D2),
+                        modifier = Modifier
                     )
                     Text(
                         text = "Edit",
@@ -1343,7 +1342,7 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
         // ── Add Home Shortcut button ─────────────────────────────────────
         item {
             OutlinedButton(
-                onClick = { showShortcutManager = true },
+                onClick = { createLauncherShortcut(context) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 4.dp)
