@@ -1168,7 +1168,7 @@ fun LocalFileScreen(
             )
         }
         // --- Document Scanner FAB ---
-        val isHomePage = path == Environment.getExternalStorageDirectory().absolutePath
+        val isHomePage = path == android.os.Environment.getExternalStorageDirectory().absolutePath
         if (selectedFiles.isEmpty() && clipboard == null && isHomePage) {
             androidx.compose.material3.FloatingActionButton(
                 onClick = { launchCamera() },
