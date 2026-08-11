@@ -108,9 +108,10 @@ class FMPdfViewerActivity : ComponentActivity() {
 // ─────────────────────────────────────────────────────────────────────────────
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit) {
+fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String? = null) {
     val pageCount      = pdfRenderer.pageCount
     val listState      = rememberLazyListState()
+    val currentPage    by remember { derivedStateOf { listState.firstVisibleItemIndex + 1 } }
     val scope          = rememberCoroutineScope()
 
     // ── Zoom / Pan ────────────────────────────────────────────────────────────
@@ -338,7 +339,8 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit) {
                         Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
                     }
                     Text(
-                        text     = "PDF Viewer  ($pageCount pages)",
+                        text     = if (title != null) "$title  ·  Slide $currentPage / $pageCount"
+                                   else "PDF Viewer  ($pageCount pages)",
                         color    = Color.White,
                         fontSize = 15.sp,
                         modifier = Modifier.weight(1f).padding(start = 4.dp)
@@ -463,7 +465,7 @@ fun ErrorScreen(msg: String) {
 // FMPdfViewerScreen — used from NavState (file path entry point)
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
-fun FMPdfViewerScreen(filePath: String, onBack: () -> Unit) {
+fun FMPdfViewerScreen(filePath: String, onBack: () -> Unit, title: String? = null) {
     var pdfRenderer by remember { mutableStateOf<PdfRenderer?>(null) }
     var loadError   by remember { mutableStateOf(false) }
 
@@ -483,7 +485,7 @@ fun FMPdfViewerScreen(filePath: String, onBack: () -> Unit) {
 
     when {
         loadError             -> ErrorScreen("PDF খোলা যায়নি।")
-        pdfRenderer != null   -> RobustPdfViewer(pdfRenderer = pdfRenderer!!, onBack = onBack)
+        pdfRenderer != null   -> RobustPdfViewer(pdfRenderer = pdfRenderer!!, onBack = onBack, title = title)
         else -> Box(
             Modifier.fillMaxSize().background(Color(0xFF0D0D1A)),
             contentAlignment = Alignment.Center

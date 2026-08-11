@@ -3,6 +3,7 @@ package com.rasel.RasFocus.filemanager
 import android.content.Context
 import android.graphics.*
 import android.graphics.pdf.PdfDocument
+import android.text.TextPaint
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
@@ -359,12 +360,12 @@ private fun drawSlide(data: SlideData): Bitmap {
         }
 
         // Use StaticLayout for multi-line text wrapping
-        val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-            color    = computeTextColor(shape.texts.firstOrNull()?.color ?: Color.BLACK, data.bgColor)
-            textSize = (shape.texts.firstOrNull()?.fontSize ?: baseFontSize)
+        val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).also { tp ->
+            tp.color         = computeTextColor(shape.texts.firstOrNull()?.color ?: Color.BLACK, data.bgColor)
+            tp.textSize      = (shape.texts.firstOrNull()?.fontSize ?: baseFontSize)
                 .coerceIn(10f, 60f) * (SLIDE_W / 320f)   // scale for canvas size
-            isFakeBoldText = shape.texts.firstOrNull()?.bold ?: isTitleLike
-            isAntiAlias    = true
+            tp.isFakeBoldText = shape.texts.firstOrNull()?.bold ?: isTitleLike
+            tp.isAntiAlias   = true
         }
 
         val maxW    = shape.w.coerceAtLeast(1f).toInt()

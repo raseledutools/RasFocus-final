@@ -112,7 +112,10 @@ fun PptxToPdfViewerScreen(uri: Uri?, onBack: () -> Unit) {
     when {
         isLoading -> PptxLoadingScreen(onBack = onBack)
         errorMsg != null -> PptxErrorScreen(msg = errorMsg!!, onBack = onBack)
-        pdfPath != null -> FMPdfViewerScreen(filePath = pdfPath!!, onBack = onBack)
+        pdfPath != null -> FMPdfViewerScreen(filePath = pdfPath!!, onBack = onBack,
+                                title = uri?.lastPathSegment
+                                    ?.substringAfterLast("/")
+                                    ?.substringBeforeLast("."))
         else -> PptxErrorScreen(msg = "অজানা সমস্যা", onBack = onBack)
     }
 }
@@ -164,7 +167,8 @@ fun PptxViewerScreen(uri: Uri?, fileName: String, onClose: () -> Unit) {
     when {
         isLoading -> PptxLoadingScreen(onBack = onClose)
         errorMsg  != null -> PptxErrorScreen(msg = errorMsg!!, onBack = onClose)
-        pdfPath   != null -> FMPdfViewerScreen(filePath = pdfPath!!, onBack = onClose)
+        pdfPath   != null -> FMPdfViewerScreen(filePath = pdfPath!!, onBack = onClose,
+                                title = fileName.substringBeforeLast("."))
         else -> PptxErrorScreen(msg = "অজানা সমস্যা", onBack = onClose)
     }
 }

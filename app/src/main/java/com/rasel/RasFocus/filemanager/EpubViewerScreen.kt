@@ -10,6 +10,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -329,6 +330,7 @@ fun EpubViewerScreen(path: String, onBack: () -> Unit) {
             HorizontalDivider(color = Color.White.copy(0.1f))
             chapters.forEachIndexed { idx, (label, url) ->
                 val isSelected = spineUrls.getOrNull(currentIdx) == url
+                val spineIdx   = spineUrls.indexOf(url)
                 ListItem(
                     headlineContent = {
                         Text(
@@ -338,14 +340,16 @@ fun EpubViewerScreen(path: String, onBack: () -> Unit) {
                             fontSize   = 14.sp
                         )
                     },
-                    modifier = Modifier.padding(horizontal = 4.dp),
-                    colors   = ListItemDefaults.colors(containerColor = Color.Transparent)
+                    modifier = Modifier
+                        .padding(horizontal = 4.dp)
+                        .clickable(enabled = spineIdx >= 0) {
+                            if (spineIdx >= 0) currentIdx = spineIdx
+                            showChapters = false
+                        },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent)
                 )
                 HorizontalDivider(color = Color.White.copy(0.06f))
-                // register click
-                // We use Box overlay trick — wrap in a clickable modifier
             }
-            // Re-render clickable items (ModalBottomSheet content λ doesn't support onClick in ListItem directly)
             Spacer(Modifier.navigationBarsPadding().height(8.dp))
         }
     }
