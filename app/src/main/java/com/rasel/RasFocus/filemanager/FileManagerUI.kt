@@ -67,7 +67,6 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.CallSplit
-import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.CheckCircleOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -382,6 +381,11 @@ fun LocalFileScreen(
     var splitPdfFile by remember { mutableStateOf<File?>(null) }
     var splitPdfResults by remember { mutableStateOf<List<File>>(emptyList()) }
     var showSplitResultDialog by remember { mutableStateOf(false) }
+    // Shared operation result dialog state (Zip/Unzip/Merge/PdfToImages/ImagesToPdf)
+    var opResultTitle by remember { mutableStateOf("") }
+    var opResultFiles by remember { mutableStateOf<List<File>>(emptyList()) }
+    var opResultIsDir by remember { mutableStateOf(false) }
+    var showOpResultDialog by remember { mutableStateOf(false) }
     val activeProgressOp by remember(operations) {
         derivedStateOf { operations.firstOrNull { !it.isComplete && !it.isCancelled && !it.isError } }
     }
@@ -652,6 +656,65 @@ fun LocalFileScreen(
             }
         )
     }
+    // ── Shared Operation Result Dialog (Zip / Unzip / Merge / PDF→Images / Images→PDF) ──
+    if (showOpResultDialog && opResultFiles.isNotEmpty()) {
+        val resultFile = opResultFiles.first()
+        val parentDir = if (opResultIsDir) resultFile else resultFile.parentFile
+        AlertDialog(
+            onDismissRequest = { showOpResultDialog = false; opResultFiles = emptyList() },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.CheckCircleOutline,
+                        contentDescription = null,
+                        tint = Color(0xFF2E7D32),
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(opResultTitle, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (opResultIsDir) {
+                        Text("📂 Folder: ${resultFile.name}", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    } else {
+                        Text("📄 File: ${resultFile.name}", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    }
+                    Text(
+                        "📁 Location:\n${parentDir?.absolutePath ?: ""}",
+                        fontSize = 11.sp,
+                        color = Color.Gray,
+                        lineHeight = 16.sp
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showOpResultDialog = false
+                    opResultFiles = emptyList()
+                    // Try to open folder
+                    val dir = parentDir
+                    if (dir != null) {
+                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(Uri.fromFile(dir), "resource/folder")
+                        }
+                        try { context.startActivity(intent) } catch (e: Exception) {
+                            Toast.makeText(context, "Saved at: ${dir.absolutePath}", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }) {
+                    Text("Open Folder", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showOpResultDialog = false
+                    opResultFiles = emptyList()
+                }) { Text("Close") }
+            }
+        )
+    }
 
     if (mlKitResultImages.isNotEmpty()) {
         @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -801,7 +864,10 @@ fun LocalFileScreen(
                             }
                             withContext(Dispatchers.Main) {
                                 if (success) {
-                                    Toast.makeText(context, if (fallbackUsed) "Saved to internal Documents/RasFocus due to SD card limits" else "Zipped successfully", Toast.LENGTH_LONG).show()
+                                    opResultTitle = "Zip Complete"
+                                    opResultFiles = listOf(zipFile)
+                                    opResultIsDir = false
+                                    showOpResultDialog = true
                                 } else {
                                     Toast.makeText(context, "Failed to zip", Toast.LENGTH_SHORT).show()
                                 }
@@ -832,7 +898,11 @@ fun LocalFileScreen(
                         }
                         withContext(Dispatchers.Main) {
                             if (success) {
-                                Toast.makeText(context, if (fallbackUsed) "Unzipped to internal Documents/RasFocus due to SD card limits" else "Unzipped successfully", Toast.LENGTH_LONG).show()
+                                val unzipDir = File(path, selectedFiles.firstOrNull()?.let { File(it).nameWithoutExtension } ?: "")
+                                opResultTitle = "Unzip Complete"
+                                opResultFiles = listOf(unzipDir)
+                                opResultIsDir = true
+                                showOpResultDialog = true
                             } else {
                                 Toast.makeText(context, "Unzip failed", Toast.LENGTH_SHORT).show()
                             }
@@ -856,7 +926,10 @@ fun LocalFileScreen(
                         }
                         withContext(Dispatchers.Main) {
                             if (success) {
-                                Toast.makeText(context, if (fallbackUsed) "Merged & saved to internal Documents/RasFocus due to SD limits" else "Merged successfully", Toast.LENGTH_LONG).show()
+                                opResultTitle = "Merge Complete"
+                                opResultFiles = listOf(destFile)
+                                opResultIsDir = false
+                                showOpResultDialog = true
                             } else {
                                 Toast.makeText(context, "Merge failed", Toast.LENGTH_SHORT).show()
                             }
@@ -884,7 +957,10 @@ fun LocalFileScreen(
                         }
                         withContext(Dispatchers.Main) {
                             if (success) {
-                                Toast.makeText(context, if (fallbackUsed) "Images saved to internal Documents/RasFocus due to SD limits" else "PDF converted to images", Toast.LENGTH_LONG).show()
+                                opResultTitle = "PDF → Images Complete"
+                                opResultFiles = listOf(targetDir)
+                                opResultIsDir = true
+                                showOpResultDialog = true
                             } else {
                                 Toast.makeText(context, "Conversion failed", Toast.LENGTH_SHORT).show()
                             }
@@ -917,7 +993,10 @@ fun LocalFileScreen(
                         }
                         withContext(Dispatchers.Main) {
                             if (success) {
-                                Toast.makeText(context, if (fallbackUsed) "PDF saved to internal Documents/RasFocus due to SD limits" else "Images converted to PDF", Toast.LENGTH_LONG).show()
+                                opResultTitle = "Images → PDF Complete"
+                                opResultFiles = listOf(pdfDest)
+                                opResultIsDir = false
+                                showOpResultDialog = true
                             } else {
                                 Toast.makeText(context, "Conversion failed", Toast.LENGTH_SHORT).show()
                             }
