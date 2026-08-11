@@ -284,6 +284,8 @@ data class ClipboardState(
 enum class SortMode { NAME_ASC, NAME_DESC, DATE_ASC, DATE_DESC, SIZE_ASC, SIZE_DESC }
 
 class FileManagerPlusActivity : ComponentActivity() {
+    var pendingSharedUris by mutableStateOf<List<android.net.Uri>>(emptyList())
+    var pendingViewFile by mutableStateOf<java.io.File?>(null)
 
     private val legacyPermLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -295,9 +297,72 @@ class FileManagerPlusActivity : ComponentActivity() {
         }
     }
 
+    private fun handleIntent(intent: Intent) {
+        if (intent.action == Intent.ACTION_VIEW) {
+            val uri = intent.data
+            if (uri != null) {
+                androidx.lifecycle.lifecycleScope.launch(Dispatchers.IO) {
+                    val file = copyUriToCache(uri)
+                    if (file != null) {
+                        withContext(Dispatchers.Main) {
+                            pendingViewFile = file
+                        }
+                    } else {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(this@FileManagerPlusActivity, "Failed to open file", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            }
+        } else if (intent.action == Intent.ACTION_SEND) {
+            val uri = intent.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM)
+            if (uri != null) {
+                pendingSharedUris = listOf(uri)
+            }
+        } else if (intent.action == Intent.ACTION_SEND_MULTIPLE) {
+            val uris = intent.getParcelableArrayListExtra<android.net.Uri>(Intent.EXTRA_STREAM)
+            if (uris != null) {
+                pendingSharedUris = uris.toList()
+            }
+        }
+    }
+
+    private fun copyUriToCache(uri: android.net.Uri): java.io.File? {
+        try {
+            var fileName = "shared_file"
+            contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (nameIndex != -1) {
+                        fileName = cursor.getString(nameIndex)
+                    }
+                }
+            }
+            val cacheDir = java.io.File(cacheDir, "external_view")
+            cacheDir.mkdirs()
+            val destFile = java.io.File(cacheDir, fileName)
+            contentResolver.openInputStream(uri)?.use { input ->
+                java.io.FileOutputStream(destFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            return destFile
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return null
+        }
+    }
+    
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val initialPath = intent.getStringExtra("shortcut_path")
+        handleIntent(intent)
         SafFileManager.init(this)
         requestStoragePermissionIfNeeded()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -307,7 +372,7 @@ class FileManagerPlusActivity : ComponentActivity() {
         }
         setContent {
             MaterialTheme {
-                HomeScreen(initialPath)
+                HomeScreen(initialPath, pendingSharedUris, { pendingSharedUris = emptyList() }, pendingViewFile, { pendingViewFile = null })
             }
         }
     }
@@ -343,7 +408,7 @@ class FileManagerPlusActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(initialPath: String? = null) {
+fun HomeScreen(initialPath: String? = null, sharedUris: List<android.net.Uri> = emptyList(), onClearSharedUris: () -> Unit = {}, viewFile: java.io.File? = null, onClearViewFile: () -> Unit = {}) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -364,6 +429,14 @@ fun HomeScreen(initialPath: String? = null) {
             }
         }
     }
+    
+    androidx.compose.runtime.LaunchedEffect(viewFile) {
+        if (viewFile != null) {
+            openLocalFile(context, viewFile) { currentNavState = it }
+            onClearViewFile()
+        }
+    }
+    
     var clipboard by remember { mutableStateOf<ClipboardState?>(null) }
     var showMoreMenu by remember { mutableStateOf(false) }
     var sortMode by remember { mutableStateOf(SortMode.NAME_ASC) }
@@ -966,6 +1039,55 @@ fun HomeScreen(initialPath: String? = null) {
                     }
                 } 
                 } 
+                
+                if (sharedUris.isNotEmpty() && currentNavState is NavState.Local) {
+                    val localState = currentNavState as NavState.Local
+                    Surface(color = Color(0xFF1A6B6B), shadowElevation = 12.dp) {
+                        Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Save ${sharedUris.size} shared files here?", color = Color.White)
+                            Row {
+                                TextButton(onClick = { onClearSharedUris() }) { Text("CANCEL", color = Color.LightGray) }
+                                Button(
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color(0xFF1A6B6B)),
+                                    onClick = { 
+                                        val destDir = localState.path
+                                        scope.launch(Dispatchers.IO) {
+                                            var successCount = 0
+                                            sharedUris.forEach { uri ->
+                                                try {
+                                                    var fileName = "shared_file_${System.currentTimeMillis()}"
+                                                    context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                                                        if (cursor.moveToFirst()) {
+                                                            val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                                                            if (nameIndex != -1) {
+                                                                fileName = cursor.getString(nameIndex)
+                                                            }
+                                                        }
+                                                    }
+                                                    val destFile = java.io.File(destDir, fileName)
+                                                    context.contentResolver.openInputStream(uri)?.use { input ->
+                                                        java.io.FileOutputStream(destFile).use { output ->
+                                                            input.copyTo(output)
+                                                        }
+                                                    }
+                                                    successCount++
+                                                } catch (e: Exception) { e.printStackTrace() }
+                                            }
+                                            withContext(Dispatchers.Main) {
+                                                Toast.makeText(context, "Saved $successCount files", Toast.LENGTH_SHORT).show()
+                                                onClearSharedUris()
+                                                // trigger refresh
+                                                val cur = currentNavState
+                                                currentNavState = NavState.Home
+                                                currentNavState = cur
+                                            }
+                                        }
+                                    }
+                                ) { Text("SAVE HERE") }
+                            }
+                        }
+                    }
+                }
                 ActiveOperationsBar(operations = globalOps)
             }
         }

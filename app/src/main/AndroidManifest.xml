@@ -854,10 +854,27 @@
             android:theme="@style/Theme.RasFocus" />
         <activity
             android:name=".filemanager.FileManagerPlusActivity"
-            android:exported="false"
+            android:exported="true"
             android:theme="@style/Theme.RasFocus.FileManager"
             android:launchMode="singleTop"
-            android:hardwareAccelerated="true" />
+            android:hardwareAccelerated="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
         <service
             android:name=".filemanager.FileOperationService"
             android:exported="false"
