@@ -585,7 +585,7 @@ fun LocalFileScreen(
                 scope.launch(Dispatchers.IO) {
                     try {
                         val outputDir = File(pdfToSplit.parent ?: path, "splits")
-                        val doc = org.apache.pdfbox.pdmodel.PDDocument.load(pdfToSplit)
+                        val doc = com.tom_roush.pdfbox.pdmodel.PDDocument.load(pdfToSplit)
                         val totalPages = doc.numberOfPages
                         doc.close()
                         val ranges = PdfSplitUtils.parseRanges(rangeStr, totalPages)

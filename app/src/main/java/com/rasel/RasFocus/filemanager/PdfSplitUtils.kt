@@ -1,7 +1,7 @@
 package com.rasel.RasFocus.filemanager
 
-import org.apache.pdfbox.pdmodel.PDDocument
-import org.apache.pdfbox.pdmodel.PDPage
+import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.PDPage
 import java.io.File
 
 object PdfSplitUtils {

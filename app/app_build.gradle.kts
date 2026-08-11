@@ -71,7 +71,7 @@ dependencies {
     implementation("androidx.camera:camera-view:1.3.3")
     implementation("com.google.zxing:core:3.5.2")
     implementation("androidx.core:core-ktx:1.13.1")
-    implementation("org.apache.pdfbox:pdfbox-android:2.0.27")
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
 
     // Lifecycle
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.2")
