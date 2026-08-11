@@ -586,6 +586,10 @@ fun LocalFileScreen(
                 showSplitPdfDialog = false
                 val pdfToSplit = splitPdfFile!!
                 scope.launch(Dispatchers.IO) {
+                    withContext(Dispatchers.Main) {
+                        conversionLabel = "Splitting PDF…"
+                        showConversionProgress = true
+                    }
                     try {
                         val outputDir = File(pdfToSplit.parent ?: path, "splits")
                         val doc = com.tom_roush.pdfbox.pdmodel.PDDocument.load(pdfToSplit)
@@ -594,6 +598,7 @@ fun LocalFileScreen(
                         val ranges = PdfSplitUtils.parseRanges(rangeStr, totalPages)
                         val results = PdfSplitUtils.splitPdf(pdfToSplit, outputDir, ranges)
                         withContext(Dispatchers.Main) {
+                            showConversionProgress = false
                             if (results.isNotEmpty()) {
                                 splitPdfResults = results
                                 showSplitResultDialog = true
@@ -605,6 +610,7 @@ fun LocalFileScreen(
                         }
                     } catch (e: Exception) {
                         withContext(Dispatchers.Main) {
+                            showConversionProgress = false
                             Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
                         }
                     }
@@ -874,6 +880,10 @@ fun LocalFileScreen(
                     if (selectedFiles.isNotEmpty()) {
                         scope.launch(Dispatchers.IO) {
                             val filesToZip = selectedFiles.map { File(it) }
+                            withContext(Dispatchers.Main) {
+                                conversionLabel = "Zipping files…"
+                                showConversionProgress = true
+                            }
                             var zipFile = File(path, "archive_${System.currentTimeMillis()}.zip")
                             var success = LocalFileManager.zipFiles(filesToZip, zipFile)
                             var fallbackUsed = false
@@ -885,6 +895,7 @@ fun LocalFileScreen(
                                 fallbackUsed = success
                             }
                             withContext(Dispatchers.Main) {
+                                showConversionProgress = false
                                 if (success) {
                                     opResultTitle = "Zip Complete"
                                     opResultFiles = listOf(zipFile)
@@ -901,6 +912,10 @@ fun LocalFileScreen(
                 },
                 onUnzip = if (showUnzip) { {
                     scope.launch(Dispatchers.IO) {
+                        withContext(Dispatchers.Main) {
+                            conversionLabel = "Extracting files…"
+                            showConversionProgress = true
+                        }
                         var success = true
                         var fallbackUsed = false
                         for (item in selectedFiles) {
@@ -919,6 +934,7 @@ fun LocalFileScreen(
                             }
                         }
                         withContext(Dispatchers.Main) {
+                            showConversionProgress = false
                             if (success) {
                                 val unzipDir = File(path, selectedFiles.firstOrNull()?.let { File(it).nameWithoutExtension } ?: "")
                                 opResultTitle = "Unzip Complete"
@@ -936,6 +952,10 @@ fun LocalFileScreen(
                 onMergePdf = if (showMerge) { {
                     scope.launch(Dispatchers.IO) {
                         val filesToMerge = selectedFiles.map { File(it) }
+                        withContext(Dispatchers.Main) {
+                            conversionLabel = "Merging PDFs…"
+                            showConversionProgress = true
+                        }
                         var destFile = File(path, "Merged_${System.currentTimeMillis()}.pdf")
                         var success = PdfHelper.mergePdfs(context, filesToMerge, destFile)
                         var fallbackUsed = false
@@ -947,6 +967,7 @@ fun LocalFileScreen(
                             fallbackUsed = success
                         }
                         withContext(Dispatchers.Main) {
+                            showConversionProgress = false
                             if (success) {
                                 opResultTitle = "Merge Complete"
                                 opResultFiles = listOf(destFile)
@@ -1263,6 +1284,10 @@ fun LocalFileScreen(
                 onZip = {
                     scope.launch(Dispatchers.IO) {
                         val filesToZip = selectedFiles.map { File(it) }
+                        withContext(Dispatchers.Main) {
+                            conversionLabel = "Zipping files…"
+                            showConversionProgress = true
+                        }
                         var zipFile = File(path, "archive_${System.currentTimeMillis()}.zip")
                         var success = LocalFileManager.zipFiles(filesToZip, zipFile)
                         if (!success) {
@@ -1271,6 +1296,7 @@ fun LocalFileScreen(
                             success = LocalFileManager.zipFiles(filesToZip, zipFile)
                         }
                         withContext(Dispatchers.Main) {
+                            showConversionProgress = false
                             Toast.makeText(context, if (success) "Zipped successfully" else "Failed to zip", Toast.LENGTH_SHORT).show()
                             selectedFiles = emptySet(); rawFiles = LocalFileManager.listFiles(path)
                         }
@@ -1280,10 +1306,15 @@ fun LocalFileScreen(
                     val canUnzip = selectedFiles.size == 1 && selectedFiles.first().lowercase().endsWith(".zip")
                     if (canUnzip) ({
                         scope.launch(Dispatchers.IO) {
+                            withContext(Dispatchers.Main) {
+                                conversionLabel = "Extracting files…"
+                                showConversionProgress = true
+                            }
                             val zipFile = File(selectedFiles.first())
                             val targetDir = File(path, zipFile.nameWithoutExtension)
                             val success = LocalFileManager.unzipFile(zipFile, targetDir)
                             withContext(Dispatchers.Main) {
+                                showConversionProgress = false
                                 Toast.makeText(context, if (success) "Unzipped successfully" else "Unzip failed", Toast.LENGTH_SHORT).show()
                                 selectedFiles = emptySet(); rawFiles = LocalFileManager.listFiles(path)
                             }
@@ -1295,6 +1326,10 @@ fun LocalFileScreen(
                     if (canMerge) ({
                         scope.launch(Dispatchers.IO) {
                             val filesToMerge = selectedFiles.map { File(it) }
+                            withContext(Dispatchers.Main) {
+                                conversionLabel = "Merging PDFs…"
+                                showConversionProgress = true
+                            }
                             var dest = File(path, "Merged_${System.currentTimeMillis()}.pdf")
                             var success = PdfHelper.mergePdfs(context, filesToMerge, dest)
                             if (!success) {
@@ -1303,6 +1338,7 @@ fun LocalFileScreen(
                                 success = PdfHelper.mergePdfs(context, filesToMerge, dest)
                             }
                             withContext(Dispatchers.Main) {
+                                showConversionProgress = false
                                 Toast.makeText(context, if (success) "Merged successfully" else "Merge failed", Toast.LENGTH_SHORT).show()
                                 selectedFiles = emptySet(); rawFiles = LocalFileManager.listFiles(path)
                             }
