@@ -314,33 +314,64 @@ fun LocalFileScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) { DriveCacheManager.init(context) }
-    // --- Document Scanner State ---
-    var scannedImages by remember { mutableStateOf<List<java.io.File>>(emptyList()) }
-    var currentCaptureUri by remember { mutableStateOf<android.net.Uri?>(null) }
-    var showScanSheet by remember { mutableStateOf(false) }
-
-    val takePictureLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = androidx.activity.result.contract.ActivityResultContracts.TakePicture()
-    ) { success ->
-        if (success && currentCaptureUri != null) {
-            val fileName = currentCaptureUri!!.lastPathSegment ?: "scan.jpg"
-            val file = java.io.File(context.cacheDir, "captures/$fileName")
-            if (file.exists()) {
-                scannedImages = scannedImages + file
-                showScanSheet = true
+    // --- ML Kit Document Scanner State ---
+    val scannerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK && result.data != null) {
+            val scanResult = com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult.fromActivityResultIntent(result.data)
+            scanResult?.pdf?.let { pdf ->
+                scope.launch(Dispatchers.IO) {
+                    try {
+                        val destDir = java.io.File(path, "Scanned Documents")
+                        if (!destDir.exists()) destDir.mkdirs()
+                        val destFile = java.io.File(destDir, "Scan_${System.currentTimeMillis()}.pdf")
+                        
+                        val uri = pdf.uri
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            java.io.FileOutputStream(destFile).use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                        
+                        withContext(Dispatchers.Main) {
+                            android.widget.Toast.makeText(context, "Saved PDF to Scanned Documents", android.widget.Toast.LENGTH_LONG).show()
+                            rawFiles = LocalFileManager.listFiles(path)
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        withContext(Dispatchers.Main) {
+                            android.widget.Toast.makeText(context, "Failed to save PDF", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
             }
         }
     }
 
     fun launchCamera() {
-        val captureDir = java.io.File(context.cacheDir, "captures")
-        captureDir.mkdirs()
-        val tempFile = java.io.File(captureDir, "scan_${System.currentTimeMillis()}.jpg")
-        val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", tempFile)
-        currentCaptureUri = uri
-        takePictureLauncher.launch(uri)
+        val options = com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.Builder()
+            .setGalleryImportAllowed(true)
+            .setPageLimit(50)
+            .setResultFormats(com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.RESULT_FORMAT_PDF)
+            .setScannerMode(com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.SCANNER_MODE_FULL)
+            .build()
+
+        val scanner = com.google.mlkit.vision.documentscanner.GmsDocumentScanning.getClient(options)
+        val activity = context as? android.app.Activity
+        if (activity != null) {
+            scanner.getStartScanIntent(activity)
+                .addOnSuccessListener { intentSender ->
+                    scannerLauncher.launch(androidx.activity.result.IntentSenderRequest.Builder(intentSender).build())
+                }
+                .addOnFailureListener { e ->
+                    android.widget.Toast.makeText(context, "Scanner failed: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                }
+        } else {
+            android.widget.Toast.makeText(context, "Activity context required", android.widget.Toast.LENGTH_SHORT).show()
+        }
     }
-    // ------------------------------
+    // -------------------------------------
 
     var rawFiles by remember { mutableStateOf<List<File>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
@@ -549,51 +580,7 @@ fun LocalFileScreen(
             onDismiss = { propertiesTarget = null }
         )
     }
-    // --- Document Scanner Bottom Sheet ---
-    if (showScanSheet) {
-        androidx.compose.material3.ModalBottomSheet(
-            onDismissRequest = { showScanSheet = false }
-        ) {
-            Column(modifier = Modifier.fillMaxWidth().padding(16.dp).padding(bottom = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Scanned ${scannedImages.size} pages", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(24.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    Button(onClick = { launchCamera() }) {
-                        Icon(androidx.compose.material.icons.Icons.Default.Add, null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Add Page")
-                    }
-                    Button(onClick = { 
-                        showScanSheet = false
-                        scope.launch {
-                            val destDir = java.io.File(path, "Scanned Documents")
-                            if (!destDir.exists()) destDir.mkdirs()
-                            val destFile = java.io.File(destDir, "Scan_${System.currentTimeMillis()}.pdf")
-                            val success = PdfHelper.imagesToPdf(context, scannedImages, destFile)
-                            if (success) {
-                                Toast.makeText(context, "Saved PDF to Scanned Documents", Toast.LENGTH_LONG).show()
-                                scannedImages = emptyList()
-                                rawFiles = LocalFileManager.listFiles(path) // refresh
-                            } else {
-                                Toast.makeText(context, "Failed to create PDF", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    }, colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))) {
-                        Icon(androidx.compose.material.icons.Icons.Default.Check, null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Finish & Save PDF")
-                    }
-                }
-                Spacer(Modifier.height(16.dp))
-                TextButton(onClick = {
-                    showScanSheet = false
-                    scannedImages = emptyList()
-                }) {
-                    Text("Discard All", color = Color.Red)
-                }
-            }
-        }
-    }
+
 
     Column(modifier = Modifier.fillMaxSize()) {
         // ── Header ─────────────────────────────────────────────────────────────
