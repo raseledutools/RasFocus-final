@@ -1172,7 +1172,7 @@ fun LocalFileScreen(
             androidx.compose.material3.FloatingActionButton(
                 onClick = { launchCamera() },
                 modifier = Modifier
-                    .align(Alignment.BottomEnd)
+                    .align(Alignment.End)
                     .padding(16.dp),
                 containerColor = Color(0xFF1976D2),
                 contentColor = Color.White,
