@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.PlayCircleOutline
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
@@ -315,36 +316,16 @@ fun LocalFileScreen(
     val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) { DriveCacheManager.init(context) }
     // --- ML Kit Document Scanner State ---
+    var mlKitResultImages by remember { mutableStateOf<List<android.net.Uri>>(emptyList()) }
+    var isProcessingMagicPro by remember { mutableStateOf(false) }
+
     val scannerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
         if (result.resultCode == android.app.Activity.RESULT_OK && result.data != null) {
             val scanResult = com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult.fromActivityResultIntent(result.data)
-            scanResult?.pdf?.let { pdf ->
-                scope.launch(Dispatchers.IO) {
-                    try {
-                        val destDir = java.io.File(path, "Scanned Documents")
-                        if (!destDir.exists()) destDir.mkdirs()
-                        val destFile = java.io.File(destDir, "Scan_${System.currentTimeMillis()}.pdf")
-                        
-                        val uri = pdf.uri
-                        context.contentResolver.openInputStream(uri)?.use { input ->
-                            java.io.FileOutputStream(destFile).use { output ->
-                                input.copyTo(output)
-                            }
-                        }
-                        
-                        withContext(Dispatchers.Main) {
-                            android.widget.Toast.makeText(context, "Saved PDF to Scanned Documents", android.widget.Toast.LENGTH_LONG).show()
-                            rawFiles = LocalFileManager.listFiles(path)
-                        }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                        withContext(Dispatchers.Main) {
-                            android.widget.Toast.makeText(context, "Failed to save PDF", android.widget.Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                }
+            scanResult?.pages?.let { pages ->
+                mlKitResultImages = pages.map { it.imageUri }
             }
         }
     }
@@ -353,7 +334,7 @@ fun LocalFileScreen(
         val options = com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.Builder()
             .setGalleryImportAllowed(true)
             .setPageLimit(50)
-            .setResultFormats(com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.RESULT_FORMAT_PDF)
+            .setResultFormats(com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.RESULT_FORMAT_JPEG)
             .setScannerMode(com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.SCANNER_MODE_FULL)
             .build()
 
@@ -579,6 +560,122 @@ fun LocalFileScreen(
             file = propFile,
             onDismiss = { propertiesTarget = null }
         )
+    }
+
+    if (mlKitResultImages.isNotEmpty()) {
+        @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+        androidx.compose.material3.ModalBottomSheet(
+            onDismissRequest = { if (!isProcessingMagicPro) mlKitResultImages = emptyList() }
+        ) {
+            Column(modifier = Modifier.fillMaxWidth().padding(16.dp).padding(bottom = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Scanned ${mlKitResultImages.size} pages", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(24.dp))
+                
+                if (isProcessingMagicPro) {
+                    CircularProgressIndicator()
+                    Spacer(Modifier.height(16.dp))
+                    Text("Processing images... Please wait.")
+                } else {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        Button(onClick = { 
+                            isProcessingMagicPro = true
+                            scope.launch(Dispatchers.IO) {
+                                try {
+                                    val destDir = java.io.File(path, "Scanned Documents")
+                                    if (!destDir.exists()) destDir.mkdirs()
+                                    val destFile = java.io.File(destDir, "Scan_${System.currentTimeMillis()}.pdf")
+                                    
+                                    val tempFiles = mutableListOf<java.io.File>()
+                                    for ((index, uri) in mlKitResultImages.withIndex()) {
+                                        val tempFile = java.io.File(context.cacheDir, "temp_scan_$index.jpg")
+                                        context.contentResolver.openInputStream(uri)?.use { input ->
+                                            java.io.FileOutputStream(tempFile).use { output ->
+                                                input.copyTo(output)
+                                            }
+                                        }
+                                        tempFiles.add(tempFile)
+                                    }
+                                    
+                                    val success = PdfHelper.imagesToPdf(context, tempFiles, destFile)
+                                    withContext(Dispatchers.Main) {
+                                        if (success) {
+                                            android.widget.Toast.makeText(context, "Saved Original PDF", android.widget.Toast.LENGTH_LONG).show()
+                                        } else {
+                                            android.widget.Toast.makeText(context, "Failed to create PDF", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                        mlKitResultImages = emptyList()
+                                        isProcessingMagicPro = false
+                                        rawFiles = LocalFileManager.listFiles(path)
+                                    }
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                    withContext(Dispatchers.Main) {
+                                        android.widget.Toast.makeText(context, "Error: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                        isProcessingMagicPro = false
+                                    }
+                                }
+                            }
+                        }) {
+                            Text("Save Original")
+                        }
+                        
+                        Button(
+                            onClick = { 
+                                isProcessingMagicPro = true
+                                scope.launch(Dispatchers.IO) {
+                                    try {
+                                        val destDir = java.io.File(path, "Scanned Documents")
+                                        if (!destDir.exists()) destDir.mkdirs()
+                                        val destFile = java.io.File(destDir, "Scan_MagicPro_${System.currentTimeMillis()}.pdf")
+                                        
+                                        val tempFiles = mutableListOf<java.io.File>()
+                                        for ((index, uri) in mlKitResultImages.withIndex()) {
+                                            val tempFile = java.io.File(context.cacheDir, "magic_scan_$index.jpg")
+                                            val bitmap = android.provider.MediaStore.Images.Media.getBitmap(context.contentResolver, uri)
+                                            val magicBitmap = MagicProFilter.applyMagicProFilter(bitmap)
+                                            
+                                            java.io.FileOutputStream(tempFile).use { out ->
+                                                magicBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out)
+                                            }
+                                            tempFiles.add(tempFile)
+                                            bitmap.recycle()
+                                            magicBitmap.recycle()
+                                        }
+                                        
+                                        val success = PdfHelper.imagesToPdf(context, tempFiles, destFile)
+                                        withContext(Dispatchers.Main) {
+                                            if (success) {
+                                                android.widget.Toast.makeText(context, "Saved Magic Pro PDF", android.widget.Toast.LENGTH_LONG).show()
+                                            } else {
+                                                android.widget.Toast.makeText(context, "Failed to create PDF", android.widget.Toast.LENGTH_SHORT).show()
+                                            }
+                                            mlKitResultImages = emptyList()
+                                            isProcessingMagicPro = false
+                                            rawFiles = LocalFileManager.listFiles(path)
+                                        }
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                        withContext(Dispatchers.Main) {
+                                            android.widget.Toast.makeText(context, "Error: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                            isProcessingMagicPro = false
+                                        }
+                                    }
+                                }
+                            },
+                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0))
+                        ) {
+                            Icon(Icons.Default.AutoFixHigh, null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Save Magic Pro")
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    TextButton(onClick = { mlKitResultImages = emptyList() }) {
+                        Text("Discard All", color = Color.Red)
+                    }
+                }
+            }
+        }
     }
 
 
