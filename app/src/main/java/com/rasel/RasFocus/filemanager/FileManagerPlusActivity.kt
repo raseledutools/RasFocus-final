@@ -23,6 +23,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -120,6 +122,82 @@ fun formatFileSize(size: Long): String {
 fun formatDate(timestamp: Long): String {
     val sdf = java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.getDefault())
     return sdf.format(java.util.Date(timestamp))
+}
+
+@Composable
+fun BreadcrumbNavBar(currentPath: String, storageRootPath: String, onNavigate: (NavState) -> Unit) {
+    val segments = mutableListOf<Pair<String, String>>() // label to full path
+
+    // Build segments: Home → Memory → folder1 → folder2 ...
+    val storageName = "Memory"
+    val normalizedRoot = storageRootPath.trimEnd('/')
+    val normalizedPath = currentPath.trimEnd('/')
+
+    if (normalizedPath == normalizedRoot) {
+        // At root: show Home > Memory
+        segments.add(Pair("Home", ""))
+        segments.add(Pair(storageName, normalizedRoot))
+    } else if (normalizedPath.startsWith(normalizedRoot)) {
+        segments.add(Pair("Home", ""))
+        segments.add(Pair(storageName, normalizedRoot))
+        val relative = normalizedPath.removePrefix(normalizedRoot).trimStart('/')
+        val parts = relative.split("/").filter { it.isNotEmpty() }
+        var builtPath = normalizedRoot
+        for (part in parts) {
+            builtPath = "$builtPath/$part"
+            segments.add(Pair(part, builtPath))
+        }
+    } else {
+        // Non-standard path fallback
+        segments.add(Pair("Home", ""))
+        val parts = normalizedPath.split("/").filter { it.isNotEmpty() }
+        var builtPath = ""
+        for (part in parts) {
+            builtPath = "$builtPath/$part"
+            segments.add(Pair(part, builtPath))
+        }
+    }
+
+    androidx.compose.foundation.lazy.LazyRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFFEEF2F7))
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        items(segments.size) { index ->
+            val (label, path) = segments[index]
+            val isLast = index == segments.size - 1
+
+            Text(
+                text = label,
+                fontSize = 12.sp,
+                fontWeight = if (isLast) FontWeight.Bold else FontWeight.Normal,
+                color = if (isLast) Color(0xFF00796B) else Color(0xFF1565C0),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .then(
+                        if (!isLast) Modifier.clickable {
+                            if (path.isEmpty()) {
+                                onNavigate(NavState.Home)
+                            } else {
+                                onNavigate(NavState.Local(path))
+                            }
+                        } else Modifier
+                    )
+                    .padding(horizontal = 4.dp, vertical = 4.dp)
+            )
+
+            if (!isLast) {
+                Text(
+                    text = " › ",
+                    fontSize = 12.sp,
+                    color = Color(0xFF888888)
+                )
+            }
+        }
+    }
 }
 
 fun openLocalFile(context: android.content.Context, file: java.io.File, onNavigate: ((NavState) -> Unit)? = null) {
@@ -811,6 +889,17 @@ fun HomeScreen(initialPath: String? = null, sharedUris: List<android.net.Uri> = 
         ) { paddingValues ->
             val globalOps by FileOperationManager.operations.collectAsState()
             Column(modifier = Modifier.padding(paddingValues)) {
+                // ── Breadcrumb navigation bar ────────────────────────────────
+                val showBreadcrumb = currentNavState is NavState.Local
+                if (showBreadcrumb) {
+                    val localPath = (currentNavState as NavState.Local).path
+                    BreadcrumbNavBar(
+                        currentPath = localPath,
+                        storageRootPath = LocalFileManager.mainStoragePath,
+                        onNavigate = { currentNavState = it }
+                    )
+                }
+                // ─────────────────────────────────────────────────────────────
                 Box(modifier = Modifier.weight(1f)) {
                 Box(modifier = Modifier.fillMaxSize()) {
                     val baseState = when (val state = currentNavState) {
