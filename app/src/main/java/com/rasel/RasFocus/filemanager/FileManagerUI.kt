@@ -66,6 +66,9 @@ import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.CallSplit
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.CheckCircleOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -374,6 +377,11 @@ fun LocalFileScreen(
     var showNewFolderDialog by remember { mutableStateOf(false) }
     var propertiesTarget by remember { mutableStateOf<File?>(null) }
     var showProgressDialog by remember { mutableStateOf(false) }
+    // Split PDF dialog state
+    var showSplitPdfDialog by remember { mutableStateOf(false) }
+    var splitPdfFile by remember { mutableStateOf<File?>(null) }
+    var splitPdfResults by remember { mutableStateOf<List<File>>(emptyList()) }
+    var showSplitResultDialog by remember { mutableStateOf(false) }
     val activeProgressOp by remember(operations) {
         derivedStateOf { operations.firstOrNull { !it.isComplete && !it.isCancelled && !it.isError } }
     }
@@ -562,6 +570,89 @@ fun LocalFileScreen(
         )
     }
 
+    // ── Split PDF Dialog ────────────────────────────────────────────────────────
+    if (showSplitPdfDialog && splitPdfFile != null) {
+        SplitPdfDialog(
+            pdfFile = splitPdfFile!!,
+            onDismiss = { showSplitPdfDialog = false },
+            onConfirm = { rangeStr ->
+                showSplitPdfDialog = false
+                val pdfToSplit = splitPdfFile!!
+                scope.launch(Dispatchers.IO) {
+                    try {
+                        val outputDir = File(pdfToSplit.parent ?: path, "splits")
+                        val doc = org.apache.pdfbox.pdmodel.PDDocument.load(pdfToSplit)
+                        val totalPages = doc.numberOfPages
+                        doc.close()
+                        val ranges = PdfSplitUtils.parseRanges(rangeStr, totalPages)
+                        val results = PdfSplitUtils.splitPdf(pdfToSplit, outputDir, ranges)
+                        withContext(Dispatchers.Main) {
+                            if (results.isNotEmpty()) {
+                                splitPdfResults = results
+                                showSplitResultDialog = true
+                                selectedFiles = emptySet()
+                                refreshFiles()
+                            } else {
+                                Toast.makeText(context, "Split failed. Check range (e.g. 1-3,5)", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    } catch (e: Exception) {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            }
+        )
+    }
+
+    // ── Split Result Dialog (show location + Open) ──────────────────────────────
+    if (showSplitResultDialog && splitPdfResults.isNotEmpty()) {
+        AlertDialog(
+            onDismissRequest = { showSplitResultDialog = false; splitPdfResults = emptyList() },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.CheckCircleOutline, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Split Complete", fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("${splitPdfResults.size} file(s) saved:", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    splitPdfResults.forEach { f ->
+                        Text("• ${f.name}", fontSize = 12.sp, color = Color.DarkGray)
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text("📁 ${splitPdfResults.firstOrNull()?.parent ?: ""}", fontSize = 11.sp, color = Color.Gray)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    // Open the splits folder in file manager
+                    val dir = splitPdfResults.firstOrNull()?.parentFile
+                    if (dir != null) {
+                        showSplitResultDialog = false
+                        splitPdfResults = emptyList()
+                        // Navigate to splits folder
+                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(Uri.fromFile(dir), "resource/folder")
+                        }
+                        try { context.startActivity(intent) } catch (e: Exception) {
+                            Toast.makeText(context, "Saved at: ${dir.absolutePath}", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }) { Text("Open Folder") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showSplitResultDialog = false
+                    splitPdfResults = emptyList()
+                }) { Text("Close") }
+            }
+        )
+    }
+
     if (mlKitResultImages.isNotEmpty()) {
         @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
         androidx.compose.material3.ModalBottomSheet(
@@ -683,6 +774,7 @@ fun LocalFileScreen(
         // ── Header ─────────────────────────────────────────────────────────────
         if (selectedFiles.isNotEmpty()) {
             val showMerge = selectedFiles.size > 1 && selectedFiles.all { it.lowercase().endsWith(".pdf") }
+            val showSplit = selectedFiles.size == 1 && selectedFiles.first().lowercase().endsWith(".pdf")
             val showUnzip = selectedFiles.size == 1 && selectedFiles.first().lowercase().endsWith(".zip")
             val showPdfToImages = selectedFiles.size == 1 && selectedFiles.first().lowercase().endsWith(".pdf")
             val showImagesToPdf = selectedFiles.isNotEmpty() && selectedFiles.all { it.lowercase().endsWith(".jpg") || it.lowercase().endsWith(".png") || it.lowercase().endsWith(".jpeg") }
@@ -772,6 +864,10 @@ fun LocalFileScreen(
                             rawFiles = LocalFileManager.listFiles(path)
                         }
                     }
+                } } else null,
+                onSplitPdf = if (showSplit) { {
+                    splitPdfFile = File(selectedFiles.first())
+                    showSplitPdfDialog = true
                 } } else null,
                 onPdfToImages = if (showPdfToImages) { {
                     scope.launch(Dispatchers.IO) {
@@ -2328,6 +2424,7 @@ fun SelectionTopBar(
     onZip: (() -> Unit)? = null,
     onUnzip: (() -> Unit)? = null,
     onMergePdf: (() -> Unit)? = null,
+    onSplitPdf: (() -> Unit)? = null,
     onPdfToImages: (() -> Unit)? = null,
     onImagesToPdf: (() -> Unit)? = null,
     onAddShortcut: (() -> Unit)? = null,
@@ -2393,6 +2490,13 @@ fun SelectionTopBar(
                             leadingIcon = { Icon(Icons.Default.PictureAsPdf, null) }
                         )
                     }
+                    if (onSplitPdf != null) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("Split PDF") },
+                            onClick = { showMoreMenu = false; onSplitPdf() },
+                            leadingIcon = { Icon(Icons.Default.CallSplit, null) }
+                        )
+                    }
                     if (onPdfToImages != null) {
                         androidx.compose.material3.DropdownMenuItem(
                             text = { Text("PDF to Images") },
@@ -2445,6 +2549,7 @@ fun SelectionBottomBar(
     onZip: (() -> Unit)? = null,
     onUnzip: (() -> Unit)? = null,
     onMergePdf: (() -> Unit)? = null,
+    onSplitPdf: (() -> Unit)? = null,
     onPdfToImages: (() -> Unit)? = null,
     onImagesToPdf: (() -> Unit)? = null,
     onOpenWith: (() -> Unit)? = null,
@@ -2453,7 +2558,7 @@ fun SelectionBottomBar(
     onProperties: (() -> Unit)? = null
 ) {
     var showMoreMenu by remember { mutableStateOf(false) }
-    val hasMore = onZip != null || onUnzip != null || onMergePdf != null ||
+    val hasMore = onZip != null || onUnzip != null || onMergePdf != null || onSplitPdf != null ||
                   onPdfToImages != null || onImagesToPdf != null || onOpenWith != null ||
                   onAddShortcut != null || onSecure != null || onProperties != null
 
@@ -2512,6 +2617,11 @@ fun SelectionBottomBar(
                             text = { Text("Merge PDFs") },
                             leadingIcon = { Icon(Icons.Default.PictureAsPdf, null) },
                             onClick = { showMoreMenu = false; onMergePdf() }
+                        )
+                        if (onSplitPdf != null) DropdownMenuItem(
+                            text = { Text("Split PDF") },
+                            leadingIcon = { Icon(Icons.Default.CallSplit, null) },
+                            onClick = { showMoreMenu = false; onSplitPdf() }
                         )
                         if (onPdfToImages != null) DropdownMenuItem(
                             text = { Text("PDF to Images") },
@@ -2720,4 +2830,90 @@ fun FileOperationsBanner(modifier: Modifier = Modifier) {
 
 
 
+// ── Split PDF Dialog ────────────────────────────────────────────────────────────
+@Composable
+fun SplitPdfDialog(
+    pdfFile: java.io.File,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var rangeText by remember { mutableStateOf("") }
+    var isError by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.CallSplit,
+                    contentDescription = null,
+                    tint = Color(0xFF1565C0),
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text("Split PDF", fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "File: ${pdfFile.name}",
+                    fontSize = 12.sp,
+                    color = Color.Gray,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+                Text(
+                    "Enter page range(s). Examples:\n  1-3   →  pages 1 to 3\n  1-2,5  →  two files: pages 1-2 and page 5",
+                    fontSize = 12.sp,
+                    color = Color(0xFF555555),
+                    lineHeight = 18.sp
+                )
+                OutlinedTextField(
+                    value = rangeText,
+                    onValueChange = {
+                        rangeText = it
+                        isError = false
+                    },
+                    label = { Text("Page range (e.g. 1-3,5)") },
+                    isError = isError,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Ascii
+                    )
+                )
+                if (isError) {
+                    Text(
+                        "Please enter a valid range (e.g. 1-3,5,7-9)",
+                        color = Color.Red,
+                        fontSize = 11.sp
+                    )
+                }
+                Text(
+                    "✅ Split files will be saved in a 'splits' folder in the same directory.",
+                    fontSize = 11.sp,
+                    color = Color(0xFF2E7D32)
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val trimmed = rangeText.trim()
+                    if (trimmed.isEmpty()) {
+                        isError = true
+                    } else {
+                        onConfirm(trimmed)
+                    }
+                }
+            ) {
+                Text("Split", fontWeight = FontWeight.Bold, color = Color(0xFF1565C0))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
 
