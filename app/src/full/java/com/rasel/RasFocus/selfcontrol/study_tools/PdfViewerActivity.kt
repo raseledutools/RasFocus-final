@@ -14,7 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import com.rasel.RasFocus.filemanager.PdfZoomViewer
+import com.rasel.RasFocus.filemanager.RobustPdfViewer
 
 class PdfViewerActivity : ComponentActivity() {
     private var pfd: ParcelFileDescriptor? = null
@@ -39,7 +39,7 @@ class PdfViewerActivity : ComponentActivity() {
             MaterialTheme {
                 if (pdfRenderer != null) {
                     // ── Pinch-to-zoom + all-page zoom + horizontal pan ──
-                    PdfZoomViewer(
+                    RobustPdfViewer(
                         pdfRenderer = pdfRenderer!!,
                         onBack = { finish() }
                     )
