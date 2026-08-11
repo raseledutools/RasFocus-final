@@ -404,7 +404,7 @@ private fun drawSlide(data: SlideData): Bitmap {
                 textSize       = displayFontSize
                 isFakeBoldText = dominant.bold || isTitleLike
                 isAntiAlias    = true
-                typeface       = if (dominant.italic) Typeface.ITALIC_TYPEFACE else Typeface.DEFAULT
+                typeface       = if (dominant.italic) Typeface.defaultFromStyle(Typeface.ITALIC) else Typeface.DEFAULT
             }
 
             val paraText = para.joinToString("") { it.text }
