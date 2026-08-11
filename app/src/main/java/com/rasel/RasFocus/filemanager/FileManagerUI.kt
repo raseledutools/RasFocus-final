@@ -314,6 +314,34 @@ fun LocalFileScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) { DriveCacheManager.init(context) }
+    // --- Document Scanner State ---
+    var scannedImages by remember { mutableStateOf<List<java.io.File>>(emptyList()) }
+    var currentCaptureUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var showScanSheet by remember { mutableStateOf(false) }
+
+    val takePictureLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success && currentCaptureUri != null) {
+            val fileName = currentCaptureUri!!.lastPathSegment ?: "scan.jpg"
+            val file = java.io.File(context.cacheDir, "captures/$fileName")
+            if (file.exists()) {
+                scannedImages = scannedImages + file
+                showScanSheet = true
+            }
+        }
+    }
+
+    fun launchCamera() {
+        val captureDir = java.io.File(context.cacheDir, "captures")
+        captureDir.mkdirs()
+        val tempFile = java.io.File(captureDir, "scan_${System.currentTimeMillis()}.jpg")
+        val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", tempFile)
+        currentCaptureUri = uri
+        takePictureLauncher.launch(uri)
+    }
+    // ------------------------------
+
     var rawFiles by remember { mutableStateOf<List<File>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
     var selectedFiles by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -520,6 +548,51 @@ fun LocalFileScreen(
             file = propFile,
             onDismiss = { propertiesTarget = null }
         )
+    }
+    // --- Document Scanner Bottom Sheet ---
+    if (showScanSheet) {
+        androidx.compose.material3.ModalBottomSheet(
+            onDismissRequest = { showScanSheet = false }
+        ) {
+            Column(modifier = Modifier.fillMaxWidth().padding(16.dp).padding(bottom = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Scanned ${scannedImages.size} pages", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(24.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    Button(onClick = { launchCamera() }) {
+                        Icon(androidx.compose.material.icons.Icons.Default.Add, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Add Page")
+                    }
+                    Button(onClick = { 
+                        showScanSheet = false
+                        scope.launch {
+                            val destDir = java.io.File(path, "Scanned Documents")
+                            if (!destDir.exists()) destDir.mkdirs()
+                            val destFile = java.io.File(destDir, "Scan_${System.currentTimeMillis()}.pdf")
+                            val success = PdfHelper.imagesToPdf(context, scannedImages, destFile)
+                            if (success) {
+                                Toast.makeText(context, "Saved PDF to Scanned Documents", Toast.LENGTH_LONG).show()
+                                scannedImages = emptyList()
+                                rawFiles = LocalFileManager.listFiles(path) // refresh
+                            } else {
+                                Toast.makeText(context, "Failed to create PDF", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }, colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))) {
+                        Icon(androidx.compose.material.icons.Icons.Default.Check, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Finish & Save PDF")
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+                TextButton(onClick = {
+                    showScanSheet = false
+                    scannedImages = emptyList()
+                }) {
+                    Text("Discard All", color = Color.Red)
+                }
+            }
+        }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -1010,6 +1083,21 @@ fun LocalFileScreen(
                 }
             )
         }
+        // --- Document Scanner FAB ---
+        if (selectedFiles.isEmpty() && clipboard == null) {
+            androidx.compose.material3.FloatingActionButton(
+                onClick = { launchCamera() },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp),
+                containerColor = Color(0xFF1976D2),
+                contentColor = Color.White,
+                shape = androidx.compose.foundation.shape.CircleShape
+            ) {
+                Icon(androidx.compose.material.icons.Icons.Default.CameraAlt, contentDescription = "Scan Document")
+            }
+        }
+
         // ── Paste footer bar ─────────────────────────────────────────────────────
         if (clipboard != null && selectedFiles.isEmpty()) {
             PasteFooterBar(
