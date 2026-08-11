@@ -1366,13 +1366,13 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
         modifier = modifier
             .fillMaxSize()
             .background(Color.White),
-        contentPadding = PaddingValues(top = 16.dp, bottom = 16.dp)
+        contentPadding = PaddingValues(top = 6.dp, bottom = 8.dp)
     ) {
         item {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 StorageTopCard(
@@ -1473,18 +1473,18 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                             }
                             repeat(3 - row.size) { Spacer(modifier = Modifier.weight(1f)) }
                         }
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
                     }
                 }
                 HorizontalDivider(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
                     color = Color(0xFFEEEEEE)
                 )
             }
         }
 
         item {
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             Column(modifier = Modifier.padding(horizontal = 12.dp)) {
                 for (row in categoryItems.chunked(3)) {
                     Row(
@@ -1503,7 +1503,7 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                         }
                         repeat(3 - row.size) { Spacer(modifier = Modifier.weight(1f)) }
                     }
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
                 }
             }
         }
@@ -1514,7 +1514,7 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                 onClick = { launchHomeScanner() },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                    .padding(horizontal = 16.dp, vertical = 2.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2))
             ) {
@@ -1540,8 +1540,7 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                 onClick = { createLauncherShortcut(context) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
-                    .padding(bottom = 8.dp),
+                    .padding(horizontal = 16.dp, vertical = 2.dp),
                 shape = RoundedCornerShape(12.dp),
                 border = BorderStroke(1.5.dp, Color(0xFF1976D2))
             ) {
@@ -2034,24 +2033,24 @@ fun CategoryCard(
                 indication = androidx.compose.material.ripple.rememberRipple(bounded = false),
                 onClick = onClick
             )
-            .padding(vertical = 6.dp),
+            .padding(vertical = 3.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
             modifier = Modifier
-                .size(50.dp)
-                .background(Color.White, RoundedCornerShape(16.dp))
-                .border(1.dp, Color(0xFFE8E8E8), RoundedCornerShape(16.dp)),
+                .size(44.dp)
+                .background(Color.White, RoundedCornerShape(14.dp))
+                .border(1.dp, Color(0xFFE8E8E8), RoundedCornerShape(14.dp)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
                 tint = iconColor,
-                modifier = Modifier.size(24.dp)
+                modifier = Modifier.size(22.dp)
             )
         }
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(4.dp))
         Text(
             text = label,
             fontSize = 13.sp,

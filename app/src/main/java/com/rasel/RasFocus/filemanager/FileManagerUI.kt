@@ -865,7 +865,8 @@ fun LocalFileScreen(
         // ── Header ─────────────────────────────────────────────────────────────
         if (selectedFiles.isNotEmpty()) {
             val showMerge = selectedFiles.size > 1 && selectedFiles.all { it.lowercase().endsWith(".pdf") }
-            val showSplit = selectedFiles.size == 1 && selectedFiles.first().lowercase().endsWith(".pdf")
+            // Split: show when at least 1 PDF is selected (single = split that one; multiple = split each)
+            val showSplit = selectedFiles.isNotEmpty() && selectedFiles.all { it.lowercase().endsWith(".pdf") }
             val showUnzip = selectedFiles.size == 1 && selectedFiles.first().lowercase().endsWith(".zip")
             val showPdfToImages = selectedFiles.size == 1 && selectedFiles.first().lowercase().endsWith(".pdf")
             val showImagesToPdf = selectedFiles.isNotEmpty() && selectedFiles.all { it.lowercase().endsWith(".jpg") || it.lowercase().endsWith(".png") || it.lowercase().endsWith(".jpeg") }
@@ -982,6 +983,9 @@ fun LocalFileScreen(
                     }
                 } } else null,
                 onSplitPdf = if (showSplit) { {
+                    if (selectedFiles.size > 1) {
+                        Toast.makeText(context, "Split: Select one PDF at a time. Showing first PDF.", Toast.LENGTH_SHORT).show()
+                    }
                     splitPdfFile = File(selectedFiles.first())
                     showSplitPdfDialog = true
                 } } else null,
