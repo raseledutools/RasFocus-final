@@ -544,7 +544,7 @@ fun HomeScreen(initialPath: String? = null, sharedUris: List<android.net.Uri> = 
                 val storageRoot = android.os.Environment.getExternalStorageDirectory().absolutePath
                 val isAtRoot = parent == null ||
                     currentFile.absolutePath == storageRoot ||
-                    parent.absolutePath == storageRoot ||
+
                     parent.absolutePath == "/storage/emulated" ||
                     parent.absolutePath == "/storage" ||
                     parent.absolutePath == "/mnt" ||
@@ -706,7 +706,7 @@ fun HomeScreen(initialPath: String? = null, sharedUris: List<android.net.Uri> = 
                                             val storageRoot = android.os.Environment.getExternalStorageDirectory().absolutePath
                                             val isAtRoot = parent == null ||
                                                 currentFile.absolutePath == storageRoot ||
-                                                parent.absolutePath == storageRoot ||
+
                                                 parent.absolutePath == "/storage/emulated" ||
                                                 parent.absolutePath == "/storage" ||
                                                 parent.absolutePath == "/mnt" ||
@@ -857,7 +857,7 @@ fun HomeScreen(initialPath: String? = null, sharedUris: List<android.net.Uri> = 
                             val storageRoot = android.os.Environment.getExternalStorageDirectory().absolutePath
                             val isAtRoot = parent == null ||
                                 currentFile.absolutePath == storageRoot ||
-                                parent.absolutePath == storageRoot ||
+
                                 parent.absolutePath == "/storage/emulated" ||
                                 parent.absolutePath == "/storage" ||
                                 parent.absolutePath == "/mnt" ||
