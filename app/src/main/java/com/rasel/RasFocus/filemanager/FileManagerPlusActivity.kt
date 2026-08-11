@@ -1,6 +1,11 @@
 package com.rasel.RasFocus.filemanager
 
 import android.os.Bundle
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -301,7 +306,7 @@ class FileManagerPlusActivity : ComponentActivity() {
         if (intent.action == Intent.ACTION_VIEW) {
             val uri = intent.data
             if (uri != null) {
-                androidx.lifecycle.lifecycleScope.launch(Dispatchers.IO) {
+                lifecycleScope.launch(Dispatchers.IO) {
                     val file = copyUriToCache(uri)
                     if (file != null) {
                         withContext(Dispatchers.Main) {
