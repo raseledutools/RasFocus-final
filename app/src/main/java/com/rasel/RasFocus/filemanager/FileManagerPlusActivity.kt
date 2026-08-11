@@ -1102,14 +1102,44 @@ fun HomeScreen(initialPath: String? = null, sharedUris: List<android.net.Uri> = 
                                 }
                             }
                         )
-                        is NavState.DocxViewer -> com.rasel.RasFocus.selfcontrol.study_tools.DocxViewerScreen(
-                            uri = android.net.Uri.fromFile(java.io.File(state.path)),
-                            fileName = java.io.File(state.path).name,
-                            onClose = {
-                                val parent = java.io.File(state.path).parent
-                                currentNavState = if (parent != null) NavState.Local(parent) else NavState.Home 
+                        is NavState.DocxViewer -> {
+                            val docxFile = java.io.File(state.path)
+                            val folderPath = docxFile.parent ?: ""
+                            val onBack: () -> Unit = {
+                                currentNavState = if (folderPath.isNotEmpty()) NavState.Local(folderPath) else NavState.Home
                             }
-                        )
+
+                            // .doc binary → can't convert, show friendly error
+                            if (docxFile.extension.lowercase() == "doc") {
+                                androidx.compose.foundation.layout.Box(
+                                    modifier = androidx.compose.ui.Modifier.fillMaxSize()
+                                        .background(androidx.compose.ui.graphics.Color(0xFFFAFAFA)),
+                                    contentAlignment = androidx.compose.ui.Alignment.Center
+                                ) {
+                                    androidx.compose.foundation.layout.Column(
+                                        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+                                        modifier = androidx.compose.ui.Modifier.padding(32.dp)
+                                    ) {
+                                        Text("📄", fontSize = 52.sp)
+                                        Spacer(modifier = androidx.compose.ui.Modifier.height(12.dp))
+                                        Text(
+                                            ".doc ফরম্যাট সাপোর্টেড না।\nফাইলটি .docx এ কনভার্ট করুন।",
+                                            fontSize = 14.sp,
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                            color = androidx.compose.ui.graphics.Color(0xFF666666)
+                                        )
+                                        Spacer(modifier = androidx.compose.ui.Modifier.height(20.dp))
+                                        OutlinedButton(onClick = onBack) { Text("ফিরে যাও") }
+                                    }
+                                }
+                            } else {
+                                // .docx → silently convert to PDF, then show PDF viewer
+                                DocxToPdfViewerScreen(
+                                    docxPath   = state.path,
+                                    onBack     = onBack
+                                )
+                            }
+                        }
                         is NavState.PptxViewer -> com.rasel.RasFocus.selfcontrol.study_tools.PptxViewerScreen(
                             uri = android.net.Uri.fromFile(java.io.File(state.path)),
                             fileName = java.io.File(state.path).name,
@@ -2337,5 +2367,83 @@ data class GridItemData(
     val subtitle: String,
     val icon: ImageVector
 )
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DocxToPdfViewerScreen
+// Silently converts .docx → PDF in background, then opens PDF viewer.
+// User only sees a loading spinner during conversion.
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+fun DocxToPdfViewerScreen(docxPath: String, onBack: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var pdfPath   by remember { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
+    var hasError  by remember { mutableStateOf(false) }
+
+    LaunchedEffect(docxPath) {
+        val result = withContext(kotlinx.coroutines.Dispatchers.IO) {
+            convertDocxToPdf(context, docxPath)
+        }
+        if (result != null) {
+            pdfPath = result.absolutePath
+        } else {
+            hasError = true
+        }
+        isLoading = false
+    }
+
+    when {
+        isLoading -> {
+            androidx.compose.foundation.layout.Box(
+                modifier = Modifier.fillMaxSize()
+                    .background(Color(0xFFFAFAFA)),
+                contentAlignment = androidx.compose.ui.Alignment.Center
+            ) {
+                androidx.compose.foundation.layout.Column(
+                    horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
+                ) {
+                    CircularProgressIndicator(
+                        color = Color(0xFF1565C0),
+                        strokeWidth = 2.5.dp
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Text(
+                        "ডকুমেন্ট লোড হচ্ছে…",
+                        fontSize = 13.sp,
+                        color = Color(0xFF666666)
+                    )
+                }
+            }
+        }
+        hasError || pdfPath == null -> {
+            androidx.compose.foundation.layout.Box(
+                modifier = Modifier.fillMaxSize()
+                    .background(Color(0xFFFAFAFA)),
+                contentAlignment = androidx.compose.ui.Alignment.Center
+            ) {
+                androidx.compose.foundation.layout.Column(
+                    horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(32.dp)
+                ) {
+                    Text("📄", fontSize = 52.sp)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        "ডকুমেন্ট খুলতে পারিনি।",
+                        fontSize = 14.sp,
+                        color = Color(0xFFCC3333)
+                    )
+                    Spacer(modifier = Modifier.height(20.dp))
+                    OutlinedButton(onClick = onBack) { Text("ফিরে যাও") }
+                }
+            }
+        }
+        else -> {
+            FMPdfViewerScreen(
+                filePath = pdfPath!!,
+                onBack   = onBack
+            )
+        }
+    }
+}
 
 
