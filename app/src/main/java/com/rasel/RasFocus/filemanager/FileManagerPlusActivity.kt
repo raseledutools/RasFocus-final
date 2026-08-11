@@ -1159,6 +1159,44 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
     var sdInfo by remember { mutableStateOf(StorageInfo(0, 0)) }
     val scope = rememberCoroutineScope()
 
+    // --- ML Kit Document Scanner (Home page) ---
+    var mlKitResultImages by remember { mutableStateOf<List<android.net.Uri>>(emptyList()) }
+    var isProcessingMagicPro by remember { mutableStateOf(false) }
+
+    val homeScannerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK && result.data != null) {
+            val scanResult = com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult.fromActivityResultIntent(result.data)
+            scanResult?.pages?.let { pages ->
+                mlKitResultImages = pages.map { it.imageUri }
+            }
+        }
+    }
+
+    fun launchHomeScanner() {
+        val options = com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.Builder()
+            .setGalleryImportAllowed(true)
+            .setPageLimit(50)
+            .setResultFormats(com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.RESULT_FORMAT_JPEG)
+            .setScannerMode(com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.SCANNER_MODE_FULL)
+            .build()
+        val scanner = com.google.mlkit.vision.documentscanner.GmsDocumentScanning.getClient(options)
+        val activity = context as? android.app.Activity
+        if (activity != null) {
+            scanner.getStartScanIntent(activity)
+                .addOnSuccessListener { intentSender ->
+                    homeScannerLauncher.launch(androidx.activity.result.IntentSenderRequest.Builder(intentSender).build())
+                }
+                .addOnFailureListener { e ->
+                    android.widget.Toast.makeText(context, "Scanner failed: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                }
+        } else {
+            android.widget.Toast.makeText(context, "Activity context required", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+    // ------------------------------------------
+
     val shortcutPrefs = remember { context.getSharedPreferences("HomeShortcutPrefs", android.content.Context.MODE_PRIVATE) }
     var shortcutKeys by remember {
         mutableStateOf(shortcutPrefs.getStringSet("shortcuts", emptySet()) ?: emptySet())
@@ -1470,6 +1508,32 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
             }
         }
 
+        // ── Scan Document button ─────────────────────────────────────────
+        item {
+            Button(
+                onClick = { launchHomeScanner() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2))
+            ) {
+                Icon(
+                    androidx.compose.material.icons.Icons.Default.CameraAlt,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Scan Document",
+                    color = Color.White,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp
+                )
+            }
+        }
+
         // ── Add Home Shortcut button ─────────────────────────────────────
         item {
             OutlinedButton(
@@ -1494,6 +1558,133 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 14.sp
                 )
+            }
+        }
+    }
+
+    // ── Scanner Result Dialog (Home page) ────────────────────────────────
+    if (mlKitResultImages.isNotEmpty()) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+        ModalBottomSheet(
+            onDismissRequest = { if (!isProcessingMagicPro) mlKitResultImages = emptyList() },
+            sheetState = sheetState,
+            containerColor = Color.White,
+            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .padding(bottom = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    "Scanned ${mlKitResultImages.size} pages",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(24.dp))
+
+                if (isProcessingMagicPro) {
+                    CircularProgressIndicator()
+                    Spacer(Modifier.height(16.dp))
+                    Text("Processing images... Please wait.")
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        Button(onClick = {
+                            isProcessingMagicPro = true
+                            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                try {
+                                    val destDir = java.io.File(
+                                        android.os.Environment.getExternalStoragePublicDirectory(
+                                            android.os.Environment.DIRECTORY_DOCUMENTS
+                                        ), "Scanned Documents"
+                                    )
+                                    if (!destDir.exists()) destDir.mkdirs()
+                                    val destFile = java.io.File(destDir, "Scan_${System.currentTimeMillis()}.pdf")
+                                    val tempFiles = mutableListOf<java.io.File>()
+                                    for ((index, uri) in mlKitResultImages.withIndex()) {
+                                        val tempFile = java.io.File(context.cacheDir, "home_scan_$index.jpg")
+                                        context.contentResolver.openInputStream(uri)?.use { input ->
+                                            java.io.FileOutputStream(tempFile).use { output -> input.copyTo(output) }
+                                        }
+                                        tempFiles.add(tempFile)
+                                    }
+                                    val success = com.rasel.RasFocus.filemanager.PdfHelper.imagesToPdf(context, tempFiles, destFile)
+                                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                        Toast.makeText(context,
+                                            if (success) "Saved to Documents/Scanned Documents" else "Failed to create PDF",
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                        mlKitResultImages = emptyList()
+                                        isProcessingMagicPro = false
+                                    }
+                                } catch (e: Exception) {
+                                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                        Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                                        isProcessingMagicPro = false
+                                    }
+                                }
+                            }
+                        }) { Text("Save Original") }
+
+                        Button(
+                            onClick = {
+                                isProcessingMagicPro = true
+                                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                    try {
+                                        val destDir = java.io.File(
+                                            android.os.Environment.getExternalStoragePublicDirectory(
+                                                android.os.Environment.DIRECTORY_DOCUMENTS
+                                            ), "Scanned Documents"
+                                        )
+                                        if (!destDir.exists()) destDir.mkdirs()
+                                        val destFile = java.io.File(destDir, "Scan_MagicPro_${System.currentTimeMillis()}.pdf")
+                                        val tempFiles = mutableListOf<java.io.File>()
+                                        for ((index, uri) in mlKitResultImages.withIndex()) {
+                                            val tempFile = java.io.File(context.cacheDir, "home_magic_$index.jpg")
+                                            val bitmap = android.provider.MediaStore.Images.Media.getBitmap(context.contentResolver, uri)
+                                            val magicBitmap = com.rasel.RasFocus.filemanager.MagicProFilter.applyMagicProFilter(bitmap)
+                                            java.io.FileOutputStream(tempFile).use { out ->
+                                                magicBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out)
+                                            }
+                                            tempFiles.add(tempFile)
+                                            bitmap.recycle()
+                                            magicBitmap.recycle()
+                                        }
+                                        val success = com.rasel.RasFocus.filemanager.PdfHelper.imagesToPdf(context, tempFiles, destFile)
+                                        withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                            Toast.makeText(context,
+                                                if (success) "Saved Magic Pro PDF to Documents" else "Failed to create PDF",
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                            mlKitResultImages = emptyList()
+                                            isProcessingMagicPro = false
+                                        }
+                                    } catch (e: Exception) {
+                                        withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                            Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                                            isProcessingMagicPro = false
+                                        }
+                                    }
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0))
+                        ) {
+                            Icon(Icons.Default.AutoFixHigh, null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Save Magic Pro")
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    TextButton(onClick = { mlKitResultImages = emptyList() }) {
+                        Text("Discard All", color = Color.Red)
+                    }
+                }
             }
         }
     }

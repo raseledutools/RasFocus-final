@@ -376,6 +376,9 @@ fun LocalFileScreen(
     var showNewFolderDialog by remember { mutableStateOf(false) }
     var propertiesTarget by remember { mutableStateOf<File?>(null) }
     var showProgressDialog by remember { mutableStateOf(false) }
+    // Conversion progress (PDF↔Images)
+    var showConversionProgress by remember { mutableStateOf(false) }
+    var conversionLabel by remember { mutableStateOf("Converting...") }
     // Split PDF dialog state
     var showSplitPdfDialog by remember { mutableStateOf(false) }
     var splitPdfFile by remember { mutableStateOf<File?>(null) }
@@ -656,6 +659,25 @@ fun LocalFileScreen(
             }
         )
     }
+    // ── Conversion Progress Dialog (PDF↔Images) ───────────────────────────
+    if (showConversionProgress) {
+        AlertDialog(
+            onDismissRequest = { /* non-dismissible while converting */ },
+            title = null,
+            text = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                    Text(conversionLabel, fontSize = 14.sp)
+                }
+            },
+            confirmButton = {}
+        )
+    }
+
     // ── Shared Operation Result Dialog (Zip / Unzip / Merge / PDF→Images / Images→PDF) ──
     if (showOpResultDialog && opResultFiles.isNotEmpty()) {
         val resultFile = opResultFiles.first()
@@ -945,6 +967,10 @@ fun LocalFileScreen(
                 onPdfToImages = if (showPdfToImages) { {
                     scope.launch(Dispatchers.IO) {
                         val pdfFile = File(selectedFiles.first())
+                        withContext(Dispatchers.Main) {
+                            conversionLabel = "Converting PDF to images…"
+                            showConversionProgress = true
+                        }
                         var targetDir = File(path, pdfFile.nameWithoutExtension)
                         targetDir.mkdirs()
                         var success = PdfHelper.pdfToImages(context, pdfFile, targetDir)
@@ -956,6 +982,7 @@ fun LocalFileScreen(
                             fallbackUsed = success
                         }
                         withContext(Dispatchers.Main) {
+                            showConversionProgress = false
                             if (success) {
                                 opResultTitle = "PDF → Images Complete"
                                 opResultFiles = listOf(targetDir)
@@ -979,6 +1006,10 @@ fun LocalFileScreen(
                 onImagesToPdf = if (showImagesToPdf) { {
                     scope.launch(Dispatchers.IO) {
                         val images = selectedFiles.map { File(it) }
+                        withContext(Dispatchers.Main) {
+                            conversionLabel = "Converting images to PDF…"
+                            showConversionProgress = true
+                        }
                         var convertedDir = File(path, "Converted PDFs")
                         convertedDir.mkdirs()
                         var pdfDest = File(convertedDir, "images_${System.currentTimeMillis()}.pdf")
@@ -992,6 +1023,7 @@ fun LocalFileScreen(
                             fallbackUsed = success
                         }
                         withContext(Dispatchers.Main) {
+                            showConversionProgress = false
                             if (success) {
                                 opResultTitle = "Images → PDF Complete"
                                 opResultFiles = listOf(pdfDest)
@@ -1282,6 +1314,10 @@ fun LocalFileScreen(
                     if (canConvert) ({
                         scope.launch(Dispatchers.IO) {
                             val pdfFile = File(selectedFiles.first())
+                            withContext(Dispatchers.Main) {
+                                conversionLabel = "Converting PDF to images…"
+                                showConversionProgress = true
+                            }
                             var targetDir = File(path, pdfFile.nameWithoutExtension)
                             targetDir.mkdirs()
                             var success = PdfHelper.pdfToImages(context, pdfFile, targetDir)
@@ -1291,6 +1327,7 @@ fun LocalFileScreen(
                                 success = PdfHelper.pdfToImages(context, pdfFile, targetDir)
                             }
                             withContext(Dispatchers.Main) {
+                                showConversionProgress = false
                                 Toast.makeText(context, if (success) "PDF converted to images" else "Conversion failed", Toast.LENGTH_SHORT).show()
                                 selectedFiles = emptySet(); rawFiles = LocalFileManager.listFiles(path)
                             }
@@ -1310,6 +1347,10 @@ fun LocalFileScreen(
                     if (canConvert) ({
                         scope.launch(Dispatchers.IO) {
                             val images = selectedFiles.map { File(it) }
+                            withContext(Dispatchers.Main) {
+                                conversionLabel = "Converting images to PDF…"
+                                showConversionProgress = true
+                            }
                             var convertedDir = File(path, "Converted PDFs")
                             convertedDir.mkdirs()
                             var pdfDest = File(convertedDir, "images_${System.currentTimeMillis()}.pdf")
@@ -1320,6 +1361,7 @@ fun LocalFileScreen(
                                 success = PdfHelper.imagesToPdf(context, images, pdfDest)
                             }
                             withContext(Dispatchers.Main) {
+                                showConversionProgress = false
                                 Toast.makeText(context, if (success) "Images converted to PDF" else "Conversion failed", Toast.LENGTH_SHORT).show()
                                 selectedFiles = emptySet(); rawFiles = LocalFileManager.listFiles(path)
                             }
@@ -1342,22 +1384,6 @@ fun LocalFileScreen(
                 }
             )
         }
-        // --- Document Scanner FAB ---
-        val isHomePage = path == android.os.Environment.getExternalStorageDirectory().absolutePath
-        if (selectedFiles.isEmpty() && clipboard == null && isHomePage) {
-            androidx.compose.material3.FloatingActionButton(
-                onClick = { launchCamera() },
-                modifier = Modifier
-                    .align(Alignment.End)
-                    .padding(16.dp),
-                containerColor = Color(0xFF1976D2),
-                contentColor = Color.White,
-                shape = androidx.compose.foundation.shape.CircleShape
-            ) {
-                Icon(androidx.compose.material.icons.Icons.Default.CameraAlt, contentDescription = "Scan Document")
-            }
-        }
-
         // ── Paste footer bar ─────────────────────────────────────────────────────
         if (clipboard != null && selectedFiles.isEmpty()) {
             PasteFooterBar(
