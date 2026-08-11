@@ -24,8 +24,8 @@ object MagicProFilter {
         val colorMatrix = ColorMatrix()
 
         // 1. Extreme Contrast (1.8x) and Brightness (+30)
-        val contrast = 1.8f
-        val brightness = 30f
+        val contrast = 1.25f
+        val brightness = 15f
         
         val contrastMatrix = floatArrayOf(
             contrast, 0f, 0f, 0f, brightness,
@@ -37,7 +37,7 @@ object MagicProFilter {
 
         // 2. Increase Saturation (1.4x) to make colors pop
         val satMatrix = ColorMatrix()
-        satMatrix.setSaturation(1.4f)
+        satMatrix.setSaturation(1.15f)
         colorMatrix.postConcat(satMatrix)
 
         paint.colorFilter = ColorMatrixColorFilter(colorMatrix)
