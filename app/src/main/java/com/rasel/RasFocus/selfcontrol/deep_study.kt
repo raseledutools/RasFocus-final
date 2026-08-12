@@ -45,28 +45,28 @@ import kotlinx.coroutines.*
 import kotlin.math.*
 
 // ─────────────────────────────────────────
-// DEEP STUDY — Color System (Dark Theme)
-// Background: Deep Navy  |  Text: Crisp White
+// DEEP STUDY — Color System (Midnight Indigo)
+// Background: Obsidian Black  |  Accent: Electric Violet
 // ─────────────────────────────────────────
-val DClrBg           = Color(0xFF0B1220)                    // Deep navy background
-val DClrSurface      = Color(0xFF141E30)                    // Card surface — distinct from bg
-val DClrSurface2     = Color(0xFF1C2840)                    // Slightly lighter card variant
-val DClrTeal         = Color(0xFF00C6B2)                    // Primary accent — vibrant teal
-val DClrTealDark     = Color(0xFF009E8C)                    // Pressed / darker teal
+val DClrBg           = Color(0xFF080B14)                    // Obsidian black bg
+val DClrSurface      = Color(0xFF0F1221)                    // Card surface — deep indigo-black
+val DClrSurface2     = Color(0xFF161A2E)                    // Slightly lighter card variant
+val DClrTeal         = Color(0xFF7C6BFF)                    // Primary accent — electric violet
+val DClrTealDark     = Color(0xFF5F50E0)                    // Pressed / darker violet
 val DClrWhite        = Color(0xFFFFFFFF)                    // Pure white for timer digits
-val DClrDark         = Color(0xFFF0F4FF)                    // Primary text — bright near-white
-val DClrGray         = Color(0xFF8090A8)                    // Secondary / hint text
-val DClrBorderMuted  = Color(0xFF2A3A52)                    // Card borders
-val DClrPillBg       = Color(0xFF1C2840)                    // Pill / toggle track bg
-val DClrPillSelectedBg = Color(0xFF253350)                  // Selected pill state
-val DClrGlassBorder  = Color(0xFF2E4060)                    // Glass card border
-val DClrBadgeTeal    = Color(0xFF00C6B2).copy(alpha = 0.18f) // Teal icon badge bg
-val DClrBadgeGreen   = Color(0xFF22C55E).copy(alpha = 0.18f) // Green icon badge bg
-val DClrBadgePurple  = Color(0xFF8B5CF6).copy(alpha = 0.18f) // Purple icon badge bg
-val DClrBadgeAmber   = Color(0xFFF59E0B).copy(alpha = 0.18f) // Amber icon badge bg
-val DClrRed          = Color(0xFFFF4E4E)                    // Error / stop
-val DClrGreen        = Color(0xFF22C55E)                    // Success / break
-val DClrAmber        = Color(0xFFF59E0B)                    // Warning / strict
+val DClrDark         = Color(0xFFEEF0FF)                    // Primary text — cool near-white
+val DClrGray         = Color(0xFF6B72A0)                    // Secondary / hint text
+val DClrBorderMuted  = Color(0xFF1E2140)                    // Card borders
+val DClrPillBg       = Color(0xFF161A2E)                    // Pill / toggle track bg
+val DClrPillSelectedBg = Color(0xFF1E2445)                  // Selected pill state
+val DClrGlassBorder  = Color(0xFF252A50)                    // Glass card border
+val DClrBadgeTeal    = Color(0xFF7C6BFF).copy(alpha = 0.18f) // Violet icon badge bg
+val DClrBadgeGreen   = Color(0xFF34D399).copy(alpha = 0.18f) // Emerald icon badge bg
+val DClrBadgePurple  = Color(0xFFF59E0B).copy(alpha = 0.18f) // Gold icon badge bg
+val DClrBadgeAmber   = Color(0xFFFF6B6B).copy(alpha = 0.18f) // Coral icon badge bg
+val DClrRed          = Color(0xFFFF5C7A)                    // Coral red — stop
+val DClrGreen        = Color(0xFF34D399)                    // Emerald — success / break
+val DClrAmber        = Color(0xFFFFB347)                    // Warm amber — warning / strict
 
 data class BlockItem(val name: String)
 
@@ -207,7 +207,7 @@ class DeepStudyBlockerService : android.app.Service() {
         val root = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setBackgroundColor(android.graphics.Color.parseColor("#F00B1220"))
+            setBackgroundColor(android.graphics.Color.parseColor("#F0080B14"))
             isClickable = true; isFocusable = true
         }
         val icon = android.widget.TextView(this).apply {
@@ -227,7 +227,7 @@ class DeepStudyBlockerService : android.app.Service() {
         val backBtn = android.widget.TextView(this).apply {
             text = "  ← Deep Study তে ফিরে যান  "
             textSize = 15f; setTextColor(android.graphics.Color.WHITE)
-            setBackgroundColor(android.graphics.Color.parseColor("#0EA5E9"))
+            setBackgroundColor(android.graphics.Color.parseColor("#7C6BFF"))
             setPadding(32, 20, 32, 20)
             setOnClickListener {
                 val i = packageManager.getLaunchIntentForPackage(packageName)
@@ -605,7 +605,7 @@ fun Deep_study() {
     Column(
         Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(Color(0xFF0B1220), Color(0xFF0F1B33))))
+            .background(Brush.verticalGradient(listOf(Color(0xFF080B14), Color(0xFF0C0F22), Color(0xFF10142A))))
             .windowInsetsPadding(WindowInsets.statusBars)
     ) {
             Column(
@@ -702,7 +702,7 @@ fun Deep_study() {
         ModalBottomSheet(
             onDismissRequest = { showBottomSheet = false },
             modifier = Modifier.fillMaxHeight(0.9f),
-            containerColor = Color(0xFF0F1B33),
+            containerColor = Color(0xFF0C0F22),
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
         ) {
             BlocklistPickerSheet(
@@ -762,8 +762,10 @@ private fun TimerHeroCard(
                 .clip(CircleShape)
                 .background(
                     Brush.linearGradient(
-                        colors = if (isBreak) listOf(Color(0xFF22C55E), Color(0xFF16A34A))
-                                 else listOf(DClrTeal, DClrTealDark)
+                        colors = if (isBreak)
+                            listOf(Color(0xFF34D399), Color(0xFF059669))
+                        else
+                            listOf(Color(0xFF9B8DFF), DClrTeal, DClrTealDark)
                     )
                 ),
             contentAlignment = Alignment.Center
@@ -989,7 +991,7 @@ private fun PermBanner(color: Color, tint: Color, text: String, btnText: String,
 private fun AllowListCard(appCount: Int, siteCount: Int, enabled: Boolean, onClick: () -> Unit) {
     com.rasel.RasFocus.ui.theme.PremiumCard(
         modifier = Modifier.fillMaxWidth(),
-        containerColor = if (enabled) DClrTeal.copy(alpha = 0.1f) else DClrSurface,
+        containerColor = if (enabled) DClrTeal.copy(alpha = 0.12f) else DClrSurface,
         onClick = onClick,
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
     ) {
@@ -1368,3 +1370,4 @@ fun TimerSetupRow(label: String, value: Int, minVal: Int, maxVal: Int, step: Int
         }
     }
 }
+
