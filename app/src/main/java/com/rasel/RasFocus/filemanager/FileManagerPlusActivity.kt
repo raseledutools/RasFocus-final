@@ -109,6 +109,7 @@ sealed class NavState {
     data class ImageViewer(val path: String, val folderPath: String) : NavState()
     data class PdfViewer(val path: String, val folderPath: String) : NavState()
     data class MediaPlayer(val path: String, val folderPath: String) : NavState()
+    object RasPdf : NavState()
 }
 
 // ── Shared utility functions ────────────────────────────────────────────────
@@ -1163,6 +1164,29 @@ fun HomeScreen(initialPath: String? = null, sharedUris: List<android.net.Uri> = 
                                 currentNavState = if (parent != null) NavState.Local(parent) else NavState.Home 
                             }
                         )
+                        is NavState.RasPdf -> RasPdfScreen(
+                            onBack = { currentNavState = NavState.Home },
+                            onOpenPdf = { file ->
+                                val uri = androidx.core.content.FileProvider.getUriForFile(
+                                    context,
+                                    "${context.packageName}.fileprovider",
+                                    file
+                                )
+                                val intent = android.content.Intent(
+                                    context,
+                                    com.rasel.RasFocus.filemanager.WebViewPdfActivity::class.java
+                                ).apply {
+                                    action = android.content.Intent.ACTION_VIEW
+                                    data = uri
+                                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    putExtra(
+                                        com.rasel.RasFocus.filemanager.WebViewPdfActivity.EXTRA_LAYER_LABEL,
+                                        file.name
+                                    )
+                                }
+                                context.startActivity(intent)
+                            }
+                        )
                         else -> {}
                     }
                 } 
@@ -1624,6 +1648,41 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                     }
                     Spacer(modifier = Modifier.height(6.dp))
                 }
+            }
+        }
+
+        // ── RasPDF button ────────────────────────────────────────────────
+        item {
+            Button(
+                onClick = { onNavigate(NavState.RasPdf) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 2.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFB71C1C)
+                )
+            ) {
+                Icon(
+                    Icons.Default.PictureAsPdf,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "RasPDF",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    letterSpacing = 0.5.sp
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    text = "All PDFs ›",
+                    color = Color.White.copy(alpha = 0.75f),
+                    fontSize = 12.sp
+                )
             }
         }
 
@@ -2447,3 +2506,230 @@ fun DocxToPdfViewerScreen(docxPath: String, onBack: () -> Unit) {
 }
 
 
+// ═══════════════════════════════════════════════════════════════════════════
+// RasPdfScreen — All PDFs from device sorted by last modified (newest first)
+// ═══════════════════════════════════════════════════════════════════════════
+@Composable
+fun RasPdfScreen(
+    onBack: () -> Unit,
+    onOpenPdf: (java.io.File) -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var pdfFiles by remember { mutableStateOf<List<java.io.File>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+    var searchQuery by remember { mutableStateOf("") }
+
+    // Collect all PDFs from internal + SD card, sorted by date desc
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val found = mutableListOf<java.io.File>()
+
+            fun scanDir(dir: java.io.File) {
+                if (!dir.exists() || !dir.canRead()) return
+                try {
+                    dir.listFiles()?.forEach { f ->
+                        if (f.isDirectory && !f.name.startsWith(".")) {
+                            scanDir(f)
+                        } else if (f.isFile && f.extension.lowercase() == "pdf") {
+                            found.add(f)
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+
+            // Internal storage
+            scanDir(android.os.Environment.getExternalStorageDirectory())
+            // SD card (if available)
+            val sdPath = LocalFileManager.getSdCardPath(context)
+            if (sdPath != null) scanDir(java.io.File(sdPath))
+
+            val sorted = found.sortedByDescending { it.lastModified() }
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                pdfFiles = sorted
+                isLoading = false
+            }
+        }
+    }
+
+    val filtered = remember(pdfFiles, searchQuery) {
+        if (searchQuery.isBlank()) pdfFiles
+        else pdfFiles.filter { it.name.contains(searchQuery, ignoreCase = true) }
+    }
+
+    val sdf = remember { java.text.SimpleDateFormat("MMM dd, yyyy  HH:mm", java.util.Locale.getDefault()) }
+
+    androidx.activity.compose.BackHandler { onBack() }
+
+    Column(modifier = Modifier.fillMaxSize().background(Color(0xFFFAFAFA))) {
+
+        // ── Top Bar ──────────────────────────────────────────────────────────
+        Surface(shadowElevation = 4.dp, color = Color(0xFFB71C1C)) {
+            Column {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                    }
+                    Text(
+                        "RasPDF",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (!isLoading) {
+                        Text(
+                            "${filtered.size} files",
+                            color = Color.White.copy(alpha = 0.8f),
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+                // ── Search bar ──────────────────────────────────────────────
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Search PDF...", color = Color.White.copy(alpha = 0.6f)) },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp)
+                        .padding(bottom = 8.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color.White,
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.5f),
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        cursorColor = Color.White
+                    ),
+                    leadingIcon = {
+                        Icon(Icons.Default.Search, contentDescription = null, tint = Color.White)
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Close, contentDescription = null, tint = Color.White)
+                            }
+                        }
+                    }
+                )
+            }
+        }
+
+        // ── Loading state ─────────────────────────────────────────────────
+        if (isLoading) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(color = Color(0xFFB71C1C))
+                    Spacer(Modifier.height(12.dp))
+                    Text("Scanning all PDFs...", color = Color.Gray, fontSize = 14.sp)
+                }
+            }
+            return@Column
+        }
+
+        // ── Empty state ───────────────────────────────────────────────────
+        if (filtered.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("📄", fontSize = 52.sp)
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        if (searchQuery.isBlank()) "No PDF files found" else "No results for \"$searchQuery\"",
+                        color = Color.Gray,
+                        fontSize = 15.sp
+                    )
+                }
+            }
+            return@Column
+        }
+
+        // ── PDF List ──────────────────────────────────────────────────────
+        androidx.compose.foundation.lazy.LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            items(filtered) { file ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpenPdf(file) },
+                    shape = RoundedCornerShape(10.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // PDF Icon
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFFFFEBEE)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.PictureAsPdf,
+                                contentDescription = null,
+                                tint = Color(0xFFB71C1C),
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        // Name + path + date
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = file.nameWithoutExtension,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp,
+                                color = Color(0xFF212121),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = file.parent ?: "",
+                                fontSize = 11.sp,
+                                color = Color(0xFF9E9E9E),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(
+                                    text = formatFileSize(file.length()),
+                                    fontSize = 11.sp,
+                                    color = Color(0xFFB71C1C),
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    text = sdf.format(java.util.Date(file.lastModified())),
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF757575)
+                                )
+                            }
+                        }
+                        Icon(
+                            Icons.Default.ChevronRight,
+                            contentDescription = null,
+                            tint = Color(0xFFBDBDBD),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
