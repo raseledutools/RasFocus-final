@@ -1478,32 +1478,22 @@ class YoutubeActivity : ComponentActivity() {
     private fun injectAdBlocker(view: WebView) {
         view.evaluateJavascript("""
             (function() {
-                if (window.__rasAdBlockerActive__) return;
-                window.__rasAdBlockerActive__ = true;
+                // ── LAYER 2: SPA-aware ad skipper ──────────────────────────────
+                // FIX: আগে window.__rasAdBlockerActive__ flag দিয়ে guard ছিল।
+                // YouTube SPA navigation এ নতুন video load হলে এই flag থাকত,
+                // ফলে re-inject হতো না এবং auto-play এ ad block কাজ করত না।
+                // এখন: flag সরানো হয়েছে। বদলে core functions একবার define করা হয়
+                // এবং yt-navigate-finish event এ প্রতিটা SPA navigation এ re-run হয়।
+                // Display off এ setInterval throttle হয় — তাই MutationObserver
+                // primary mechanism, interval শুধু fallback।
 
-                // ═══════════════════════════════════════════════════════════════
-                // LAYER 2 — Mobile YouTube Ad Skipper (m.youtube.com)
-                //
-                // Bug fix history:
-                // ✗ OLD: '#movie_player', '.html5-video-player' → desktop YouTube
-                //        selector, m.youtube.com এ exist করে না, কখনো কাজ করেনি।
-                // ✓ NEW: mobile YouTube এর actual DOM structure:
-                //   - ad-showing class: <ytm-player> বা body.ad-showing
-                //   - skip button: .ytm-skip-button-renderer, [data-skip-ad-button]
-                //   - ad video: src এ 'ctier=A' / '&oad=' / '&adformat=' আছে
-                //   - promoted card: ytm-promoted-sparkles-web-renderer,
-                //                    ytm-promoted-video-renderer
-                // ═══════════════════════════════════════════════════════════════
-
-                // ── Ad video চেনার helper ──
                 function isAdVideo(v) {
                     try {
                         var src = v.src || '';
-                        if (src.indexOf('ctier=A')    !== -1) return true;
-                        if (src.indexOf('&oad=')      !== -1) return true;
-                        if (src.indexOf('&adformat=') !== -1) return true;
+                        if (src.indexOf('ctier=A')       !== -1) return true;
+                        if (src.indexOf('&oad=')         !== -1) return true;
+                        if (src.indexOf('&adformat=')    !== -1) return true;
                         if (src.indexOf('&source=ytads') !== -1) return true;
-                        // mobile YouTube: ad video element closest ancestor
                         if (v.closest) {
                             if (v.closest('.ad-showing'))        return true;
                             if (v.closest('[class*="ad-slot"]')) return true;
@@ -1512,7 +1502,6 @@ class YoutubeActivity : ComponentActivity() {
                     } catch(e) { return false; }
                 }
 
-                // ── Ad শেষ হওয়ার পরে main video জাগানো ──
                 function wakeMainVideo() {
                     try {
                         var allVideos = document.querySelectorAll('video');
@@ -1520,205 +1509,155 @@ class YoutubeActivity : ComponentActivity() {
                         for (var i = 0; i < allVideos.length; i++) {
                             if (!isAdVideo(allVideos[i])) { mainVideo = allVideos[i]; break; }
                         }
-                        if (!mainVideo && allVideos.length > 0) {
-                            mainVideo = allVideos[allVideos.length - 1];
-                        }
+                        if (!mainVideo && allVideos.length > 0) mainVideo = allVideos[allVideos.length - 1];
                         if (!mainVideo) return;
-
                         mainVideo.style.visibility = 'visible';
                         mainVideo.style.display    = 'block';
                         mainVideo.style.opacity    = '1';
                         if (mainVideo.muted) mainVideo.muted = false;
                         mainVideo.play().catch(function(){});
-
                         setTimeout(function() {
-                            try {
-                                if (mainVideo.paused && !mainVideo.ended) {
-                                    mainVideo.play().catch(function(){});
-                                }
-                            } catch(e) {}
+                            try { if (mainVideo.paused && !mainVideo.ended) mainVideo.play().catch(function(){}); } catch(e) {}
                         }, 400);
                     } catch(e) {}
                 }
 
-                // ── Ad video skip করা ──
                 function skipAdVideo() {
                     try {
                         var allVideos = document.querySelectorAll('video');
                         for (var i = 0; i < allVideos.length; i++) {
                             var v = allVideos[i];
                             if (isAdVideo(v) && v.duration > 0 && !v.ended) {
-                                v.currentTime = v.duration;
-                                return true;
+                                v.currentTime = v.duration; return true;
                             }
                         }
-                        // Fallback: সব video এর মধ্যে সবচেয়ে ছোট duration টাই ad
                         if (allVideos.length > 1) {
-                            var shortest = null;
-                            var shortestDur = Infinity;
+                            var shortest = null; var shortestDur = Infinity;
                             for (var j = 0; j < allVideos.length; j++) {
                                 var dur = allVideos[j].duration || 0;
-                                if (dur > 0 && dur < shortestDur) {
-                                    shortestDur = dur;
-                                    shortest    = allVideos[j];
-                                }
+                                if (dur > 0 && dur < shortestDur) { shortestDur = dur; shortest = allVideos[j]; }
                             }
-                            // শুধু skip করো যদি duration ≤ 60s (ad এর মতো)
                             if (shortest && shortestDur <= 60 && !shortest.ended) {
-                                shortest.currentTime = shortest.duration;
-                                return true;
+                                shortest.currentTime = shortest.duration; return true;
                             }
                         }
                         return false;
                     } catch(e) { return false; }
                 }
 
-                // ── body বা player এ ad-showing class আছে কিনা ──
                 function isAdShowingNow() {
                     try {
-                        // mobile YouTube: body.ad-showing বা ytm-player.ad-showing
                         if (document.body && document.body.classList.contains('ad-showing')) return true;
-                        // player element এ
-                        var players = document.querySelectorAll(
-                            'ytm-player, ytm-shorts-player, .player-container, [data-player-type]'
-                        );
+                        var players = document.querySelectorAll('ytm-player, ytm-shorts-player, .player-container, [data-player-type]');
                         for (var i = 0; i < players.length; i++) {
                             if (players[i].classList.contains('ad-showing')) return true;
                         }
-                        // ytm-paid-content-overlay বা ytm-ad-slot দেখা যাচ্ছে কিনা
                         var adSlot = document.querySelector('ytm-paid-content-overlay, ytm-ad-slot-renderer');
                         if (adSlot && adSlot.offsetParent !== null) return true;
                         return false;
                     } catch(e) { return false; }
                 }
 
+                // ── Core tick: skip + banner hide ──────────────────────────────
                 var wasAdShowing = false;
-                var skipAttempts = 0;
-
-                setInterval(function() {
+                function adTick() {
                     try {
-                        // ── Step 1: Skip button — mobile YouTube এর selectors ──
                         var skipBtn = document.querySelector(
-                            // mobile YouTube skip button variants
-                            '.ytm-skip-button-renderer button, ' +
-                            '[data-skip-ad-button] button, ' +
-                            'ytm-skip-button-renderer button, ' +
-                            // desktop-style যদি থাকে
-                            '.ytp-ad-skip-button, ' +
-                            '.ytp-ad-skip-button-modern, ' +
-                            '.ytp-skip-ad-button, ' +
-                            // aria-label based (language-agnostic)
-                            'button[aria-label*="Skip"], ' +
-                            'button[aria-label*="skip"], ' +
-                            'button[aria-label*="Ad"], ' +
-                            '.skip-button'
+                            '.ytm-skip-button-renderer button, [data-skip-ad-button] button, ' +
+                            'ytm-skip-button-renderer button, .ytp-ad-skip-button, ' +
+                            '.ytp-ad-skip-button-modern, .ytp-skip-ad-button, ' +
+                            'button[aria-label*="Skip"], button[aria-label*="skip"], .skip-button'
                         );
                         if (skipBtn && skipBtn.offsetParent !== null) {
-                            skipBtn.click();
-                            wasAdShowing = false;
-                            return;
+                            skipBtn.click(); wasAdShowing = false; return;
                         }
 
-                        // ── Step 2: Banner / card ads hide ──
                         document.querySelectorAll(
-                            'ytm-promoted-sparkles-web-renderer, ' +
-                            'ytm-promoted-video-renderer, ' +
-                            'ytm-paid-content-overlay, ' +
-                            'ytm-ad-slot-renderer, ' +
+                            'ytm-promoted-sparkles-web-renderer, ytm-promoted-video-renderer, ' +
+                            'ytm-paid-content-overlay, ytm-ad-slot-renderer, ' +
                             '.ytm-promoted-sparkles-text-search-ad-renderer, ' +
-                            '.ytp-ad-overlay-container, ' +
-                            '.ytp-ad-text-overlay, ' +
-                            '.ytp-ad-image-overlay, ' +
-                            '.ytp-ad-progress-list'
-                        ).forEach(function(ad) {
-                            ad.style.display = 'none';
-                        });
+                            '.ytp-ad-overlay-container, .ytp-ad-text-overlay, ' +
+                            '.ytp-ad-image-overlay, .ytp-ad-progress-list'
+                        ).forEach(function(ad) { ad.style.display = 'none'; });
 
-                        // ── Step 3: Video ad — currentTime → duration ──
                         var adNow = isAdShowingNow();
-
                         if (adNow) {
                             wasAdShowing = true;
-                            skipAttempts++;
-                            var skipped = skipAdVideo();
-
-                            // Extra: ad overlay element এও click করো
-                            if (!skipped) {
-                                var overlay = document.querySelector(
-                                    'ytm-paid-content-overlay, .ad-showing .ytp-ad-player-overlay'
-                                );
+                            if (!skipAdVideo()) {
+                                var overlay = document.querySelector('ytm-paid-content-overlay, .ad-showing .ytp-ad-player-overlay');
                                 if (overlay) overlay.click();
                             }
                         } else if (wasAdShowing) {
-                            // Ad সবে শেষ — main video জাগাও
-                            wasAdShowing = false;
-                            skipAttempts = 0;
-                            wakeMainVideo();
+                            wasAdShowing = false; wakeMainVideo();
                         }
-
                     } catch(e) {}
-                }, 250);
+                }
 
-                // ── Extra: MutationObserver দিয়ে skip button আসামাত্র click ──
-                // interval এ 250ms delay আছে — observer instantaneous
-                try {
-                    var skipObserver = new MutationObserver(function() {
-                        try {
-                            var btn = document.querySelector(
-                                '.ytm-skip-button-renderer button, ' +
-                                '[data-skip-ad-button] button, ' +
-                                'ytm-skip-button-renderer button, ' +
-                                '.ytp-ad-skip-button, .ytp-ad-skip-button-modern'
-                            );
-                            if (btn && btn.offsetParent !== null) btn.click();
-                        } catch(e) {}
-                    });
-                    skipObserver.observe(document.documentElement, {
-                        childList: true,
-                        subtree: true,
-                        attributes: false
-                    });
-                } catch(e) {}
+                // ── Guard: functions install once per page ──────────────────────
+                if (!window.__rasAdBlockerInstalled__) {
+                    window.__rasAdBlockerInstalled__ = true;
+
+                    // MutationObserver — display off এ reliable, interval throttle নয়
+                    try {
+                        var skipObs = new MutationObserver(function() {
+                            try {
+                                var btn = document.querySelector(
+                                    '.ytm-skip-button-renderer button, [data-skip-ad-button] button, ' +
+                                    'ytm-skip-button-renderer button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern'
+                                );
+                                if (btn && btn.offsetParent !== null) btn.click();
+                            } catch(e) {}
+                        });
+                        skipObs.observe(document.documentElement, { childList: true, subtree: true });
+                    } catch(e) {}
+
+                    // interval: fallback only (throttled when display off)
+                    setInterval(adTick, 300);
+                }
+
+                // ── SPA navigation re-run ───────────────────────────────────────
+                // YouTube fires 'yt-navigate-finish' on every SPA video change.
+                // auto-play চলাকালীন এই event দিয়ে adTick re-trigger হয়।
+                // display off থাকলেও event fires কারণ YouTube নিজেই trigger করে।
+                document.addEventListener('yt-navigate-finish', function() {
+                    wasAdShowing = false;
+                    // Short delay — নতুন page DOM settle হতে দাও
+                    setTimeout(adTick, 500);
+                    setTimeout(adTick, 1500);
+                    setTimeout(adTick, 3000);
+                }, false);
+
+                // প্রথমবার এখনই run করো
+                adTick();
 
             })();
         """.trimIndent(), null)
     }
 
     /**
-     * Layer 3 — YouTube player DOM এর ভেতরের ad overlay/banner/countdown forcefully hide।
-     * injectContentScanner() এর মতো পুরো page scan নয় — শুধু player container।
-     * false-positive block হয় না কারণ thumbnail/title text touch করা হয় না।
+     * Layer 3 — YouTube player DOM ad overlay/banner forcefully hide।
+     * FIX: window.__rasL3Active__ flag সরানো হয়েছে — SPA navigation এ
+     * yt-navigate-finish event এ re-run হয় এখন।
      */
     private fun injectYtAdLayerThree(view: WebView) {
         view.evaluateJavascript("""
             (function() {
-                if (window.__rasL3Active__) return;
-                window.__rasL3Active__ = true;
+                var AD_SELECTORS = [
+                    'ytm-paid-content-overlay', 'ytm-ad-slot-renderer',
+                    'ytm-display-ad-renderer', 'ytm-companion-slot',
+                    'ytm-banner-promo-renderer', '.ytp-ad-progress-list',
+                    '.ytp-ad-text-overlay', '.ytp-ad-image-overlay',
+                    '.ytp-ad-overlay-container',
+                    '.ytm-promoted-sparkles-text-search-ad-renderer',
+                    'ytm-promoted-sparkles-web-renderer', 'ytm-promoted-video-renderer',
+                    '.ytp-ad-info-dialog-ad-reasons', '.ytp-ad-button',
+                    '.ytp-ad-duration-remaining', '.ytp-ad-simple-ad-badge',
+                    '.ytp-ad-preview-container', '[class*="ad-badge"]', '[class*="AdBadge"]'
+                ];
 
                 function removeYtAds() {
                     try {
-                        var adSelectors = [
-                            'ytm-paid-content-overlay',
-                            'ytm-ad-slot-renderer',
-                            'ytm-display-ad-renderer',
-                            'ytm-companion-slot',
-                            'ytm-banner-promo-renderer',
-                            '.ytp-ad-progress-list',
-                            '.ytp-ad-text-overlay',
-                            '.ytp-ad-image-overlay',
-                            '.ytp-ad-overlay-container',
-                            '.ytm-promoted-sparkles-text-search-ad-renderer',
-                            'ytm-promoted-sparkles-web-renderer',
-                            'ytm-promoted-video-renderer',
-                            '.ytp-ad-info-dialog-ad-reasons',
-                            '.ytp-ad-button',
-                            '.ytp-ad-duration-remaining',
-                            '.ytp-ad-simple-ad-badge',
-                            '.ytp-ad-preview-container',
-                            '[class*="ad-badge"]',
-                            '[class*="AdBadge"]'
-                        ];
-                        adSelectors.forEach(function(sel) {
+                        AD_SELECTORS.forEach(function(sel) {
                             try {
                                 document.querySelectorAll(sel).forEach(function(el) {
                                     el.style.setProperty('display', 'none', 'important');
@@ -1728,16 +1667,26 @@ class YoutubeActivity : ComponentActivity() {
                     } catch(e) {}
                 }
 
+                // Guard: observer ও interval একবারই install করো
+                if (!window.__rasL3Installed__) {
+                    window.__rasL3Installed__ = true;
+
+                    try {
+                        var obs = new MutationObserver(function() { removeYtAds(); });
+                        obs.observe(document.documentElement, { childList: true, subtree: true });
+                    } catch(e) {}
+
+                    setInterval(removeYtAds, 800);
+                }
+
+                // SPA navigation এ re-run — yt-navigate-finish event
+                document.addEventListener('yt-navigate-finish', function() {
+                    setTimeout(removeYtAds, 300);
+                    setTimeout(removeYtAds, 1200);
+                }, false);
+
+                // এখনই run করো
                 removeYtAds();
-
-                try {
-                    var obs = new MutationObserver(function() { removeYtAds(); });
-                    obs.observe(document.documentElement, {
-                        childList: true, subtree: true, attributes: false
-                    });
-                } catch(e) {}
-
-                setInterval(removeYtAds, 800);
             })();
         """.trimIndent(), null)
     }
