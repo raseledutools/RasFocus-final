@@ -112,6 +112,9 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String?
     var zoom    by remember { mutableStateOf(1f) }
     var offsetX by remember { mutableStateOf(0f) }
     var offsetY by remember { mutableStateOf(0f) }
+    // Pivot point for pinch (0..1 fraction of container size)
+    var pivotFractionX by remember { mutableStateOf(0.5f) }
+    var pivotFractionY by remember { mutableStateOf(0.0f) }
 
     var useSpring by remember { mutableStateOf(false) }
     val animZoom by animateFloatAsState(
@@ -124,6 +127,8 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String?
     )
     val animOffsetX by animateFloatAsState(offsetX, animationSpec = tween(120), label = "ox")
     val animOffsetY by animateFloatAsState(offsetY, animationSpec = tween(120), label = "oy")
+    val animPivotX by animateFloatAsState(pivotFractionX, animationSpec = tween(120), label = "px")
+    val animPivotY by animateFloatAsState(pivotFractionY, animationSpec = tween(120), label = "py")
 
     // ── Container size ────────────────────────────────────────────────────
     var containerW by remember { mutableStateOf(1f) }
@@ -188,6 +193,17 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String?
 
                                     val zChange = event.calculateZoom()
                                     val pan     = event.calculatePan()
+
+                                    // Centroid of active pointers = pinch focal point
+                                    val activeChanges = event.changes.filter { it.pressed }
+                                    val centroid = activeChanges.fold(Offset.Zero) { acc, c ->
+                                        acc + c.position
+                                    } / activeChanges.size.toFloat()
+
+                                    // Update pivot fraction so graphicsLayer zooms from pinch point
+                                    pivotFractionX = (centroid.x / containerW).coerceIn(0f, 1f)
+                                    pivotFractionY = (centroid.y / containerH).coerceIn(0f, 1f)
+
                                     val newZ    = (zoom * zChange).coerceIn(MIN_ZOOM, MAX_ZOOM)
                                     val (cx, cy) = clampPan(
                                         offsetX + pan.x * 0.9f,
@@ -200,22 +216,19 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String?
                                     event.changes.forEach { it.consume() }
                                 }
 
-                                // ── SINGLE FINGER while zoomed — pan ──────────
+                                // ── SINGLE FINGER while zoomed — pan (both axes) ──
                                 fingers == 1 && zoom > 1.05f -> {
                                     val ch    = event.changes.firstOrNull() ?: break
                                     val delta = ch.position - ch.previousPosition
 
-                                    if (!dirLocked && (abs(delta.x) > 3f || abs(delta.y) > 3f)) {
-                                        isHoriz   = abs(delta.x) >= abs(delta.y)
-                                        dirLocked = true
-                                    }
-                                    if (dirLocked) {
-                                        if (isHoriz) {
-                                            val (cx, cy) = clampPan(offsetX + delta.x, offsetY, zoom)
-                                            offsetX = cx; offsetY = cy
-                                            ch.consume()
-                                        }
-                                    }
+                                    val (cx, cy) = clampPan(
+                                        offsetX + delta.x,
+                                        offsetY + delta.y,
+                                        zoom
+                                    )
+                                    offsetX = cx
+                                    offsetY = cy
+                                    ch.consume()
                                 }
                             }
                         }
@@ -237,7 +250,7 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String?
                     scaleY          = animZoom
                     translationX    = animOffsetX
                     translationY    = animOffsetY
-                    transformOrigin = TransformOrigin(0.5f, 0f)
+                    transformOrigin = TransformOrigin(animPivotX, animPivotY)
                     clip            = false
                     renderEffect    = null
                 }
@@ -261,14 +274,19 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String?
                                 // ── DOUBLE TAP ────────────────────────────────
                                 useSpring = true
                                 if (zoom > 1.5f) {
-                                    zoom    = 1f
-                                    offsetX = 0f
-                                    offsetY = 0f
+                                    zoom           = 1f
+                                    offsetX        = 0f
+                                    offsetY        = 0f
+                                    pivotFractionX = 0.5f
+                                    pivotFractionY = 0.0f
                                 } else {
                                     val newZ = DOUBLE_TAP_ZOOM
+                                    // Use tap position as zoom pivot
+                                    pivotFractionX = (pos.x / containerW).coerceIn(0f, 1f)
+                                    pivotFractionY = (pos.y / containerH).coerceIn(0f, 1f)
+                                    zoom = newZ
                                     val tapX = pos.x - containerW / 2f
                                     val tapY = pos.y - containerH / 2f
-                                    zoom = newZ
                                     val (cx, cy) = clampPan(
                                         -tapX * (newZ - 1f),
                                         -tapY * (newZ - 1f) * 0.25f,
