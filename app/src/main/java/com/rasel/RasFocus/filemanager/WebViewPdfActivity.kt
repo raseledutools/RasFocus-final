@@ -5,6 +5,8 @@ import android.net.Uri
 import android.os.Bundle
 import android.util.Base64
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
@@ -59,38 +61,38 @@ private fun WebViewPdfScreen(
     val INDIGO = Color(0xFF6C63FF)
     val scope  = rememberCoroutineScope()
 
-    var loadProgress  by remember { mutableIntStateOf(0) }
-    var webViewRef    by remember { mutableStateOf<WebView?>(null) }
-    var pdfBase64     by remember { mutableStateOf<String?>(null) }
-    var readError     by remember { mutableStateOf(false) }
-    var isReading     by remember { mutableStateOf(true) }
+    var isReading  by remember { mutableStateOf(true) }
+    var readError  by remember { mutableStateOf(false) }
+    var pdfBytes   by remember { mutableStateOf<ByteArray?>(null) }
+    var webViewRef by remember { mutableStateOf<WebView?>(null) }
+    var loadProgress by remember { mutableIntStateOf(0) }
 
-    // ── Step 1: Read PDF bytes on IO thread ──────────────────────────────────
+    // Read PDF bytes once
     LaunchedEffect(pdfUri) {
         if (pdfUri == null) { readError = true; isReading = false; return@LaunchedEffect }
         scope.launch {
-            val b64 = withContext(Dispatchers.IO) {
+            val bytes = withContext(Dispatchers.IO) {
                 try {
-                    val bytes = when (pdfUri.scheme) {
+                    when (pdfUri.scheme) {
                         "content" -> contentResolver.openInputStream(pdfUri)?.use { it.readBytes() }
                         "file"    -> java.io.File(pdfUri.path!!).readBytes()
                         else      -> null
                     }
-                    bytes?.let { Base64.encodeToString(it, Base64.NO_WRAP) }
                 } catch (e: Exception) { null }
             }
-            if (b64 == null) { readError = true } else { pdfBase64 = b64 }
+            if (bytes == null) readError = true else pdfBytes = bytes
             isReading = false
         }
     }
 
-    // ── Step 2: Inject into WebView once both b64 + webview are ready ────────
-    LaunchedEffect(pdfBase64, webViewRef) {
-        val b64 = pdfBase64 ?: return@LaunchedEffect
-        val wv  = webViewRef ?: return@LaunchedEffect
+    // Once bytes ready + webview ready → load PDF directly
+    LaunchedEffect(pdfBytes, webViewRef) {
+        val bytes = pdfBytes ?: return@LaunchedEffect
+        val wv    = webViewRef ?: return@LaunchedEffect
         wv.post {
-            // Pass base64 to the waiting JS function
-            wv.evaluateJavascript("renderPdf('$b64');", null)
+            // loadData with application/pdf — Android WebView handles this natively
+            val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+            wv.loadData(b64, "application/pdf", "base64")
         }
     }
 
@@ -110,8 +112,9 @@ private fun WebViewPdfScreen(
                 },
                 actions = {
                     IconButton(onClick = {
-                        pdfBase64?.let { b64 ->
-                            webViewRef?.evaluateJavascript("renderPdf('$b64');", null)
+                        pdfBytes?.let { bytes ->
+                            val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                            webViewRef?.loadData(b64, "application/pdf", "base64")
                         }
                     }) {
                         Icon(Icons.Default.Refresh, "Reload", tint = Color.White)
@@ -155,6 +158,7 @@ private fun WebViewPdfScreen(
                                     javaScriptEnabled    = true
                                     domStorageEnabled    = true
                                     allowFileAccess      = true
+                                    allowContentAccess   = true
                                     builtInZoomControls  = true
                                     displayZoomControls  = false
                                     loadWithOverviewMode = true
@@ -162,27 +166,17 @@ private fun WebViewPdfScreen(
                                     setSupportZoom(true)
                                 }
                                 wv.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
-
                                 wv.webChromeClient = object : WebChromeClient() {
                                     override fun onProgressChanged(view: WebView?, newProgress: Int) {
                                         loadProgress = newProgress
                                     }
                                 }
                                 wv.webViewClient = WebViewClient()
-
-                                // Load HTML shell — JS waits for renderPdf() call
-                                wv.loadDataWithBaseURL(
-                                    "file:///android_asset/",
-                                    buildHtmlShell(),
-                                    "text/html",
-                                    "UTF-8",
-                                    null
-                                )
                             }
                         }
                     )
 
-                    if (loadProgress < 100) {
+                    if (loadProgress in 1..99) {
                         LinearProgressIndicator(
                             progress   = { loadProgress / 100f },
                             modifier   = Modifier
@@ -198,54 +192,3 @@ private fun WebViewPdfScreen(
         }
     }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Minimal HTML — renders PDF via <embed> with base64 data URI.
-// No CDN, no internet needed. Works fully offline.
-// ─────────────────────────────────────────────────────────────────────────────
-private fun buildHtmlShell(): String = """
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-<style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  html, body { width:100%; height:100%; background:#0a0a0f; overflow:hidden; }
-  #frame {
-    width:100%; height:100%;
-    border:none; display:none;
-    background:#fff;
-  }
-  #loader {
-    display:flex; flex-direction:column;
-    align-items:center; justify-content:center;
-    height:100vh; color:#888; font-family:sans-serif; font-size:14px;
-  }
-  .dot { animation: blink 1.2s infinite; }
-  .dot:nth-child(2) { animation-delay:.2s; }
-  .dot:nth-child(3) { animation-delay:.4s; }
-  @keyframes blink { 0%,80%,100%{opacity:0} 40%{opacity:1} }
-</style>
-</head>
-<body>
-<div id="loader">
-  রেন্ডার হচ্ছে<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span>
-</div>
-<iframe id="frame"></iframe>
-
-<script>
-function renderPdf(b64) {
-  var frame = document.getElementById('frame');
-  var loader = document.getElementById('loader');
-  // Use data URI — works completely offline
-  frame.src = 'data:application/pdf;base64,' + b64;
-  frame.onload = function() {
-    loader.style.display = 'none';
-    frame.style.display = 'block';
-  };
-}
-</script>
-</body>
-</html>
-""".trimIndent()
