@@ -131,35 +131,118 @@ private val SUTONNY_MAP: Map<Char, String> = mapOf(
     '|'  to "।",
     '\u00A4' to "।",  // ¤ alternate দাড়ি
 
-    // ── Pre-composed conjuncts (Latin-1 supplement range) ──
-    // These are single encoded chars representing common Bangla clusters.
-    // Mapped from actual document analysis (যোগদান পত্র DOCX).
+    // ── Pre-composed conjuncts (Latin-1 supplement + Unicode range) ──
     '\u00A7' to "ক্ষ",   // §
     '\u00A8' to "জ্ঞ",   // ¨
-    '\u00A9' to "্ক",    // © (virama+ক)
-    '\u00AA' to "্র",    // ª (virama+র) ← confirmed: খ্রিস্টাব্দ
+    '\u00A9' to "্ক",    // ©
+    '\u00AA' to "্র",    // ª ← খ্রিস্টাব্দ
+    '\u00AB' to "্ব",    // «
+    '\u00AC' to "্ন",    // ¬
+    '\u00AD' to "্ট",    // ­
+    '\u00AE' to "্ড",    // ®
     '\u00AF' to "্ম",    // ¯
+    '\u00B0' to "্প",    // °
+    '\u00B1' to "্ফ",    // ±
+    '\u00B2' to "্ল",    // ²
     '\u00B3' to "ত্ত",   // ³
+    '\u00B4' to "্য",    // ´
     '\u00B5' to "ন্ত",   // µ
     '\u00B6' to "ন্থ",   // ¶
+    '\u00B7' to "ম্ব",   // ·
+    '\u00B8' to "ম্ভ",   // ¸
+    '\u00B9' to "ম্ফ",   // ¹
+    '\u00BA' to "ম্প",   // º
+    '\u00BB' to "ল্ক",   // »
+    '\u00BC' to "ল্ট",   // ¼
     '\u00BD' to "ক্ত",   // ½
+    '\u00BE' to "ক্ষ",   // ¾
     '\u00BF' to "স্ত",   // ¿
+    '\u00C0' to "ন্ড",   // À
     '\u00C1' to "ন্ট",   // Á
-    '\u00CE' to "ষ্ট",   // Î ← confirmed: খ্রিস্টাব্দ contains ষ্ট
+    '\u00C2' to "ণ্ট",   // Â
+    '\u00C3' to "ণ্ড",   // Ã
+    '\u00C4' to "ণ্ঠ",   // Ä
+    '\u00C5' to "ন্দ",   // Å
+    '\u00C6' to "ন্ধ",   // Æ
+    '\u00C7' to "ন্ন",   // Ç
+    '\u00C8' to "ন্ব",   // È
+    '\u00C9' to "ন্ম",   // É
+    '\u00CA' to "ন্স",   // Ê
+    '\u00CB' to "ঞ্চ",   // Ë
+    '\u00CC' to "ঞ্ছ",   // Ì
+    '\u00CD' to "ঞ্জ",   // Í
+    '\u00CE' to "ষ্ট",   // Î ← খ্রিস্টাব্দ
+    '\u00CF' to "ষ্ঠ",   // Ï
+    '\u00D0' to "ষ্ণ",   // Ð
+    '\u00D1' to "ষ্প",   // Ñ
+    '\u00D2' to "ষ্ফ",   // Ò
+    '\u00D3' to "ষ্ব",   // Ó
+    '\u00D4' to "ষ্ম",   // Ô
+    '\u00D5' to "ষ্ক",   // Õ
     '\u00D6' to "ষ্ঠ",   // Ö
-    '\u00E3' to "ব্দ",   // ã (া comes separately from 'v')
-    '\u00F3' to "স্ট",   // ó (ি comes separately from 'w' reorder)
+    '\u00D7' to "শ্ব",   // ×
+    '\u00D8' to "শ্ন",   // Ø
+    '\u00D9' to "শ্ম",   // Ù
+    '\u00DA' to "শ্র",   // Ú
+    '\u00DB' to "স্ক",   // Û
+    '\u00DC' to "স্খ",   // Ü
+    '\u00DD' to "স্ট",   // Ý
+    '\u00DE' to "স্থ",   // Þ ← স্বাস্থ্য
+    '\u00DF' to "স্ন",   // ß
+    '\u00E0' to "স্প",   // à
+    '\u00E1' to "স্ফ",   // á
+    '\u00E2' to "স্ব",   // â ← স্বতন্ত্র, স্বাস্থ্য
+    '\u00E3' to "ব্দ",   // ã
+    '\u00E4' to "ব্ধ",   // ä
+    '\u00E5' to "ব্ব",   // å
+    '\u00E6' to "ব্জ",   // æ
+    '\u00E7' to "ব্ল",   // ç
+    '\u00E8' to "ভ্র",   // è
+    '\u00E9' to "ম্ন",   // é
+    '\u00EA' to "ম্ল",   // ê
+    '\u00EB' to "গ্ধ",   // ë
+    '\u00EC' to "গ্ন",   // ì
+    '\u00ED' to "গ্ম",   // í
+    '\u00EE' to "গ্র",   // î
+    '\u00EF' to "গ্ল",   // ï
+    '\u00F0' to "জ্ব",   // ð
+    '\u00F1' to "জ্র",   // ñ
+    '\u00F2' to "জ্জ",   // ò
+    '\u00F3' to "স্ট",   // ó
+    '\u00F4' to "ত্ব",   // ô
+    '\u00F5' to "ত্র",   // õ ← মন্ত্রণালয়, মন্ত্রী
+    '\u00F6' to "ত্ন",   // ö
     '\u00F7' to "ন্ড",   // ÷
+    '\u00F8' to "ত্থ",   // ø
+    '\u00F9' to "ত্ম",   // ù
     '\u00FA' to "ন্ব",   // ú
+    '\u00FB' to "ট্ট",   // û
+    '\u00FC' to "ড্ড",   // ü
     '\u00FD' to "হ্ম",   // ý
+    '\u00FE' to "হ্ন",   // þ
+    '\u00FF' to "হ্ল",   // ÿ
+    '\u0152' to "দ্ধ",   // Œ
+    '\u0153' to "দ্ব",   // œ
     '\u0160' to "ক্স",   // Š
     '\u0161' to "ঙ্গ",   // š
-    '\u2019' to "\u2019", // ' (keep as-is)
+    '\u017D' to "ক্ক",   // Ž
+    '\u017E' to "ক্খ",   // ž
+    '\u0178' to "ক্ন",   // Ÿ
+    '\u2013' to "–",
+    '\u2014' to "—",
+    '\u2018' to "\u2018",
+    '\u2019' to "\u2019",
+    '\u201C' to "\u201C",
+    '\u201D' to "\u201D",
     '\u2020' to "ত্র",   // †
     '\u2021' to "স্থ",   // ‡
+    '\u2022' to "•",
+    '\u2026' to "…",
+    '\u2030' to "ণ্য",   // ‰
     '\u2039' to "ক্র",   // ‹
+    '\u203A' to "গ্গ",   // ›
 
-    // ── Bengali digits (if DOCX uses ASCII digits, keep as-is; these handle edge cases) ──
+    // ── Bengali digits ──
     '0' to "০", '1' to "১", '2' to "২", '3' to "৩", '4' to "৪",
     '5' to "৫", '6' to "৬", '7' to "৭", '8' to "৮", '9' to "৯",
 )
@@ -185,30 +268,31 @@ private fun legacyToUnicode(text: String): String {
         }
     }
 
-    // Step 2: Fix ি position.
-    // SutonnyMJ stores ি BEFORE its host consonant/cluster.
-    // Unicode requires ি AFTER the consonant (or full conjunct connected by ্).
-    // Rule: when we encounter ি, look ahead for one consonant (+ ্ + consonant)*
-    // cluster, output the cluster first, then ি.
+    // Step 2: Reorder pre-consonant matras.
+    // SutonnyMJ stores ি, ে, ৈ, ো BEFORE their host consonant/cluster (visual encoding).
+    // Unicode requires them AFTER the consonant cluster.
+    // Rule: when we see one of these matras, collect the following consonant + optional
+    // virama-connected conjunct, output the cluster first, then the matra.
+    val PRE_MATRAS = setOf('ি', 'ে', 'ৈ', 'ো')
     val chars = mapped.toList()
     return buildString {
         var j = 0
         while (j < chars.size) {
-            if (chars[j] == 'ি') {
-                // Collect the following consonant cluster (virama-connected only)
+            if (chars[j] in PRE_MATRAS) {
+                val matra = chars[j]
+                // Collect the following consonant cluster (virama-connected)
                 val cluster = StringBuilder()
                 var k = j + 1
                 if (k < chars.size && chars[k] in BANGLA_CONSONANTS) {
                     cluster.append(chars[k]); k++
-                    // Extend only through virama connections: ্ + consonant
                     while (k + 1 < chars.size && chars[k] == '্' && chars[k + 1] in BANGLA_CONSONANTS) {
                         cluster.append(chars[k]).append(chars[k + 1]); k += 2
                     }
                 }
                 if (cluster.isNotEmpty()) {
-                    append(cluster); append('ি'); j = k
+                    append(cluster); append(matra); j = k
                 } else {
-                    append('ি'); j++
+                    append(matra); j++
                 }
             } else {
                 append(chars[j]); j++
