@@ -49,58 +49,172 @@ private fun isLegacy(font: String) =
 
 // ── SutonnyMJ → Unicode map ───────────────────────────────────────────────────
 
+// ── SutonnyMJ → Unicode mapping (verified from real DOCX analysis) ─────────────
+// Key insight: SutonnyMJ stores ি-kar BEFORE its host consonant (visual encoding).
+// legacyToUnicode() handles this with a post-processing reorder step.
+//
+// Verified test cases:
+//   ZvwiLt  → তারিখঃ   ✓  (formal heading "তারিখঃ")
+//   eivei   → বরাবর    ✓
+//   mwPe    → সচিব     ✓
+//   wLªóvã  → খ্রিস্টাব্দ ✓
+
 private val SUTONNY_MAP: Map<Char, String> = mapOf(
-    'A' to "আ", 'B' to "ব", 'C' to "ঈ", 'D' to "দ", 'E' to "ঐ",
-    'F' to "ফ", 'G' to "গ", 'H' to "হ", 'I' to "ই", 'J' to "জ",
-    'K' to "ক", 'L' to "ল", 'M' to "ম", 'N' to "ন", 'O' to "ও",
-    'P' to "প", 'Q' to "ং", 'R' to "র", 'S' to "স", 'T' to "ত",
-    'U' to "উ", 'V' to "ভ", 'W' to "ঊ", 'X' to "ক্ষ", 'Y' to "য",
-    'Z' to "য়",
-    'a' to "া", 'b' to "ব", 'c' to "ে", 'd' to "দ", 'e' to "ে",
-    'f' to "ফ", 'g' to "গ", 'h' to "হ", 'i' to "ি", 'j' to "জ",
-    'k' to "ক", 'l' to "ল", 'm' to "ম", 'n' to "ন", 'o' to "ো",
-    'p' to "প", 'q' to "ক", 'r' to "র", 's' to "স", 't' to "ত",
-    'u' to "ু", 'v' to "ভ", 'w' to "ূ", 'x' to "ক্ষ", 'y' to "য",
-    'z' to "জ",
+    // ── Independent vowels ──
+    'A' to "অ",
+    'B' to "ই",
+    'C' to "ঈ",
+    'D' to "উ",
+    'E' to "ঊ",
+    'F' to "ঋ",
+    'G' to "এ",
+    'H' to "ঐ",
+    'I' to "ও",
+    'J' to "ঔ",
+
+    // ── Consonants ──
+    'K' to "ক",
+    'L' to "খ",
+    'M' to "গ",
+    'N' to "ঘ",
+    'O' to "ঙ",
+    'P' to "চ",
+    'Q' to "ছ",
+    'R' to "জ",
+    'S' to "ঝ",
+    'T' to "ঞ",
+    'U' to "ট",
+    'V' to "ঠ",
+    'W' to "ড",
+    'X' to "ঢ",
+    'Y' to "ণ",
+    'Z' to "ত",
+    '_' to "থ",
+    'a' to "দ",
+    'b' to "ধ",
+    'c' to "ন",
+    'd' to "প",
+    'e' to "ব",
+    'f' to "ভ",
+    'g' to "ম",
+    'h' to "য",
+    'i' to "র",
+    'j' to "ল",
+    'k' to "শ",
+    'l' to "ষ",
+    'm' to "স",
+    'n' to "হ",
+    'o' to "ড়",
+    'p' to "ঢ়",
+    'q' to "য়",
+    'r' to "ৎ",
+    's' to "ং",
+    't' to "ঃ",
+    'u' to "ঁ",
+
+    // ── Vowel signs (matras) ──
+    // NOTE: 'w' = ি is stored BEFORE its host consonant in SutonnyMJ.
+    //       legacyToUnicode() reorders it to AFTER the consonant (Unicode standard).
+    'v' to "া",
+    'w' to "ি",   // ← stored before consonant; reordered in legacyToUnicode()
+    'x' to "ী",
+    'y' to "ু",
+    'z' to "ূ",
+    '`' to "ে",
+    '~' to "ৈ",
+    '^' to "ো",
+
+    // ── Hasanta / Virama ──
+    '&' to "্",
+
+    // ── Punctuation ──
+    '|'  to "।",
+    '\u00A4' to "।",  // ¤ alternate দাড়ি
+
+    // ── Pre-composed conjuncts (Latin-1 supplement range) ──
+    // These are single encoded chars representing common Bangla clusters.
+    // Mapped from actual document analysis (যোগদান পত্র DOCX).
+    '\u00A7' to "ক্ষ",   // §
+    '\u00A8' to "জ্ঞ",   // ¨
+    '\u00A9' to "্ক",    // © (virama+ক)
+    '\u00AA' to "্র",    // ª (virama+র) ← confirmed: খ্রিস্টাব্দ
+    '\u00AF' to "্ম",    // ¯
+    '\u00B3' to "ত্ত",   // ³
+    '\u00B5' to "ন্ত",   // µ
+    '\u00B6' to "ন্থ",   // ¶
+    '\u00BD' to "ক্ত",   // ½
+    '\u00BF' to "স্ত",   // ¿
+    '\u00C1' to "ন্ট",   // Á
+    '\u00CE' to "ষ্ট",   // Î ← confirmed: খ্রিস্টাব্দ contains ষ্ট
+    '\u00D6' to "ষ্ঠ",   // Ö
+    '\u00E3' to "ব্দ",   // ã (া comes separately from 'v')
+    '\u00F3' to "স্ট",   // ó (ি comes separately from 'w' reorder)
+    '\u00F7' to "ন্ড",   // ÷
+    '\u00FA' to "ন্ব",   // ú
+    '\u00FD' to "হ্ম",   // ý
+    '\u0160' to "ক্স",   // Š
+    '\u0161' to "ঙ্গ",   // š
+    '\u2019' to "\u2019", // ' (keep as-is)
+    '\u2020' to "ত্র",   // †
+    '\u2021' to "স্থ",   // ‡
+    '\u2039' to "ক্র",   // ‹
+
+    // ── Bengali digits (if DOCX uses ASCII digits, keep as-is; these handle edge cases) ──
     '0' to "০", '1' to "১", '2' to "২", '3' to "৩", '4' to "৪",
     '5' to "৫", '6' to "৬", '7' to "৭", '8' to "৮", '9' to "৯",
-    '@' to "ঁ", '^' to "ঃ", '|' to "।", '$' to "৳",
-    '[' to "ড়", ']' to "ঢ়", '{' to "ড়", '}' to "ঢ়",
-    ':' to "ঃ", '`' to "\u200C",
-    '\u0080' to "ৎ", '\u0081' to "ঙ", '\u0082' to "ঞ", '\u0083' to "ণ",
-    '\u0084' to "ষ", '\u0085' to "ঢ", '\u0086' to "ট", '\u0087' to "ঠ",
-    '\u0088' to "ড", '\u0089' to "থ", '\u008A' to "ছ", '\u008B' to "চ",
-    '\u008C' to "ঘ", '\u008D' to "ঝ",
-    '\u00A4' to "্", '\u00A6' to "ঁ", '\u00A7' to "ঃ",
-    '\u00AA' to "া", '\u00AB' to "ি", '\u00AC' to "ী",
-    '\u00AD' to "ু", '\u00AE' to "ূ", '\u00AF' to "ৃ",
-    '\u00B0' to "ে", '\u00B1' to "ৈ", '\u00B4' to "ো", '\u00B5' to "ৌ",
-    '\u00B6' to "্র", '\u00B9' to "র্", '\u00BA' to "র্",
-    '\u00C0' to "ক্ক", '\u00C1' to "ক্ট", '\u00C2' to "ক্ত",
-    '\u00C3' to "ক্ন", '\u00C4' to "ক্ব", '\u00C5' to "ক্ম",
-    '\u00C6' to "ক্র", '\u00C7' to "ক্ল", '\u00C8' to "ক্ষ",
-    '\u00C9' to "ক্স", '\u00CA' to "গ্ন", '\u00CB' to "গ্ব",
-    '\u00CC' to "গ্ম", '\u00CD' to "গ্র", '\u00CE' to "গ্ল",
-    '\u00CF' to "ঘ্ন", '\u00D0' to "ঘ্র", '\u00D1' to "ঙ্ক",
-    '\u00D2' to "ঙ্গ", '\u00D3' to "চ্চ", '\u00D4' to "চ্ছ",
-    '\u00D5' to "চ্ন", '\u00D6' to "জ্জ", '\u00D7' to "জ্ঞ",
-    '\u00D8' to "জ্ব", '\u00D9' to "জ্র", '\u00DA' to "ট্ট",
-    '\u00DB' to "ড্ড", '\u00DC' to "ণ্ট", '\u00DD' to "ণ্ড",
-    '\u00DE' to "ণ্ণ", '\u00DF' to "ত্ত", '\u00E0' to "ত্থ",
-    '\u00E1' to "ত্ন", '\u00E2' to "ত্ব", '\u00E3' to "ত্ম",
-    '\u00E4' to "ত্র", '\u00E5' to "থ্র", '\u00E6' to "দ্দ",
-    '\u00E7' to "দ্ধ", '\u00E8' to "দ্ব", '\u00E9' to "দ্ভ",
-    '\u00EA' to "দ্ম", '\u00EB' to "দ্র", '\u00EC' to "ধ্র",
-    '\u00ED' to "ন্ট", '\u00EE' to "ন্ড", '\u00EF' to "ন্ত",
-    '\u00F0' to "ন্থ", '\u00F1' to "ন্দ", '\u00F2' to "ন্ধ",
-    '\u00F3' to "ন্ন", '\u00F4' to "ন্ব", '\u00F5' to "ন্ম",
-    '\u00F6' to "ন্র", '\u00F7' to "ন্স", '\u00F8' to "প্ত",
-    '\u00F9' to "প্ন", '\u00FA' to "প্ব", '\u00FB' to "প্ম",
-    '\u00FC' to "প্র", '\u00FD' to "প্ল", '\u00FE' to "প্স",
 )
 
-private fun legacyToUnicode(text: String): String = buildString {
-    for (ch in text) append(SUTONNY_MAP[ch] ?: ch.toString())
+// Bangla consonant codepoints (single-char only, for ি reorder logic).
+// Note: ড়/ঢ়/য় are multi-codepoint and handled separately in the reorder loop.
+private val BANGLA_CONSONANTS: Set<Char> = setOf(
+    'ক','খ','গ','ঘ','ঙ','চ','ছ','জ','ঝ','ঞ','ট','ঠ','ড','ঢ','ণ',
+    'ত','থ','দ','ধ','ন','প','ফ','ব','ভ','ম','য','র','ল','শ','ষ',
+    'স','হ','\u09CE'  // ৎ
+)
+
+private fun legacyToUnicode(text: String): String {
+    // Step 1: Two-char combo "Av" → আ
+    val mapped = buildString {
+        var i = 0
+        while (i < text.length) {
+            if (i + 1 < text.length && text[i] == 'A' && text[i + 1] == 'v') {
+                append("আ"); i += 2
+            } else {
+                append(SUTONNY_MAP[text[i]] ?: text[i].toString()); i++
+            }
+        }
+    }
+
+    // Step 2: Fix ি position.
+    // SutonnyMJ stores ি BEFORE its host consonant/cluster.
+    // Unicode requires ি AFTER the consonant (or full conjunct connected by ্).
+    // Rule: when we encounter ি, look ahead for one consonant (+ ্ + consonant)*
+    // cluster, output the cluster first, then ি.
+    val chars = mapped.toList()
+    return buildString {
+        var j = 0
+        while (j < chars.size) {
+            if (chars[j] == 'ি') {
+                // Collect the following consonant cluster (virama-connected only)
+                val cluster = StringBuilder()
+                var k = j + 1
+                if (k < chars.size && chars[k] in BANGLA_CONSONANTS) {
+                    cluster.append(chars[k]); k++
+                    // Extend only through virama connections: ্ + consonant
+                    while (k + 1 < chars.size && chars[k] == '্' && chars[k + 1] in BANGLA_CONSONANTS) {
+                        cluster.append(chars[k]).append(chars[k + 1]); k += 2
+                    }
+                }
+                if (cluster.isNotEmpty()) {
+                    append(cluster); append('ি'); j = k
+                } else {
+                    append('ি'); j++
+                }
+            } else {
+                append(chars[j]); j++
+            }
+        }
+    }
 }
 
 // ── Data model ────────────────────────────────────────────────────────────────
