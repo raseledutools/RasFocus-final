@@ -886,9 +886,8 @@
             android:exported="true"
             android:hardwareAccelerated="true"
             android:theme="@style/Theme.RasFocus.FileManager"
-            android:taskAffinity=""
             android:launchMode="singleTop">
-            <!-- External "Open with" for PDF files — runs in own task so back returns to caller -->
+            <!-- External "Open with" for PDF files -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -60,14 +61,26 @@ class FMPdfViewerActivity : ComponentActivity() {
     private var pfd: ParcelFileDescriptor? = null
     private var pdfRenderer: PdfRenderer? = null
 
+    companion object {
+        /** Internal launches pass this extra so we know NOT to finishAndRemoveTask on back */
+        const val EXTRA_INTERNAL_LAUNCH = "rasfocus_internal_launch"
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val isInternal = intent.getBooleanExtra(EXTRA_INTERNAL_LAUNCH, false)
         val uri: Uri? = intent.data ?: intent.getParcelableExtra(android.content.Intent.EXTRA_STREAM)
         openPdf(uri)
         setContent {
             MaterialTheme {
                 if (pdfRenderer != null) {
-                    RobustPdfViewer(pdfRenderer = pdfRenderer!!, onBack = { finish() })
+                    RobustPdfViewer(
+                        pdfRenderer = pdfRenderer!!,
+                        onBack = {
+                            if (isInternal) finish()
+                            else finishAndRemoveTask()
+                        }
+                    )
                 } else {
                     ErrorScreen("PDF খোলা যায়নি।")
                 }
@@ -123,6 +136,9 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String?
     val pageCount   = pdfRenderer.pageCount
     val listState   = rememberLazyListState()
     val scope       = rememberCoroutineScope()
+
+    // System back button → onBack
+    BackHandler { onBack() }
 
     // ── Zoom / Pan ─────────────────────────────────────────────────────────
     var zoom    by remember { mutableStateOf(1f) }

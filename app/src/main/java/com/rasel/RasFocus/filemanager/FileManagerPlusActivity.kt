@@ -312,6 +312,7 @@ fun openLocalFile(context: android.content.Context, file: java.io.File, onNaviga
                         action = android.content.Intent.ACTION_VIEW
                         setDataAndType(uri, internalMime)
                         addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        putExtra(com.rasel.RasFocus.filemanager.FMPdfViewerActivity.EXTRA_INTERNAL_LAUNCH, true)
                     }
                     context.startActivity(intent)
                     return
