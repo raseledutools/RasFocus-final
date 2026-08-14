@@ -3,7 +3,6 @@ package com.rasel.RasFocus.filemanager
 import android.annotation.SuppressLint
 import android.net.Uri
 import android.os.Bundle
-import android.util.Base64
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -24,9 +23,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class WebViewPdfActivity : ComponentActivity() {
     companion object {
@@ -36,13 +32,13 @@ class WebViewPdfActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val pdfUri: Uri? = intent.data
-        val label: String = intent.getStringExtra(EXTRA_LAYER_LABEL) ?: "PDF Viewer"
+        val label = intent.getStringExtra(EXTRA_LAYER_LABEL) ?: "PDF Viewer"
         setContent {
             WebViewPdfScreen(
-                pdfUri          = pdfUri,
-                label           = label,
-                onBack          = { finish() },
-                activity        = this,
+                pdfUri   = pdfUri,
+                label    = label,
+                onBack   = { finish() },
+                activity = this,
             )
         }
     }
@@ -59,45 +55,26 @@ private fun WebViewPdfScreen(
 ) {
     val BG     = Color(0xFF0A0A0F)
     val INDIGO = Color(0xFF6C63FF)
-    val scope  = rememberCoroutineScope()
 
-    var isReading    by remember { mutableStateOf(true) }
-    var readError    by remember { mutableStateOf(false) }
-    var pdfB64       by remember { mutableStateOf<String?>(null) }
-    var webViewRef   by remember { mutableStateOf<WebView?>(null) }
     var loadProgress by remember { mutableIntStateOf(0) }
+    var webViewRef   by remember { mutableStateOf<WebView?>(null) }
 
-    // ── Step 1: Read PDF bytes on IO, encode to base64 ────────────────────────
-    LaunchedEffect(pdfUri) {
-        if (pdfUri == null) { readError = true; isReading = false; return@LaunchedEffect }
-        scope.launch {
-            val b64 = withContext(Dispatchers.IO) {
-                try {
-                    val bytes = when (pdfUri.scheme) {
-                        "content" -> activity.contentResolver
-                            .openInputStream(pdfUri)?.use { it.readBytes() }
-                        "file"    -> java.io.File(pdfUri.path!!).readBytes()
-                        else      -> null
-                    }
-                    bytes?.let { Base64.encodeToString(it, Base64.NO_WRAP) }
-                } catch (e: Exception) { null }
-            }
-            if (b64 == null) readError = true else pdfB64 = b64
-            isReading = false
-        }
-    }
+    // PDF URI কে stable string হিসেবে রাখি
+    val pdfUriString = pdfUri?.toString() ?: ""
 
-    // ── Step 2: Load HTML into WebView once both ready ────────────────────────
-    LaunchedEffect(pdfB64, webViewRef) {
-        val b64 = pdfB64 ?: return@LaunchedEffect
-        val wv  = webViewRef ?: return@LaunchedEffect
+    // WebView ready হলেই load — কোনো IO wait নেই, stream করবে
+    LaunchedEffect(webViewRef, pdfUriString) {
+        val wv = webViewRef ?: return@LaunchedEffect
+        if (pdfUriString.isEmpty()) return@LaunchedEffect
         wv.post {
-            // BASE URL = https://appassets.androidplatform.net/
-            // WebViewClient intercepts /pdfjs/* → serves from assets
-            // type="module" works because origin is https://
+            // PDF URI টা একটা fake https URL হিসেবে pass করছি JS-এ
+            // shouldInterceptRequest সেটা intercept করে ContentResolver দিয়ে stream দেবে
+            val encodedUri = android.util.Base64.encodeToString(
+                pdfUriString.toByteArray(), android.util.Base64.NO_WRAP
+            )
             wv.loadDataWithBaseURL(
                 "https://appassets.androidplatform.net/",
-                buildHtml(b64),
+                buildHtml(encodedUri),
                 "text/html",
                 "UTF-8",
                 null
@@ -111,7 +88,7 @@ private fun WebViewPdfScreen(
                 title = {
                     Column {
                         Text(label, fontSize = 14.sp, color = Color.White, maxLines = 1)
-                        Text("⚡ PDF.js (offline)", fontSize = 11.sp, color = INDIGO)
+                        Text("⚡ PDF.js engine", fontSize = 11.sp, color = INDIGO)
                     }
                 },
                 navigationIcon = {
@@ -120,15 +97,7 @@ private fun WebViewPdfScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = {
-                        pdfB64?.let { b64 ->
-                            webViewRef?.loadDataWithBaseURL(
-                                "https://appassets.androidplatform.net/",
-                                buildHtml(b64),
-                                "text/html", "UTF-8", null
-                            )
-                        }
-                    }) {
+                    IconButton(onClick = { webViewRef?.reload() }) {
                         Icon(Icons.Default.Refresh, "Reload", tint = Color.White)
                     }
                 },
@@ -143,156 +112,239 @@ private fun WebViewPdfScreen(
                 .padding(padding)
                 .background(BG)
         ) {
-            when {
-                isReading -> {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator(color = INDIGO, strokeWidth = 3.dp)
-                            Spacer(Modifier.height(12.dp))
-                            Text("PDF পড়া হচ্ছে...", color = Color(0xFF888899), fontSize = 13.sp)
-                        }
-                    }
+            if (pdfUri == null) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("PDF খোলা যায়নি", color = Color(0xFFFF5C5C))
                 }
+            } else {
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory  = { ctx ->
+                        WebView(ctx).also { wv ->
+                            webViewRef = wv
+                            wv.settings.apply {
+                                javaScriptEnabled    = true
+                                domStorageEnabled    = true
+                                allowFileAccess      = true
+                                allowContentAccess   = true
+                                builtInZoomControls  = true
+                                displayZoomControls  = false
+                                loadWithOverviewMode = true
+                                useWideViewPort      = true
+                                setSupportZoom(true)
+                                // Cache PDF.js CDN — দ্বিতীয়বার instant
+                                cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
+                            }
+                            wv.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
 
-                readError || pdfUri == null -> {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("PDF খোলা যায়নি", color = Color(0xFFFF5C5C), fontSize = 14.sp)
-                    }
-                }
-
-                else -> {
-                    AndroidView(
-                        modifier = Modifier.fillMaxSize(),
-                        factory  = { ctx ->
-                            WebView(ctx).also { wv ->
-                                webViewRef = wv
-                                wv.settings.apply {
-                                    javaScriptEnabled    = true
-                                    domStorageEnabled    = true
-                                    allowFileAccess      = true
-                                    allowContentAccess   = true
-                                    builtInZoomControls  = true
-                                    displayZoomControls  = false
-                                    loadWithOverviewMode = true
-                                    useWideViewPort      = true
-                                    setSupportZoom(true)
+                            wv.webChromeClient = object : WebChromeClient() {
+                                override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                                    loadProgress = newProgress
                                 }
-                                wv.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
+                            }
 
-                                wv.webChromeClient = object : WebChromeClient() {
-                                    override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                                        loadProgress = newProgress
-                                    }
-                                }
+                            wv.webViewClient = object : WebViewClient() {
+                                override fun shouldInterceptRequest(
+                                    view: WebView?,
+                                    request: WebResourceRequest?
+                                ): WebResourceResponse? {
+                                    val url = request?.url ?: return null
 
-                                // ── Intercept /pdfjs/* → serve from assets ────
-                                wv.webViewClient = object : WebViewClient() {
-                                    override fun shouldInterceptRequest(
-                                        view: WebView?,
-                                        request: WebResourceRequest?
-                                    ): WebResourceResponse? {
-                                        val path = request?.url?.path ?: return null
-                                        if (!path.startsWith("/pdfjs/")) return null
-                                        val assetName = path.removePrefix("/")
+                                    // /pdf-stream/ path → decode URI → stream from ContentResolver
+                                    if (url.path?.startsWith("/pdf-stream/") == true) {
+                                        val b64segment = url.path!!.removePrefix("/pdf-stream/")
                                         return try {
-                                            val stream = activity.assets.open(assetName)
-                                            WebResourceResponse("text/javascript", "UTF-8", stream)
-                                        } catch (e: Exception) {
-                                            null
-                                        }
+                                            val uriStr = String(
+                                                android.util.Base64.decode(b64segment, android.util.Base64.NO_WRAP)
+                                            )
+                                            val uri = Uri.parse(uriStr)
+                                            val stream = when (uri.scheme) {
+                                                "content" -> activity.contentResolver.openInputStream(uri)
+                                                "file"    -> java.io.FileInputStream(uri.path!!)
+                                                else      -> null
+                                            }
+                                            stream?.let {
+                                                WebResourceResponse("application/pdf", null, it)
+                                            }
+                                        } catch (e: Exception) { null }
                                     }
+
+                                    // /pdfjs/ → assets (offline fallback)
+                                    if (url.path?.startsWith("/pdfjs/") == true) {
+                                        val asset = url.path!!.removePrefix("/")
+                                        return try {
+                                            WebResourceResponse(
+                                                "text/javascript", "UTF-8",
+                                                activity.assets.open(asset)
+                                            )
+                                        } catch (e: Exception) { null }
+                                    }
+
+                                    return null
                                 }
                             }
                         }
-                    )
-
-                    if (loadProgress in 1..99) {
-                        LinearProgressIndicator(
-                            progress   = { loadProgress / 100f },
-                            modifier   = Modifier
-                                .fillMaxWidth()
-                                .height(3.dp)
-                                .align(Alignment.TopCenter),
-                            color      = INDIGO,
-                            trackColor = Color.Transparent,
-                        )
                     }
+                )
+
+                if (loadProgress in 1..99) {
+                    LinearProgressIndicator(
+                        progress   = { loadProgress / 100f },
+                        modifier   = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .align(Alignment.TopCenter),
+                        color      = INDIGO,
+                        trackColor = Color.Transparent,
+                    )
                 }
             }
         }
     }
 }
 
-private fun buildHtml(b64: String): String = """
+private fun buildHtml(encodedUri: String): String = """
 <!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=8.0, user-scalable=yes">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
-  html, body { width:100%; background:#1a1a2e; }
+  html, body { width:100%; background:#1C1C1E; }
+
   #loader {
     display:flex; flex-direction:column; align-items:center;
     justify-content:center; height:100vh;
-    color:#aaa; font-family:sans-serif; font-size:14px;
+    color:#aaa; font-family:sans-serif; font-size:14px; gap:12px;
   }
   .spinner {
-    width:36px; height:36px; border:3px solid #333;
+    width:40px; height:40px; border:3px solid #333;
     border-top-color:#6C63FF; border-radius:50%;
-    animation:spin .8s linear infinite; margin-bottom:12px;
+    animation:spin .7s linear infinite;
   }
-  @keyframes spin { to{transform:rotate(360deg);} }
-  #viewer { width:100%; padding:8px 0; background:#1a1a2e; }
-  .page-wrap { display:flex; justify-content:center; margin:4px 0; }
-  canvas { display:block; max-width:100%; background:#fff; box-shadow:0 2px 8px rgba(0,0,0,.5); }
-  #err { display:none; color:#ff5c5c; text-align:center; padding:32px; font-family:sans-serif; font-size:13px; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  #viewer {
+    width:100%;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding: 8px 0;
+    gap: 6px;
+    background:#1C1C1E;
+  }
+
+  .page-container {
+    width: 100%;
+    display:flex;
+    justify-content:center;
+  }
+
+  canvas {
+    display:block;
+    /* CSS size = physical pixels / DPR → sharp on all screens */
+    box-shadow: 0 1px 6px rgba(0,0,0,0.6);
+    background:#fff;
+  }
+
+  #err {
+    display:none; color:#ff5c5c; padding:32px;
+    font-family:sans-serif; font-size:13px; text-align:center;
+  }
 </style>
 </head>
 <body>
-<div id="loader"><div class="spinner"></div><span>PDF লোড হচ্ছে...</span></div>
-<div id="viewer"></div>
+<div id="loader">
+  <div class="spinner"></div>
+  <span id="loader-text">PDF.js লোড হচ্ছে...</span>
+</div>
+<div id="viewer" style="display:none"></div>
 <div id="err"></div>
+
 <script type="module">
-  // /pdfjs/ path → WebViewClient intercepts → serves from assets (offline, instant)
+  // CDN — cached by WebView after first load, instant on repeat opens
   import { getDocument, GlobalWorkerOptions }
-    from '/pdfjs/pdf.min.mjs';
+    from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs';
 
-  GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.min.mjs';
+  GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';
 
-  const DPR   = window.devicePixelRatio || 1;
-  const SCALE = DPR > 1 ? 2.0 : 1.5;
+  const DPR        = window.devicePixelRatio || 1;
+  // Use 1.5x CSS pixel scale — canvas physical pixels = 1.5 * DPR
+  // Gives sharp crisp text on all screen densities
+  const CSS_SCALE  = 1.5;
+  const PHYS_SCALE = CSS_SCALE * DPR;
+
+  const loaderText = document.getElementById('loader-text');
+  const viewer     = document.getElementById('viewer');
+  const loader     = document.getElementById('loader');
+  const errDiv     = document.getElementById('err');
+
+  function showError(msg) {
+    loader.style.display   = 'none';
+    viewer.style.display   = 'none';
+    errDiv.style.display   = 'block';
+    errDiv.textContent     = msg;
+  }
 
   try {
-    const b64 = `$b64`;
-    const bin = atob(b64);
-    const arr = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    // Decode the URI passed from Kotlin
+    const b64Uri  = `$encodedUri`;
+    const pdfUrl  = '/pdf-stream/' + b64Uri;
 
-    const pdf    = await getDocument({ data: arr.buffer }).promise;
-    const viewer = document.getElementById('viewer');
-    document.getElementById('loader').style.display = 'none';
+    loaderText.textContent = 'PDF খোলা হচ্ছে...';
 
-    // Render all pages sequentially
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const vp   = page.getViewport({ scale: SCALE });
-      const wrap = document.createElement('div');
-      wrap.className = 'page-wrap';
-      const c = document.createElement('canvas');
-      c.width  = vp.width;
-      c.height = vp.height;
-      c.style.width  = Math.floor(vp.width  / DPR) + 'px';
-      c.style.height = Math.floor(vp.height / DPR) + 'px';
-      wrap.appendChild(c);
-      viewer.appendChild(wrap);
-      await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+    const loadingTask = getDocument({
+      url:              pdfUrl,
+      rangeChunkSize:   65536,   // 64KB chunks — fast range loading
+      disableAutoFetch: false,
+      disableStream:    false,
+    });
+
+    // Show page count while loading
+    loadingTask.onProgress = function(data) {
+      if (data.total > 0) {
+        const pct = Math.round(data.loaded / data.total * 100);
+        loaderText.textContent = 'লোড হচ্ছে... ' + pct + '%';
+      }
+    };
+
+    const pdf = await loadingTask.promise;
+    loaderText.textContent = 'রেন্ডার হচ্ছে... (মোট ' + pdf.numPages + ' পাতা)';
+
+    // Show viewer, hide loader
+    loader.style.display = 'none';
+    viewer.style.display = 'flex';
+
+    // Render page-by-page — first page first for instant preview
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      const page       = await pdf.getPage(pageNum);
+      const viewport   = page.getViewport({ scale: PHYS_SCALE });
+
+      const container  = document.createElement('div');
+      container.className = 'page-container';
+
+      const canvas     = document.createElement('canvas');
+      const ctx        = canvas.getContext('2d');
+
+      // Physical pixel size
+      canvas.width     = viewport.width;
+      canvas.height    = viewport.height;
+
+      // CSS display size — browser scales down by DPR → sharp
+      canvas.style.width  = (viewport.width  / DPR) + 'px';
+      canvas.style.height = (viewport.height / DPR) + 'px';
+
+      container.appendChild(canvas);
+      viewer.appendChild(container);
+
+      await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+      page.cleanup();  // free memory after each page render
     }
+
   } catch(e) {
-    document.getElementById('loader').style.display = 'none';
-    const err = document.getElementById('err');
-    err.style.display   = 'block';
-    err.textContent     = 'Error: ' + e.message;
+    showError('PDF খোলা যায়নি: ' + e.message);
   }
 </script>
 </body>
