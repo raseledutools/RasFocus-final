@@ -105,9 +105,9 @@ private fun WebViewPdfScreen(
                     wv.loadData(b64, "application/pdf", "base64")
                 }
                 PdfMode.PDFJS -> {
-                    // PDF.js via CDN — JS renders page-by-page on canvas
+                    // PDF.js via local assets — JS renders page-by-page on canvas
                     wv.loadDataWithBaseURL(
-                        "https://appassets.androidplatform.net/",
+                        "file:///android_asset/pdfjs/",
                         buildPdfJsHtml(b64),
                         "text/html",
                         "UTF-8",
@@ -361,10 +361,10 @@ private fun buildPdfJsHtml(b64: String): String = """
 <div id="err">PDF.js রেন্ডার করতে পারেনি।</div>
 <script type="module">
   import { getDocument, GlobalWorkerOptions }
-    from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs';
+    from 'file:///android_asset/pdfjs/pdf.min.mjs';
 
   GlobalWorkerOptions.workerSrc =
-    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';
+    'file:///android_asset/pdfjs/pdf.worker.min.mjs';
 
   const DPR   = window.devicePixelRatio || 1;
   const SCALE = DPR > 1 ? 2.0 : 1.5;
