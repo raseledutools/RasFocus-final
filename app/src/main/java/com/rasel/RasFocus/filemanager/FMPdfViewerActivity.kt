@@ -80,7 +80,23 @@ class FMPdfViewerActivity : ComponentActivity() {
         pdfRenderer = null; pfd = null
         if (uri == null) return
         try {
-            pfd = contentResolver.openFileDescriptor(uri, "r")
+            // Persist read permission when delivered via external "Open with" intent
+            if (uri.scheme == "content") {
+                try {
+                    contentResolver.takePersistableUriPermission(
+                        uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                } catch (_: SecurityException) { /* non-persistable URI — fine */ }
+            }
+            pfd = if (uri.scheme == "file") {
+                // file:// URI — open directly
+                val path = uri.path ?: return
+                ParcelFileDescriptor.open(
+                    java.io.File(path), ParcelFileDescriptor.MODE_READ_ONLY
+                )
+            } else {
+                contentResolver.openFileDescriptor(uri, "r")
+            }
             if (pfd != null) pdfRenderer = PdfRenderer(pfd!!)
         } catch (e: Exception) { e.printStackTrace() }
     }

@@ -858,6 +858,7 @@
             android:theme="@style/Theme.RasFocus.FileManager"
             android:launchMode="singleTop"
             android:hardwareAccelerated="true">
+            <!-- Non-PDF files (PDF goes directly to FMPdfViewerActivity) -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -882,9 +883,23 @@
 
         <activity
             android:name=".filemanager.FMPdfViewerActivity"
-            android:exported="false"
+            android:exported="true"
             android:hardwareAccelerated="true"
-            android:theme="@style/Theme.RasFocus.FileManager" />
+            android:theme="@style/Theme.RasFocus.FileManager"
+            android:taskAffinity=""
+            android:launchMode="singleTop">
+            <!-- External "Open with" for PDF files — runs in own task so back returns to caller -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" android:mimeType="application/pdf" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="file" android:mimeType="application/pdf" />
+            </intent-filter>
+        </activity>
 
         <!-- PDF Layer 3: WebView (Google Docs viewer) -->
         <activity
