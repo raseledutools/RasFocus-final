@@ -101,7 +101,7 @@ private fun WebViewPdfScreen(
         val wv  = webViewRef ?: return@LaunchedEffect
         wv.post {
             wv.loadDataWithBaseURL(
-                "file:///android_asset/pdfjs/",
+                "file:///android_asset/",
                 buildPdfJsHtml(b64),
                 "text/html", "UTF-8", null
             )
@@ -138,7 +138,7 @@ private fun WebViewPdfScreen(
                 }
             }
 
-            // Viewer — full screen WebView
+            // Viewer
             else -> {
                 AndroidView(
                     modifier = Modifier
@@ -174,7 +174,7 @@ private fun WebViewPdfScreen(
                     }
                 )
 
-                // Progress bar (top)
+                // Progress bar
                 if (loadProgress in 1..99) {
                     LinearProgressIndicator(
                         progress   = { loadProgress / 100f },
@@ -234,11 +234,9 @@ private fun WebViewPdfScreen(
 }
 
 // ── PDF.js HTML ───────────────────────────────────────────────────────────────
-// • Opens directly — no chooser screen
-// • First page renders first (fast start)
-// • Full screen width like WPS
-// • Text layer → long press to select/copy
-// • High quality DPR-aware rendering
+// Key fix: UMD build → use <script> tag (not ES import)
+// After script loads, pdfjsLib is available at window.pdfjsLib
+// baseURL = file:///android_asset/ so script src resolves correctly
 // ─────────────────────────────────────────────────────────────────────────────
 private fun buildPdfJsHtml(b64: String): String = """
 <!DOCTYPE html>
@@ -264,14 +262,11 @@ private fun buildPdfJsHtml(b64: String): String = """
   }
   @keyframes spin { to { transform:rotate(360deg); } }
   #viewer { width:100%; background:#424242; }
-
   .page-block {
     width:100%; position:relative;
     margin-bottom:6px; background:#fff; overflow:hidden;
   }
-  .page-block canvas {
-    display:block; width:100% !important; height:auto !important;
-  }
+  .page-block canvas { display:block; width:100% !important; height:auto !important; }
   .textLayer {
     position:absolute; top:0; left:0; right:0; bottom:0;
     overflow:hidden; line-height:1; pointer-events:auto;
@@ -282,12 +277,9 @@ private fun buildPdfJsHtml(b64: String): String = """
     -webkit-user-select:text; user-select:text;
   }
   .textLayer ::selection { background:rgba(108,99,255,0.35); }
-
   #err {
-    display:none; color:#ff5c5c;
-    text-align:center; padding:32px;
-    font-family:sans-serif; background:#1a1a2e;
-    min-height:100vh; align-items:center; justify-content:center;
+    display:none; color:#ff5c5c; text-align:center;
+    padding:32px; font-family:sans-serif;
   }
 </style>
 </head>
@@ -296,83 +288,86 @@ private fun buildPdfJsHtml(b64: String): String = """
 <div id="viewer"></div>
 <div id="err"></div>
 
-<script type="module">
-import { getDocument, GlobalWorkerOptions } from 'file:///android_asset/pdfjs/pdf.min.mjs';
-GlobalWorkerOptions.workerSrc = 'file:///android_asset/pdfjs/pdf.worker.min.mjs';
+<!-- UMD build: loads as script, exposes window.pdfjsLib -->
+<script src="pdfjs/pdf.min.mjs"></script>
+<script>
+(async function() {
+  const loader = document.getElementById('loader');
+  const viewer = document.getElementById('viewer');
+  const errDiv = document.getElementById('err');
 
-const DPR    = Math.min(window.devicePixelRatio || 1, 3);
-const VW     = window.innerWidth || screen.width;
-const loader = document.getElementById('loader');
-const viewer = document.getElementById('viewer');
-const errDiv = document.getElementById('err');
+  try {
+    // Wait for pdfjsLib to be available
+    let tries = 0;
+    while (!window.pdfjsLib && tries++ < 100) {
+      await new Promise(r => setTimeout(r, 50));
+    }
+    if (!window.pdfjsLib) throw new Error('PDF.js failed to load');
 
-// base64 → Uint8Array
-const b64str = `$b64`;
-const bin    = atob(b64str);
-const buf    = new Uint8Array(bin.length);
-for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    const { getDocument, GlobalWorkerOptions } = window.pdfjsLib;
+    GlobalWorkerOptions.workerSrc = 'pdfjs/pdf.worker.min.mjs';
 
-function matMul(m1, m2) {
-  return [
-    m1[0]*m2[0]+m1[2]*m2[1], m1[1]*m2[0]+m1[3]*m2[1],
-    m1[0]*m2[2]+m1[2]*m2[3], m1[1]*m2[2]+m1[3]*m2[3],
-    m1[0]*m2[4]+m1[2]*m2[5]+m1[4],
-    m1[1]*m2[4]+m1[3]*m2[5]+m1[5]
-  ];
-}
+    const DPR = Math.min(window.devicePixelRatio || 1, 3);
+    const VW  = window.innerWidth || screen.width;
 
-async function renderPage(pdf, num) {
-  const page    = await pdf.getPage(num);
-  const natVP   = page.getViewport({ scale: 1 });
-  const scale   = (VW / natVP.width) * DPR;
-  const vp      = page.getViewport({ scale });
+    // base64 → Uint8Array
+    const b64str = `$b64`;
+    const bin    = atob(b64str);
+    const buf    = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
 
-  const block   = document.createElement('div');
-  block.className = 'page-block';
-  block.style.height = Math.round(vp.height / DPR) + 'px';
-  viewer.appendChild(block);
+    const pdf = await getDocument({ data: buf.buffer }).promise;
+    loader.style.display = 'none';
 
-  const canvas  = document.createElement('canvas');
-  canvas.width  = Math.round(vp.width);
-  canvas.height = Math.round(vp.height);
-  block.appendChild(canvas);
+    async function renderPage(num) {
+      const page  = await pdf.getPage(num);
+      const natVP = page.getViewport({ scale: 1 });
+      const scale = (VW / natVP.width) * DPR;
+      const vp    = page.getViewport({ scale });
 
-  await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+      const block = document.createElement('div');
+      block.className = 'page-block';
+      block.style.height = Math.round(vp.height / DPR) + 'px';
+      viewer.appendChild(block);
 
-  // Text layer for selection
-  const textDiv = document.createElement('div');
-  textDiv.className = 'textLayer';
-  block.appendChild(textDiv);
+      const canvas  = document.createElement('canvas');
+      canvas.width  = Math.round(vp.width);
+      canvas.height = Math.round(vp.height);
+      block.appendChild(canvas);
 
-  const tc = await page.getTextContent();
-  tc.items.forEach(item => {
-    if (!item.str || !item.str.trim()) return;
-    const span = document.createElement('span');
-    span.textContent = item.str;
-    const tx = matMul(item.transform, vp.transform);
-    span.style.left     = (tx[4] / DPR) + 'px';
-    span.style.top      = ((vp.height - tx[5]) / DPR) + 'px';
-    span.style.fontSize = (Math.abs(item.transform[3]) * scale / DPR) + 'px';
-    textDiv.appendChild(span);
-  });
-}
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
 
-try {
-  const pdf = await getDocument({ data: buf.buffer, cMapPacked: true }).promise;
-  loader.style.display = 'none';
+      // Text layer for selection
+      const textDiv = document.createElement('div');
+      textDiv.className = 'textLayer';
+      block.appendChild(textDiv);
+      const tc = await page.getTextContent();
+      tc.items.forEach(item => {
+        if (!item.str || !item.str.trim()) return;
+        const span = document.createElement('span');
+        span.textContent = item.str;
+        const tx = item.transform;
+        const scaledX = tx[4] / natVP.width * VW;
+        const scaledY = (natVP.height - tx[5]) / natVP.height * (vp.height / DPR);
+        span.style.left     = scaledX + 'px';
+        span.style.top      = scaledY + 'px';
+        span.style.fontSize = (Math.abs(tx[3]) * scale / DPR) + 'px';
+        textDiv.appendChild(span);
+      });
+    }
 
-  // First page immediately
-  await renderPage(pdf, 1);
+    // First page immediately, rest progressively
+    await renderPage(1);
+    for (let i = 2; i <= pdf.numPages; i++) {
+      await renderPage(i);
+    }
 
-  // Rest in background
-  for (let i = 2; i <= pdf.numPages; i++) {
-    await renderPage(pdf, i);
+  } catch(e) {
+    loader.style.display = 'none';
+    errDiv.style.display = 'block';
+    errDiv.textContent   = 'Error: ' + e.message;
   }
-} catch(e) {
-  loader.style.display = 'none';
-  errDiv.style.display = 'flex';
-  errDiv.textContent   = 'Error: ' + e.message;
-}
+})();
 </script>
 </body>
 </html>
