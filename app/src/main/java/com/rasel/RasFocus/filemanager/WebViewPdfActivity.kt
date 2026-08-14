@@ -5,13 +5,14 @@ import android.net.Uri
 import android.os.Bundle
 import android.util.Base64
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
@@ -19,9 +20,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -43,13 +42,11 @@ class WebViewPdfActivity : ComponentActivity() {
                 pdfUri          = pdfUri,
                 label           = label,
                 onBack          = { finish() },
-                contentResolver = contentResolver,
+                activity        = this,
             )
         }
     }
 }
-
-private enum class PdfMode { NONE, PDFJS }
 
 @SuppressLint("SetJavaScriptEnabled")
 @OptIn(ExperimentalMaterial3Api::class)
@@ -58,7 +55,7 @@ private fun WebViewPdfScreen(
     pdfUri: Uri?,
     label: String,
     onBack: () -> Unit,
-    contentResolver: android.content.ContentResolver,
+    activity: ComponentActivity,
 ) {
     val BG     = Color(0xFF0A0A0F)
     val INDIGO = Color(0xFF6C63FF)
@@ -66,38 +63,41 @@ private fun WebViewPdfScreen(
 
     var isReading    by remember { mutableStateOf(true) }
     var readError    by remember { mutableStateOf(false) }
-    var pdfBytes     by remember { mutableStateOf<ByteArray?>(null) }
+    var pdfB64       by remember { mutableStateOf<String?>(null) }
     var webViewRef   by remember { mutableStateOf<WebView?>(null) }
     var loadProgress by remember { mutableIntStateOf(0) }
-    var mode         by remember { mutableStateOf(PdfMode.PDFJS) } // সরাসরি PDF.js
 
-    // ── Read PDF bytes ────────────────────────────────────────────────────────
+    // ── Step 1: Read PDF bytes on IO, encode to base64 ────────────────────────
     LaunchedEffect(pdfUri) {
         if (pdfUri == null) { readError = true; isReading = false; return@LaunchedEffect }
         scope.launch {
-            val bytes = withContext(Dispatchers.IO) {
+            val b64 = withContext(Dispatchers.IO) {
                 try {
-                    when (pdfUri.scheme) {
-                        "content" -> contentResolver.openInputStream(pdfUri)?.use { it.readBytes() }
+                    val bytes = when (pdfUri.scheme) {
+                        "content" -> activity.contentResolver
+                            .openInputStream(pdfUri)?.use { it.readBytes() }
                         "file"    -> java.io.File(pdfUri.path!!).readBytes()
                         else      -> null
                     }
+                    bytes?.let { Base64.encodeToString(it, Base64.NO_WRAP) }
                 } catch (e: Exception) { null }
             }
-            if (bytes == null) readError = true else pdfBytes = bytes
+            if (b64 == null) readError = true else pdfB64 = b64
             isReading = false
         }
     }
 
-    // ── Inject into WebView ───────────────────────────────────────────────────
-    LaunchedEffect(pdfBytes, webViewRef, mode) {
-        val bytes = pdfBytes ?: return@LaunchedEffect
-        val wv    = webViewRef ?: return@LaunchedEffect
+    // ── Step 2: Load HTML into WebView once both ready ────────────────────────
+    LaunchedEffect(pdfB64, webViewRef) {
+        val b64 = pdfB64 ?: return@LaunchedEffect
+        val wv  = webViewRef ?: return@LaunchedEffect
         wv.post {
-            val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+            // BASE URL = https://appassets.androidplatform.net/
+            // WebViewClient intercepts /pdfjs/* → serves from assets
+            // type="module" works because origin is https://
             wv.loadDataWithBaseURL(
                 "https://appassets.androidplatform.net/",
-                buildPdfJsHtml(b64),
+                buildHtml(b64),
                 "text/html",
                 "UTF-8",
                 null
@@ -111,7 +111,7 @@ private fun WebViewPdfScreen(
                 title = {
                     Column {
                         Text(label, fontSize = 14.sp, color = Color.White, maxLines = 1)
-                        Text("🟣 PDF.js engine", fontSize = 11.sp, color = INDIGO)
+                        Text("⚡ PDF.js (offline)", fontSize = 11.sp, color = INDIGO)
                     }
                 },
                 navigationIcon = {
@@ -121,12 +121,10 @@ private fun WebViewPdfScreen(
                 },
                 actions = {
                     IconButton(onClick = {
-                        // reload
-                        pdfBytes?.let { bytes ->
-                            val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                        pdfB64?.let { b64 ->
                             webViewRef?.loadDataWithBaseURL(
                                 "https://appassets.androidplatform.net/",
-                                buildPdfJsHtml(b64),
+                                buildHtml(b64),
                                 "text/html", "UTF-8", null
                             )
                         }
@@ -180,12 +178,30 @@ private fun WebViewPdfScreen(
                                     setSupportZoom(true)
                                 }
                                 wv.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
+
                                 wv.webChromeClient = object : WebChromeClient() {
                                     override fun onProgressChanged(view: WebView?, newProgress: Int) {
                                         loadProgress = newProgress
                                     }
                                 }
-                                wv.webViewClient = WebViewClient()
+
+                                // ── Intercept /pdfjs/* → serve from assets ────
+                                wv.webViewClient = object : WebViewClient() {
+                                    override fun shouldInterceptRequest(
+                                        view: WebView?,
+                                        request: WebResourceRequest?
+                                    ): WebResourceResponse? {
+                                        val path = request?.url?.path ?: return null
+                                        if (!path.startsWith("/pdfjs/")) return null
+                                        val assetName = path.removePrefix("/")
+                                        return try {
+                                            val stream = activity.assets.open(assetName)
+                                            WebResourceResponse("text/javascript", "UTF-8", stream)
+                                        } catch (e: Exception) {
+                                            null
+                                        }
+                                    }
+                                }
                             }
                         }
                     )
@@ -207,7 +223,7 @@ private fun WebViewPdfScreen(
     }
 }
 
-private fun buildPdfJsHtml(b64: String): String = """
+private fun buildHtml(b64: String): String = """
 <!DOCTYPE html>
 <html>
 <head>
@@ -226,24 +242,23 @@ private fun buildPdfJsHtml(b64: String): String = """
     border-top-color:#6C63FF; border-radius:50%;
     animation:spin .8s linear infinite; margin-bottom:12px;
   }
-  @keyframes spin { to { transform:rotate(360deg); } }
+  @keyframes spin { to{transform:rotate(360deg);} }
   #viewer { width:100%; padding:8px 0; background:#1a1a2e; }
   .page-wrap { display:flex; justify-content:center; margin:4px 0; }
   canvas { display:block; max-width:100%; background:#fff; box-shadow:0 2px 8px rgba(0,0,0,.5); }
-  #err { display:none; color:#ff5c5c; text-align:center; padding:32px;
-         font-family:sans-serif; font-size:13px; }
+  #err { display:none; color:#ff5c5c; text-align:center; padding:32px; font-family:sans-serif; font-size:13px; }
 </style>
 </head>
 <body>
-<div id="loader"><div class="spinner"></div><span>PDF.js লোড হচ্ছে...</span></div>
+<div id="loader"><div class="spinner"></div><span>PDF লোড হচ্ছে...</span></div>
 <div id="viewer"></div>
 <div id="err"></div>
 <script type="module">
+  // /pdfjs/ path → WebViewClient intercepts → serves from assets (offline, instant)
   import { getDocument, GlobalWorkerOptions }
-    from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs';
+    from '/pdfjs/pdf.min.mjs';
 
-  GlobalWorkerOptions.workerSrc =
-    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';
+  GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.min.mjs';
 
   const DPR   = window.devicePixelRatio || 1;
   const SCALE = DPR > 1 ? 2.0 : 1.5;
@@ -258,14 +273,15 @@ private fun buildPdfJsHtml(b64: String): String = """
     const viewer = document.getElementById('viewer');
     document.getElementById('loader').style.display = 'none';
 
+    // Render all pages sequentially
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
       const vp   = page.getViewport({ scale: SCALE });
       const wrap = document.createElement('div');
       wrap.className = 'page-wrap';
-      const c    = document.createElement('canvas');
-      c.width    = vp.width;
-      c.height   = vp.height;
+      const c = document.createElement('canvas');
+      c.width  = vp.width;
+      c.height = vp.height;
       c.style.width  = Math.floor(vp.width  / DPR) + 'px';
       c.style.height = Math.floor(vp.height / DPR) + 'px';
       wrap.appendChild(c);
@@ -275,8 +291,8 @@ private fun buildPdfJsHtml(b64: String): String = """
   } catch(e) {
     document.getElementById('loader').style.display = 'none';
     const err = document.getElementById('err');
-    err.style.display = 'block';
-    err.textContent   = 'Error: ' + e.message;
+    err.style.display   = 'block';
+    err.textContent     = 'Error: ' + e.message;
   }
 </script>
 </body>
