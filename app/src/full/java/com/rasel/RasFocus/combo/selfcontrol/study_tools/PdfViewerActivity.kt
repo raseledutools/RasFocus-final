@@ -222,10 +222,10 @@ fun NativePdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
     var isLoading     by remember { mutableStateOf(true) }
     var errorMsg      by remember { mutableStateOf("") }
 
-    // Controls visibility — starts HIDDEN so the reading screen is completely
-    // clean the moment a PDF opens (WPS/Adobe-style). A single tap reveals the
-    // top bar for a few seconds; it auto-hides again if untouched.
-    var controlsVisible by remember { mutableStateOf(false) }
+    // Controls visibility — starts VISIBLE so user sees the file name when PDF
+    // first opens. Auto-hides after 5 s (set in LaunchedEffect(uri) once load
+    // completes). Tap toggles: hidden → show 3.5 s then hide, visible → hide.
+    var controlsVisible by remember { mutableStateOf(true) }
     var autoHideJob     by remember { mutableStateOf<Job?>(null) }
 
     // FIX: shared, document-level zoom state — previously scale/offsetX/offsetY
@@ -362,6 +362,16 @@ fun NativePdfViewer(uri: Uri?, fileName: String, onClose: () -> Unit) {
                     // user scrolls (see viewport watcher below).
                     for (i in 0 until minOf(3, count)) {
                         renderPage(doc, i)
+                    }
+
+                    // WPS-style: briefly show the header when PDF first opens
+                    // so the user knows the file name, then auto-hide after 5 s
+                    // to give a clean full-screen reading view.
+                    autoHideJob?.cancel()
+                    controlsVisible = true
+                    autoHideJob = scope.launch {
+                        delay(5_000)
+                        controlsVisible = false
                     }
                 }
             } catch (e: Exception) {

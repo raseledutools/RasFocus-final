@@ -14,7 +14,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
@@ -24,7 +23,6 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -710,49 +708,49 @@ fun PdfViewerWebView(controller: PdfEngineController, modifier: Modifier = Modif
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ZoomablePdfPage
+// ZoomablePdfPage  (v3 — native-scroll approach)
 //
-// Root problem পুরনো কোডে ছিল দুইটা:
+// আগের দুই version এ মূল সমস্যা ছিল:
+// v1: detectTransformGestures 1-finger drag consume করত → LazyColumn scroll
+//     পেত না।
+// v2: item height = imageHeight * scale করে LazyColumn কে বোঝানো হত। কিন্তু
+//     এতে zoomed item এর ভেতর scroll করতে গেলে LazyColumn টানে, তখন page
+//     boundary crossover হয় এবং scale reset হয়ে যায়।
 //
-// ১) graphicsLayer শুধু visual layer-এ scale করে — layout size বদলায় না।
-//    তাই zoom করলে page বড় দেখায় কিন্তু LazyColumn item এর height same
-//    থাকে। Zoomed page এর নিচের অংশ next item (পরের page) এর উপরে overlap
-//    করে, আর একটু swipe করলেই LazyColumn পরের page-এ চলে যায়।
-//    Fix: zoomed state এ page এর rendered height * scale অনুযায়ী Box এর
-//    height বাড়িয়ে দিচ্ছি। এতে LazyColumn জানে item কতটা লম্বা, তাই
-//    zoomed content এর ভেতর scroll করার পর্যাপ্ত জায়গা থাকে।
+// v3 approach — সহজ এবং সঠিক:
+// - graphicsLayer scale সবসময় image এর CENTER থেকে। Image নিজে
+//   fillMaxWidth + natural height — layout size কখনো বদলায় না।
+// - 2-finger pinch: scale + centroid pan (both X and Y) → consume।
+// - 1-finger drag যখন scale > 1:
+//     • শুধু horizontal (X) movement track করে offsetX বদলানো হয়।
+//     • Vertical (Y) কোনোভাবেই consume করা হয় না → LazyColumn স্বাভাবিক
+//       smooth scroll করে, WPS এর মতো।
+// - 1-finger drag যখন scale == 1: কিছুই consume না → pure LazyColumn scroll।
+// - Double-tap: zoom toggle 1x ↔ 2.5x।
 //
-// ২) পুরনো PointerEventPass.Initial loop এ pan করলে jerky লাগত কারণ
-//    gesture arbitration এর আগেই event নিয়ে নিত, LazyColumn এর velocity
-//    tracking হত না। এখন 2-finger pinch detect হলে consume করা হচ্ছে আর
-//    1-finger pan (zoomed state এ) আলাদাভাবে handle করা হচ্ছে smooth থাকার
-//    জন্য। Scale == 1 হলে vertical drag LazyColumn-এ pass করা হয়।
+// এই approach এ zoom করলেও scroll normal থাকে কারণ vertical gesture কখনো
+// intercept হয় না। Horizontal pan শুধু zoomed state এ পাওয়া যায়।
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 private fun ZoomablePdfPage(bmp: Bitmap) {
     var scale   by remember { mutableStateOf(1f) }
     var offsetX by remember { mutableStateOf(0f) }
-    var offsetY by remember { mutableStateOf(0f) }
+    // offsetY intentionally removed: vertical scroll is 100% LazyColumn's job.
+    // graphicsLayer translationY stays 0 always — no per-page Y pan.
 
-    // Track rendered image height in px so we can size the Box correctly
-    var imageHeightPx by remember { mutableIntStateOf(0) }
-    val density = LocalDensity.current
-
-    // When scale == 1, reset offsets to avoid ghost translation on re-zoom
+    // Reset X offset when fully zoomed out
     LaunchedEffect(scale) {
-        if (scale == 1f) { offsetX = 0f; offsetY = 0f }
-    }
-
-    // Compute scaled height in dp so Box height matches zoomed content
-    val scaledHeightDp = with(density) {
-        if (imageHeightPx > 0) (imageHeightPx * scale).toDp() else 0.dp
+        if (scale <= 1f) { scale = 1f; offsetX = 0f }
     }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (imageHeightPx > 0) Modifier.height(scaledHeightDp) else Modifier.wrapContentHeight())
-            .clipToBounds()
+            .wrapContentHeight()
+            // ── Gesture handler ──────────────────────────────────────────────
+            // Uses PointerEventPass.Initial so this runs BEFORE the LazyColumn's
+            // scroll gesture handler. We only consume events we own (2-finger or
+            // horizontal-dominant 1-finger when zoomed); all else passes through.
             .pointerInput(Unit) {
                 awaitPointerEventScope {
                     while (true) {
@@ -760,54 +758,55 @@ private fun ZoomablePdfPage(bmp: Bitmap) {
                         val down  = event.changes.filter { it.pressed }
 
                         when {
-                            // ── 2+ fingers: pinch-to-zoom + centroid pan ──────────
+                            // ── 2+ fingers: pinch-zoom + full pan (X and Y) ───────
                             down.size >= 2 -> {
                                 val p1 = down[0]; val p2 = down[1]
-                                val prevDist     = (p1.previousPosition - p2.previousPosition).getDistance()
-                                val currDist     = (p1.position        - p2.position       ).getDistance()
+                                val prevDist = (p1.previousPosition - p2.previousPosition).getDistance()
+                                val currDist = (p1.position - p2.position).getDistance()
                                 val prevCentroid = (p1.previousPosition + p2.previousPosition) / 2f
-                                val currCentroid = (p1.position         + p2.position        ) / 2f
+                                val currCentroid = (p1.position + p2.position) / 2f
 
                                 if (prevDist > 0f) {
                                     val zoom = currDist / prevDist
-                                    scale = (scale * zoom).coerceIn(1f, 5f)
+                                    scale = (scale * zoom).coerceIn(1f, 6f)
                                 }
-
-                                val dx = currCentroid.x - prevCentroid.x
-                                val dy = currCentroid.y - prevCentroid.y
                                 if (scale > 1f) {
-                                    // Clamp pan so image edges don't go past screen edge
-                                    val maxX = (size.width  * (scale - 1f)) / 2f
-                                    val maxY = (size.height * (scale - 1f)) / 2f
-                                    offsetX = (offsetX + dx).coerceIn(-maxX, maxX)
-                                    offsetY = (offsetY + dy).coerceIn(-maxY, maxY)
+                                    val maxX = (size.width * (scale - 1f)) / 2f
+                                    offsetX = (offsetX + (currCentroid.x - prevCentroid.x)).coerceIn(-maxX, maxX)
+                                    // Y pan during pinch: let LazyColumn handle (don't set translationY)
                                 }
+                                // Always consume 2-finger events so LazyColumn doesn't interfere
                                 event.changes.forEach { it.consume() }
                             }
 
-                            // ── 1 finger + zoomed in: pan horizontally, let Y through ──
+                            // ── 1 finger + zoomed: horizontal pan only ────────────
+                            // Never consume vertical — LazyColumn scrolls normally
                             down.size == 1 && scale > 1f -> {
-                                val p = down[0]
+                                val p  = down[0]
                                 val dx = p.position.x - p.previousPosition.x
                                 val dy = p.position.y - p.previousPosition.y
-
-                                val maxX = (size.width  * (scale - 1f)) / 2f
+                                val maxX = (size.width * (scale - 1f)) / 2f
                                 offsetX = (offsetX + dx).coerceIn(-maxX, maxX)
 
-                                // Consume horizontal movement; let vertical pass to LazyColumn
-                                if (kotlin.math.abs(dx) > kotlin.math.abs(dy)) {
+                                // Only consume when gesture is clearly horizontal;
+                                // diagonal/vertical passes to LazyColumn for smooth scroll
+                                if (kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.5f) {
                                     event.changes.forEach { it.consume() }
                                 }
-                                // Vertical pan when zoomed: also allow scrolling within the
-                                // enlarged page height — LazyColumn sees extra height so it
-                                // will handle it naturally via item sizing above.
                             }
 
-                            // ── 1 finger + not zoomed: let LazyColumn scroll freely ──
-                            else -> { /* no consume — LazyColumn handles */ }
+                            // ── 1 finger + not zoomed: pass everything through ────
+                            else -> { /* LazyColumn handles freely */ }
                         }
                     }
                 }
+            }
+            // ── Double-tap: toggle zoom ──────────────────────────────────────
+            .pointerInput(Unit) {
+                detectTapGestures(onDoubleTap = {
+                    if (scale > 1.2f) { scale = 1f; offsetX = 0f }
+                    else              { scale = 2.5f }
+                })
             }
     ) {
         Image(
@@ -817,13 +816,13 @@ private fun ZoomablePdfPage(bmp: Bitmap) {
             modifier           = Modifier
                 .fillMaxWidth()
                 .wrapContentHeight()
-                .onSizeChanged { imageHeightPx = it.height }
                 .graphicsLayer(
-                    scaleX            = scale,
-                    scaleY            = scale,
-                    translationX      = offsetX,
-                    translationY      = offsetY,
-                    transformOrigin   = TransformOrigin(0.5f, 0.5f),
+                    scaleX          = scale,
+                    scaleY          = scale,
+                    translationX    = offsetX,
+                    translationY    = 0f,           // Y is always 0 — LazyColumn owns vertical
+                    transformOrigin = TransformOrigin(0.5f, 0.5f),
+                    clip            = false,
                 )
         )
     }
