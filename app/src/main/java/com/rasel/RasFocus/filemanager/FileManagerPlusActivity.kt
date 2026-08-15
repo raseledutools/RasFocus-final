@@ -713,19 +713,19 @@ fun HomeScreen(initialPath: String? = null, sharedUris: List<android.net.Uri> = 
                                 modifier = Modifier.fillMaxWidth()
                             )
                         },
-                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFFF7F9FC), titleContentColor = Color(0xFF1D1B20)),
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF00796B), titleContentColor = Color.White),
                         navigationIcon = {
                             IconButton(onClick = {
                                 showSearchBar = false
                                 searchQuery = ""
                             }) {
-                                Icon(Icons.Default.ArrowBack, contentDescription = "Close search", tint = Color(0xFF49454F))
+                                Icon(Icons.Default.ArrowBack, contentDescription = "Close search", tint = Color.White)
                             }
                         },
                         actions = {
                             if (searchQuery.isNotEmpty()) {
                                 IconButton(onClick = { searchQuery = "" }) {
-                                    Icon(Icons.Default.Close, contentDescription = "Clear", tint = Color(0xFF49454F))
+                                    Icon(Icons.Default.Close, contentDescription = "Clear", tint = Color.White)
                                 }
                             }
                         }
@@ -755,10 +755,10 @@ fun HomeScreen(initialPath: String? = null, sharedUris: List<android.net.Uri> = 
                                     is NavState.Saf -> state.uri.substringAfterLast("%2F").substringAfterLast("/")
                                     else -> ""
                                 },
-                                color = Color(0xFF1D1B20).copy(alpha = 0.9f), fontWeight = FontWeight.Bold, fontSize = 22.sp
+                                color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp
                             )
                         },
-                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFFF7F9FC), titleContentColor = Color(0xFF1D1B20)),
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF00796B), titleContentColor = Color.White),
                         navigationIcon = {
                             IconButton(onClick = {
                                 if (currentNavState != NavState.Home) {
@@ -806,14 +806,14 @@ fun HomeScreen(initialPath: String? = null, sharedUris: List<android.net.Uri> = 
                                 Icon(
                                     imageVector = if (currentNavState == NavState.Home) Icons.Default.Menu else Icons.Default.ArrowBack,
                                     contentDescription = "Menu/Back",
-                                    tint = Color(0xFF49454F)
+                                    tint = Color.White
                                 )
                             }
                         },
                         actions = {
                             if (currentNavState != NavState.Home) {
                                 IconButton(onClick = { showSearchBar = true }) {
-                                    Icon(Icons.Default.Search, contentDescription = "Search", tint = Color(0xFF49454F))
+                                    Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
                                 }
                             }
                             IconButton(onClick = {
@@ -823,7 +823,7 @@ fun HomeScreen(initialPath: String? = null, sharedUris: List<android.net.Uri> = 
                             }
                             Box {
                                 IconButton(onClick = { showMoreMenu = true }) {
-                                    Icon(Icons.Default.MoreVert, contentDescription = "More", tint = Color(0xFF49454F))
+                                    Icon(Icons.Default.MoreVert, contentDescription = "More", tint = Color.White)
                                 }
                                 DropdownMenu(
                                     expanded = showMoreMenu,
