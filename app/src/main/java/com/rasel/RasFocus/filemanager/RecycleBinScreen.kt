@@ -28,12 +28,13 @@ fun RecycleBinScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Recycle Bin") },
+                title = { Text("Recycle Bin", color = Color.White) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF00796B))
             )
         }
     ) { padding ->
