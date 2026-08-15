@@ -891,17 +891,6 @@ fun HomeScreen(initialPath: String? = null, sharedUris: List<android.net.Uri> = 
         ) { paddingValues ->
             val globalOps by FileOperationManager.operations.collectAsState()
             Column(modifier = Modifier.padding(paddingValues)) {
-                // ── Breadcrumb navigation bar ────────────────────────────────
-                val showBreadcrumb = currentNavState is NavState.Local
-                if (showBreadcrumb) {
-                    val localPath = (currentNavState as NavState.Local).path
-                    BreadcrumbNavBar(
-                        currentPath = localPath,
-                        storageRootPath = LocalFileManager.mainStoragePath,
-                        onNavigate = { currentNavState = it }
-                    )
-                }
-                // ─────────────────────────────────────────────────────────────
                 Box(modifier = Modifier.weight(1f)) {
                 Box(modifier = Modifier.fillMaxSize()) {
                     val baseState = when (val state = currentNavState) {
