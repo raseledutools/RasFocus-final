@@ -162,8 +162,8 @@ fun BreadcrumbNavBar(currentPath: String, storageRootPath: String, onNavigate: (
     androidx.compose.foundation.lazy.LazyRow(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFFEEF2F7))
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .background(Color(0x22000000))  // subtle dark overlay inside teal header
+            .padding(horizontal = 8.dp, vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         items(segments.size) { index ->
@@ -173,8 +173,8 @@ fun BreadcrumbNavBar(currentPath: String, storageRootPath: String, onNavigate: (
             Text(
                 text = label,
                 fontSize = 12.sp,
-                fontWeight = if (isLast) FontWeight.Bold else FontWeight.Normal,
-                color = if (isLast) Color(0xFF00796B) else Color(0xFF1565C0),
+                fontWeight = if (isLast) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (isLast) Color.White else Color.White.copy(alpha = 0.70f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
@@ -187,14 +187,14 @@ fun BreadcrumbNavBar(currentPath: String, storageRootPath: String, onNavigate: (
                             }
                         } else Modifier
                     )
-                    .padding(horizontal = 4.dp, vertical = 4.dp)
+                    .padding(horizontal = 4.dp, vertical = 3.dp)
             )
 
             if (!isLast) {
                 Text(
                     text = " › ",
                     fontSize = 12.sp,
-                    color = Color(0xFF888888)
+                    color = Color.White.copy(alpha = 0.50f)
                 )
             }
         }

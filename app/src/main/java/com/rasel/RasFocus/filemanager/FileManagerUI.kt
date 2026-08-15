@@ -1090,13 +1090,14 @@ fun LocalFileScreen(
                 isGridView = isGridView,
                 onToggleGrid = { isGridView = !isGridView },
                 searchQuery = localSearchQuery,
-                onSearchQueryChange = { localSearchQuery = it }
-            )
-            // ── Breadcrumb navigation bar ─────────────────────────────────
-            BreadcrumbNavBar(
-                currentPath = path,
-                storageRootPath = LocalFileManager.mainStoragePath,
-                onNavigate = onNavigate
+                onSearchQueryChange = { localSearchQuery = it },
+                breadcrumbContent = {
+                    BreadcrumbNavBar(
+                        currentPath = path,
+                        storageRootPath = LocalFileManager.mainStoragePath,
+                        onNavigate = onNavigate
+                    )
+                }
             )
         }
 
@@ -2253,7 +2254,8 @@ fun FileManagerHeader(
     searchQuery: String = "",
     onSearchQueryChange: (String) -> Unit = {},
     headerColor: Color = Color(0xFF00796B),
-    onClearCache: (() -> Unit)? = null
+    onClearCache: (() -> Unit)? = null,
+    breadcrumbContent: (@Composable () -> Unit)? = null
 ) {
     var isSearchExpanded by remember { mutableStateOf(false) }
 
@@ -2267,7 +2269,7 @@ fun FileManagerHeader(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(horizontal = 4.dp, vertical = 6.dp),
+                    .padding(horizontal = 4.dp, vertical = 3.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (isSearchExpanded) {
@@ -2335,6 +2337,10 @@ fun FileManagerHeader(
                         )
                     }
                 }
+            }
+            // ── Breadcrumb inside the teal header, below the title row ────────
+            if (breadcrumbContent != null && !isSearchExpanded) {
+                breadcrumbContent()
             }
         }
     }
