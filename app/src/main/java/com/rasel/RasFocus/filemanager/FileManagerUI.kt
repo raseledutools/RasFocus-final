@@ -1090,14 +1090,13 @@ fun LocalFileScreen(
                 isGridView = isGridView,
                 onToggleGrid = { isGridView = !isGridView },
                 searchQuery = localSearchQuery,
-                onSearchQueryChange = { localSearchQuery = it },
-                breadcrumbContent = {
-                    BreadcrumbNavBar(
-                        currentPath = path,
-                        storageRootPath = LocalFileManager.mainStoragePath,
-                        onNavigate = onNavigate
-                    )
-                }
+                onSearchQueryChange = { localSearchQuery = it }
+            )
+            // ── Breadcrumb navigation bar ─────────────────────────────────
+            BreadcrumbNavBar(
+                currentPath = path,
+                storageRootPath = LocalFileManager.mainStoragePath,
+                onNavigate = onNavigate
             )
         }
 
@@ -2254,8 +2253,7 @@ fun FileManagerHeader(
     searchQuery: String = "",
     onSearchQueryChange: (String) -> Unit = {},
     headerColor: Color = Color(0xFF00796B),
-    onClearCache: (() -> Unit)? = null,
-    breadcrumbContent: (@Composable () -> Unit)? = null
+    onClearCache: (() -> Unit)? = null
 ) {
     var isSearchExpanded by remember { mutableStateOf(false) }
 
@@ -2273,7 +2271,7 @@ fun FileManagerHeader(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (isSearchExpanded) {
-                    IconButton(onClick = { 
+                    IconButton(onClick = {
                         isSearchExpanded = false
                         onSearchQueryChange("")
                     }) {
@@ -2337,10 +2335,6 @@ fun FileManagerHeader(
                         )
                     }
                 }
-            }
-            // ── Breadcrumb inside the teal header, below the title row ────────
-            if (breadcrumbContent != null && !isSearchExpanded) {
-                breadcrumbContent()
             }
         }
     }
