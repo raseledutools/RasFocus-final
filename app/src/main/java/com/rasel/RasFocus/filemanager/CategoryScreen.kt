@@ -178,7 +178,7 @@ fun CategoryScreen(category: String, onBack: () -> Unit, onFileClick: (File) -> 
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF00796B), titleContentColor = Color.White, navigationIconContentColor = Color.White)
             )
         }
     ) { padding ->
