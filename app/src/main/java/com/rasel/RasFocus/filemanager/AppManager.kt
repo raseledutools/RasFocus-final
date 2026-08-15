@@ -69,7 +69,7 @@ fun AppManagerScreen(
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF1E1E1E))
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF00796B))
             )
         },
         containerColor = MaterialTheme.colorScheme.background
