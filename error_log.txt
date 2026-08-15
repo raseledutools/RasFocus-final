@@ -6,55 +6,193 @@
 === KOTLIN ERRORS ===
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/PdfEngine.kt:806:17 Unresolved reference: detectTapGestures
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfEngine.kt:806:17 Unresolved reference: detectTapGestures
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/PptxViewerActivity.kt:115:28 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/PptxViewerActivity.kt:168:30 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:68:19 Conflicting declarations: private const val BASE_SCALE: Float, private const val BASE_SCALE: Float
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:69:19 Conflicting declarations: private const val MIN_ZOOM: Float, private const val MIN_ZOOM: Float
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:70:19 Conflicting declarations: private const val MAX_ZOOM: Float, private const val MAX_ZOOM: Float
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:71:19 Conflicting declarations: private const val DOUBLE_TAP_ZOOM: Float, private const val DOUBLE_TAP_ZOOM: Float
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:72:19 Conflicting declarations: private const val RERENDER_DEBOUNCE: Long, private const val RERENDER_DEBOUNCE: Long
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:73:19 Conflicting declarations: private const val DOUBLE_TAP_MS: Long, private const val DOUBLE_TAP_MS: Long
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:74:19 Conflicting declarations: private const val MAX_BITMAP_DIM: Int, private const val MAX_BITMAP_DIM: Int
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:75:19 Conflicting declarations: private const val ZOOM_SMOOTH_FLING: Float, private const val ZOOM_SMOOTH_FLING: Float
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:77:7 Redeclaration: FMPdfViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:94:21 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:103:21 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:165:1 Conflicting overloads: public fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String? = ...): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt, public fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String? = ...): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:311:70 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:311:80 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:397:45 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:403:48 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:429:17 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:516:1 Conflicting overloads: public fun RobustPdfPage(pdfRenderer: PdfRenderer, pageIndex: Int, zoom: Float): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt, public fun RobustPdfPage(pdfRenderer: PdfRenderer, pageIndex: Int, zoom: Float): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:529:24 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:529:51 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:529:61 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:530:19 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:530:31 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:530:44 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:538:70 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:544:37 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:556:19 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:561:38 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:603:1 Conflicting overloads: private fun scaledDims(pageW: Int, pageH: Int, scale: Float): Pair<Int, Int> defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt, private fun scaledDims(pageW: Int, pageH: Int, scale: Float): Pair<Int, Int> defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:606:13 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:606:35 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:607:21 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:608:16 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:609:16 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:614:1 Conflicting overloads: public fun ErrorScreen(msg: String): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt, public fun ErrorScreen(msg: String): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:625:1 Conflicting overloads: public fun FMPdfViewerScreen(filePath: String, onBack: () -> Unit, title: String? = ...): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt, public fun FMPdfViewerScreen(filePath: String, onBack: () -> Unit, title: String? = ...): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:645:32 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:646:32 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:658:19 Conflicting declarations: private const val BASE_SCALE: Float, private const val BASE_SCALE: Float
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:659:19 Conflicting declarations: private const val MIN_ZOOM: Float, private const val MIN_ZOOM: Float
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:660:19 Conflicting declarations: private const val MAX_ZOOM: Float, private const val MAX_ZOOM: Float
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:661:19 Conflicting declarations: private const val DOUBLE_TAP_ZOOM: Float, private const val DOUBLE_TAP_ZOOM: Float
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:662:19 Conflicting declarations: private const val RERENDER_DEBOUNCE: Long, private const val RERENDER_DEBOUNCE: Long
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:663:19 Conflicting declarations: private const val DOUBLE_TAP_MS: Long, private const val DOUBLE_TAP_MS: Long
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:664:19 Conflicting declarations: private const val MAX_BITMAP_DIM: Int, private const val MAX_BITMAP_DIM: Int
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:665:19 Conflicting declarations: private const val ZOOM_SMOOTH_FLING: Float, private const val ZOOM_SMOOTH_FLING: Float
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:667:7 Redeclaration: FMPdfViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:684:21 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:692:21 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:741:1 Conflicting overloads: public fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String? = ...): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt, public fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String? = ...): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:846:77 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:846:87 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:912:45 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:922:48 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:949:17 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1001:1 Conflicting overloads: public fun RobustPdfPage(pdfRenderer: PdfRenderer, pageIndex: Int, zoom: Float): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt, public fun RobustPdfPage(pdfRenderer: PdfRenderer, pageIndex: Int, zoom: Float): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1015:24 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1015:51 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1015:61 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1016:19 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1016:31 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1016:44 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1024:70 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1030:37 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1042:19 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1047:38 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1089:1 Conflicting overloads: private fun scaledDims(pageW: Int, pageH: Int, scale: Float): Pair<Int, Int> defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt, private fun scaledDims(pageW: Int, pageH: Int, scale: Float): Pair<Int, Int> defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1092:13 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1092:35 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1093:21 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1094:16 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1095:16 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1100:1 Conflicting overloads: public fun ErrorScreen(msg: String): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt, public fun ErrorScreen(msg: String): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1111:1 Conflicting overloads: public fun FMPdfViewerScreen(filePath: String, onBack: () -> Unit, title: String? = ...): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt, public fun FMPdfViewerScreen(filePath: String, onBack: () -> Unit, title: String? = ...): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1131:32 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1132:32 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:1077:50 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:2501:13 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/PptxViewerActivity.kt:115:28 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/PptxViewerActivity.kt:170:30 Overload resolution ambiguity: 
 
 === UNRESOLVED / TYPE ERRORS ===
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/PdfEngine.kt:806:17 Unresolved reference: detectTapGestures
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfEngine.kt:806:17 Unresolved reference: detectTapGestures
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/PptxViewerActivity.kt:115:28 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/PptxViewerActivity.kt:168:30 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:77:7 Redeclaration: FMPdfViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:94:21 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:103:21 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:311:70 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:311:80 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:397:45 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:403:48 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:429:17 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:529:24 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:529:51 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:529:61 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:530:19 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:530:31 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:530:44 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:538:70 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:544:37 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:556:19 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:561:38 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:606:13 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:606:35 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:607:21 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:608:16 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:609:16 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:645:32 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:646:32 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:667:7 Redeclaration: FMPdfViewerActivity
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:684:21 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:692:21 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:846:77 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:846:87 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:912:45 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:922:48 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:949:17 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1015:24 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1015:51 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1015:61 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1016:19 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1016:31 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1016:44 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1024:70 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1030:37 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1042:19 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1047:38 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1092:13 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1092:35 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1093:21 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1094:16 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1095:16 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1131:32 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1132:32 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:1077:50 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:2501:13 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/PptxViewerActivity.kt:115:28 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/PptxViewerActivity.kt:170:30 Overload resolution ambiguity: 
 
 === BUILD FAILURE ===
 > Task :app:compileFullReleaseKotlin FAILED
 * What went wrong:
 Execution failed for task ':app:compileFullReleaseKotlin'.
-BUILD FAILED in 2m 55s
+BUILD FAILED in 3m 27s
 
 === LAST 60 LINES ===
-> Task :app:generateFullReleaseBuildConfig
-> Task :app:packageFullReleaseResources FROM-CACHE
-> Task :app:parseFullReleaseLocalResources FROM-CACHE
-> Task :app:mapFullReleaseSourceSetPaths
-> Task :app:mergeFullReleaseArtProfile
-> Task :app:validateSigningFullRelease
-> Task :app:writeFullReleaseAppMetadata
-> Task :app:checkFullReleaseAarMetadata
-> Task :app:writeFullReleaseSigningConfigVersions
-> Task :app:mergeFullReleaseAssets FROM-CACHE
-> Task :app:checkFullReleaseDuplicateClasses
-> Task :app:compressFullReleaseAssets FROM-CACHE
-> Task :app:mergeFullReleaseNativeLibs
-> Task :app:collectFullReleaseDependencies
-
-> Task :app:stripFullReleaseDebugSymbols
-Unable to strip the following libraries, packaging them as they are: libbarhopper_v3.so, libimage_processing_util_jni.so, libpdfium.so, libpdfiumandroid.so.
-
-> Task :app:extractFullReleaseNativeSymbolTables FROM-CACHE
-> Task :app:mergeFullReleaseNativeDebugMetadata NO-SOURCE
-> Task :app:sdkFullReleaseDependencyData
-> Task :app:mergeFullReleaseResources FROM-CACHE
-> Task :app:processFullReleaseMainManifest
-> Task :app:processFullReleaseManifest
-> Task :app:processFullReleaseManifestForPackage
-note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
-
-note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
-
-> Task :app:processFullReleaseResources
-> Task :app:kspFullReleaseKotlin
-> Task :app:compileFullReleaseKotlin
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/combo/selfcontrol/study_tools/PdfEngine.kt:806:17 Unresolved reference: detectTapGestures
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/full/java/com/rasel/RasFocus/selfcontrol/study_tools/PdfEngine.kt:806:17 Unresolved reference: detectTapGestures
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1094:16 Overload resolution ambiguity: 
+public final operator fun times(other: Byte): Int defined in kotlin.Int
+public final operator fun times(other: Double): Double defined in kotlin.Int
+public final operator fun times(other: Float): Float defined in kotlin.Int
+public final operator fun times(other: Int): Int defined in kotlin.Int
+public final operator fun times(other: Long): Long defined in kotlin.Int
+public final operator fun times(other: Short): Int defined in kotlin.Int
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1095:16 Overload resolution ambiguity: 
+public final operator fun times(other: Byte): Int defined in kotlin.Int
+public final operator fun times(other: Double): Double defined in kotlin.Int
+public final operator fun times(other: Float): Float defined in kotlin.Int
+public final operator fun times(other: Int): Int defined in kotlin.Int
+public final operator fun times(other: Long): Long defined in kotlin.Int
+public final operator fun times(other: Short): Int defined in kotlin.Int
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1100:1 Conflicting overloads: public fun ErrorScreen(msg: String): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt, public fun ErrorScreen(msg: String): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1111:1 Conflicting overloads: public fun FMPdfViewerScreen(filePath: String, onBack: () -> Unit, title: String? = ...): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt, public fun FMPdfViewerScreen(filePath: String, onBack: () -> Unit, title: String? = ...): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1131:32 Overload resolution ambiguity: 
+public fun ErrorScreen(msg: String): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt
+public fun ErrorScreen(msg: String): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FMPdfViewerActivity.kt:1132:32 Overload resolution ambiguity: 
+public fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String? = ...): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt
+public fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String? = ...): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:1077:50 Overload resolution ambiguity: 
+public fun FMPdfViewerScreen(filePath: String, onBack: () -> Unit, title: String? = ...): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt
+public fun FMPdfViewerScreen(filePath: String, onBack: () -> Unit, title: String? = ...): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerPlusActivity.kt:2501:13 Overload resolution ambiguity: 
+public fun FMPdfViewerScreen(filePath: String, onBack: () -> Unit, title: String? = ...): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt
+public fun FMPdfViewerScreen(filePath: String, onBack: () -> Unit, title: String? = ...): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/PptxViewerActivity.kt:115:28 Overload resolution ambiguity: 
+public fun FMPdfViewerScreen(filePath: String, onBack: () -> Unit, title: String? = ...): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt
+public fun FMPdfViewerScreen(filePath: String, onBack: () -> Unit, title: String? = ...): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/study_tools/PptxViewerActivity.kt:170:30 Overload resolution ambiguity: 
+public fun FMPdfViewerScreen(filePath: String, onBack: () -> Unit, title: String? = ...): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt
+public fun FMPdfViewerScreen(filePath: String, onBack: () -> Unit, title: String? = ...): Unit defined in com.rasel.RasFocus.filemanager in file FMPdfViewerActivity.kt
 
 > Task :app:compileFullReleaseKotlin FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1786809120611.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1786809523894.json
 
 FAILURE: Build failed with an exception.
 
@@ -75,6 +213,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 2m 55s
+BUILD FAILED in 3m 27s
 32 actionable tasks: 22 executed, 10 from cache
 Configuration cache entry stored.
