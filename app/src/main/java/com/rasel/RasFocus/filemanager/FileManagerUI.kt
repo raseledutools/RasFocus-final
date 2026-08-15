@@ -1092,6 +1092,12 @@ fun LocalFileScreen(
                 searchQuery = localSearchQuery,
                 onSearchQueryChange = { localSearchQuery = it }
             )
+            // ── Breadcrumb navigation bar ─────────────────────────────────
+            BreadcrumbNavBar(
+                currentPath = path,
+                storageRootPath = LocalFileManager.mainStoragePath,
+                onNavigate = onNavigate
+            )
         }
 
         // ── Content area with weight(1f) so footer stays pinned ───────────────
