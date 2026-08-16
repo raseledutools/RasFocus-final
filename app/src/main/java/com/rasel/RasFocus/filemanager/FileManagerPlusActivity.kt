@@ -1192,48 +1192,79 @@ fun HomeScreen(initialPath: String? = null, sharedUris: List<android.net.Uri> = 
                 
                 if (sharedUris.isNotEmpty() && currentNavState is NavState.Local) {
                     val localState = currentNavState as NavState.Local
-                    Surface(color = Color(0xFF1A6B6B), shadowElevation = 12.dp) {
-                        Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Save ${sharedUris.size} shared files here?", color = Color.White)
-                            Row {
-                                TextButton(onClick = { onClearSharedUris() }) { Text("CANCEL", color = Color.LightGray) }
-                                Button(
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color(0xFF1A6B6B)),
-                                    onClick = { 
-                                        val destDir = localState.path
-                                        scope.launch(Dispatchers.IO) {
-                                            var successCount = 0
-                                            sharedUris.forEach { uri ->
-                                                try {
-                                                    var fileName = "shared_file_${System.currentTimeMillis()}"
-                                                    context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                                                        if (cursor.moveToFirst()) {
-                                                            val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                                                            if (nameIndex != -1) {
-                                                                fileName = cursor.getString(nameIndex)
-                                                            }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFFF5F5F5))
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Icon(
+                                imageVector = Icons.Default.FileDownload,
+                                contentDescription = null,
+                                tint = Color(0xFF00796B),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = "${sharedUris.size} file${if (sharedUris.size > 1) "s" else ""} to save",
+                                fontSize = 13.sp,
+                                color = Color(0xFF333333),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(
+                                onClick = { onClearSharedUris() },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Text("Cancel", fontSize = 13.sp, color = Color(0xFF888888))
+                            }
+                            Button(
+                                onClick = {
+                                    val destDir = localState.path
+                                    scope.launch(Dispatchers.IO) {
+                                        var successCount = 0
+                                        sharedUris.forEach { uri ->
+                                            try {
+                                                var fileName = "shared_file_${System.currentTimeMillis()}"
+                                                context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                                                    if (cursor.moveToFirst()) {
+                                                        val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                                                        if (nameIndex != -1) {
+                                                            fileName = cursor.getString(nameIndex)
                                                         }
                                                     }
-                                                    val destFile = java.io.File(destDir, fileName)
-                                                    context.contentResolver.openInputStream(uri)?.use { input ->
-                                                        java.io.FileOutputStream(destFile).use { output ->
-                                                            input.copyTo(output)
-                                                        }
+                                                }
+                                                val destFile = java.io.File(destDir, fileName)
+                                                context.contentResolver.openInputStream(uri)?.use { input ->
+                                                    java.io.FileOutputStream(destFile).use { output ->
+                                                        input.copyTo(output)
                                                     }
-                                                    successCount++
-                                                } catch (e: Exception) { e.printStackTrace() }
-                                            }
-                                            withContext(Dispatchers.Main) {
-                                                Toast.makeText(context, "Saved $successCount files", Toast.LENGTH_SHORT).show()
-                                                onClearSharedUris()
-                                                // trigger refresh
-                                                val cur = currentNavState
-                                                currentNavState = NavState.Home
-                                                currentNavState = cur
-                                            }
+                                                }
+                                                successCount++
+                                            } catch (e: Exception) { e.printStackTrace() }
+                                        }
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(context, "Saved $successCount files", Toast.LENGTH_SHORT).show()
+                                            onClearSharedUris()
+                                            val cur = currentNavState
+                                            currentNavState = NavState.Home
+                                            currentNavState = cur
                                         }
                                     }
-                                ) { Text("SAVE HERE") }
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF00796B),
+                                    contentColor = Color.White
+                                ),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("Save here", fontSize = 13.sp)
                             }
                         }
                     }
