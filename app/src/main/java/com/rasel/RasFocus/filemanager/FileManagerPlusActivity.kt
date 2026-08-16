@@ -1506,7 +1506,7 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
     androidx.compose.foundation.lazy.LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF4F6F8)),
+            .background(Color(0xFFF2F2F2)),
         contentPadding = PaddingValues(top = 6.dp, bottom = 16.dp)
     ) {
         item {
@@ -1520,8 +1520,7 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                     label = "Main storage",
                     subtitle = mainStorageInfo.usedText,
                     icon = Icons.Default.Storage,
-                    iconColor = Color(0xFF00796B),
-                    progress = mainStorageInfo.progress,
+                    iconColor = Color(0xFF78909C),
                     modifier = Modifier.weight(1f),
                     onClick = { navigate("Main storage") }
                 )
@@ -1529,8 +1528,7 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                     label = "SD card",
                     subtitle = if (sdInfo.total > 0) sdInfo.usedText else "Not found",
                     icon = Icons.Default.SdStorage,
-                    iconColor = Color(0xFF5C6BC0),
-                    progress = sdInfo.progress,
+                    iconColor = Color(0xFF37474F),
                     modifier = Modifier.weight(1f),
                     onClick = { navigate("SD card") }
                 )
@@ -1627,36 +1625,12 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
         }
 
         item {
-            val browseItems = listOf(
-                GridItemData("Downloads", downloadsCount, Icons.Default.Download)    to Color(0xFFF57C00),
-                GridItemData("Images",    imagesCount,   Icons.Default.Image)        to Color(0xFF8E24AA),
-                GridItemData("Audio",     audioCount,    Icons.Default.Audiotrack)   to Color(0xFF00897B),
-                GridItemData("Videos",    videosCount,   Icons.Default.VideoLibrary) to Color(0xFFE53935),
-                GridItemData("Documents", docsCount,     Icons.Default.Description)  to Color(0xFF1976D2),
-                GridItemData("Apps",      appsCount,     Icons.Default.Android)      to Color(0xFF558B2F),
-                GridItemData("New files", newFilesCount, Icons.Default.Schedule)     to Color(0xFF6D4C41),
-                GridItemData("Cloud",     cloudCount,    Icons.Default.Cloud)        to Color(0xFF039BE5)
-            )
-            val toolItems = listOf(
-                GridItemData("Remote",         "", Icons.Default.Computer)  to Color(0xFF5C6BC0),
-                GridItemData("Access from...", "", Icons.Default.Devices)   to Color(0xFF00838F),
-                GridItemData("Recycle Bin",    "", Icons.Default.Delete)    to Color(0xFF757575)
-            )
-
-            Column(modifier = Modifier.padding(horizontal = 12.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 8.dp)) {
                 Spacer(modifier = Modifier.height(4.dp))
-                // ── Browse section ────────────────────────────────────────
-                Text(
-                    text = "BROWSE",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF00796B),
-                    modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
-                )
-                for (row in browseItems.chunked(4)) {
+                for (row in categoryItems.chunked(3)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(0.dp)
                     ) {
                         for ((data, color) in row) {
                             CategoryCard(
@@ -1668,34 +1642,8 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                                 onClick = { navigate(data.title) }
                             )
                         }
-                        repeat(4 - row.size) { Spacer(modifier = Modifier.weight(1f)) }
+                        repeat(3 - row.size) { Spacer(modifier = Modifier.weight(1f)) }
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
-                // ── Tools section ─────────────────────────────────────────
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "TOOLS",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF00796B),
-                    modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    for ((data, color) in toolItems) {
-                        CategoryCard(
-                            label = data.title,
-                            subtitle = data.subtitle,
-                            icon = data.icon,
-                            iconColor = color,
-                            modifier = Modifier.weight(1f),
-                            onClick = { navigate(data.title) }
-                        )
-                    }
-                    repeat(4 - toolItems.size) { Spacer(modifier = Modifier.weight(1f)) }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
             }
@@ -2045,53 +1993,42 @@ fun MyDriveTopCard(
     onLongClick: () -> Unit = {}
 ) {
     val driveBlue = Color(0xFF1A73E8)
-    androidx.compose.material3.Card(
+    Column(
         modifier = modifier
             .combinedClickable(
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                indication = androidx.compose.material.ripple.rememberRipple(bounded = true),
+                indication = androidx.compose.material.ripple.rememberRipple(bounded = false),
                 onClick = onClick,
                 onLongClick = onLongClick
-            ),
-        shape = RoundedCornerShape(16.dp),
-        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = Color.White),
-        elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 2.dp)
+            )
+            .padding(vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
-            horizontalAlignment = Alignment.Start
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(driveBlue.copy(alpha = 0.12f), RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.CloudQueue,
-                    contentDescription = "My Drive",
-                    tint = driveBlue,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = "My Drive",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF1A1A1A),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = if (selectedAccount != null) selectedAccount.substringBefore("@").take(12) else "Tap to connect",
-                fontSize = 10.sp,
-                color = Color(0xFF888888),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
+        Icon(
+            imageVector = Icons.Default.CloudQueue,
+            contentDescription = "My Drive",
+            tint = driveBlue,
+            modifier = Modifier.size(72.dp)
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = "My Drive",
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Normal,
+            color = Color(0xFF1A1A1A),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = if (selectedAccount != null) selectedAccount.substringBefore("@").take(12) else " ",
+            fontSize = 12.sp,
+            color = Color(0xFF666666),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
     }
 }
 
@@ -2224,61 +2161,41 @@ fun StorageTopCard(
     onClick: () -> Unit,
     progress: Float = 0f
 ) {
-    androidx.compose.material3.Card(
+    Column(
         modifier = modifier
             .clickable(
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                indication = androidx.compose.material.ripple.rememberRipple(bounded = true),
+                indication = androidx.compose.material.ripple.rememberRipple(bounded = false),
                 onClick = onClick
-            ),
-        shape = RoundedCornerShape(16.dp),
-        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = Color.White),
-        elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 2.dp)
+            )
+            .padding(vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
-            horizontalAlignment = Alignment.Start
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(iconColor.copy(alpha = 0.12f), RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = label,
-                    tint = iconColor,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = label,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF1A1A1A),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = subtitle.ifEmpty { "—" },
-                fontSize = 10.sp,
-                color = Color(0xFF888888),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (progress > 0f) {
-                Spacer(Modifier.height(6.dp))
-                LinearProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)),
-                    color = iconColor,
-                    trackColor = iconColor.copy(alpha = 0.15f)
-                )
-            }
-        }
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = iconColor,
+            modifier = Modifier.size(72.dp)
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = label,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Normal,
+            color = Color(0xFF1A1A1A),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = subtitle.ifEmpty { " " },
+            fontSize = 12.sp,
+            color = Color(0xFF666666),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
     }
 }
 
@@ -2296,48 +2213,45 @@ fun CategoryCard(
         modifier = modifier
             .clickable(
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                indication = androidx.compose.material.ripple.rememberRipple(bounded = true),
+                indication = androidx.compose.material.ripple.rememberRipple(bounded = false),
                 onClick = onClick
             )
-            .clip(RoundedCornerShape(16.dp))
-            .background(Color.White)
-            .padding(vertical = 12.dp, horizontal = 4.dp),
+            .padding(vertical = 8.dp, horizontal = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
             modifier = Modifier
-                .size(52.dp)
-                .background(iconColor.copy(alpha = 0.13f), RoundedCornerShape(16.dp)),
+                .size(96.dp)
+                .background(Color.White, RoundedCornerShape(24.dp))
+                .border(1.dp, Color(0xFFE0E0E0), RoundedCornerShape(24.dp)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
                 tint = iconColor,
-                modifier = Modifier.size(26.dp)
+                modifier = Modifier.size(52.dp)
             )
         }
         Spacer(Modifier.height(8.dp))
         Text(
             text = label,
-            fontSize = 11.5.sp,
-            fontWeight = FontWeight.Medium,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Normal,
             color = Color(0xFF1A1A1A),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
         )
-        if (subtitle.isNotBlank()) {
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = subtitle,
-                fontSize = 10.sp,
-                color = Color(0xFF999999),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-            )
-        }
+        Spacer(Modifier.height(1.dp))
+        Text(
+            text = subtitle.ifEmpty { " " },
+            fontSize = 12.sp,
+            color = Color(0xFF888888),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
     }
 }
 
