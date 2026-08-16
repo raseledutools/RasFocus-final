@@ -65,7 +65,7 @@ import kotlin.math.roundToInt
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
-private const val BASE_SCALE        = 3f
+private const val BASE_SCALE        = 2f   // 3→2: প্রতিটা page এর initial bitmap ছোট, OOM কমে
 private const val MIN_ZOOM          = 1f
 private const val MAX_ZOOM          = 6f
 private const val DOUBLE_TAP_ZOOM   = 2.8f
@@ -170,12 +170,15 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String?
     val context   = LocalContext.current
     val view      = LocalView.current
 
+    // ── SINGLE shared Mutex for ALL pages ─────────────────────────────────
+    // PdfRenderer is NOT thread-safe: only one page can be open at a time.
+    // প্রতিটা page এর আলাদা mutex থাকলে race condition হয় → crash।
+    // এই একটা mutex সব RobustPdfPage share করে।
+    val pdfMutex = remember { Mutex() }
+
     BackHandler { onBack() }
 
     // ── WPS-style fullscreen controls ──────────────────────────────────────
-    // PDF open হলে সাথে সাথে header দেখা যায়। ৫ সেকেন্ড পরে header,
-    // status bar (wifi/signal), bottom navigation bar সব hide হয়ে যায়।
-    // Tap করলে ৩.৫ সেকেন্ডের জন্য আবার দেখা যায়।
     var controlsVisible by remember { mutableStateOf(true) }
     var autoHideJob     by remember { mutableStateOf<Job?>(null) }
 
@@ -197,10 +200,8 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String?
         }
     }
 
-    // 5 সেকেন্ড পরে প্রথম auto-hide
     LaunchedEffect(Unit) { scheduleHide(5_000L) }
 
-    // System bars (status bar + navigation bar) → controls এর সাথে sync
     val activityWindow = (context as? Activity)?.window
     DisposableEffect(activityWindow) {
         val win = activityWindow ?: return@DisposableEffect onDispose {}
@@ -242,7 +243,6 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String?
     val animPivotX  by animateFloatAsState(pivotFractionX, animationSpec = tween(120), label = "px")
     val animPivotY  by animateFloatAsState(pivotFractionY, animationSpec = tween(120), label = "py")
 
-    // ── Container size ────────────────────────────────────────────────────
     var containerW by remember { mutableStateOf(1f) }
     var containerH by remember { mutableStateOf(1f) }
 
@@ -281,10 +281,6 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String?
                 containerW = it.size.width.toFloat().coerceAtLeast(1f)
                 containerH = it.size.height.toFloat().coerceAtLeast(1f)
             }
-            // ── Gesture: pinch-zoom + pan ─────────────────────────────────
-            // KEY FIX: single-finger drag when zoomed এখন শুধু X consume করে।
-            // Y direction LazyColumn এর কাছে pass হয় → zoom অবস্থায়ও
-            // normal scroll এর মতো smooth vertical scroll কাজ করে।
             .pointerInput(Unit) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
@@ -294,7 +290,6 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String?
                         val fingers = event.changes.count { it.pressed }
 
                         when {
-                            // ── 2+ fingers: pinch zoom + full pan ─────────
                             fingers >= 2 -> {
                                 useSpring = false
                                 val zChange = event.calculateZoom()
@@ -320,9 +315,6 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String?
                                 event.changes.forEach { it.consume() }
                             }
 
-                            // ── 1 finger + zoomed: X pan only ─────────────
-                            // Vertical (Y) কখনো consume করা হয় না →
-                            // LazyColumn স্বাভাবিক smooth scroll করে।
                             fingers == 1 && zoom > 1.05f -> {
                                 val ch  = event.changes.firstOrNull() ?: break
                                 val dx  = ch.position.x - ch.previousPosition.x
@@ -330,23 +322,18 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String?
                                 val maxX = containerW * (zoom - 1f) / 2f
                                 offsetX = (offsetX + dx).coerceIn(-maxX, maxX)
 
-                                // শুধু clearly horizontal drag consume করা হয়।
-                                // Vertical বা diagonal → LazyColumn scroll।
                                 if (abs(dx) > abs(dy) * 1.5f) {
                                     ch.consume()
                                 }
-                                // offsetY unchanged — Y pan নেই, LazyColumn handles it
                             }
 
-                            // ── 1 finger, not zoomed: pass fully to LazyColumn
-                            else -> { /* no consume */ }
+                            else -> { /* pass to LazyColumn */ }
                         }
                     } while (event.changes.any { it.pressed })
 
                     if (zoom > 1.02f) useSpring = true
                 }
             }
-            // ── Single tap: toggle fullscreen controls ────────────────────
             .pointerInput(Unit) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
@@ -363,7 +350,6 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String?
                 }
             }
     ) {
-        // ── Scrollable PDF pages ──────────────────────────────────────────
         LazyColumn(
             state               = listState,
             modifier            = Modifier
@@ -376,7 +362,6 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String?
                     transformOrigin = TransformOrigin(animPivotX, animPivotY)
                     clip            = false
                 }
-                // Double-tap zoom
                 .pointerInput(Unit) {
                     var lastTapTime = 0L
                     var lastTapPos  = Offset.Zero
@@ -429,7 +414,8 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String?
                 RobustPdfPage(
                     pdfRenderer = pdfRenderer,
                     pageIndex   = idx,
-                    zoom        = zoom
+                    zoom        = zoom,
+                    pdfMutex    = pdfMutex  // ← shared mutex passed to every page
                 )
             }
         }
@@ -472,7 +458,7 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String?
             }
         }
 
-        // ── WPS-style top bar — slides in/out ────────────────────────────
+        // ── WPS-style top bar ─────────────────────────────────────────────
         AnimatedVisibility(
             visible  = controlsVisible,
             enter    = slideInVertically { -it } + fadeIn(),
@@ -511,15 +497,15 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String?
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Per-page renderer
+// Per-page renderer — pdfMutex shared across ALL pages (thread safety fix)
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 fun RobustPdfPage(
     pdfRenderer: PdfRenderer,
     pageIndex:   Int,
-    zoom:        Float
+    zoom:        Float,
+    pdfMutex:    Mutex          // single shared mutex — prevents concurrent openPage() calls
 ) {
-    val mutex = remember { Mutex() }
     val scope = rememberCoroutineScope()
 
     var bitmap        by remember { mutableStateOf<Bitmap?>(null) }
@@ -529,11 +515,12 @@ fun RobustPdfPage(
     val targetScale = (BASE_SCALE * zoom.coerceIn(MIN_ZOOM, MAX_ZOOM))
         .coerceIn(BASE_SCALE, BASE_SCALE * MAX_ZOOM)
 
+    // Initial render at BASE_SCALE
     LaunchedEffect(pageIndex) {
         if (bitmap != null) return@LaunchedEffect
         withContext(Dispatchers.IO) {
             try {
-                mutex.withLock {
+                pdfMutex.withLock {
                     val page = pdfRenderer.openPage(pageIndex)
                     val (w, h) = scaledDims(page.width, page.height, BASE_SCALE)
                     val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
@@ -547,6 +534,7 @@ fun RobustPdfPage(
         }
     }
 
+    // Re-render at higher resolution when zoom changes (debounced)
     LaunchedEffect(targetScale) {
         if (bitmap == null) return@LaunchedEffect
         if (abs(targetScale - renderedScale) < 0.15f) return@LaunchedEffect
@@ -556,7 +544,7 @@ fun RobustPdfPage(
             delay(RERENDER_DEBOUNCE)
             withContext(Dispatchers.IO) {
                 try {
-                    mutex.withLock {
+                    pdfMutex.withLock {
                         val page = pdfRenderer.openPage(pageIndex)
                         val (w, h) = scaledDims(page.width, page.height, targetScale)
                         val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
