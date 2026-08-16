@@ -127,29 +127,37 @@ fun formatDate(timestamp: Long): String {
 
 @Composable
 fun BreadcrumbNavBar(currentPath: String, storageRootPath: String, onNavigate: (NavState) -> Unit) {
-    val segments = mutableListOf<Pair<String, String>>() // label to full path
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val segments = mutableListOf<Pair<String, String>>()
 
-    // Build segments: Home → Memory → folder1 → folder2 ...
-    val storageName = "Memory"
-    val normalizedRoot = storageRootPath.trimEnd('/')
+    // Detect SD card to show correct storage name
+    val sdCardPath = remember(context) {
+        LocalFileManager.getSdCardPath(context)?.trimEnd('/')
+    }
+    val internalRoot = storageRootPath.trimEnd('/')
     val normalizedPath = currentPath.trimEnd('/')
 
-    if (normalizedPath == normalizedRoot) {
-        // At root: show Home > Memory
+    val (activeRoot, storageName) = when {
+        sdCardPath != null && normalizedPath.startsWith(sdCardPath) ->
+            Pair(sdCardPath, "SD Card")
+        else ->
+            Pair(internalRoot, "Internal")
+    }
+
+    if (normalizedPath == activeRoot) {
         segments.add(Pair("Home", ""))
-        segments.add(Pair(storageName, normalizedRoot))
-    } else if (normalizedPath.startsWith(normalizedRoot)) {
+        segments.add(Pair(storageName, activeRoot))
+    } else if (normalizedPath.startsWith(activeRoot)) {
         segments.add(Pair("Home", ""))
-        segments.add(Pair(storageName, normalizedRoot))
-        val relative = normalizedPath.removePrefix(normalizedRoot).trimStart('/')
+        segments.add(Pair(storageName, activeRoot))
+        val relative = normalizedPath.removePrefix(activeRoot).trimStart('/')
         val parts = relative.split("/").filter { it.isNotEmpty() }
-        var builtPath = normalizedRoot
+        var builtPath = activeRoot
         for (part in parts) {
             builtPath = "$builtPath/$part"
             segments.add(Pair(part, builtPath))
         }
     } else {
-        // Non-standard path fallback
         segments.add(Pair("Home", ""))
         val parts = normalizedPath.split("/").filter { it.isNotEmpty() }
         var builtPath = ""

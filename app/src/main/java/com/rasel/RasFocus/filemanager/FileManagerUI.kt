@@ -1083,7 +1083,16 @@ fun LocalFileScreen(
             )
         } else {
             FileManagerHeader(
-                title = path.substringAfterLast("/").ifEmpty { "Root" },
+                title = run {
+                    val sdPath = LocalFileManager.getSdCardPath(context)?.trimEnd('/')
+                    val normalizedPath = path.trimEnd('/')
+                    when {
+                        sdPath != null && normalizedPath == sdPath -> "SD Card"
+                        sdPath != null && normalizedPath.startsWith(sdPath) ->
+                            path.substringAfterLast("/")
+                        else -> path.substringAfterLast("/").ifEmpty { "Root" }
+                    }
+                },
                 subtitle = if (localSearchQuery.isNotBlank()) "${files.size} found" else "${rawFiles.size} items",
                 onBack = onBack,
                 onNewFolder = { showNewFolderDialog = true },
