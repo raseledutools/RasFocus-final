@@ -1,6 +1,5 @@
 package com.rasel.RasFocus.filemanager
 
-import android.app.Activity
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
@@ -8,16 +7,10 @@ import android.os.Bundle
 import android.os.ParcelFileDescriptor
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -27,31 +20,21 @@ import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -65,7 +48,7 @@ import kotlin.math.roundToInt
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
-private const val BASE_SCALE        = 2f   // 3→2: প্রতিটা page এর initial bitmap ছোট, OOM কমে
+private const val BASE_SCALE        = 3f
 private const val MIN_ZOOM          = 1f
 private const val MAX_ZOOM          = 6f
 private const val DOUBLE_TAP_ZOOM   = 2.8f
@@ -93,7 +76,6 @@ class FMPdfViewerActivity : ComponentActivity() {
                 if (pdfRenderer != null) {
                     RobustPdfViewer(
                         pdfRenderer = pdfRenderer!!,
-                        title       = uri?.let { getFileNameFromUri(it) },
                         onBack = {
                             if (isInternal) finish()
                             else finishAndRemoveTask()
@@ -120,6 +102,7 @@ class FMPdfViewerActivity : ComponentActivity() {
                 } catch (_: SecurityException) { /* non-persistable URI — fine */ }
             }
             pfd = if (uri.scheme == "file") {
+                // file:// URI — open directly
                 val path = uri.path ?: return
                 ParcelFileDescriptor.open(
                     java.io.File(path), ParcelFileDescriptor.MODE_READ_ONLY
@@ -129,20 +112,6 @@ class FMPdfViewerActivity : ComponentActivity() {
             }
             if (pfd != null) pdfRenderer = PdfRenderer(pfd!!)
         } catch (e: Exception) { e.printStackTrace() }
-    }
-
-    private fun getFileNameFromUri(uri: Uri): String? {
-        if (uri.scheme == "content") {
-            try {
-                contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                    if (cursor.moveToFirst()) {
-                        val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                        if (idx >= 0) return cursor.getString(idx)
-                    }
-                }
-            } catch (_: Exception) {}
-        }
-        return uri.lastPathSegment?.substringAfterLast('/')
     }
 
     override fun onNewIntent(newIntent: android.content.Intent) {
@@ -160,73 +129,22 @@ class FMPdfViewerActivity : ComponentActivity() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Main Viewer Composable
+// Main Viewer Composable — no header, no footer, thin right scrollbar only
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String? = null) {
-    val pageCount = pdfRenderer.pageCount
-    val listState = rememberLazyListState()
-    val scope     = rememberCoroutineScope()
-    val context   = LocalContext.current
-    val view      = LocalView.current
+    val pageCount   = pdfRenderer.pageCount
+    val listState   = rememberLazyListState()
+    val scope       = rememberCoroutineScope()
 
-    // ── SINGLE shared Mutex for ALL pages ─────────────────────────────────
-    // PdfRenderer is NOT thread-safe: only one page can be open at a time.
-    // প্রতিটা page এর আলাদা mutex থাকলে race condition হয় → crash।
-    // এই একটা mutex সব RobustPdfPage share করে।
-    val pdfMutex = remember { Mutex() }
-
+    // System back button → onBack
     BackHandler { onBack() }
-
-    // ── WPS-style fullscreen controls ──────────────────────────────────────
-    var controlsVisible by remember { mutableStateOf(true) }
-    var autoHideJob     by remember { mutableStateOf<Job?>(null) }
-
-    fun scheduleHide(delayMs: Long = 3_500L) {
-        autoHideJob?.cancel()
-        autoHideJob = scope.launch {
-            delay(delayMs)
-            controlsVisible = false
-        }
-    }
-
-    fun toggleControls() {
-        if (controlsVisible) {
-            autoHideJob?.cancel()
-            controlsVisible = false
-        } else {
-            controlsVisible = true
-            scheduleHide()
-        }
-    }
-
-    LaunchedEffect(Unit) { scheduleHide(5_000L) }
-
-    val activityWindow = (context as? Activity)?.window
-    DisposableEffect(activityWindow) {
-        val win = activityWindow ?: return@DisposableEffect onDispose {}
-        WindowCompat.setDecorFitsSystemWindows(win, false)
-        onDispose {
-            WindowInsetsControllerCompat(win, view).show(WindowInsetsCompat.Type.systemBars())
-            WindowCompat.setDecorFitsSystemWindows(win, true)
-        }
-    }
-    LaunchedEffect(controlsVisible, activityWindow) {
-        val win = activityWindow ?: return@LaunchedEffect
-        val ctrl = WindowInsetsControllerCompat(win, view)
-        if (controlsVisible) {
-            ctrl.show(WindowInsetsCompat.Type.systemBars())
-        } else {
-            ctrl.systemBarsBehavior =
-                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            ctrl.hide(WindowInsetsCompat.Type.systemBars())
-        }
-    }
 
     // ── Zoom / Pan ─────────────────────────────────────────────────────────
     var zoom    by remember { mutableStateOf(1f) }
     var offsetX by remember { mutableStateOf(0f) }
     var offsetY by remember { mutableStateOf(0f) }
+    // Pivot point for pinch (0..1 fraction of container size)
     var pivotFractionX by remember { mutableStateOf(0.5f) }
     var pivotFractionY by remember { mutableStateOf(0.0f) }
 
@@ -235,14 +153,16 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String?
         targetValue   = zoom,
         animationSpec = if (useSpring)
             spring(stiffness = Spring.StiffnessLow, dampingRatio = Spring.DampingRatioMediumBouncy)
-        else tween(durationMillis = 180),
+        else
+            tween(durationMillis = 180),
         label = "zoom"
     )
     val animOffsetX by animateFloatAsState(offsetX, animationSpec = tween(120), label = "ox")
     val animOffsetY by animateFloatAsState(offsetY, animationSpec = tween(120), label = "oy")
-    val animPivotX  by animateFloatAsState(pivotFractionX, animationSpec = tween(120), label = "px")
-    val animPivotY  by animateFloatAsState(pivotFractionY, animationSpec = tween(120), label = "py")
+    val animPivotX by animateFloatAsState(pivotFractionX, animationSpec = tween(120), label = "px")
+    val animPivotY by animateFloatAsState(pivotFractionY, animationSpec = tween(120), label = "py")
 
+    // ── Container size ────────────────────────────────────────────────────
     var containerW by remember { mutableStateOf(1f) }
     var containerH by remember { mutableStateOf(1f) }
 
@@ -252,7 +172,7 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String?
         return Pair(ox.coerceIn(-maxX, maxX), oy.coerceIn(-maxY, maxY))
     }
 
-    // ── Scrollbar ──────────────────────────────────────────────────────────
+    // ── Scrollbar visibility: show while scrolling, fade out after 1.2s ──
     var scrollbarVisible by remember { mutableStateOf(false) }
     var scrollbarHideJob by remember { mutableStateOf<Job?>(null) }
 
@@ -281,75 +201,78 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String?
                 containerW = it.size.width.toFloat().coerceAtLeast(1f)
                 containerH = it.size.height.toFloat().coerceAtLeast(1f)
             }
+            // ── Unified gesture detector ───────────────────────────────────
             .pointerInput(Unit) {
                 awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false)
+                    val firstDown = awaitFirstDown(requireUnconsumed = false)
+                    val downTime  = System.currentTimeMillis()
+                    val downPos   = firstDown.position
+
+                    var dirLocked = false
+                    var isHoriz   = false
 
                     do {
-                        val event   = awaitPointerEvent(PointerEventPass.Initial)
-                        val fingers = event.changes.count { it.pressed }
+                        val event       = awaitPointerEvent()
+                        val fingers     = event.changes.count { it.pressed }
+                        val anyConsumed = event.changes.any { it.isConsumed }
 
-                        when {
-                            fingers >= 2 -> {
-                                useSpring = false
-                                val zChange = event.calculateZoom()
-                                val pan     = event.calculatePan()
+                        if (!anyConsumed) {
+                            when {
+                                // ── PINCH: 2+ fingers ─────────────────────────
+                                fingers >= 2 -> {
+                                    dirLocked = false; isHoriz = false
+                                    useSpring = false
 
-                                val activeChanges = event.changes.filter { it.pressed }
-                                val centroid = activeChanges.fold(Offset.Zero) { acc, c ->
-                                    acc + c.position
-                                } / activeChanges.size.toFloat()
+                                    val zChange = event.calculateZoom()
+                                    val pan     = event.calculatePan()
 
-                                pivotFractionX = (centroid.x / containerW).coerceIn(0f, 1f)
-                                pivotFractionY = (centroid.y / containerH).coerceIn(0f, 1f)
+                                    // Centroid of active pointers = pinch focal point
+                                    val activeChanges = event.changes.filter { it.pressed }
+                                    val centroid = activeChanges.fold(Offset.Zero) { acc, c ->
+                                        acc + c.position
+                                    } / activeChanges.size.toFloat()
 
-                                val newZ = (zoom * zChange).coerceIn(MIN_ZOOM, MAX_ZOOM)
-                                val (cx, cy) = clampPan(
-                                    offsetX + pan.x * 0.9f,
-                                    offsetY + pan.y * 0.9f,
-                                    newZ
-                                )
-                                zoom    = newZ
-                                offsetX = cx
-                                offsetY = cy
-                                event.changes.forEach { it.consume() }
-                            }
+                                    // Update pivot fraction so graphicsLayer zooms from pinch point
+                                    pivotFractionX = (centroid.x / containerW).coerceIn(0f, 1f)
+                                    pivotFractionY = (centroid.y / containerH).coerceIn(0f, 1f)
 
-                            fingers == 1 && zoom > 1.05f -> {
-                                val ch  = event.changes.firstOrNull() ?: break
-                                val dx  = ch.position.x - ch.previousPosition.x
-                                val dy  = ch.position.y - ch.previousPosition.y
-                                val maxX = containerW * (zoom - 1f) / 2f
-                                offsetX = (offsetX + dx).coerceIn(-maxX, maxX)
+                                    val newZ    = (zoom * zChange).coerceIn(MIN_ZOOM, MAX_ZOOM)
+                                    val (cx, cy) = clampPan(
+                                        offsetX + pan.x * 0.9f,
+                                        offsetY + pan.y * 0.9f,
+                                        newZ
+                                    )
+                                    zoom    = newZ
+                                    offsetX = cx
+                                    offsetY = cy
+                                    event.changes.forEach { it.consume() }
+                                }
 
-                                if (abs(dx) > abs(dy) * 1.5f) {
+                                // ── SINGLE FINGER while zoomed — pan (both axes) ──
+                                fingers == 1 && zoom > 1.05f -> {
+                                    val ch    = event.changes.firstOrNull() ?: break
+                                    val delta = ch.position - ch.previousPosition
+
+                                    val (cx, cy) = clampPan(
+                                        offsetX + delta.x,
+                                        offsetY + delta.y,
+                                        zoom
+                                    )
+                                    offsetX = cx
+                                    offsetY = cy
                                     ch.consume()
                                 }
                             }
-
-                            else -> { /* pass to LazyColumn */ }
                         }
                     } while (event.changes.any { it.pressed })
 
-                    if (zoom > 1.02f) useSpring = true
-                }
-            }
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false)
-                    val downTime = System.currentTimeMillis()
-                    var fingers  = 1
-                    var lastEvent = awaitPointerEvent()
-                    fingers = maxOf(fingers, lastEvent.changes.count { it.pressed })
-                    while (lastEvent.changes.any { it.pressed }) {
-                        lastEvent = awaitPointerEvent()
-                        fingers   = maxOf(fingers, lastEvent.changes.count { it.pressed })
+                    if (zoom > 1.02f) {
+                        useSpring = true
                     }
-                    val dur = System.currentTimeMillis() - downTime
-                    if (dur < 250 && fingers == 1) toggleControls()
                 }
             }
     ) {
+        // ── Scrollable PDF pages ──────────────────────────────────────────
         LazyColumn(
             state               = listState,
             modifier            = Modifier
@@ -361,6 +284,7 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String?
                     translationY    = animOffsetY
                     transformOrigin = TransformOrigin(animPivotX, animPivotY)
                     clip            = false
+                    renderEffect    = null
                 }
                 .pointerInput(Unit) {
                     var lastTapTime = 0L
@@ -376,16 +300,20 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String?
 
                         if (tapDur < 300) {
                             val sinceLast = now - lastTapTime
-                            val nearPos   = abs(pos.x - lastTapPos.x) < 80f &&
-                                           abs(pos.y - lastTapPos.y) < 80f
+                            val nearPos   = abs(pos.x - lastTapPos.x) < 80f && abs(pos.y - lastTapPos.y) < 80f
 
                             if (sinceLast < DOUBLE_TAP_MS && nearPos) {
+                                // ── DOUBLE TAP ────────────────────────────────
                                 useSpring = true
                                 if (zoom > 1.5f) {
-                                    zoom = 1f; offsetX = 0f; offsetY = 0f
-                                    pivotFractionX = 0.5f; pivotFractionY = 0.0f
+                                    zoom           = 1f
+                                    offsetX        = 0f
+                                    offsetY        = 0f
+                                    pivotFractionX = 0.5f
+                                    pivotFractionY = 0.0f
                                 } else {
                                     val newZ = DOUBLE_TAP_ZOOM
+                                    // Use tap position as zoom pivot
                                     pivotFractionX = (pos.x / containerW).coerceIn(0f, 1f)
                                     pivotFractionY = (pos.y / containerH).coerceIn(0f, 1f)
                                     zoom = newZ
@@ -414,29 +342,28 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String?
                 RobustPdfPage(
                     pdfRenderer = pdfRenderer,
                     pageIndex   = idx,
-                    zoom        = zoom,
-                    pdfMutex    = pdfMutex  // ← shared mutex passed to every page
+                    zoom        = zoom
                 )
             }
         }
 
-        // ── Thin right-side scrollbar ─────────────────────────────────────
+        // ── Thin right-side scrollbar (shows while scrolling, fades out) ──
         if (scrollbarAlpha > 0.01f && pageCount > 1) {
-            val layoutInfo   = listState.layoutInfo
-            val totalItems   = layoutInfo.totalItemsCount.coerceAtLeast(1)
-            val visibleItems = layoutInfo.visibleItemsInfo
-            val firstIdx     = listState.firstVisibleItemIndex
-            val firstOff     = listState.firstVisibleItemScrollOffset
-            val avgItemH     = if (visibleItems.isNotEmpty())
+            val layoutInfo     = listState.layoutInfo
+            val totalItems     = layoutInfo.totalItemsCount.coerceAtLeast(1)
+            val visibleItems   = layoutInfo.visibleItemsInfo
+            val firstIdx       = listState.firstVisibleItemIndex
+            val firstOff       = listState.firstVisibleItemScrollOffset
+            val avgItemH       = if (visibleItems.isNotEmpty())
                 visibleItems.sumOf { it.size } / visibleItems.size.toFloat()
             else containerH
 
-            val totalH     = totalItems * avgItemH
-            val scrolledH  = firstIdx * avgItemH + firstOff
-            val thumbRatio = (containerH / totalH).coerceIn(0.04f, 0.8f)
-            val thumbH     = (containerH * thumbRatio).coerceAtLeast(24f)
-            val trackH     = containerH - thumbH
-            val thumbTop   = (scrolledH / (totalH - containerH)).coerceIn(0f, 1f) * trackH
+            val totalH         = totalItems * avgItemH
+            val scrolledH      = firstIdx * avgItemH + firstOff
+            val thumbRatio     = (containerH / totalH).coerceIn(0.04f, 0.8f)
+            val thumbH         = (containerH * thumbRatio).coerceAtLeast(24f)
+            val trackH         = containerH - thumbH
+            val thumbTop       = (scrolledH / (totalH - containerH)).coerceIn(0f, 1f) * trackH
 
             Box(
                 Modifier
@@ -445,6 +372,7 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String?
                     .width(3.dp)
                     .graphicsLayer { alpha = scrollbarAlpha }
             ) {
+                // Thin thumb
                 Box(
                     Modifier
                         .width(3.dp)
@@ -452,75 +380,39 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String?
                         .offset(y = thumbTop.dp)
                         .background(
                             color = Color(0xFFAAAAAA),
-                            shape = RoundedCornerShape(2.dp)
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(2.dp)
                         )
                 )
-            }
-        }
-
-        // ── WPS-style top bar ─────────────────────────────────────────────
-        AnimatedVisibility(
-            visible  = controlsVisible,
-            enter    = slideInVertically { -it } + fadeIn(),
-            exit     = slideOutVertically { -it } + fadeOut(),
-            modifier = Modifier.align(Alignment.TopCenter)
-        ) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xCC0A0A14))
-                    .padding(horizontal = 4.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack, modifier = Modifier.size(44.dp)) {
-                    Icon(
-                        Icons.Default.ArrowBack,
-                        contentDescription = "Back",
-                        tint               = Color(0xFFF0EFFF),
-                        modifier           = Modifier.size(22.dp)
-                    )
-                }
-                if (title != null) {
-                    Text(
-                        text       = title,
-                        color      = Color(0xFFF0EFFF),
-                        fontSize   = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines   = 1,
-                        overflow   = TextOverflow.Ellipsis,
-                        modifier   = Modifier.weight(1f).padding(end = 12.dp)
-                    )
-                }
             }
         }
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Per-page renderer — pdfMutex shared across ALL pages (thread safety fix)
+// Per-page renderer
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 fun RobustPdfPage(
     pdfRenderer: PdfRenderer,
     pageIndex:   Int,
-    zoom:        Float,
-    pdfMutex:    Mutex          // single shared mutex — prevents concurrent openPage() calls
+    zoom:        Float
 ) {
+    val mutex = remember { Mutex() }
     val scope = rememberCoroutineScope()
 
     var bitmap        by remember { mutableStateOf<Bitmap?>(null) }
+    var pendingBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var renderedScale by remember { mutableStateOf(0f) }
     var debounceJob   by remember { mutableStateOf<Job?>(null) }
 
     val targetScale = (BASE_SCALE * zoom.coerceIn(MIN_ZOOM, MAX_ZOOM))
         .coerceIn(BASE_SCALE, BASE_SCALE * MAX_ZOOM)
 
-    // Initial render at BASE_SCALE
     LaunchedEffect(pageIndex) {
         if (bitmap != null) return@LaunchedEffect
         withContext(Dispatchers.IO) {
             try {
-                pdfMutex.withLock {
+                mutex.withLock {
                     val page = pdfRenderer.openPage(pageIndex)
                     val (w, h) = scaledDims(page.width, page.height, BASE_SCALE)
                     val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
@@ -534,7 +426,6 @@ fun RobustPdfPage(
         }
     }
 
-    // Re-render at higher resolution when zoom changes (debounced)
     LaunchedEffect(targetScale) {
         if (bitmap == null) return@LaunchedEffect
         if (abs(targetScale - renderedScale) < 0.15f) return@LaunchedEffect
@@ -544,7 +435,7 @@ fun RobustPdfPage(
             delay(RERENDER_DEBOUNCE)
             withContext(Dispatchers.IO) {
                 try {
-                    pdfMutex.withLock {
+                    mutex.withLock {
                         val page = pdfRenderer.openPage(pageIndex)
                         val (w, h) = scaledDims(page.width, page.height, targetScale)
                         val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
