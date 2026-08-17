@@ -74,20 +74,19 @@ fun SecureVaultScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Secure Vault", color = Color.White) },
+                title = { Text("Secure Vault") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
                     if (isUnlocked) {
                         TextButton(onClick = { showChangePinDialog = true }) {
-                            Text("Change PIN", color = Color.White)
+                            Text("Change PIN", color = MaterialTheme.colorScheme.primary)
                         }
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF00796B), titleContentColor = Color.White)
+                }
             )
         }
     ) { padding ->

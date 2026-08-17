@@ -1083,16 +1083,7 @@ fun LocalFileScreen(
             )
         } else {
             FileManagerHeader(
-                title = run {
-                    val sdPath = LocalFileManager.getSdCardPath(context)?.trimEnd('/')
-                    val normalizedPath = path.trimEnd('/')
-                    when {
-                        sdPath != null && normalizedPath == sdPath -> "SD Card"
-                        sdPath != null && normalizedPath.startsWith(sdPath) ->
-                            path.substringAfterLast("/")
-                        else -> path.substringAfterLast("/").ifEmpty { "Root" }
-                    }
-                },
+                title = path.substringAfterLast("/").ifEmpty { "Root" },
                 subtitle = if (localSearchQuery.isNotBlank()) "${files.size} found" else "${rawFiles.size} items",
                 onBack = onBack,
                 onNewFolder = { showNewFolderDialog = true },
@@ -1100,12 +1091,6 @@ fun LocalFileScreen(
                 onToggleGrid = { isGridView = !isGridView },
                 searchQuery = localSearchQuery,
                 onSearchQueryChange = { localSearchQuery = it }
-            )
-            // ── Breadcrumb navigation bar ─────────────────────────────────
-            BreadcrumbNavBar(
-                currentPath = path,
-                storageRootPath = LocalFileManager.mainStoragePath,
-                onNavigate = onNavigate
             )
         }
 
@@ -2276,11 +2261,11 @@ fun FileManagerHeader(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(horizontal = 4.dp, vertical = 3.dp),
+                    .padding(horizontal = 4.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (isSearchExpanded) {
-                    IconButton(onClick = {
+                    IconButton(onClick = { 
                         isSearchExpanded = false
                         onSearchQueryChange("")
                     }) {

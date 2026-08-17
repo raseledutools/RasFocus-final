@@ -48,7 +48,7 @@ import kotlin.math.roundToInt
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
-private const val BASE_SCALE        = 2f   // 3→2: initial bitmap ছোট, OOM কমে
+private const val BASE_SCALE        = 3f
 private const val MIN_ZOOM          = 1f
 private const val MAX_ZOOM          = 6f
 private const val DOUBLE_TAP_ZOOM   = 2.8f
@@ -136,8 +136,6 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String?
     val pageCount   = pdfRenderer.pageCount
     val listState   = rememberLazyListState()
     val scope       = rememberCoroutineScope()
-    // একটাই shared Mutex — PdfRenderer একসাথে একটাই page open রাখতে পারে
-    val sharedMutex = remember { Mutex() }
 
     // System back button → onBack
     BackHandler { onBack() }
@@ -344,8 +342,7 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String?
                 RobustPdfPage(
                     pdfRenderer = pdfRenderer,
                     pageIndex   = idx,
-                    zoom        = zoom,
-                    sharedMutex = sharedMutex
+                    zoom        = zoom
                 )
             }
         }
@@ -398,9 +395,9 @@ fun RobustPdfViewer(pdfRenderer: PdfRenderer, onBack: () -> Unit, title: String?
 fun RobustPdfPage(
     pdfRenderer: PdfRenderer,
     pageIndex:   Int,
-    zoom:        Float,
-    sharedMutex: Mutex
+    zoom:        Float
 ) {
+    val mutex = remember { Mutex() }
     val scope = rememberCoroutineScope()
 
     var bitmap        by remember { mutableStateOf<Bitmap?>(null) }
@@ -415,7 +412,7 @@ fun RobustPdfPage(
         if (bitmap != null) return@LaunchedEffect
         withContext(Dispatchers.IO) {
             try {
-                sharedMutex.withLock {
+                mutex.withLock {
                     val page = pdfRenderer.openPage(pageIndex)
                     val (w, h) = scaledDims(page.width, page.height, BASE_SCALE)
                     val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
@@ -438,7 +435,7 @@ fun RobustPdfPage(
             delay(RERENDER_DEBOUNCE)
             withContext(Dispatchers.IO) {
                 try {
-                    sharedMutex.withLock {
+                    mutex.withLock {
                         val page = pdfRenderer.openPage(pageIndex)
                         val (w, h) = scaledDims(page.width, page.height, targetScale)
                         val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)

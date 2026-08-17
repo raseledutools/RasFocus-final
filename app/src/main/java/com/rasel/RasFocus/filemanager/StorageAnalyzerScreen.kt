@@ -67,13 +67,12 @@ fun StorageAnalyzerScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Storage Analyzer", color = Color.White) },
+                title = { Text("Storage Analyzer") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF00796B))
+                }
             )
         }
     ) { padding ->

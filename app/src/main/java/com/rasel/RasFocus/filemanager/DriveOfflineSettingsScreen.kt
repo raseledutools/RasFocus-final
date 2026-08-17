@@ -171,7 +171,7 @@ fun DriveOfflineSettingsScreen(onBack: () -> Unit) {
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF00796B),
+                    containerColor = Color(0xFF1A73E8),
                     titleContentColor = Color.White,
                     navigationIconContentColor = Color.White
                 )

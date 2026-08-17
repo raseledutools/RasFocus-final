@@ -68,7 +68,7 @@ fun RemoteConnectionsScreen(
                         Icon(Icons.Default.Add, contentDescription = "Add Server", tint = Color.White)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF00796B))
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF1E1E1E))
             )
         },
         containerColor = MaterialTheme.colorScheme.background
@@ -422,7 +422,7 @@ fun FtpFileScreen(
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF00796B))
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF1E1E1E))
             )
         },
         containerColor = MaterialTheme.colorScheme.background
@@ -537,7 +537,7 @@ fun SmbFileScreen(
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF00796B))
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF1E1E1E))
             )
         },
         containerColor = MaterialTheme.colorScheme.background

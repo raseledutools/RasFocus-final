@@ -16,18 +16,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
-
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
-
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
@@ -702,129 +698,70 @@ fun PdfViewerWebView(controller: PdfEngineController, modifier: Modifier = Modif
                     )
                 }
             } else {
-                ZoomablePdfPage(bmp = bmp)
-            }
-        }
-    }
-}
+                // Per-page pinch zoom
+                var scale   by remember { mutableStateOf(1f) }
+                var offsetX by remember { mutableStateOf(0f) }
+                var offsetY by remember { mutableStateOf(0f) }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ZoomablePdfPage  (v3 — native-scroll approach)
-//
-// আগের দুই version এ মূল সমস্যা ছিল:
-// v1: detectTransformGestures 1-finger drag consume করত → LazyColumn scroll
-//     পেত না।
-// v2: item height = imageHeight * scale করে LazyColumn কে বোঝানো হত। কিন্তু
-//     এতে zoomed item এর ভেতর scroll করতে গেলে LazyColumn টানে, তখন page
-//     boundary crossover হয় এবং scale reset হয়ে যায়।
-//
-// v3 approach — সহজ এবং সঠিক:
-// - graphicsLayer scale সবসময় image এর CENTER থেকে। Image নিজে
-//   fillMaxWidth + natural height — layout size কখনো বদলায় না।
-// - 2-finger pinch: scale + centroid pan (both X and Y) → consume।
-// - 1-finger drag যখন scale > 1:
-//     • শুধু horizontal (X) movement track করে offsetX বদলানো হয়।
-//     • Vertical (Y) কোনোভাবেই consume করা হয় না → LazyColumn স্বাভাবিক
-//       smooth scroll করে, WPS এর মতো।
-// - 1-finger drag যখন scale == 1: কিছুই consume না → pure LazyColumn scroll।
-// - Double-tap: zoom toggle 1x ↔ 2.5x।
-//
-// এই approach এ zoom করলেও scroll normal থাকে কারণ vertical gesture কখনো
-// intercept হয় না। Horizontal pan শুধু zoomed state এ পাওয়া যায়।
-// ─────────────────────────────────────────────────────────────────────────────
-@Composable
-private fun ZoomablePdfPage(bmp: Bitmap) {
-    var scale   by remember { mutableStateOf(1f) }
-    var offsetX by remember { mutableStateOf(0f) }
-    // offsetY intentionally removed: vertical scroll is 100% LazyColumn's job.
-    // graphicsLayer translationY stays 0 always — no per-page Y pan.
+                // FIX: swiping up/down previously did nothing because
+                // detectTransformGestures ran on every page unconditionally and
+                // claims pointer input the moment it starts — a plain
+                // single-finger vertical drag was being consumed here as a pan
+                // gesture instead of ever reaching the parent LazyColumn's scroll.
+                // Checking pointer count *inside* detectTransformGestures's
+                // callback doesn't help either, since arbitration already
+                // happened by the time the callback runs.
+                // Fix: a custom detector using PointerEventPass.Initial, which
+                // runs BEFORE normal gesture arbitration. With fewer than 2
+                // pointers down, it does nothing and never calls consume() — the
+                // touch passes straight through untouched, so the LazyColumn is
+                // free to claim it as a scroll. Only once a second finger is down
+                // (an actual pinch) does this start tracking centroid pan and
+                // inter-finger distance for zoom. Works from any zoom level,
+                // including 100% — no need to zoom via button first.
+                val zoomModifier = Modifier.pointerInput(bmp) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val down = event.changes.filter { it.pressed }
+                            if (down.size < 2) continue  // let the LazyColumn handle it
 
-    // Reset X offset when fully zoomed out
-    LaunchedEffect(scale) {
-        if (scale <= 1f) { scale = 1f; offsetX = 0f }
-    }
+                            val p1 = down[0]
+                            val p2 = down[1]
+                            val prevDist = (p1.previousPosition - p2.previousPosition).getDistance()
+                            val currDist = (p1.position - p2.position).getDistance()
+                            val prevCentroid = (p1.previousPosition + p2.previousPosition) / 2f
+                            val currCentroid = (p1.position + p2.position) / 2f
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .wrapContentHeight()
-            // ── Gesture handler ──────────────────────────────────────────────
-            // Uses PointerEventPass.Initial so this runs BEFORE the LazyColumn's
-            // scroll gesture handler. We only consume events we own (2-finger or
-            // horizontal-dominant 1-finger when zoomed); all else passes through.
-            .pointerInput(Unit) {
-                awaitPointerEventScope {
-                    while (true) {
-                        val event = awaitPointerEvent(PointerEventPass.Initial)
-                        val down  = event.changes.filter { it.pressed }
-
-                        when {
-                            // ── 2+ fingers: pinch-zoom + full pan (X and Y) ───────
-                            down.size >= 2 -> {
-                                val p1 = down[0]; val p2 = down[1]
-                                val prevDist = (p1.previousPosition - p2.previousPosition).getDistance()
-                                val currDist = (p1.position - p2.position).getDistance()
-                                val prevCentroid = (p1.previousPosition + p2.previousPosition) / 2f
-                                val currCentroid = (p1.position + p2.position) / 2f
-
-                                if (prevDist > 0f) {
-                                    val zoom = currDist / prevDist
-                                    scale = (scale * zoom).coerceIn(1f, 6f)
-                                }
-                                if (scale > 1f) {
-                                    val maxX = (size.width * (scale - 1f)) / 2f
-                                    offsetX = (offsetX + (currCentroid.x - prevCentroid.x)).coerceIn(-maxX, maxX)
-                                    // Y pan during pinch: let LazyColumn handle (don't set translationY)
-                                }
-                                // Always consume 2-finger events so LazyColumn doesn't interfere
-                                event.changes.forEach { it.consume() }
+                            if (prevDist > 0f) {
+                                val zoomFactor = currDist / prevDist
+                                scale = (scale * zoomFactor).coerceIn(1f, 4f)
                             }
+                            offsetX += currCentroid.x - prevCentroid.x
+                            offsetY += currCentroid.y - prevCentroid.y
+                            if (scale == 1f) { offsetX = 0f; offsetY = 0f }
 
-                            // ── 1 finger + zoomed: horizontal pan only ────────────
-                            // Never consume vertical — LazyColumn scrolls normally
-                            down.size == 1 && scale > 1f -> {
-                                val p  = down[0]
-                                val dx = p.position.x - p.previousPosition.x
-                                val dy = p.position.y - p.previousPosition.y
-                                val maxX = (size.width * (scale - 1f)) / 2f
-                                offsetX = (offsetX + dx).coerceIn(-maxX, maxX)
-
-                                // Only consume when gesture is clearly horizontal;
-                                // diagonal/vertical passes to LazyColumn for smooth scroll
-                                if (kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.5f) {
-                                    event.changes.forEach { it.consume() }
-                                }
-                            }
-
-                            // ── 1 finger + not zoomed: pass everything through ────
-                            else -> { /* LazyColumn handles freely */ }
+                            event.changes.forEach { it.consume() }
                         }
                     }
                 }
-            }
-            // ── Double-tap: toggle zoom ──────────────────────────────────────
-            .pointerInput(Unit) {
-                detectTapGestures(onDoubleTap = {
-                    if (scale > 1.2f) { scale = 1f; offsetX = 0f }
-                    else              { scale = 2.5f }
-                })
-            }
-    ) {
-        Image(
-            bitmap             = bmp.asImageBitmap(),
-            contentDescription = null,
-            contentScale       = ContentScale.FillWidth,
-            modifier           = Modifier
-                .fillMaxWidth()
-                .wrapContentHeight()
-                .graphicsLayer(
-                    scaleX          = scale,
-                    scaleY          = scale,
-                    translationX    = offsetX,
-                    translationY    = 0f,           // Y is always 0 — LazyColumn owns vertical
-                    transformOrigin = TransformOrigin(0.5f, 0.5f),
-                    clip            = false,
+
+                Image(
+                    bitmap              = bmp.asImageBitmap(),
+                    contentDescription  = null,
+                    contentScale        = ContentScale.FillWidth,
+                    modifier            = Modifier
+                        .fillMaxWidth()
+                        .wrapContentHeight()
+                        .then(zoomModifier)
+                        .graphicsLayer(
+                            scaleX       = scale,
+                            scaleY       = scale,
+                            translationX = offsetX,
+                            translationY = offsetY
+                        )
                 )
-        )
+            }
+        }
     }
 }

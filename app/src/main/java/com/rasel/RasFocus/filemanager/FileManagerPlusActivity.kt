@@ -127,37 +127,29 @@ fun formatDate(timestamp: Long): String {
 
 @Composable
 fun BreadcrumbNavBar(currentPath: String, storageRootPath: String, onNavigate: (NavState) -> Unit) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val segments = mutableListOf<Pair<String, String>>()
+    val segments = mutableListOf<Pair<String, String>>() // label to full path
 
-    // Detect SD card to show correct storage name
-    val sdCardPath = remember(context) {
-        LocalFileManager.getSdCardPath(context)?.trimEnd('/')
-    }
-    val internalRoot = storageRootPath.trimEnd('/')
+    // Build segments: Home → Memory → folder1 → folder2 ...
+    val storageName = "Memory"
+    val normalizedRoot = storageRootPath.trimEnd('/')
     val normalizedPath = currentPath.trimEnd('/')
 
-    val (activeRoot, storageName) = when {
-        sdCardPath != null && normalizedPath.startsWith(sdCardPath) ->
-            Pair(sdCardPath, "SD Card")
-        else ->
-            Pair(internalRoot, "Internal")
-    }
-
-    if (normalizedPath == activeRoot) {
+    if (normalizedPath == normalizedRoot) {
+        // At root: show Home > Memory
         segments.add(Pair("Home", ""))
-        segments.add(Pair(storageName, activeRoot))
-    } else if (normalizedPath.startsWith(activeRoot)) {
+        segments.add(Pair(storageName, normalizedRoot))
+    } else if (normalizedPath.startsWith(normalizedRoot)) {
         segments.add(Pair("Home", ""))
-        segments.add(Pair(storageName, activeRoot))
-        val relative = normalizedPath.removePrefix(activeRoot).trimStart('/')
+        segments.add(Pair(storageName, normalizedRoot))
+        val relative = normalizedPath.removePrefix(normalizedRoot).trimStart('/')
         val parts = relative.split("/").filter { it.isNotEmpty() }
-        var builtPath = activeRoot
+        var builtPath = normalizedRoot
         for (part in parts) {
             builtPath = "$builtPath/$part"
             segments.add(Pair(part, builtPath))
         }
     } else {
+        // Non-standard path fallback
         segments.add(Pair("Home", ""))
         val parts = normalizedPath.split("/").filter { it.isNotEmpty() }
         var builtPath = ""
@@ -170,8 +162,8 @@ fun BreadcrumbNavBar(currentPath: String, storageRootPath: String, onNavigate: (
     androidx.compose.foundation.lazy.LazyRow(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color.White)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .background(Color(0xFFEEF2F7))
+            .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         items(segments.size) { index ->
@@ -181,7 +173,7 @@ fun BreadcrumbNavBar(currentPath: String, storageRootPath: String, onNavigate: (
             Text(
                 text = label,
                 fontSize = 12.sp,
-                fontWeight = if (isLast) FontWeight.SemiBold else FontWeight.Normal,
+                fontWeight = if (isLast) FontWeight.Bold else FontWeight.Normal,
                 color = if (isLast) Color(0xFF00796B) else Color(0xFF1565C0),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -195,7 +187,7 @@ fun BreadcrumbNavBar(currentPath: String, storageRootPath: String, onNavigate: (
                             }
                         } else Modifier
                     )
-                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                    .padding(horizontal = 4.dp, vertical = 4.dp)
             )
 
             if (!isLast) {
@@ -721,19 +713,19 @@ fun HomeScreen(initialPath: String? = null, sharedUris: List<android.net.Uri> = 
                                 modifier = Modifier.fillMaxWidth()
                             )
                         },
-                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF00796B), titleContentColor = Color.White),
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFFF7F9FC), titleContentColor = Color(0xFF1D1B20)),
                         navigationIcon = {
                             IconButton(onClick = {
                                 showSearchBar = false
                                 searchQuery = ""
                             }) {
-                                Icon(Icons.Default.ArrowBack, contentDescription = "Close search", tint = Color.White)
+                                Icon(Icons.Default.ArrowBack, contentDescription = "Close search", tint = Color(0xFF49454F))
                             }
                         },
                         actions = {
                             if (searchQuery.isNotEmpty()) {
                                 IconButton(onClick = { searchQuery = "" }) {
-                                    Icon(Icons.Default.Close, contentDescription = "Clear", tint = Color.White)
+                                    Icon(Icons.Default.Close, contentDescription = "Clear", tint = Color(0xFF49454F))
                                 }
                             }
                         }
@@ -763,10 +755,10 @@ fun HomeScreen(initialPath: String? = null, sharedUris: List<android.net.Uri> = 
                                     is NavState.Saf -> state.uri.substringAfterLast("%2F").substringAfterLast("/")
                                     else -> ""
                                 },
-                                color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp
+                                color = Color(0xFF1D1B20).copy(alpha = 0.9f), fontWeight = FontWeight.Bold, fontSize = 22.sp
                             )
                         },
-                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF00796B), titleContentColor = Color.White),
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFFF7F9FC), titleContentColor = Color(0xFF1D1B20)),
                         navigationIcon = {
                             IconButton(onClick = {
                                 if (currentNavState != NavState.Home) {
@@ -814,14 +806,14 @@ fun HomeScreen(initialPath: String? = null, sharedUris: List<android.net.Uri> = 
                                 Icon(
                                     imageVector = if (currentNavState == NavState.Home) Icons.Default.Menu else Icons.Default.ArrowBack,
                                     contentDescription = "Menu/Back",
-                                    tint = Color.White
+                                    tint = Color(0xFF49454F)
                                 )
                             }
                         },
                         actions = {
                             if (currentNavState != NavState.Home) {
                                 IconButton(onClick = { showSearchBar = true }) {
-                                    Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
+                                    Icon(Icons.Default.Search, contentDescription = "Search", tint = Color(0xFF49454F))
                                 }
                             }
                             IconButton(onClick = {
@@ -831,7 +823,7 @@ fun HomeScreen(initialPath: String? = null, sharedUris: List<android.net.Uri> = 
                             }
                             Box {
                                 IconButton(onClick = { showMoreMenu = true }) {
-                                    Icon(Icons.Default.MoreVert, contentDescription = "More", tint = Color.White)
+                                    Icon(Icons.Default.MoreVert, contentDescription = "More", tint = Color(0xFF49454F))
                                 }
                                 DropdownMenu(
                                     expanded = showMoreMenu,
@@ -899,6 +891,17 @@ fun HomeScreen(initialPath: String? = null, sharedUris: List<android.net.Uri> = 
         ) { paddingValues ->
             val globalOps by FileOperationManager.operations.collectAsState()
             Column(modifier = Modifier.padding(paddingValues)) {
+                // ── Breadcrumb navigation bar ────────────────────────────────
+                val showBreadcrumb = currentNavState is NavState.Local
+                if (showBreadcrumb) {
+                    val localPath = (currentNavState as NavState.Local).path
+                    BreadcrumbNavBar(
+                        currentPath = localPath,
+                        storageRootPath = LocalFileManager.mainStoragePath,
+                        onNavigate = { currentNavState = it }
+                    )
+                }
+                // ─────────────────────────────────────────────────────────────
                 Box(modifier = Modifier.weight(1f)) {
                 Box(modifier = Modifier.fillMaxSize()) {
                     val baseState = when (val state = currentNavState) {
@@ -1192,79 +1195,48 @@ fun HomeScreen(initialPath: String? = null, sharedUris: List<android.net.Uri> = 
                 
                 if (sharedUris.isNotEmpty() && currentNavState is NavState.Local) {
                     val localState = currentNavState as NavState.Local
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color(0xFFF5F5F5))
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                            Icon(
-                                imageVector = Icons.Default.FileDownload,
-                                contentDescription = null,
-                                tint = Color(0xFF00796B),
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                text = "${sharedUris.size} file${if (sharedUris.size > 1) "s" else ""} to save",
-                                fontSize = 13.sp,
-                                color = Color(0xFF333333),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(
-                                onClick = { onClearSharedUris() },
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                            ) {
-                                Text("Cancel", fontSize = 13.sp, color = Color(0xFF888888))
-                            }
-                            Button(
-                                onClick = {
-                                    val destDir = localState.path
-                                    scope.launch(Dispatchers.IO) {
-                                        var successCount = 0
-                                        sharedUris.forEach { uri ->
-                                            try {
-                                                var fileName = "shared_file_${System.currentTimeMillis()}"
-                                                context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                                                    if (cursor.moveToFirst()) {
-                                                        val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                                                        if (nameIndex != -1) {
-                                                            fileName = cursor.getString(nameIndex)
+                    Surface(color = Color(0xFF1A6B6B), shadowElevation = 12.dp) {
+                        Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Save ${sharedUris.size} shared files here?", color = Color.White)
+                            Row {
+                                TextButton(onClick = { onClearSharedUris() }) { Text("CANCEL", color = Color.LightGray) }
+                                Button(
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color(0xFF1A6B6B)),
+                                    onClick = { 
+                                        val destDir = localState.path
+                                        scope.launch(Dispatchers.IO) {
+                                            var successCount = 0
+                                            sharedUris.forEach { uri ->
+                                                try {
+                                                    var fileName = "shared_file_${System.currentTimeMillis()}"
+                                                    context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                                                        if (cursor.moveToFirst()) {
+                                                            val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                                                            if (nameIndex != -1) {
+                                                                fileName = cursor.getString(nameIndex)
+                                                            }
                                                         }
                                                     }
-                                                }
-                                                val destFile = java.io.File(destDir, fileName)
-                                                context.contentResolver.openInputStream(uri)?.use { input ->
-                                                    java.io.FileOutputStream(destFile).use { output ->
-                                                        input.copyTo(output)
+                                                    val destFile = java.io.File(destDir, fileName)
+                                                    context.contentResolver.openInputStream(uri)?.use { input ->
+                                                        java.io.FileOutputStream(destFile).use { output ->
+                                                            input.copyTo(output)
+                                                        }
                                                     }
-                                                }
-                                                successCount++
-                                            } catch (e: Exception) { e.printStackTrace() }
-                                        }
-                                        withContext(Dispatchers.Main) {
-                                            Toast.makeText(context, "Saved $successCount files", Toast.LENGTH_SHORT).show()
-                                            onClearSharedUris()
-                                            val cur = currentNavState
-                                            currentNavState = NavState.Home
-                                            currentNavState = cur
+                                                    successCount++
+                                                } catch (e: Exception) { e.printStackTrace() }
+                                            }
+                                            withContext(Dispatchers.Main) {
+                                                Toast.makeText(context, "Saved $successCount files", Toast.LENGTH_SHORT).show()
+                                                onClearSharedUris()
+                                                // trigger refresh
+                                                val cur = currentNavState
+                                                currentNavState = NavState.Home
+                                                currentNavState = cur
+                                            }
                                         }
                                     }
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFF00796B),
-                                    contentColor = Color.White
-                                ),
-                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Text("Save here", fontSize = 13.sp)
+                                ) { Text("SAVE HERE") }
                             }
                         }
                     }
@@ -1537,8 +1509,8 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
     androidx.compose.foundation.lazy.LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF2F2F2)),
-        contentPadding = PaddingValues(top = 6.dp, bottom = 16.dp)
+            .background(Color.White),
+        contentPadding = PaddingValues(top = 6.dp, bottom = 8.dp)
     ) {
         item {
             Row(
@@ -1551,7 +1523,7 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                     label = "Main storage",
                     subtitle = mainStorageInfo.usedText,
                     icon = Icons.Default.Storage,
-                    iconColor = Color(0xFF78909C),
+                    iconColor = Color(0xFF90A4AE),
                     modifier = Modifier.weight(1f),
                     onClick = { navigate("Main storage") }
                 )
@@ -1559,7 +1531,7 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                     label = "SD card",
                     subtitle = if (sdInfo.total > 0) sdInfo.usedText else "Not found",
                     icon = Icons.Default.SdStorage,
-                    iconColor = Color(0xFF37474F),
+                    iconColor = Color(0xFF5C6BC0),
                     modifier = Modifier.weight(1f),
                     onClick = { navigate("SD card") }
                 )
@@ -1656,12 +1628,12 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
         }
 
         item {
-            Column(modifier = Modifier.padding(horizontal = 8.dp)) {
-                Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(4.dp))
+            Column(modifier = Modifier.padding(horizontal = 12.dp)) {
                 for (row in categoryItems.chunked(3)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(0.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         for ((data, color) in row) {
                             CategoryCard(
@@ -1675,8 +1647,8 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                         }
                         repeat(3 - row.size) { Spacer(modifier = Modifier.weight(1f)) }
                     }
+                    Spacer(modifier = Modifier.height(6.dp))
                 }
-                Spacer(modifier = Modifier.height(8.dp))
             }
         }
 
@@ -2032,33 +2004,30 @@ fun MyDriveTopCard(
                 onClick = onClick,
                 onLongClick = onLongClick
             )
-            .padding(vertical = 10.dp),
+            .padding(top = 8.dp, bottom = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Icon(
             imageVector = Icons.Default.CloudQueue,
             contentDescription = "My Drive",
             tint = driveBlue,
-            modifier = Modifier.size(72.dp)
+            modifier = Modifier.size(52.dp)
         )
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(4.dp))
         Text(
             text = "My Drive",
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Normal,
-            color = Color(0xFF1A1A1A),
+            fontSize = 13.sp,
+            color = Color(0xFF202020),
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            overflow = TextOverflow.Ellipsis
         )
         Spacer(Modifier.height(2.dp))
         Text(
-            text = if (selectedAccount != null) selectedAccount.substringBefore("@").take(12) else " ",
-            fontSize = 12.sp,
-            color = Color(0xFF666666),
+            text = if (selectedAccount != null) selectedAccount.substringBefore("@").take(12) else "Tap to connect",
+            fontSize = 11.sp,
+            color = Color(0xFF808080),
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            overflow = TextOverflow.Ellipsis
         )
     }
 }
@@ -2189,8 +2158,7 @@ fun StorageTopCard(
     icon: ImageVector,
     iconColor: Color,
     modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-    progress: Float = 0f
+    onClick: () -> Unit
 ) {
     Column(
         modifier = modifier
@@ -2199,33 +2167,30 @@ fun StorageTopCard(
                 indication = androidx.compose.material.ripple.rememberRipple(bounded = false),
                 onClick = onClick
             )
-            .padding(vertical = 10.dp),
+            .padding(top = 8.dp, bottom = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Icon(
             imageVector = icon,
             contentDescription = label,
             tint = iconColor,
-            modifier = Modifier.size(72.dp)
+            modifier = Modifier.size(42.dp)
         )
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(4.dp))
         Text(
             text = label,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Normal,
-            color = Color(0xFF1A1A1A),
+            fontSize = 13.sp,
+            color = Color(0xFF202020),
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            overflow = TextOverflow.Ellipsis
         )
         Spacer(Modifier.height(2.dp))
         Text(
             text = subtitle.ifEmpty { " " },
-            fontSize = 12.sp,
-            color = Color(0xFF666666),
+            fontSize = 11.sp,
+            color = Color(0xFF808080),
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            overflow = TextOverflow.Ellipsis
         )
     }
 }
@@ -2247,41 +2212,38 @@ fun CategoryCard(
                 indication = androidx.compose.material.ripple.rememberRipple(bounded = false),
                 onClick = onClick
             )
-            .padding(vertical = 8.dp, horizontal = 2.dp),
+            .padding(vertical = 3.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
             modifier = Modifier
-                .size(96.dp)
-                .background(Color.White, RoundedCornerShape(24.dp))
-                .border(1.dp, Color(0xFFE0E0E0), RoundedCornerShape(24.dp)),
+                .size(44.dp)
+                .background(Color.White, RoundedCornerShape(14.dp))
+                .border(1.dp, Color(0xFFE8E8E8), RoundedCornerShape(14.dp)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
                 tint = iconColor,
-                modifier = Modifier.size(52.dp)
+                modifier = Modifier.size(22.dp)
             )
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(4.dp))
         Text(
             text = label,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Normal,
-            color = Color(0xFF1A1A1A),
+            fontSize = 13.sp,
+            color = Color(0xFF202020),
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            overflow = TextOverflow.Ellipsis
         )
-        Spacer(Modifier.height(1.dp))
+        Spacer(Modifier.height(2.dp))
         Text(
             text = subtitle.ifEmpty { " " },
-            fontSize = 12.sp,
-            color = Color(0xFF888888),
+            fontSize = 11.sp,
+            color = Color(0xFF808080),
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            overflow = TextOverflow.Ellipsis
         )
     }
 }
