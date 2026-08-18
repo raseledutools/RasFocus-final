@@ -917,7 +917,7 @@ fun BrowserScaffold(vm: BrowserViewModel) {
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(modifier = Modifier.fillMaxSize().imePadding()) {
 
         if (!vm.isFullscreen) {
             AnimatedVisibility(
@@ -2490,7 +2490,7 @@ fun NavButton(icon: androidx.compose.ui.graphics.vector.ImageVector, enabled: Bo
 @Composable
 fun AddressBarSuggestions(vm: BrowserViewModel) {
     Surface(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().imePadding(),
         color = MaterialTheme.colorScheme.background
     ) {
         LazyColumn {
