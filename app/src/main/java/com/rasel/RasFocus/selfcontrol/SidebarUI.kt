@@ -85,6 +85,7 @@ fun DrawerContent(
                 DrawerMenuItem(Icons.Default.MenuBook, "Deep Study") { onNavigate("deep_study"); closeDrawer() }
                 DrawerMenuItem(Icons.Default.Settings, "Settings") { onNavigate("settings"); closeDrawer() }
                 DrawerMenuItem(Icons.Default.Lock, "Master Password", tint = AccentTeal) { onNavigate("master_password"); closeDrawer() }
+                DrawerMenuItem(Icons.Default.Apps, "Use as Launcher", tint = Color(0xFF4FC3F7)) { onNavigate("launcher"); closeDrawer() }
 
                 var showUpdateDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
                 val context = androidx.compose.ui.platform.LocalContext.current
@@ -129,3 +130,4 @@ fun DrawerMenuItem(
         Text(text = label, fontSize = 16.sp, fontWeight = FontWeight.Medium, color = tint)
     }
 }
+
