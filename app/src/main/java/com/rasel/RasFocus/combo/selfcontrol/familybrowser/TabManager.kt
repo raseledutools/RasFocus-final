@@ -230,6 +230,11 @@ class TabManager(private val context: Context) {
         updateTab(tabId) { it.copy(thumbnail = scaled) }
     }
 
+    /** PERF: caller নিজেই scale করে পাঠিয়েছে — double scaling এড়াতে সরাসরি set করো। */
+    fun updateTabThumbnailDirect(tabId: String, bitmap: Bitmap) {
+        updateTab(tabId) { it.copy(thumbnail = bitmap) }
+    }
+
     fun updateTabLoading(tabId: String, isLoading: Boolean, progress: Int = 0) {
         updateTab(tabId) { it.copy(isLoading = isLoading, progress = progress) }
     }

@@ -1597,6 +1597,10 @@ fun BrowserWebView(
                 }
 
                 // ── WebViewClient ──────────────────────────────────────────
+                // PERF: browser_settings prefs را cache করো — shouldInterceptRequest
+                // প্রতিটা network request এ call হয় (100s/sec possible), তাই SharedPrefs
+                // I/O hot path থেকে সরিয়ে একবার read করে রাখা হলো।
+                val cachedBrowserPrefs = context.getSharedPreferences("browser_settings", android.content.Context.MODE_PRIVATE)
                 webViewClient = object : WebViewClient() {
 
                     // ── WebView Detection Bypass ───────────────────────────────
@@ -1658,14 +1662,12 @@ fun BrowserWebView(
                         view: WebView,
                         request: WebResourceRequest
                     ): WebResourceResponse? {
-                        // FIX: প্রতিটা request-এ current profile থেকে পড়ো,
-                        // যাতে profile switch বা settings change সঙ্গে সঙ্গে কাজ করে।
+                        // PERF: cachedBrowserPrefs use করো — SharedPrefs I/O hot path এ নেই।
+                        // profile.adBlockEnabled ইতিমধ্যে ViewModel init + syncAdBlockerWithProfile()
+                        // দিয়ে sync হয়, তাই আলাদা করে per-request sync করার দরকার নেই।
                         val currentProfile = vm.profileManager.activeProfile.value
-                        val prefs = view.context.getSharedPreferences("browser_settings", android.content.Context.MODE_PRIVATE)
-                        val forceAdBlock = prefs.getBoolean("rb_block_ads", false)
-                        vm.adBlocker.isAdBlockEnabled = forceAdBlock || (currentProfile?.adBlockEnabled ?: true)
-                        vm.adBlocker.isTrackerBlockEnabled = currentProfile?.trackerBlockEnabled ?: true
-                        vm.adBlocker.isAdultBlockEnabled = currentProfile?.adultBlockEnabled ?: true
+                        val forceAdBlock = cachedBrowserPrefs.getBoolean("rb_block_ads", false)
+                        if (forceAdBlock) vm.adBlocker.isAdBlockEnabled = true
 
                         // ── YouTube Ad Pruner (uBlock json-prune approach) ──────
                         // /youtubei/v1/player response থেকে adPlacements, playerAds
@@ -1711,6 +1713,45 @@ fun BrowserWebView(
                             view.evaluateJavascript(
                                 YouTubeAdPruner.getJsInjectScript(), null
                             )
+                            // ── CSS/JS fallback — network block miss করলে এটা ধরবে ──
+                            view.evaluateJavascript("""
+                                (function() {
+                                    if (window.__rasBrowserYtAdCss__) return;
+                                    window.__rasBrowserYtAdCss__ = true;
+                                    var style = document.createElement('style');
+                                    style.id = 'ras-yt-ad-css';
+                                    style.textContent = `
+                                        .ytp-ad-overlay-container,
+                                        .ytp-ad-text-overlay,
+                                        .ytp-ad-image-overlay,
+                                        .ytp-ad-overlay-slot,
+                                        ytm-promoted-video-renderer,
+                                        ytm-in-read-ad-renderer,
+                                        ytm-companion-ad-renderer,
+                                        ytm-ads-renderer,
+                                        .ytm-promoted-sparkles-web-renderer,
+                                        [class*="ad-div"],
+                                        [id*="ad_slot"] { display: none !important; }
+                                    `;
+                                    if (!document.getElementById('ras-yt-ad-css')) {
+                                        document.head && document.head.appendChild(style);
+                                    }
+                                    function trySkip() {
+                                        var skipSel = [
+                                            '.ytp-ad-skip-button',
+                                            '.ytp-ad-skip-button-modern',
+                                            '.ytp-skip-ad-button',
+                                            '[class*="skip-ad"]',
+                                            'button.ytp-ad-skip-button-container'
+                                        ];
+                                        for (var i = 0; i < skipSel.length; i++) {
+                                            var btn = document.querySelector(skipSel[i]);
+                                            if (btn && btn.offsetParent !== null) { btn.click(); return; }
+                                        }
+                                    }
+                                    setInterval(trySkip, 250);
+                                })();
+                            """.trimIndent(), null)
                         }
 
                         // ── YouTube search box adult block (SPA navigation safe) ──
@@ -1950,8 +1991,7 @@ fun BrowserWebView(
                         // 2. prefers-color-scheme: dark media query trigger হয়
                         // 3. Image/video invert হয় না — শুধু background/text বদলায়
                         val currentProfile = vm.profileManager.activeProfile.value
-                        val prefs = view.context.getSharedPreferences("browser_settings", android.content.Context.MODE_PRIVATE)
-                        val forceDark = prefs.getBoolean("rb_force_dark", false)
+                        val forceDark = cachedBrowserPrefs.getBoolean("rb_force_dark", false)
                         if (forceDark || currentProfile?.darkModeEnabled == true) {
                             view.evaluateJavascript("""
                                 (function() {
@@ -2032,12 +2072,23 @@ fun BrowserWebView(
                             """.trimIndent(), null)
                         }
 
-                        // Capture thumbnail
+                        // PERF: Thumbnail capture — scaled down for speed.
+                        // Full-size draw (width×height) ছিল ভীষণ ব্যয়বহুল; এখন target
+                        // size (320×200) অনুযায়ী scale factor বের করে সরাসরি ছোট bitmap এ
+                        // draw করা হয় — memory + time দুটোই কমে।
                         view.post {
-                            val bm = Bitmap.createBitmap(view.width.coerceAtLeast(1), view.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
-                            val canvas = android.graphics.Canvas(bm)
-                            view.draw(canvas)
-                            vm.tabManager.updateTabThumbnail(tab.id, bm)
+                            try {
+                                val vw = view.width.coerceAtLeast(1)
+                                val vh = view.height.coerceAtLeast(1)
+                                val tW = TabManager.THUMBNAIL_WIDTH
+                                val tH = TabManager.THUMBNAIL_HEIGHT
+                                val scale = minOf(tW.toFloat() / vw, tH.toFloat() / vh)
+                                val bm = Bitmap.createBitmap(tW, tH, Bitmap.Config.RGB_565)
+                                val canvas = android.graphics.Canvas(bm)
+                                canvas.scale(scale, scale)
+                                view.draw(canvas)
+                                vm.tabManager.updateTabThumbnailDirect(tab.id, bm)
+                            } catch (_: Exception) {}
                         }
                     }
 
@@ -2054,8 +2105,7 @@ fun BrowserWebView(
                     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                         val url = request.url.toString()
                         
-                        val prefs = view.context.getSharedPreferences("browser_settings", android.content.Context.MODE_PRIVATE)
-                        if (prefs.getBoolean("rb_strict_blacklist", false)) {
+                        if (cachedBrowserPrefs.getBoolean("rb_strict_blacklist", false)) {
                             val host = android.net.Uri.parse(url).host ?: ""
                             val badDomains = listOf("facebook.com", "instagram.com", "tiktok.com", "twitter.com", "x.com", "reddit.com", "youtube.com", "netflix.com")
                             if (badDomains.any { host.contains(it) }) {
@@ -2064,7 +2114,7 @@ fun BrowserWebView(
                             }
                         }
 
-                        if (prefs.getBoolean("rb_whitelist_mode", false)) {
+                        if (cachedBrowserPrefs.getBoolean("rb_whitelist_mode", false)) {
                             val host = android.net.Uri.parse(url).host ?: ""
                             val allowedDomains = listOf("google.com", "wikipedia.org", "github.com", "stackoverflow.com", "medium.com")
                             if (host.isNotEmpty() && !allowedDomains.any { host.contains(it) }) {
