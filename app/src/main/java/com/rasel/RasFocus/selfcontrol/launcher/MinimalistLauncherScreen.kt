@@ -253,7 +253,7 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                 Spacer(Modifier.height(28.dp))
 
                 // ── Quick toggles ──────────────────────────────────────────
-                QuickToggles(context, theme)
+                QuickToggles(context, theme, navController)
 
                 Spacer(Modifier.height(24.dp))
 
@@ -473,7 +473,7 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
 // Quick Toggles
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
-fun QuickToggles(context: Context, theme: LauncherTheme) {
+fun QuickToggles(context: Context, theme: LauncherTheme, navController: NavController? = null) {
     var flashOn by remember { mutableStateOf(false) }
     var silentOn by remember { mutableStateOf(false) }
 
