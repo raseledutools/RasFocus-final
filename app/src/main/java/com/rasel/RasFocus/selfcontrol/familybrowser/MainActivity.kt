@@ -1088,35 +1088,32 @@ fun TopBrowserBar(vm: BrowserViewModel) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
                 verticalAlignment     = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 // ── Home only — Back/Forward removed ─────────────────────
                 if (!vm.isAddressBarFocused) {
                     IconButton(
                         onClick  = { vm.goHome() },
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(30.dp)
                     ) {
                         Icon(
                             Icons.Default.Home, null,
-                            modifier = Modifier.size(19.dp),
+                            modifier = Modifier.size(17.dp),
                             tint     = Color.White.copy(0.85f)
                         )
                     }
                 }
 
                 // ── Chrome-style address bar — dark pill ──────────────────
-                val barBg = if (vm.isAddressBarFocused)
-                    Color(0xFF2C2C2E)
-                else
-                    Color(0xFF2C2C2E)
+                val barBg = Color(0xFF2C2C2E)
 
                 Surface(
                     modifier = Modifier
                         .weight(1f)
-                        .height(56.dp),
-                    shape           = RoundedCornerShape(20.dp),
+                        .height(42.dp),
+                    shape           = RoundedCornerShape(14.dp),
                     color           = barBg,
                     border          = if (vm.isAddressBarFocused)
                         androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF5E5CE6).copy(0.7f))
@@ -1128,7 +1125,7 @@ fun TopBrowserBar(vm: BrowserViewModel) {
                             .fillMaxSize()
                             .padding(horizontal = 10.dp),
                         verticalAlignment     = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
                         if (vm.isAddressBarFocused) {
                             Icon(Icons.Default.Search, null,
@@ -1222,10 +1219,10 @@ fun TopBrowserBar(vm: BrowserViewModel) {
                     // ── Tab count box ──────────────────────────────────────
                     Box(
                         modifier = Modifier
-                            .size(32.dp)
+                            .size(28.dp)
                             .clip(RoundedCornerShape(6.dp))
                             .border(
-                                2.dp,
+                                1.5.dp,
                                 Color.White.copy(0.6f),
                                 RoundedCornerShape(6.dp)
                             )
@@ -1234,7 +1231,7 @@ fun TopBrowserBar(vm: BrowserViewModel) {
                     ) {
                         Text(
                             text       = vm.tabManager.tabCount.toString(),
-                            fontSize   = 12.sp,
+                            fontSize   = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color      = Color.White
                         )
@@ -1295,12 +1292,12 @@ fun TopBrowserBar(vm: BrowserViewModel) {
                                 }
                             }
                         },
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(30.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.OpenInNew,
                             contentDescription = "Float tab",
-                            modifier = Modifier.size(18.dp),
+                            modifier = Modifier.size(16.dp),
                             tint = Color.White.copy(0.75f)
                         )
                     }
