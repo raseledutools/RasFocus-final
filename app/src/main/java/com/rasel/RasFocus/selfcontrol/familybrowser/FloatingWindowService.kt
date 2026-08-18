@@ -241,12 +241,30 @@ class FloatingWindowService : Service() {
         }
 
         // Open in main browser
+        // ✅ FIX: Service context থেকে সরাসরি startActivity() crash করে Android 12+ এ
+        // (background activity launch restriction)। পরিবর্তে PendingIntent.send() ব্যবহার —
+        // এটা system থেকে launch হয়, service context restriction এড়ায়।
         val btnOpen = buildIconButton("⤤") {
-            val i = Intent(this@FloatingWindowService, FamilyBrowserActivity::class.java).apply {
-                data  = android.net.Uri.parse(fw.url)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            try {
+                val pi = PendingIntent.getActivity(
+                    this@FloatingWindowService,
+                    fw.id.hashCode(),
+                    Intent(this@FloatingWindowService, FamilyBrowserActivity::class.java).apply {
+                        data  = android.net.Uri.parse(fw.url)
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    },
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                )
+                pi.send()
+            } catch (e: Exception) {
+                // fallback: try direct (older Android)
+                runCatching {
+                    startActivity(Intent(this@FloatingWindowService, FamilyBrowserActivity::class.java).apply {
+                        data  = android.net.Uri.parse(fw.url)
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    })
+                }
             }
-            startActivity(i)
             removeWindow(fw.id)
             if (windows.isEmpty()) stopSelf()
         }
@@ -733,3 +751,4 @@ class FloatingWindowService : Service() {
         """.trimIndent(), null)
     }
 }
+
