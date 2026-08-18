@@ -350,6 +350,8 @@ dependencies {
 
     // WebKit
     implementation("androidx.webkit:webkit:1.11.0")
+    // Custom Tabs — Google Sign-in fix (accounts.google.com WebView এ blank হয়)
+    implementation("androidx.browser:browser:1.8.0")
 
     // Media & ExoPlayer
     implementation("androidx.media:media:1.7.0")

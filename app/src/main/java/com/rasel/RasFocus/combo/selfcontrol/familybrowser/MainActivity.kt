@@ -1707,6 +1707,36 @@ fun BrowserWebView(
                         vm.onPageFinished(tab.id, url)
                         vm.onNavStateChanged(tab.id, view.canGoBack(), view.canGoForward())
 
+                        // ── Clipboard API spoof — image paste fix ──────────────────
+                        // ChatGPT / DeepSeek এ image paste করতে navigator.clipboard.read()
+                        // দরকার — WebView তে এটা block। _RasBridge থেকে base64 নিয়ে
+                        // ClipboardItem বানিয়ে দিচ্ছি, site জানতেও পারে না।
+                        view.evaluateJavascript("""
+                            (function() {
+                                if (window.__rasClipBridged__) return;
+                                window.__rasClipBridged__ = true;
+                                if (!navigator.clipboard) {
+                                    try { Object.defineProperty(navigator, 'clipboard', { value: {}, configurable: true }); } catch(e) {}
+                                }
+                                navigator.clipboard.read = function() {
+                                    return new Promise(function(resolve) {
+                                        try {
+                                            var b64 = window._RasBridge && window._RasBridge.getClipboardImageBase64
+                                                ? window._RasBridge.getClipboardImageBase64()
+                                                : '';
+                                            if (!b64) { resolve([]); return; }
+                                            fetch(b64).then(function(r) { return r.blob(); }).then(function(blob) {
+                                                var item = {};
+                                                item[blob.type] = Promise.resolve(blob);
+                                                resolve([new ClipboardItem(item)]);
+                                            }).catch(function() { resolve([]); });
+                                        } catch(e) { resolve([]); }
+                                    });
+                                };
+                                navigator.clipboard.readText = function() { return Promise.resolve(''); };
+                            })();
+                        """.trimIndent(), null)
+
                         // ── YouTube ad pruner re-inject (SPA navigation এর জন্য) ──
                         if ((url.contains("youtube.com") || url.contains("youtu.be")) &&
                             vm.adBlocker.isAdBlockEnabled) {
@@ -2104,7 +2134,40 @@ fun BrowserWebView(
 
                     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                         val url = request.url.toString()
-                        
+
+                        // ── Google Sign-in → Chrome Custom Tab ────────────────────────
+                        // accounts.google.com WebView এ blank/white হয়ে যায় —
+                        // Google ইচ্ছাকৃতভাবে non-standard WebView কে block করে।
+                        // Custom Tab দিলে real Chrome engine use হয়, sign-in কাজ করে।
+                        val host = android.net.Uri.parse(url).host?.lowercase() ?: ""
+                        val isGoogleAuth = host == "accounts.google.com" ||
+                            host.endsWith(".accounts.google.com") ||
+                            (host.contains("google.com") && (
+                                url.contains("ServiceLogin") ||
+                                url.contains("/signin") ||
+                                url.contains("/oauth2") ||
+                                url.contains("accounts/SetSID")
+                            ))
+                        if (isGoogleAuth) {
+                            try {
+                                val cti = androidx.browser.customtabs.CustomTabsIntent.Builder()
+                                    .setShowTitle(true)
+                                    .build()
+                                cti.launchUrl(context, android.net.Uri.parse(url))
+                            } catch (e: Exception) {
+                                // Custom Tab না থাকলে system browser
+                                try {
+                                    context.startActivity(
+                                        android.content.Intent(
+                                            android.content.Intent.ACTION_VIEW,
+                                            android.net.Uri.parse(url)
+                                        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    )
+                                } catch (_: Exception) {}
+                            }
+                            return true
+                        }
+
                         if (cachedBrowserPrefs.getBoolean("rb_strict_blacklist", false)) {
                             val host = android.net.Uri.parse(url).host ?: ""
                             val badDomains = listOf("facebook.com", "instagram.com", "tiktok.com", "twitter.com", "x.com", "reddit.com", "youtube.com", "netflix.com")
@@ -2314,6 +2377,35 @@ fun BrowserWebView(
                         cookies = cookies
                     )
                 }
+
+                // ── Clipboard Image Bridge ─────────────────────────────────
+                // ChatGPT / DeepSeek image paste fix:
+                // navigator.clipboard.read() WebView এ block — এই JS bridge
+                // দিয়ে Android clipboard থেকে image নিয়ে base64 পাঠাই।
+                addJavascriptInterface(object : Any() {
+                    @android.webkit.JavascriptInterface
+                    fun getClipboardImageBase64(): String {
+                        return try {
+                            val cb = context.getSystemService(
+                                android.content.Context.CLIPBOARD_SERVICE
+                            ) as android.content.ClipboardManager
+                            val clip = cb.primaryClip ?: return ""
+                            for (i in 0 until clip.itemCount) {
+                                val uri = clip.getItemAt(i).uri ?: continue
+                                val mime = context.contentResolver.getType(uri) ?: continue
+                                if (!mime.startsWith("image/")) continue
+                                context.contentResolver.openInputStream(uri)?.use { stream ->
+                                    val bytes = stream.readBytes()
+                                    val b64 = android.util.Base64.encodeToString(
+                                        bytes, android.util.Base64.NO_WRAP
+                                    )
+                                    return "data:$mime;base64,$b64"
+                                }
+                            }
+                            ""
+                        } catch (e: Exception) { "" }
+                    }
+                }, "_RasBridge")
 
                 // ── Register with ViewModel ────────────────────────────────
                 vm.registerWebView(tab.id, this)
