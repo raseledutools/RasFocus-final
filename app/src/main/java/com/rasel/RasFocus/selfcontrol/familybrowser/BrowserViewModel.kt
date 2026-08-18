@@ -441,21 +441,19 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         val enabled = profileManager.activeProfile.value?.darkModeEnabled ?: return
         if (!enabled) return
 
-        val css = """
-            :root { filter: invert(1) hue-rotate(180deg) !important; }
-            img, video, canvas, svg, [style*="background-image"] {
-                filter: invert(1) hue-rotate(180deg) !important;
-            }
-        """.trimIndent().replace("\n", " ")
-
+        // FIX: আগে invert(1) hue-rotate(180deg) দেওয়া হতো — এটা images/videos ভেঙে দেয়।
+        // এখন color-scheme approach — site নিজে dark support করলে সেটা use করে,
+        // না করলে background/text বদলায় — images intact থাকে।
         val js = """
             (function() {
                 var id = '__familybrowser_dark';
-                var el = document.getElementById(id);
-                if (el) return;
-                el = document.createElement('style');
+                if (document.getElementById(id)) return;
+                var meta = document.querySelector('meta[name="color-scheme"]');
+                if (!meta) { meta = document.createElement('meta'); meta.name = 'color-scheme'; document.head.appendChild(meta); }
+                meta.content = 'dark light';
+                var el = document.createElement('style');
                 el.id = id;
-                el.textContent = '$css';
+                el.textContent = ':root{color-scheme:dark!important}html{background:#141414!important}@media(prefers-color-scheme:dark){body{background:#141414!important;color:#e8e8e8!important}}img,video,canvas,svg,[style*="background-image"]{filter:none!important}';
                 document.head.appendChild(el);
             })();
         """.trimIndent()
@@ -508,20 +506,27 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     // ─── Dark Mode WebView ───────────────────────────────────────────────────
     fun applyDarkModeToWebView(enable: Boolean) {
         val wv = activeWebView ?: return
+        // FIX: আগে invert(1) hue-rotate(180deg) দেওয়া হতো — এটা images/videos ভেঙে দেয়।
+        // এখন color-scheme approach — site নিজে dark support করলে সেটা use করে,
+        // না করলে background/text বদলায় — images intact থাকে।
         val js = if (enable) """
             (function() {
                 var id = '__rfb_dark_mode';
-                var el = document.getElementById(id);
-                if (el) return;
-                el = document.createElement('style');
+                if (document.getElementById(id)) return;
+                var meta = document.querySelector('meta[name="color-scheme"]');
+                if (!meta) { meta = document.createElement('meta'); meta.name = 'color-scheme'; document.head.appendChild(meta); }
+                meta.content = 'dark light';
+                var el = document.createElement('style');
                 el.id = id;
-                el.textContent = ':root { filter: invert(1) hue-rotate(180deg) !important; } img, video, canvas, svg { filter: invert(1) hue-rotate(180deg) !important; }';
+                el.textContent = ':root{color-scheme:dark!important}html{background:#141414!important}@media(prefers-color-scheme:dark){body{background:#141414!important;color:#e8e8e8!important}}img,video,canvas,svg,[style*="background-image"]{filter:none!important}';
                 document.head.appendChild(el);
             })();
         """.trimIndent() else """
             (function() {
                 var el = document.getElementById('__rfb_dark_mode');
                 if (el) el.remove();
+                var m = document.querySelector('meta[name="color-scheme"]');
+                if (m) m.content = 'light dark';
             })();
         """.trimIndent()
         wv.evaluateJavascript(js, null)
@@ -529,9 +534,13 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     // ─── Clear All Browsing Data ─────────────────────────────────────────────
     fun clearAllBrowsingData(context: android.content.Context) {
-        activeWebView?.clearCache(true)
-        activeWebView?.clearHistory()
-        activeWebView?.clearFormData()
+        // FIX: আগে শুধু activeWebView clear করা হতো — বাকি সব tab এর cache থাকতো।
+        // এখন registered সব WebView clear করা হচ্ছে।
+        webViews.values.forEach { wv ->
+            wv.clearCache(true)
+            wv.clearHistory()
+            wv.clearFormData()
+        }
         profileManager.clearHistory()
         android.webkit.CookieManager.getInstance().removeSessionCookies(null)
         android.webkit.CookieManager.getInstance().flush()

@@ -1617,6 +1617,9 @@ fun BrowserWebView(
                     setSupportZoom(true)
                     builtInZoomControls = true
                     displayZoomControls = false
+                    // target="_blank" / window.open() support — onCreateWindow এ handle হয়
+                    setSupportMultipleWindows(true)
+                    javaScriptCanOpenWindowsAutomatically = false // popup spam বন্ধ, user gesture টাই allow
                     useWideViewPort = true
                     loadWithOverviewMode = true
                     setSaveFormData(!tab.isIncognito)
@@ -2295,6 +2298,52 @@ fun BrowserWebView(
                     override fun onJsAlert(view: WebView, url: String, message: String, result: JsResult): Boolean {
                         result.confirm()
                         return true
+                    }
+
+                    // ── JS confirm() — আগে missing ছিল, site এর confirm dialog কাজ করতো না
+                    override fun onJsConfirm(view: WebView, url: String, message: String, result: JsResult): Boolean {
+                        result.confirm() // default: OK — user কে interrupt না করে
+                        return true
+                    }
+
+                    // ── JS prompt() — input dialog, কিছু site login flow এ use করে
+                    override fun onJsPrompt(view: WebView, url: String, message: String, defaultValue: String?, result: android.webkit.JsPromptResult): Boolean {
+                        result.confirm(defaultValue ?: "")
+                        return true
+                    }
+
+                    // ── target="_blank" / window.open() → নতুন tab এ খোলো ─────────
+                    // আগে missing ছিল — link বা popup যেগুলো নতুন window চায় সেগুলো silently fail করতো
+                    override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message?): Boolean {
+                        if (!isUserGesture && isDialog) return false // popup spam block
+                        val newWv = WebView(context)
+                        newWv.webViewClient = object : WebViewClient() {
+                            override fun shouldOverrideUrlLoading(v: WebView, req: WebResourceRequest): Boolean {
+                                vm.navigate(req.url.toString())
+                                return true
+                            }
+                            override fun onPageStarted(v: WebView, url: String, fav: android.graphics.Bitmap?) {
+                                vm.navigate(url)
+                            }
+                        }
+                        val transport = resultMsg?.obj as? WebView.WebViewTransport ?: return false
+                        transport.webView = newWv
+                        resultMsg.sendToTarget()
+                        return true
+                    }
+
+                    // ── Geolocation permission — map / location site এ কাজ করবে ───
+                    override fun onGeolocationPermissionsShowPrompt(
+                        origin: String,
+                        callback: android.webkit.GeolocationPermissions.Callback
+                    ) {
+                        val hasLocation = ContextCompat.checkSelfPermission(
+                            context, android.Manifest.permission.ACCESS_FINE_LOCATION
+                        ) == PackageManager.PERMISSION_GRANTED ||
+                        ContextCompat.checkSelfPermission(
+                            context, android.Manifest.permission.ACCESS_COARSE_LOCATION
+                        ) == PackageManager.PERMISSION_GRANTED
+                        callback.invoke(origin, hasLocation, false)
                     }
 
                     override fun onPermissionRequest(request: PermissionRequest) {
