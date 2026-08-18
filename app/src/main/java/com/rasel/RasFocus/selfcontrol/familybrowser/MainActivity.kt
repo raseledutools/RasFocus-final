@@ -1664,7 +1664,11 @@ fun BrowserWebView(
                     ): WebResourceResponse? {
                         val currentProfile = vm.profileManager.activeProfile.value
                         val forceAdBlock = cachedBrowserPrefs.getBoolean("rb_block_ads", false)
-                        if (forceAdBlock) vm.adBlocker.isAdBlockEnabled = true
+                        // ✅ FIX: perf commit এ এই sync সরানো হয়েছিল — restore করা হলো।
+                        // profile switch / settings change সঙ্গে সঙ্গে কাজ করার জন্য দরকার।
+                        vm.adBlocker.isAdBlockEnabled = forceAdBlock || (currentProfile?.adBlockEnabled ?: true)
+                        vm.adBlocker.isTrackerBlockEnabled = currentProfile?.trackerBlockEnabled ?: true
+                        vm.adBlocker.isAdultBlockEnabled = currentProfile?.adultBlockEnabled ?: true
 
                         // ── YouTube Ad Pruner (uBlock json-prune approach) ──────
                         // /youtubei/v1/player response থেকে adPlacements, playerAds
