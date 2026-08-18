@@ -1124,7 +1124,10 @@ fun RasFocusApp(viewModel: MainViewModel) {
             com.rasel.RasFocus.selfcontrol.StatisticsScreen(navController = navController)
         }
 
-        composable(Routes.PARENTAL_DASH) {
+        composable("launcher") {
+            com.rasel.RasFocus.selfcontrol.launcher.MinimalistLauncherScreen(navController = navController)
+        }
+                composable(Routes.PARENTAL_DASH) {
             PersonaScaffold(tabs = BottomNavTab.all, currentRoute = Routes.PARENTAL_DASH, onTabSelect = { tab ->
                 when (tab) {
                     is BottomNavTab.MyFocus  -> { }
@@ -2243,3 +2246,4 @@ class UsageNotificationService : Service() {
             .build()
     }
 }
+
