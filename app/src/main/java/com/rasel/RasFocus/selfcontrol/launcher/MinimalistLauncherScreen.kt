@@ -253,7 +253,7 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                 Spacer(Modifier.height(28.dp))
 
                 // ── Quick toggles ──────────────────────────────────────────
-                QuickToggles(context, theme)
+                QuickToggles(context, theme, navController)
 
                 Spacer(Modifier.height(24.dp))
 
@@ -473,7 +473,7 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
 // Quick Toggles
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
-fun QuickToggles(context: Context, theme: LauncherTheme) {
+fun QuickToggles(context: Context, theme: LauncherTheme, navController: NavController? = null) {
     var flashOn by remember { mutableStateOf(false) }
     var silentOn by remember { mutableStateOf(false) }
 
@@ -590,12 +590,13 @@ fun PinnedAppRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (showIcon) {
-            try {
-                val drawable = context.packageManager.getApplicationIcon(app.packageName)
-                val bmp = drawable.toBitmap(48, 48)
+            val bmp = remember(app.packageName) {
+                try { context.packageManager.getApplicationIcon(app.packageName).toBitmap(48, 48) } catch (_: Exception) { null }
+            }
+            if (bmp != null) {
                 Image(bmp.asImageBitmap(), null, modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)))
                 Spacer(Modifier.width(12.dp))
-            } catch (_: Exception) {}
+            }
         }
         Text(
             text = app.customName.ifBlank { app.label },
@@ -708,12 +709,13 @@ fun AllAppsScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             if (showIcons) {
-                                try {
-                                    val d = context.packageManager.getApplicationIcon(app.packageName)
-                                    val bmp = d.toBitmap(48, 48)
+                                val bmp = remember(app.packageName) {
+                                    try { context.packageManager.getApplicationIcon(app.packageName).toBitmap(48, 48) } catch (_: Exception) { null }
+                                }
+                                if (bmp != null) {
                                     Image(bmp.asImageBitmap(), null, modifier = Modifier.size(28.dp).clip(RoundedCornerShape(6.dp)))
                                     Spacer(Modifier.width(12.dp))
-                                } catch (_: Exception) {}
+                                }
                             }
                             Text(
                                 displayName,
