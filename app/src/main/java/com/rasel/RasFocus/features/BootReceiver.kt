@@ -3,6 +3,9 @@ package com.rasel.RasFocus.features
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import com.rasel.RasFocus.selfcontrol.study_tools.ReminderStorage
+import com.rasel.RasFocus.selfcontrol.study_tools.ensureReminderChannel
+import com.rasel.RasFocus.selfcontrol.study_tools.scheduleReminderAlarmFull
 
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -19,6 +22,17 @@ class BootReceiver : BroadcastReceiver() {
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
+            }
+
+            // Reschedule all active reminders — Android clears all alarms on reboot
+            try {
+                ensureReminderChannel(context)
+                val now = System.currentTimeMillis()
+                ReminderStorage.load(context)
+                    .filter { it.isActive && !it.isCompleted && it.triggerMillis > now }
+                    .forEach { scheduleReminderAlarmFull(context, it) }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
             
             // Auto-update disabled — user initiates updates manually from the app

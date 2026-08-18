@@ -509,10 +509,16 @@ fun scheduleReminderAlarmFull(context: Context, item: ReminderItem) {
     )
     val triggerAt = SystemClock.elapsedRealtime() + (item.triggerMillis - System.currentTimeMillis()).coerceAtLeast(1000L)
     try {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
-            am.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pi)
-        else
-            am.setExact(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pi)
+        val canExact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || am.canScheduleExactAlarms()
+        when {
+            canExact && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ->
+                am.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pi)
+            canExact ->
+                am.setExact(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pi)
+            else ->
+                // Exact alarm permission not granted — fall back to inexact (still fires, just may be slightly delayed)
+                am.set(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pi)
+        }
     } catch (_: Exception) { am.set(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pi) }
 }
 
@@ -594,6 +600,21 @@ fun ReminderScreen(onBack: () -> Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
                 permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+        // Android 12+ (S): exact alarm permission must be granted by user in Settings.
+        // Without it, setExactAndAllowWhileIdle silently falls back to inexact or fails.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val am = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+            if (!am.canScheduleExactAlarms()) {
+                try {
+                    context.startActivity(
+                        android.content.Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                            data = android.net.Uri.fromParts("package", context.packageName, null)
+                            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                    )
+                } catch (_: Exception) {}
             }
         }
     }
