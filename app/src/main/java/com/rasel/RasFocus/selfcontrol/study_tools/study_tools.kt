@@ -75,6 +75,11 @@ import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 
 // -----------------------------------------------------------------------------
 // Color tokens
@@ -1755,7 +1760,12 @@ private fun StudyWebView(url: String, title: String, onBack: () -> Unit) {
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     BackHandler { if (canGoBack) webViewRef?.goBack() else onBack() }
 
-    Column(modifier = Modifier.fillMaxSize().background(BgDeep)) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(BgDeep)
+            .imePadding() // ✅ keyboard আসলে content উপরে সরে যাবে, কেটে যাবে না
+    ) {
         Row(modifier = Modifier.fillMaxWidth().background(BgCard2).padding(horizontal = 12.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { if (canGoBack) webViewRef?.goBack() else onBack() }) {
@@ -1774,15 +1784,29 @@ private fun StudyWebView(url: String, title: String, onBack: () -> Unit) {
                         }
                     }
                     settings.apply {
-                        javaScriptEnabled = true; domStorageEnabled = true
-                        loadWithOverviewMode = true; useWideViewPort = true
-                        builtInZoomControls = true; displayZoomControls = false
-                        setSupportZoom(true); mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                        javaScriptEnabled = true
+                        domStorageEnabled = true
+                        loadWithOverviewMode = true
+                        useWideViewPort = true
+                        builtInZoomControls = true
+                        displayZoomControls = false
+                        setSupportZoom(true)
+                        mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                        // ✅ keyboard এলে WebView নিজেই resize হবে
+                        @Suppress("DEPRECATION")
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+                            // API 29 এবং নিচে এটা কাজ করে
+                        }
                     }
-                    loadUrl(url); webViewRef = this
+                    // ✅ WebView এর নিজস্ব scroll যাতে input field ঠিকমতো scroll করে
+                    isScrollContainer = true
+                    loadUrl(url)
+                    webViewRef = this
                 }
             },
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f) // ✅ weight(1f) দিলে keyboard এলে WebView shrink হয়, fillMaxSize() নয়
         )
     }
 }
