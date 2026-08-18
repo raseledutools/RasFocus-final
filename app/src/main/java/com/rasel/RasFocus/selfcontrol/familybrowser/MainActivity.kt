@@ -1301,6 +1301,19 @@ fun TopBrowserBar(vm: BrowserViewModel) {
                             tint = Color.White.copy(0.75f)
                         )
                     }
+
+                    // ── 3-dot menu button ──────────────────────────────────
+                    IconButton(
+                        onClick  = { vm.showMenu = true },
+                        modifier = Modifier.size(30.dp)
+                    ) {
+                        Icon(
+                            imageVector        = Icons.Default.MoreVert,
+                            contentDescription = "Menu",
+                            modifier           = Modifier.size(18.dp),
+                            tint               = Color.White.copy(0.85f)
+                        )
+                    }
                 }
             }
         }
