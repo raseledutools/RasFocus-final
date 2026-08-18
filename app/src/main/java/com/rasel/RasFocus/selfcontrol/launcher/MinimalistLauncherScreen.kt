@@ -142,26 +142,40 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
     val streak = getStreak(context)
 
     // ── Swipe gestures ────────────────────────────────────────────────────
-    var dragDelta by remember { mutableStateOf(0f) }
+    var dragDeltaY by remember { mutableStateOf(0f) }
+    var dragDeltaX by remember { mutableStateOf(0f) }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(theme.bg)
             .pointerInput(Unit) {
-                detectVerticalDragGestures(
+                detectDragGestures(
                     onDragEnd = {
-                        if (dragDelta < -80f) showAllApps = true   // swipe up
-                        if (dragDelta > 80f) {                      // swipe down → notification
-                            try {
-                                val statusBar = context.getSystemService("statusbar")
-                                val method = statusBar?.javaClass?.getMethod("expandNotificationsPanel")
-                                method?.invoke(statusBar)
-                            } catch (_: Exception) {}
+                        val absX = kotlin.math.abs(dragDeltaX)
+                        val absY = kotlin.math.abs(dragDeltaY)
+                        if (absX > absY) {
+                            // horizontal swipe dominant
+                            if (dragDeltaX < -80f) showAllApps = true   // swipe left → all apps
+                            if (dragDeltaX > 80f) showAllApps = false   // swipe right → home
+                        } else {
+                            // vertical swipe dominant
+                            if (dragDeltaY < -80f) showAllApps = true   // swipe up → all apps
+                            if (dragDeltaY > 80f) {                      // swipe down → notification
+                                try {
+                                    val statusBar = context.getSystemService("statusbar")
+                                    val method = statusBar?.javaClass?.getMethod("expandNotificationsPanel")
+                                    method?.invoke(statusBar)
+                                } catch (_: Exception) {}
+                            }
                         }
-                        dragDelta = 0f
+                        dragDeltaX = 0f
+                        dragDeltaY = 0f
                     },
-                    onVerticalDrag = { _, delta -> dragDelta += delta }
+                    onDrag = { _, dragAmount ->
+                        dragDeltaX += dragAmount.x
+                        dragDeltaY += dragAmount.y
+                    }
                 )
             }
     ) {
@@ -629,10 +643,21 @@ fun AllAppsScreen(
     }
     val letters = remember(filtered) { filtered.map { (renamedMap[it.packageName] ?: it.label).first().uppercaseChar() }.distinct().sorted() }
 
+    var allAppsDragX by remember { mutableStateOf(0f) }
+
     Box(
         Modifier
             .fillMaxSize()
             .background(theme.bg)
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragEnd = {
+                        if (allAppsDragX > 100f) onClose()   // swipe right → back to home
+                        allAppsDragX = 0f
+                    },
+                    onDrag = { _, dragAmount -> allAppsDragX += dragAmount.x }
+                )
+            }
     ) {
         Column(Modifier.fillMaxSize()) {
             Spacer(Modifier.height(16.dp))
