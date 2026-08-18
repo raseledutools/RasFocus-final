@@ -1,5 +1,8 @@
 package com.rasel.RasFocus.selfcontrol
 
+import android.content.Context
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -19,6 +22,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -85,7 +89,25 @@ fun DrawerContent(
                 DrawerMenuItem(Icons.Default.MenuBook, "Deep Study") { onNavigate("deep_study"); closeDrawer() }
                 DrawerMenuItem(Icons.Default.Settings, "Settings") { onNavigate("settings"); closeDrawer() }
                 DrawerMenuItem(Icons.Default.Lock, "Master Password", tint = AccentTeal) { onNavigate("master_password"); closeDrawer() }
-                DrawerMenuItem(Icons.Default.Apps, "Use as Launcher", tint = Color(0xFF4FC3F7)) { onNavigate("launcher"); closeDrawer() }
+                val launcherContext = LocalContext.current
+                DrawerMenuItem(Icons.Default.Apps, "Set as Default Launcher", tint = Color(0xFF4FC3F7)) {
+                    closeDrawer()
+                    val intent = Intent(Settings.ACTION_HOME_SETTINGS).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    try {
+                        launcherContext.startActivity(intent)
+                    } catch (_: Exception) {
+                        // fallback: manage default apps
+                        try {
+                            launcherContext.startActivity(
+                                Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                            )
+                        } catch (_: Exception) {}
+                    }
+                }
 
                 var showUpdateDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
                 val context = androidx.compose.ui.platform.LocalContext.current
