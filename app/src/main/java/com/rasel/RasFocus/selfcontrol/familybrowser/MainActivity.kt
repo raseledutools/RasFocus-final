@@ -1532,16 +1532,8 @@ fun BrowserWebView(
                 )
 
                 // ── Chrome-style scroll: nav buttons hide/show ─────────────
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                    setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
-                        val delta = scrollY - oldScrollY
-                        when {
-                            scrollY <= 80 -> vm.showNavButtons = true  // top এ আছে — সবসময় দেখাও
-                            delta > 8     -> vm.showNavButtons = false // নিচে scroll — লুকাও
-                            delta < -8    -> vm.showNavButtons = true  // উপরে scroll — দেখাও
-                        }
-                    }
-                }
+                // Bar সবসময় দেখাবে — scroll করলে hide হবে না
+                vm.showNavButtons = true
 
                 // ── Hardware Acceleration ──────────────────────────────────
                 setLayerType(View.LAYER_TYPE_HARDWARE, null)
