@@ -141,12 +141,18 @@ class DeepStudyBlockerService : android.app.Service() {
         startForeground(NOTIF_ID, notif)
     }
 
+    // FIX: homePackage/dialerPackage প্রতি poll এ query করত — এখন lazy cache।
+    private var _homePackage: String? = null
+    private var _dialerPackage: String? = null
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (pollJob == null) {
+            // FIX: 1500ms → 2500ms — app switch 1-2s এ ঘটে, 2.5s চেক যথেষ্ট।
+            // battery drain উল্লেখযোগ্যভাবে কমে।
             pollJob = CoroutineScope(Dispatchers.Default).launch {
                 while (isActive) {
                     checkForegroundApp()
-                    delay(1500)
+                    delay(2500)
                 }
             }
         }
@@ -154,22 +160,32 @@ class DeepStudyBlockerService : android.app.Service() {
     }
 
     private fun homePackage(): String? {
-        val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-        return packageManager.resolveActivity(homeIntent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
-            ?.activityInfo?.packageName
+        if (_homePackage == null) {
+            val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+            _homePackage = packageManager.resolveActivity(homeIntent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
+                ?.activityInfo?.packageName
+        }
+        return _homePackage
     }
 
-    private fun dialerPackage(): String? = try {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            (getSystemService(Context.TELECOM_SERVICE) as? android.telecom.TelecomManager)?.defaultDialerPackage
-        } else null
-    } catch (_: Exception) { null }
+    private fun dialerPackage(): String? {
+        if (_dialerPackage == null) {
+            _dialerPackage = try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    (getSystemService(Context.TELECOM_SERVICE) as? android.telecom.TelecomManager)?.defaultDialerPackage
+                } else null
+            } catch (_: Exception) { null }
+        }
+        return _dialerPackage
+    }
 
     private fun currentForegroundPackage(): String? {
         if (!hasUsageStatsPermission(this)) return null
         val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val end = System.currentTimeMillis()
-        val events = usm.queryEvents(end - 10_000, end)
+        // FIX: 10_000ms → 4_000ms window — poll interval 2500ms, 4s যথেষ্ট।
+        // queryEvents range ছোট করলে significantly কম data process হয়।
+        val events = usm.queryEvents(end - 4_000, end)
         val event = android.app.usage.UsageEvents.Event()
         var lastPkg: String? = null
         while (events.hasNextEvent()) {
