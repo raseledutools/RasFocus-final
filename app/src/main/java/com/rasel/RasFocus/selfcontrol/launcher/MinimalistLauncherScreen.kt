@@ -253,7 +253,7 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                 Spacer(Modifier.height(28.dp))
 
                 // ── Quick toggles ──────────────────────────────────────────
-                QuickToggles(context, theme, navController)
+                QuickToggles(context, theme)
 
                 Spacer(Modifier.height(24.dp))
 
@@ -473,7 +473,7 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
 // Quick Toggles
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
-fun QuickToggles(context: Context, theme: LauncherTheme, navController: NavController? = null) {
+fun QuickToggles(context: Context, theme: LauncherTheme) {
     var flashOn by remember { mutableStateOf(false) }
     var silentOn by remember { mutableStateOf(false) }
 
@@ -547,8 +547,7 @@ fun QuickToggleBtn(
     active: Boolean,
     theme: LauncherTheme,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    navController: NavController? = null
+    modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier
@@ -591,7 +590,9 @@ fun PinnedAppRow(
     ) {
         if (showIcon) {
             val bmp = remember(app.packageName) {
-                try { context.packageManager.getApplicationIcon(app.packageName).toBitmap(48, 48) } catch (_: Exception) { null }
+                runCatching {
+                    context.packageManager.getApplicationIcon(app.packageName).toBitmap(48, 48)
+                }.getOrNull()
             }
             if (bmp != null) {
                 Image(bmp.asImageBitmap(), null, modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)))
@@ -710,7 +711,9 @@ fun AllAppsScreen(
                         ) {
                             if (showIcons) {
                                 val bmp = remember(app.packageName) {
-                                    try { context.packageManager.getApplicationIcon(app.packageName).toBitmap(48, 48) } catch (_: Exception) { null }
+                                    runCatching {
+                                        context.packageManager.getApplicationIcon(app.packageName).toBitmap(48, 48)
+                                    }.getOrNull()
                                 }
                                 if (bmp != null) {
                                     Image(bmp.asImageBitmap(), null, modifier = Modifier.size(28.dp).clip(RoundedCornerShape(6.dp)))
@@ -911,7 +914,7 @@ fun AddAppDialog(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Settings Sheet
+// Settings Screen — Niagara-style expandable sections
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 fun LauncherSettingsSheet(
@@ -928,126 +931,321 @@ fun LauncherSettingsSheet(
     onBack: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
     val hiddenApps = remember(hiddenPkgs, allApps) { allApps.filter { it.packageName in hiddenPkgs } }
 
-    Box(
-        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f)).clickable { onDismiss() },
-        contentAlignment = Alignment.BottomCenter
-    ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.75f)
-                .clip(RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))
-                .background(Color(0xFF111111))
-                .clickable(enabled = false) {}
-                .verticalScroll(rememberScrollState())
-                .padding(24.dp)
-        ) {
-            Text("Launcher Settings", color = theme.text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(20.dp))
+    var expandHomeScreen  by remember { mutableStateOf(false) }
+    var expandDisplay     by remember { mutableStateOf(false) }
+    var expandGestures    by remember { mutableStateOf(false) }
+    var expandMore        by remember { mutableStateOf(false) }
 
-            // Theme
-            Text("Theme", color = theme.text.copy(alpha = 0.5f), fontSize = 11.sp, letterSpacing = 1.sp)
-            Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                listOf("Black", "Blue", "Green").forEachIndexed { i, name ->
-                    Box(
-                        Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (themeIdx == i) theme.accent.copy(alpha = 0.2f) else CARD_BG)
-                            .border(if (themeIdx == i) BorderStroke(1.dp, theme.accent) else BorderStroke(0.dp, Color.Transparent), RoundedCornerShape(10.dp))
-                            .clickable { onThemeChange(i) }
-                            .padding(10.dp),
-                        contentAlignment = Alignment.Center
-                    ) { Text(name, color = if (themeIdx == i) theme.accent else theme.text.copy(alpha = 0.6f), fontSize = 13.sp) }
-                }
-            }
+    // Full screen settings page — pure black, no overlay
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        Column(Modifier.fillMaxSize()) {
 
-            Spacer(Modifier.height(20.dp))
-
-            // Font size
-            Text("Font Size", color = theme.text.copy(alpha = 0.5f), fontSize = 11.sp, letterSpacing = 1.sp)
-            Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                listOf("Small", "Medium", "Large").forEachIndexed { i, label ->
-                    Box(
-                        Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (fontSize == i) theme.accent.copy(alpha = 0.2f) else CARD_BG)
-                            .border(if (fontSize == i) BorderStroke(1.dp, theme.accent) else BorderStroke(0.dp, Color.Transparent), RoundedCornerShape(10.dp))
-                            .clickable { onFontChange(i) }
-                            .padding(10.dp),
-                        contentAlignment = Alignment.Center
-                    ) { Text(label, color = if (fontSize == i) theme.accent else theme.text.copy(alpha = 0.6f), fontSize = 13.sp) }
-                }
-            }
-
-            Spacer(Modifier.height(20.dp))
-
-            // Show icons toggle
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Column {
-                    Text("Show App Icons", color = theme.text, fontSize = 14.sp)
-                    Text("Next to app names", color = theme.text.copy(alpha = 0.4f), fontSize = 11.sp)
-                }
-                Switch(
-                    checked = showIcons,
-                    onCheckedChange = onIconToggle,
-                    colors = SwitchDefaults.colors(checkedThumbColor = theme.accent, checkedTrackColor = theme.accent.copy(0.3f))
+            // ── Top bar ────────────────────────────────────────────────────
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .background(Color.Black)
+                    .padding(horizontal = 16.dp, vertical = 18.dp)
+            ) {
+                Icon(
+                    Icons.Default.ArrowBack, null,
+                    tint = Color.White,
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .size(24.dp)
+                        .clickable { onDismiss() }
+                )
+                Text(
+                    "Settings",
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Normal,
+                    modifier = Modifier.align(Alignment.Center)
                 )
             }
+            HorizontalDivider(color = Color(0xFF222222), thickness = 0.5.dp)
 
-            Spacer(Modifier.height(20.dp))
-
-            // Hidden apps
-            if (hiddenApps.isNotEmpty()) {
-                Text("Hidden Apps", color = theme.text.copy(alpha = 0.5f), fontSize = 11.sp, letterSpacing = 1.sp)
+            // ── Scrollable content ─────────────────────────────────────────
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+            ) {
                 Spacer(Modifier.height(8.dp))
-                hiddenApps.forEach { app ->
-                    Row(
-                        Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(app.label, color = theme.text.copy(alpha = 0.7f), fontSize = 14.sp)
-                        TextButton(onClick = { onUnhide(app.packageName) }) {
-                            Text("Unhide", color = theme.accent, fontSize = 12.sp)
+
+                // ── Home screen ────────────────────────────────────────────
+                SettingsExpandableSection(
+                    title = "Home screen",
+                    expanded = expandHomeScreen,
+                    onToggle = { expandHomeScreen = !expandHomeScreen }
+                ) {
+                    // Pinned apps count info
+                    SettingsInfoRow("Pinned apps shown on home screen")
+
+                    // Show icons toggle
+                    SettingsToggleRow(
+                        title = "Show app icons",
+                        checked = showIcons,
+                        onToggle = onIconToggle
+                    )
+
+                    // Hidden apps
+                    if (hiddenApps.isNotEmpty()) {
+                        SettingsSectionLabel("Hidden apps (${hiddenApps.size})")
+                        hiddenApps.forEach { app ->
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onUnhide(app.packageName) }
+                                    .padding(horizontal = 24.dp, vertical = 14.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(app.label, color = Color.White, fontSize = 17.sp)
+                                Text("Unhide", color = Color(0xFF14C3B2), fontSize = 13.sp)
+                            }
                         }
                     }
                 }
-                Spacer(Modifier.height(16.dp))
-            }
 
-            HorizontalDivider(color = DIVIDER)
-            Spacer(Modifier.height(12.dp))
+                SettingsDivider()
 
-            // Back to RasFocus
-            Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onBack(); onDismiss() }.padding(14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Default.ArrowBack, null, tint = theme.accent)
-                Spacer(Modifier.width(14.dp))
-                Text("Back to RasFocus", color = theme.text, fontSize = 15.sp)
-            }
+                // ── Display ────────────────────────────────────────────────
+                SettingsExpandableSection(
+                    title = "Display",
+                    expanded = expandDisplay,
+                    onToggle = { expandDisplay = !expandDisplay }
+                ) {
+                    // Theme
+                    SettingsSectionLabel("Theme")
+                    listOf("Pure Black", "Dark Blue", "Dark Green").forEachIndexed { i, name ->
+                        SettingsRadioRow(
+                            title = name,
+                            selected = themeIdx == i,
+                            onClick = { onThemeChange(i) }
+                        )
+                    }
 
-            // Default launcher hint
-            Spacer(Modifier.height(8.dp))
-            Box(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(CARD_BG).padding(14.dp)
-            ) {
-                Text(
-                    "💡 To use as default launcher: Android Settings → Apps → Default Apps → Home App → RasFocus",
-                    color = theme.text.copy(alpha = 0.45f),
-                    fontSize = 11.sp
-                )
+                    SettingsSectionLabel("Font size")
+                    listOf("Small", "Medium", "Large").forEachIndexed { i, label ->
+                        SettingsRadioRow(
+                            title = label,
+                            selected = fontSize == i,
+                            onClick = { onFontChange(i) }
+                        )
+                    }
+
+                    // Monochrome mode
+                    SettingsToggleRow(
+                        title = "Monochrome mode",
+                        subtitle = "Grayscale app icons",
+                        checked = showIcons, // reuse showIcons as placeholder, extend later
+                        onToggle = { /* extend */ }
+                    )
+                }
+
+                SettingsDivider()
+
+                // ── Gestures ───────────────────────────────────────────────
+                SettingsExpandableSection(
+                    title = "Gestures",
+                    expanded = expandGestures,
+                    onToggle = { expandGestures = !expandGestures }
+                ) {
+                    SettingsInfoRow("Swipe left / up  →  All Apps")
+                    SettingsInfoRow("Swipe right  →  Home")
+                    SettingsInfoRow("Swipe down  →  Notifications")
+                    SettingsInfoRow("Long press app  →  Options")
+                }
+
+                SettingsDivider()
+
+                // ── More ───────────────────────────────────────────────────
+                SettingsExpandableSection(
+                    title = "More",
+                    expanded = expandMore,
+                    onToggle = { expandMore = !expandMore }
+                ) {
+                    SettingsClickRow("Back to RasFocus") { onBack(); onDismiss() }
+                    SettingsClickRow("Set as default launcher") {
+                        try {
+                            val intent = Intent(Settings.ACTION_HOME_SETTINGS)
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            context.startActivity(intent)
+                        } catch (_: Exception) {}
+                    }
+                }
+
+                SettingsDivider()
+
+                // ── Flat items ─────────────────────────────────────────────
+                SettingsFlatRow("In-app time reminder") {}
+                SettingsDivider()
+                SettingsFlatRow("Notification filter") {}
+                SettingsDivider()
+                SettingsFlatRow("Monochrome mode") {}
+                SettingsDivider()
+                SettingsFlatRow("Recommend to a friend") {
+                    try {
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, "Check out RasFocus — a focus & parental control app!")
+                        }
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(Intent.createChooser(intent, "Share").apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+                    } catch (_: Exception) {}
+                }
+                SettingsDivider()
+                SettingsFlatRow("Device settings") {
+                    try {
+                        val intent = Intent(Settings.ACTION_SETTINGS)
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(intent)
+                    } catch (_: Exception) {}
+                }
+
+                Spacer(Modifier.height(40.dp))
             }
-            Spacer(Modifier.height(16.dp))
         }
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Settings UI Components
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+fun SettingsExpandableSection(
+    title: String,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable { onToggle() }
+                .padding(horizontal = 24.dp, vertical = 20.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(title, color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Normal)
+            Icon(
+                if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                null,
+                tint = Color.White,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+        AnimatedVisibility(visible = expanded) {
+            Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                content()
+            }
+        }
+    }
+}
+
+@Composable
+fun SettingsToggleRow(title: String, subtitle: String = "", checked: Boolean, onToggle: (Boolean) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, color = Color.White.copy(alpha = 0.85f), fontSize = 16.sp)
+            if (subtitle.isNotBlank())
+                Text(subtitle, color = Color.White.copy(alpha = 0.4f), fontSize = 12.sp)
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onToggle,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = Color(0xFF14C3B2),
+                uncheckedThumbColor = Color.White,
+                uncheckedTrackColor = Color(0xFF444444)
+            )
+        )
+    }
+}
+
+@Composable
+fun SettingsRadioRow(title: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(horizontal = 24.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(title, color = Color.White.copy(alpha = if (selected) 1f else 0.6f), fontSize = 16.sp)
+        if (selected)
+            Icon(Icons.Default.Check, null, tint = Color(0xFF14C3B2), modifier = Modifier.size(18.dp))
+    }
+}
+
+@Composable
+fun SettingsClickRow(title: String, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(horizontal = 24.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(title, color = Color.White.copy(alpha = 0.85f), fontSize = 16.sp)
+    }
+}
+
+@Composable
+fun SettingsFlatRow(title: String, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(horizontal = 24.dp, vertical = 20.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(title, color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Normal)
+    }
+}
+
+@Composable
+fun SettingsSectionLabel(text: String) {
+    Text(
+        text,
+        color = Color.White.copy(alpha = 0.4f),
+        fontSize = 12.sp,
+        letterSpacing = 0.5.sp,
+        modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp)
+    )
+}
+
+@Composable
+fun SettingsInfoRow(text: String) {
+    Text(
+        text,
+        color = Color.White.copy(alpha = 0.5f),
+        fontSize = 14.sp,
+        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+    )
+}
+
+@Composable
+fun SettingsDivider() {
+    HorizontalDivider(
+        color = Color(0xFF1A1A1A),
+        thickness = 0.5.dp,
+        modifier = Modifier.padding(horizontal = 0.dp)
+    )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
