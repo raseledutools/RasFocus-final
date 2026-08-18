@@ -170,13 +170,18 @@ class FloatingWindowService : Service() {
         val params = WindowManager.LayoutParams(
             fw.winW, fw.winH, fw.posX, fw.posY,
             overlayType,
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+            // ✅ FLAG_NOT_TOUCH_MODAL সরানো হয়েছে — এটা থাকলে Gemini/ChatGPT এর
+            // input field এ touch event properly পৌঁছায় না।
+            // FLAG_LAYOUT_IN_SCREEN রাখা হয়েছে screen edge পর্যন্ত যাওয়ার জন্য।
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
             WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+            // ✅ SOFT_INPUT_ADJUST_PAN + ADJUST_RESIZE দুটোই — keyboard আসলে
+            // floating window নিজেই উপরে সরে যাবে এবং resize হবে
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                            WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE
         }
         fw.params = params
 
@@ -272,27 +277,35 @@ class FloatingWindowService : Service() {
                     dragStartY = ev.rawY
                     dragParamsX = params.x
                     dragParamsY = params.y
-                    params.flags = params.flags or
-                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                    windowManager.updateViewLayout(fw.floatRoot, params)
+                    // ✅ drag শুরুতে NOT_FOCUSABLE যোগ — window সরানোর সময় keyboard বন্ধ থাকবে
+                    params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                    runCatching { windowManager.updateViewLayout(fw.floatRoot, params) }
                 }
                 MotionEvent.ACTION_MOVE -> if (dragging) {
                     params.x = dragParamsX + (ev.rawX - dragStartX).toInt()
                     params.y = dragParamsY + (ev.rawY - dragStartY).toInt()
                     clampPosition(screenW, screenH, params, fw)
-                    windowManager.updateViewLayout(fw.floatRoot, params)
+                    runCatching { windowManager.updateViewLayout(fw.floatRoot, params) }
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     dragging = false
-                    params.flags = params.flags and
-                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
-                    windowManager.updateViewLayout(fw.floatRoot, params)
+                    // ✅ drag শেষে NOT_FOCUSABLE সরানো — Gemini input আবার কাজ করবে
+                    params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+                    runCatching { windowManager.updateViewLayout(fw.floatRoot, params) }
+                    // ✅ WebView কে focus দাও যাতে Gemini এর input box active থাকে
+                    fw.webView?.requestFocus()
                 }
             }
             true
         }
 
         // ── WebView ────────────────────────────────────────────────────────────
+        // ✅ Gemini এর জন্য cookies globally enable করতে হবে
+        android.webkit.CookieManager.getInstance().apply {
+            setAcceptCookie(true)
+            setAcceptThirdPartyCookies(null, true) // third-party cookies allow
+        }
+
         val wv = WebView(this).apply {
             layoutParams = android.widget.LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
@@ -300,17 +313,31 @@ class FloatingWindowService : Service() {
             settings.apply {
                 javaScriptEnabled    = true
                 domStorageEnabled    = true
+                databaseEnabled      = true  // ✅ Gemini এর IndexedDB দরকার
                 loadWithOverviewMode = true
                 useWideViewPort      = true
                 builtInZoomControls  = true
                 displayZoomControls  = false
                 mediaPlaybackRequiresUserGesture = false
-                mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-                userAgentString = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.82 Mobile Safari/537.36"
+                mixedContentMode     = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                // ✅ Gemini detect করে WebView হিসেবে এবং block করে।
+                // Chrome desktop UA দিলে full site দেখায়, input ঠিকমতো কাজ করে।
+                userAgentString = "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) " +
+                    "AppleWebKit/537.36 (KHTML, like Gecko) " +
+                    "Chrome/137.0.0.0 Mobile Safari/537.36"
+                // ✅ Gemini এর service worker এর জন্য
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    safeBrowsingEnabled = false // SafeBrowsing Gemini কে block করতে পারে
+                }
             }
+
+            // ✅ Cookies এই WebView এর জন্যও allow করা
+            android.webkit.CookieManager.getInstance()
+                .setAcceptThirdPartyCookies(this, true)
 
             isFocusable = true
             isFocusableInTouchMode = true
+            isScrollContainer = true  // ✅ WebView এর নিজস্ব scroll ঠিকমতো কাজ করবে
 
             webViewClient = object : WebViewClient() {
 
@@ -614,33 +641,53 @@ class FloatingWindowService : Service() {
         </div></body></html>
     """.trimIndent()
 
-    // ── "Open in App" banner remove — floating-এ white screen-এর মূল কারণ ──
+    // ── "Open in App" banner remove + Gemini specific fixes ──────────────────
     private fun injectBannerRemover(view: android.webkit.WebView) {
         view.evaluateJavascript("""
             (function() {
                 if (window.__rasFloatBannerRemoved__) return;
                 window.__rasFloatBannerRemoved__ = true;
+
                 var phrases = ['open in app','use app','get the app','open app',
                                'get app','download the app','try the app','faster experience',
-                               'continue in app','switch to app','view in app'];
+                               'continue in app','switch to app','view in app',
+                               'open gemini app','use the app'];
+
                 function remove() {
                     try {
-                        document.querySelectorAll('a[href^="fb://"],a[href^="intent://"]').forEach(function(el) {
+                        // ✅ intent:// links সরানো (Gemini app redirect)
+                        document.querySelectorAll('a[href^="fb://"],a[href^="intent://"],a[href^="gemini://"]').forEach(function(el) {
                             var p = el.closest('[class*="banner"],[id*="banner"],[data-testid*="app"]');
                             if (p) p.remove(); else el.remove();
                         });
+
+                        // ✅ text-based banner removal
                         document.querySelectorAll('div,a,button,span').forEach(function(el) {
                             var txt = (el.innerText||'').toLowerCase().trim();
-                            if (!txt || txt.length > 60) return;
+                            if (!txt || txt.length > 80) return;
                             if (phrases.some(function(p){return txt.indexOf(p)!==-1;})) {
-                                var par = el.closest('[class*="banner"],[id*="banner"],[data-testid*="app"]') || el;
+                                var par = el.closest('[class*="banner"],[id*="banner"],[data-testid*="app"],[role="dialog"]') || el;
                                 par.style.display = 'none';
+                            }
+                        });
+
+                        // ✅ Gemini: "Use Gemini App" modal/bottom-sheet সরানো
+                        document.querySelectorAll('[role="dialog"],[role="alertdialog"]').forEach(function(el) {
+                            var txt = (el.innerText||'').toLowerCase();
+                            if (txt.indexOf('app') !== -1 && (txt.indexOf('open') !== -1 || txt.indexOf('use') !== -1)) {
+                                el.style.display = 'none';
                             }
                         });
                     } catch(e) {}
                 }
+
                 remove();
-                try { new MutationObserver(remove).observe(document.body||document.documentElement,{childList:true,subtree:true}); } catch(e){}
+                try {
+                    new MutationObserver(remove).observe(
+                        document.body || document.documentElement,
+                        {childList:true, subtree:true}
+                    );
+                } catch(e) {}
                 setInterval(remove, 1500);
             })();
         """.trimIndent(), null)
