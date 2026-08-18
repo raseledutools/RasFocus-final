@@ -135,6 +135,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
@@ -945,7 +946,66 @@ fun BrowserScaffold(vm: BrowserViewModel) {
         }
 
         // ── WebView Area ──────────────────────────────────────────────
-        Box(modifier = Modifier.weight(1f)) {
+        // Pull-to-refresh state
+        var pullOffsetY   by remember { mutableStateOf(0f) }
+        var isPulling     by remember { mutableStateOf(false) }
+        val pullThresholdPx = with(LocalDensity.current) { 120.dp.toPx() }  // long pull threshold
+
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .pointerInput(Unit) {
+                    detectDragGestures(
+                        onDragStart  = { isPulling = true },
+                        onDragEnd    = {
+                            if (pullOffsetY >= pullThresholdPx) vm.reload()
+                            pullOffsetY = 0f; isPulling = false
+                        },
+                        onDragCancel = { pullOffsetY = 0f; isPulling = false },
+                        onDrag = { change, dragAmount ->
+                            change.consume()
+                            if (dragAmount.y > 0f)
+                                pullOffsetY = (pullOffsetY + dragAmount.y * 0.4f)
+                                    .coerceAtMost(pullThresholdPx * 1.2f)
+                            else if (pullOffsetY > 0f)
+                                pullOffsetY = (pullOffsetY + dragAmount.y * 0.4f).coerceAtLeast(0f)
+                        }
+                    )
+                }
+        ) {
+            // ── Pull-to-refresh indicator ──────────────────────────────────
+            if (pullOffsetY > 0f) {
+                val progress = (pullOffsetY / pullThresholdPx).coerceIn(0f, 1f)
+                val reached  = pullOffsetY >= pullThresholdPx
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(with(LocalDensity.current) { pullOffsetY.toDp() }.coerceAtMost(56.dp))
+                        .background(Color(0xFF1A1A1A))
+                        .align(Alignment.TopCenter),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment     = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        if (reached) {
+                            Icon(Icons.Default.Refresh, null,
+                                tint     = FxOrange,
+                                modifier = Modifier.size(16.dp))
+                            Text("ছেড়ে দিন — Reload হবে", fontSize = 12.sp, color = FxOrange)
+                        } else {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                progress    = { progress },
+                                modifier    = Modifier.size(16.dp),
+                                color       = Color.White.copy(0.5f),
+                                strokeWidth = 2.dp
+                            )
+                            Text("আরেকটু টানুন...", fontSize = 12.sp, color = Color.White.copy(0.5f))
+                        }
+                    }
+                }
+            }
             // ── WebView Virtualization ──────────────────────────────────────
             // আগে প্রতিটা tab এর জন্য BrowserWebView compose হতো, মানে ১০০টা
             // ট্যাব খুললে ১০০টা real WebView native memory তে বসে থাকতো
@@ -1195,14 +1255,7 @@ fun TopBrowserBar(vm: BrowserViewModel) {
                                 else
                                     Color.White
                             )
-                            Icon(
-                                if (vm.isLoading) Icons.Default.Close else Icons.Default.Refresh,
-                                null,
-                                modifier = Modifier.size(16.dp).clickable {
-                                    if (vm.isLoading) vm.stopLoading() else vm.reload()
-                                },
-                                tint = Color.White.copy(0.5f)
-                            )
+                            // ✅ Refresh icon removed — pull-to-refresh দিয়ে reload হয়
                         }
                     }
                 }
