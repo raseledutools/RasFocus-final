@@ -1,5 +1,4 @@
 package com.rasel.RasFocus.selfcontrol.rasgram
-import org.json.JSONObject
 
 import android.Manifest
 import java.security.MessageDigest
@@ -87,6 +86,12 @@ import com.google.firebase.firestore.ktx.snapshots
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.tasks.await
+import okhttp3.*
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.asRequestBody
+import okio.source  // FIX #4: correct import for extension function
+import org.json.JSONObject
+import org.webrtc.*
 import java.io.File
 import java.io.InputStream
 import java.text.SimpleDateFormat
@@ -932,7 +937,7 @@ fun MainScreen(
                 snapshot?.documentChanges?.forEach { change ->
                     if (change.type == com.google.firebase.firestore.DocumentChange.Type.ADDED) {
                         val data = change.document.data
-                        val intent = Intent(context, MainActivity::class.java).apply {
+                        val intent = Intent(context, RasGramActivity::class.java).apply {
                             action = "ACTION_INCOMING_CALL"
                             putExtra("callId", change.document.id)
                             putExtra("callerMobile", data["caller"] as? String ?: "")
@@ -3060,19 +3065,259 @@ fun GroupItem(group: Group, onClick: () -> Unit) {
 // ==================== WEBRTC CALLING SCREEN ====================
 @Composable
 fun CallingScreen(
+    currentUser: User,
+    contact: User,
     callType: String,
-    remoteUserId: String,
-    remoteUserName: String,
-    onEnd: () -> Unit
+    onEndCall: () -> Unit
 ) {
-    Box(Modifier.fillMaxSize().background(Color(0xFF1A1A2E)), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(Icons.Default.CallEnd, null, tint = Color.White, modifier = Modifier.size(64.dp))
-            Spacer(Modifier.height(16.dp))
-            Text("Calling $remoteUserName...", color = Color.White, fontSize = 20.sp)
-            Spacer(Modifier.height(32.dp))
-            FloatingActionButton(onClick = onEnd, containerColor = Color.Red) {
-                Icon(Icons.Default.CallEnd, null, tint = Color.White)
+    val context = LocalContext.current
+    val db = remember { FirebaseFirestore.getInstance() }
+    val scope = rememberCoroutineScope()
+
+    var callStatus by remember { mutableStateOf("Calling...") }
+    var isMuted by remember { mutableStateOf(false) }
+    var isCameraOff by remember { mutableStateOf(false) }
+    var isSpeakerOn by remember { mutableStateOf(callType == "video") }
+    var isConnected by remember { mutableStateOf(false) }
+    var callSeconds by remember { mutableIntStateOf(0) }
+    var callId by remember { mutableStateOf("") }
+
+    val eglBase = remember { EglBase.create() }
+    val peerConnectionFactory = remember {
+        PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(context).createInitializationOptions())
+        PeerConnectionFactory.builder()
+            .setVideoDecoderFactory(DefaultVideoDecoderFactory(eglBase.eglBaseContext))
+            .setVideoEncoderFactory(DefaultVideoEncoderFactory(eglBase.eglBaseContext, true, true))
+            .createPeerConnectionFactory()
+    }
+    val iceServers = listOf(
+        PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
+        PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer(),
+        PeerConnection.IceServer.builder("turn:openrelay.metered.ca:80").setUsername("openrelayproject").setPassword("openrelayproject").createIceServer(),
+        PeerConnection.IceServer.builder("turn:openrelay.metered.ca:443").setUsername("openrelayproject").setPassword("openrelayproject").createIceServer()
+    )
+
+    var peerConnection by remember { mutableStateOf<PeerConnection?>(null) }
+    var localStream by remember { mutableStateOf<MediaStream?>(null) }
+    var localVideoTrack by remember { mutableStateOf<VideoTrack?>(null) }
+    var remoteVideoTrack by remember { mutableStateOf<VideoTrack?>(null) }
+    var localSurfaceView by remember { mutableStateOf<SurfaceViewRenderer?>(null) }
+    var remoteSurfaceView by remember { mutableStateOf<SurfaceViewRenderer?>(null) }
+
+    val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+
+    LaunchedEffect(Unit) {
+        val hasMicPerm = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        if (!hasMicPerm) { Toast.makeText(context, "Microphone permission needed", Toast.LENGTH_SHORT).show(); onEndCall(); return@LaunchedEffect }
+
+        try {
+            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+            audioManager.isSpeakerphoneOn = isSpeakerOn
+            val chatHash = generateChatId(currentUser.mobile, contact.mobile)
+            callId = "call_${chatHash}_${System.currentTimeMillis()}"
+
+            val stream = peerConnectionFactory.createLocalMediaStream("localStream")
+            val audioSource = peerConnectionFactory.createAudioSource(MediaConstraints())
+            stream.addTrack(peerConnectionFactory.createAudioTrack("audioTrack", audioSource))
+
+            if (callType == "video") {
+                val hasCamPerm = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+                if (hasCamPerm) {
+                    getVideoCapturer(context)?.let { capturer ->
+                        val helper = SurfaceTextureHelper.create("CaptureThread", eglBase.eglBaseContext)
+                        val videoSource = peerConnectionFactory.createVideoSource(capturer.isScreencast)
+                        capturer.initialize(helper, context, videoSource.capturerObserver)
+                        capturer.startCapture(1280, 720, 30)
+                        val vTrack = peerConnectionFactory.createVideoTrack("videoTrack", videoSource)
+                        stream.addTrack(vTrack)
+                        localVideoTrack = vTrack
+                    }
+                }
+            }
+            localStream = stream
+
+            val rtcConfig = PeerConnection.RTCConfiguration(iceServers).apply {
+                sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
+                bundlePolicy = PeerConnection.BundlePolicy.MAXBUNDLE
+                rtcpMuxPolicy = PeerConnection.RtcpMuxPolicy.REQUIRE
+                continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
+            }
+
+            val observer = object : PeerConnection.Observer {
+                override fun onIceCandidate(candidate: IceCandidate?) {
+                    candidate?.let { c ->
+                        scope.launch {
+                            db.collection("calls").document(callId).collection("caller_ice").add(
+                                mapOf("sdpMid" to c.sdpMid, "sdpMLineIndex" to c.sdpMLineIndex, "candidate" to c.sdp)
+                            )
+                        }
+                    }
+                }
+                override fun onIceCandidatesRemoved(c: Array<out IceCandidate>?) {}
+                override fun onSignalingChange(s: PeerConnection.SignalingState?) {}
+                override fun onIceConnectionChange(state: PeerConnection.IceConnectionState?) {
+                    when (state) {
+                        PeerConnection.IceConnectionState.CONNECTED -> { callStatus = "Connected"; isConnected = true }
+                        PeerConnection.IceConnectionState.DISCONNECTED, PeerConnection.IceConnectionState.FAILED -> scope.launch { onEndCall() }
+                        else -> {}
+                    }
+                }
+                override fun onIceConnectionReceivingChange(b: Boolean) {}
+                override fun onIceGatheringChange(s: PeerConnection.IceGatheringState?) {}
+                override fun onAddStream(s: MediaStream?) { s?.videoTracks?.firstOrNull()?.let { remoteVideoTrack = it } }
+                override fun onRemoveStream(s: MediaStream?) {}
+                override fun onDataChannel(d: DataChannel?) {}
+                override fun onRenegotiationNeeded() {}
+                override fun onAddTrack(r: RtpReceiver?, streams: Array<out MediaStream>?) {
+                    streams?.firstOrNull()?.videoTracks?.firstOrNull()?.let { remoteVideoTrack = it }
+                }
+            }
+
+            val pc = peerConnectionFactory.createPeerConnection(rtcConfig, observer)
+            stream.audioTracks.forEach { pc?.addTrack(it, listOf("localStream")) }
+            if (callType == "video") stream.videoTracks.forEach { pc?.addTrack(it, listOf("localStream")) }
+            peerConnection = pc
+
+            val offerConstraints = MediaConstraints().apply {
+                mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
+                if (callType == "video") mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
+            }
+
+            pc?.createOffer(object : SdpObserver {
+                override fun onCreateSuccess(sdp: SessionDescription?) {
+                    sdp?.let { s ->
+                        pc.setLocalDescription(object : SdpObserver {
+                            override fun onCreateSuccess(s2: SessionDescription?) {}
+                            override fun onSetSuccess() {
+                                scope.launch {
+                                    db.collection("calls").document(callId).set(hashMapOf(
+                                        "caller" to currentUser.mobile, "callee" to contact.mobile,
+                                        "type" to callType, "status" to "calling",
+                                        "timestamp" to System.currentTimeMillis(),
+                                        "offer" to mapOf("type" to s.type.canonicalForm(), "sdp" to s.description)
+                                    ))
+                                    // Send FCM push to callee so call arrives even if app is closed
+                                    sendFcmCallNotification(
+                                        calleeMobile = contact.mobile,
+                                        callerName = currentUser.name,
+                                        callType = callType,
+                                        callId = callId,
+                                        db = db,
+                                        context = context
+                                    )
+                                }
+                            }
+                            override fun onCreateFailure(e: String?) {}
+                            override fun onSetFailure(e: String?) {}
+                        }, s)
+                    }
+                }
+                override fun onSetSuccess() {}
+                override fun onCreateFailure(e: String?) {}
+                override fun onSetFailure(e: String?) {}
+            }, offerConstraints)
+
+            db.collection("calls").document(callId).addSnapshotListener { snapshot, _ ->
+                val data = snapshot?.data ?: return@addSnapshotListener
+                when (data["status"] as? String) {
+                    "answered" -> {
+                        (data["answer"] as? Map<*, *>)?.let { ans ->
+                            val sdpStr = ans["sdp"] as? String ?: return@addSnapshotListener
+                            pc?.setRemoteDescription(object : SdpObserver {
+                                override fun onCreateSuccess(s: SessionDescription?) {}
+                                override fun onSetSuccess() {
+                                    callStatus = "Connected"; isConnected = true
+                                    scope.launch {
+                                        db.collection("calls").document(callId).collection("callee_ice").get().await()
+                                            .documents.forEach { doc ->
+                                                doc.data?.let { d ->
+                                                    pc?.addIceCandidate(IceCandidate(d["sdpMid"] as? String ?: "", (d["sdpMLineIndex"] as? Long)?.toInt() ?: 0, d["candidate"] as? String ?: ""))
+                                                }
+                                            }
+                                    }
+                                }
+                                override fun onCreateFailure(e: String?) {}
+                                override fun onSetFailure(e: String?) {}
+                            }, SessionDescription(SessionDescription.Type.ANSWER, sdpStr))
+                        }
+                    }
+                    "ended", "rejected" -> scope.launch { onEndCall() }
+                }
+            }
+        } catch (e: Exception) {
+            Toast.makeText(context, "Call error: ${e.message}", Toast.LENGTH_SHORT).show()
+            onEndCall()
+        }
+    }
+
+    LaunchedEffect(isConnected) {
+        if (isConnected) while (true) { delay(1000); callSeconds++ }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            peerConnection?.close()
+            localStream?.dispose()
+            audioManager.mode = AudioManager.MODE_NORMAL
+            audioManager.isSpeakerphoneOn = false
+            try { eglBase.release() } catch (_: Exception) {}
+        }
+    }
+
+    Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF0B141A)) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (callType == "video") {
+                AndroidView(factory = { ctx ->
+                    SurfaceViewRenderer(ctx).also { it.init(eglBase.eglBaseContext, null); it.setMirror(false); remoteSurfaceView = it; remoteVideoTrack?.addSink(it) }
+                }, modifier = Modifier.fillMaxSize())
+                AndroidView(factory = { ctx ->
+                    SurfaceViewRenderer(ctx).also { it.init(eglBase.eglBaseContext, null); it.setMirror(true); localSurfaceView = it; localVideoTrack?.addSink(it) }
+                }, modifier = Modifier.size(120.dp, 160.dp).align(Alignment.TopEnd).padding(16.dp).clip(RoundedCornerShape(12.dp)))
+            }
+
+            Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+                Spacer(modifier = Modifier.height(80.dp))
+                if (callType != "video" || !isConnected) {
+                    AsyncImage(
+                        model = contact.avatarUrl.ifEmpty { "https://ui-avatars.com/api/?name=${contact.name.replace(" ", "+")}&size=200&background=008069&color=fff" },
+                        contentDescription = null,
+                        modifier = Modifier.size(120.dp).clip(CircleShape).border(3.dp, RasGramTheme.Green, CircleShape),
+                        contentScale = ContentScale.Crop
+                    )
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Text(contact.name, style = MaterialTheme.typography.headlineMedium, color = Color.White, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(if (isConnected) formatTime(callSeconds) else callStatus, color = RasGramTheme.Green, style = MaterialTheme.typography.titleMedium)
+                }
+                Spacer(modifier = Modifier.weight(1f))
+
+                Surface(shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp), color = Color(0xFF182229).copy(0.95f), modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(vertical = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                            CallControlButton(icon = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic, label = if (isMuted) "Unmute" else "Mute", isActive = isMuted, activeColor = RasGramTheme.Red) {
+                                isMuted = !isMuted
+                                localStream?.audioTracks?.firstOrNull()?.setEnabled(!isMuted)
+                            }
+                            FloatingActionButton(onClick = { scope.launch { if (callId.isNotEmpty()) db.collection("calls").document(callId).update("status", "ended"); onEndCall() } }, containerColor = RasGramTheme.Red, modifier = Modifier.size(72.dp)) {
+                                Icon(Icons.Default.CallEnd, null, tint = Color.White, modifier = Modifier.size(32.dp))
+                            }
+                            CallControlButton(icon = if (isSpeakerOn) Icons.Default.VolumeUp else Icons.Default.VolumeOff, label = "Speaker", isActive = isSpeakerOn, activeColor = RasGramTheme.Green) {
+                                isSpeakerOn = !isSpeakerOn
+                                audioManager.isSpeakerphoneOn = isSpeakerOn
+                            }
+                        }
+                        if (callType == "video") {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                                CallControlButton(icon = if (isCameraOff) Icons.Default.VideocamOff else Icons.Default.Videocam, label = "Camera", isActive = isCameraOff, activeColor = RasGramTheme.Red) {
+                                    isCameraOff = !isCameraOff
+                                    localStream?.videoTracks?.firstOrNull()?.setEnabled(!isCameraOff)
+                                }
+                                CallControlButton(icon = Icons.Default.Cameraswitch, label = "Flip", isActive = false, activeColor = RasGramTheme.Green) { }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -3367,12 +3612,7 @@ fun EmptyChatState() {
 suspend fun uploadToCloudinary(
     context: Context,
     uri: Uri,
-    onSuccess: (String) -> Unit,
-    onError: (String) -> Unit
-) {
-    // TODO: Firebase Storage upload — implement when storage is configured
-    onError("File upload not configured yet")
-}
+    onProgress: (Float) -> Unit = {}
 ): Triple<String?, String?, String?> = withContext(Dispatchers.IO) {
     try {
         val contentResolver = context.contentResolver
@@ -3384,6 +3624,7 @@ suspend fun uploadToCloudinary(
         val tempFile = File(context.cacheDir, fileName)
         tempFile.outputStream().use { out -> inputStream.copyTo(out) }
 
+        val client = OkHttpClient.Builder()
             .connectTimeout(60, TimeUnit.SECONDS)
             .writeTimeout(120, TimeUnit.SECONDS)
             .readTimeout(120, TimeUnit.SECONDS)
@@ -3392,6 +3633,11 @@ suspend fun uploadToCloudinary(
         val fileBody = tempFile.asRequestBody(mimeType.toMediaTypeOrNull())
 
         val progressBody = object : RequestBody() {
+            override fun contentType() = mimeType.toMediaTypeOrNull()
+            override fun contentLength() = tempFile.length()
+            override fun writeTo(sink: okio.BufferedSink) {
+                val buf = okio.Buffer()
+                // FIX #4: was okio.Okio.source(tempFile) â€” now extension function tempFile.source()
                 val src = tempFile.source()
                 val total = tempFile.length()
                 var uploaded = 0L
@@ -3440,12 +3686,92 @@ fun getFileName(context: Context, uri: Uri): String? = try {
  * App বন্ধ থাকলেও কাজ করে (high priority data message)
  */
 suspend fun sendFcmCallNotification(
-    toUserId: String,
+    calleeMobile: String,
     callerName: String,
     callType: String,
+    callId: String,
+    db: FirebaseFirestore,
     context: Context
-) {
-    // TODO: FCM call notification — implement with Firebase Functions
+) = withContext(Dispatchers.IO) {
+    try {
+        // Get callee FCM token from Firestore
+        val calleeDoc = db.collection("chat_users").document(calleeMobile).get().await()
+        val fcmToken = calleeDoc.getString("fcmToken") ?: return@withContext
+
+        // Read service account from assets
+        val saStream = context.resources.openRawResource(
+            context.resources.getIdentifier("service_account", "raw", context.packageName)
+        )
+        val saJson = org.json.JSONObject(saStream.bufferedReader().readText())
+
+        // Get OAuth2 access token for FCM v1 API
+        val privateKeyPem = saJson.getString("private_key")
+            .replace("-----BEGIN PRIVATE KEY-----", "")
+            .replace("-----END PRIVATE KEY-----", "")
+            .replace("\\n", "")
+            .replace("\n", "")
+            .trim()
+        val keyBytes = android.util.Base64.decode(privateKeyPem, android.util.Base64.DEFAULT)
+        val keySpec = java.security.spec.PKCS8EncodedKeySpec(keyBytes)
+        val privateKey = java.security.KeyFactory.getInstance("RSA").generatePrivate(keySpec)
+
+        val projectId = saJson.getString("project_id")
+        val clientEmail = saJson.getString("client_email")
+        val now = System.currentTimeMillis() / 1000
+        val scope = "https://www.googleapis.com/auth/firebase.messaging"
+
+        // Build JWT
+        val header = android.util.Base64.encodeToString(
+            """{"alg":"RS256","typ":"JWT"}""".toByteArray(), android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE
+        )
+        val claims = android.util.Base64.encodeToString(
+            """{"iss":"$clientEmail","scope":"$scope","aud":"https://oauth2.googleapis.com/token","iat":$now,"exp":${now + 3600}}""".toByteArray(),
+            android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE
+        )
+        val toSign = "$header.$claims"
+        val signer = java.security.Signature.getInstance("SHA256withRSA")
+        signer.initSign(privateKey)
+        signer.update(toSign.toByteArray())
+        val sig = android.util.Base64.encodeToString(signer.sign(), android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE)
+        val jwt = "$toSign.$sig"
+
+        // Exchange JWT for access token
+        val client = okhttp3.OkHttpClient()
+        val tokenReq = okhttp3.Request.Builder()
+            .url("https://oauth2.googleapis.com/token")
+            .post(okhttp3.FormBody.Builder()
+                .add("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer")
+                .add("assertion", jwt).build())
+            .build()
+        val tokenResp = client.newCall(tokenReq).execute()
+        val accessToken = org.json.JSONObject(tokenResp.body?.string() ?: "").optString("access_token")
+        if (accessToken.isEmpty()) return@withContext
+
+        // Send FCM data message (high priority - works even when app is killed)
+        val fcmPayload = org.json.JSONObject().apply {
+            put("message", org.json.JSONObject().apply {
+                put("token", fcmToken)
+                put("data", org.json.JSONObject().apply {
+                    put("type", "incoming_call")
+                    put("callerName", callerName)
+                    put("callerMobile", android.util.Base64.encodeToString(callerName.toByteArray(), android.util.Base64.NO_WRAP))
+                    put("callType", callType)
+                    put("callId", callId)
+                })
+                put("android", org.json.JSONObject().apply {
+                    put("priority", "HIGH")
+                })
+            })
+        }.toString()
+
+        val fcmReq = okhttp3.Request.Builder()
+            .url("https://fcm.googleapis.com/v1/projects/$projectId/messages:send")
+            .addHeader("Authorization", "Bearer $accessToken")
+            .addHeader("Content-Type", "application/json")
+            .post(okhttp3.RequestBody.create("application/json".toMediaTypeOrNull(), fcmPayload))
+            .build()
+        client.newCall(fcmReq).execute()
+    } catch (_: Exception) { }
 }
 // ==================== SEND MESSAGE ====================
 fun sendMessage(
@@ -3664,7 +3990,10 @@ fun normalizeNumber(raw: String): String {
         }
     }
 }
-fun getVideoCapturer(context: Context): Any? = null catch (_: Exception) {
+fun getVideoCapturer(context: Context): VideoCapturer? = try {
+    val e2 = Camera2Enumerator(context)
+    e2.deviceNames.firstOrNull { e2.isFrontFacing(it) }?.let { e2.createCapturer(it, null) }
+} catch (_: Exception) {
     try {
         val e1 = Camera1Enumerator(false)
         e1.deviceNames.firstOrNull { e1.isFrontFacing(it) }?.let { e1.createCapturer(it, null) }
