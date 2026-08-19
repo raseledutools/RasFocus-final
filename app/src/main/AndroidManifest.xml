@@ -922,6 +922,25 @@
         </intent-filter>
     </activity>
 
+
+    <!-- ✅ RasGram — WhatsApp-style messaging module -->
+    <activity
+        android:name=".selfcontrol.rasgram.RasGramActivity"
+        android:exported="false"
+        android:launchMode="singleTop"
+        android:theme="@style/Theme.RasFocus"
+        android:windowSoftInputMode="adjustResize"
+        android:configChanges="orientation|screenSize|keyboardHidden" />
+
+    <!-- RasGram FCM messaging service -->
+    <service
+        android:name=".selfcontrol.rasgram.RasgramMessagingService"
+        android:exported="false">
+        <intent-filter>
+            <action android:name="com.google.firebase.MESSAGING_EVENT" />
+        </intent-filter>
+    </service>
+
     </application>
 
 </manifest>
