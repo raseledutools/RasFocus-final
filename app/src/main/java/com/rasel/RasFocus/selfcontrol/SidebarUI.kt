@@ -89,13 +89,14 @@ fun DrawerContent(
                 DrawerMenuItem(Icons.Default.MenuBook, "Deep Study") { onNavigate("deep_study"); closeDrawer() }
                 DrawerMenuItem(Icons.Default.Settings, "Settings") { onNavigate("settings"); closeDrawer() }
                 DrawerMenuItem(Icons.Default.Lock, "Master Password", tint = AccentTeal) { onNavigate("master_password"); closeDrawer() }
+                val context = LocalContext.current
                 DrawerMenuItem(Icons.Default.Chat, "RasGram", tint = Color(0xFF25D366)) {
                     closeDrawer()
                     val intent = android.content.Intent(context, com.rasel.RasFocus.selfcontrol.rasgram.RasGramActivity::class.java)
                     intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                     context.startActivity(intent)
                 }
-                val launcherContext = LocalContext.current
+                val launcherContext = context
                 DrawerMenuItem(Icons.Default.Apps, "Set as Default Launcher", tint = Color(0xFF4FC3F7)) {
                     closeDrawer()
                     val intent = Intent(Settings.ACTION_HOME_SETTINGS).apply {

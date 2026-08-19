@@ -591,9 +591,7 @@ fun OtpLoginScreen(onLogin: (User) -> Unit) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = RasGramTheme.DarkPanel.copy(alpha = 0.8f)
-                ),
+                color = RasGramTheme.DarkPanel.copy(alpha = 0.8f),
                 shadowElevation = 12.dp,
                 border = BorderStroke(1.dp, RasGramTheme.Border.copy(alpha = 0.5f))
             ) {
