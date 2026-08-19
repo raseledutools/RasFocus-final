@@ -31,6 +31,11 @@
      used by the Pomodoro alarm scheduler in ButtonPhone.kt — without this, scheduling threw
      SecurityException and crashed the app on every Android 12-16 device. -->
 <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+<!-- FIX: USE_EXACT_ALARM is system-granted and cannot be revoked by the user (unlike
+     SCHEDULE_EXACT_ALARM which users can turn off in Settings). Required on targetSdk 33+
+     so that setExactAndAllowWhileIdle() always fires the Reminder alarm on time.
+     Both permissions declared so the OS picks the right one per API level. -->
+<uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
 <!-- FIX: Removed CAMERA, READ_MEDIA_IMAGES, READ_MEDIA_VIDEO, READ/WRITE_EXTERNAL_STORAGE
      — none of these are used in the current codebase. Re-add only if a feature actually

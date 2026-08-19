@@ -307,12 +307,27 @@ object ReminderAlarmPlayer {
 // ── Notification channel ───────────────────────────────────────────────────────
 fun ensureReminderChannel(context: Context) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        // Only create if the channel doesn't already exist — once created, settings cannot
+        // be changed programmatically (user controls them). If channel already exists, skip.
+        if (nm.getNotificationChannel(RM_CHANNEL_ID) != null) return
+        val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        val audioAttr = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_ALARM)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
         val ch = NotificationChannel(RM_CHANNEL_ID, RM_CHANNEL_NAME, NotificationManager.IMPORTANCE_HIGH).apply {
-            // Vibration and sound handled by ReminderAlarmPlayer — disable here to prevent double-vibrate/sound mix
-            enableVibration(false)
-            setSound(null, null)
+            // FIX: Do NOT silence the channel — setSound(null) and enableVibration(false) cause
+            // the OS to treat this as a silent channel and skip heads-up on the lock screen entirely,
+            // even at IMPORTANCE_HIGH. ReminderAlarmPlayer handles ringtone/vibration separately;
+            // the channel sound is a short OS-level alert that enables the heads-up banner.
+            setSound(alarmUri, audioAttr)
+            enableVibration(true)
+            vibrationPattern = longArrayOf(0, 300, 200, 300)
+            lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
         }
-        (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(ch)
+        nm.createNotificationChannel(ch)
     }
 }
 
@@ -353,6 +368,8 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         }
 
         // 4. Launch full-screen alarm popup Activity
+        // FIX: repeatType, customAmount, customUnit, triggerMillis were missing — ReminderAlarmActivity
+        // needs them to compute the correct "Next Run" time shown on the alarm screen.
         val popupIntent = Intent(context, ReminderAlarmActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or
                     Intent.FLAG_ACTIVITY_CLEAR_TOP or
@@ -365,6 +382,10 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
             putExtra("withVibration", withVib)
             putExtra("ringtoneUri", ringtoneUriStr)
             putExtra("ringtoneDuration", durationStr)
+            putExtra("repeatType", repeatTypeStr)
+            putExtra("customAmount", customAmount)
+            putExtra("customUnit", customUnitStr)
+            putExtra("triggerMillis", triggerMillis)
         }
         context.startActivity(popupIntent)
 
@@ -737,8 +758,18 @@ fun ReminderScreen(onBack: () -> Unit) {
                         ReminderListItem(
                             reminder = reminder,
                             onComplete = {
+                                // FIX: cancelling/uncancelling the alarm was missing entirely.
+                                // Marking complete must cancel the scheduled alarm so it doesn't fire.
+                                // Un-completing must reschedule if the trigger is still in the future.
+                                val nowCompleted = !reminder.isCompleted
+                                if (nowCompleted) {
+                                    cancelReminderAlarm(context, reminder.id)
+                                } else if (reminder.triggerMillis > System.currentTimeMillis()) {
+                                    ensureReminderChannel(context)
+                                    scheduleReminderAlarmFull(context, reminder.copy(isCompleted = false, isActive = true))
+                                }
                                 reminders = reminders.map {
-                                    if (it.id == reminder.id) it.copy(isCompleted = !it.isCompleted) else it
+                                    if (it.id == reminder.id) it.copy(isCompleted = nowCompleted) else it
                                 }
                             },
                             onDelete = {

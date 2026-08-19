@@ -24,13 +24,35 @@ class BootReceiver : BroadcastReceiver() {
                 }
             }
 
-            // Reschedule all active reminders — Android clears all alarms on reboot
+            // Reschedule all active reminders — Android clears all alarms on reboot.
+            // FIX: previously dropped overdue reminders silently. Now:
+            //   - Future one-time reminders → reschedule as-is.
+            //   - Overdue repeat reminders → find the next valid future trigger and reschedule.
+            //   - Overdue one-time reminders → skip (already missed, no repeat).
             try {
                 ensureReminderChannel(context)
                 val now = System.currentTimeMillis()
-                ReminderStorage.load(context)
-                    .filter { it.isActive && !it.isCompleted && it.triggerMillis > now }
-                    .forEach { scheduleReminderAlarmFull(context, it) }
+                val items = ReminderStorage.load(context)
+                val updated = items.map { item ->
+                    if (!item.isActive || item.isCompleted) return@map item
+                    if (item.triggerMillis > now) {
+                        scheduleReminderAlarmFull(context, item)
+                        item
+                    } else {
+                        val interval = com.rasel.RasFocus.selfcontrol.study_tools.repeatIntervalMillis(item)
+                        if (interval != null && interval > 0L) {
+                            var next = item.triggerMillis
+                            while (next <= now) next += interval
+                            val rescheduled = item.copy(triggerMillis = next)
+                            scheduleReminderAlarmFull(context, rescheduled)
+                            rescheduled
+                        } else {
+                            // One-time overdue — mark completed so it disappears from active list
+                            item.copy(isCompleted = true, isActive = false)
+                        }
+                    }
+                }
+                ReminderStorage.save(context, updated)
             } catch (e: Exception) {
                 e.printStackTrace()
             }

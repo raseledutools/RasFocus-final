@@ -68,8 +68,10 @@ private fun formatMinutes(minutes: Int): String {
 
 fun scheduleQuickReminder(context: Context, afterMinutes: Int, label: String = "Quick Reminder") {
     val triggerMillis = System.currentTimeMillis() + afterMinutes * 60_000L
+    // FIX: previous formula (90000 + afterMinutes + millis%1000) caused ID collisions when
+    // multiple quick reminders were set within the same second. Use full timestamp instead.
     val item = ReminderItem(
-        id = (90000 + afterMinutes + System.currentTimeMillis().toInt() % 1000),
+        id = (System.currentTimeMillis() and 0x7FFFFFFF).toInt(),
         title = label,
         triggerMillis = triggerMillis,
         repeatType = RepeatType.NONE,

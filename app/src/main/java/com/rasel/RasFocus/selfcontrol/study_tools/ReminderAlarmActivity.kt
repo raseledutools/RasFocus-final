@@ -98,12 +98,24 @@ class ReminderAlarmActivity : ComponentActivity() {
 
         startReRingLoop(ringtoneUri)
 
+        // Compute the next trigger time to display on the alarm screen
+        val repeatType = try { RepeatType.valueOf(repeatTypeStr) } catch (_: Exception) { RepeatType.NONE }
+        val customUnitEnum = try { CustomRepeatUnit.valueOf(customUnit) } catch (_: Exception) { CustomRepeatUnit.DAYS }
+        val fakeItemForInterval = ReminderItem(
+            id = notifId, title = title, triggerMillis = triggerMillis,
+            repeatType = repeatType, customRepeatAmount = customAmount,
+            customRepeatUnit = customUnitEnum
+        )
+        val intervalMs = repeatIntervalMillis(fakeItemForInterval)
+        val nextRunMillis = if (intervalMs != null && intervalMs > 0L) triggerMillis + intervalMs else 0L
+
         setContent {
             ReminderAlarmScreen(
                 title = title,
                 description = description,
                 repeatLabel = repeatLabel,
                 priority = priority,
+                nextRunMillis = nextRunMillis,
                 onSnooze = {
                     isDismissed = true
                     reRingRunnable?.let { reRingHandler.removeCallbacks(it) }
@@ -151,6 +163,7 @@ fun ReminderAlarmScreen(
     description: String,
     repeatLabel: String,
     priority: String,
+    nextRunMillis: Long = 0L,
     onSnooze: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -278,17 +291,22 @@ fun ReminderAlarmScreen(
                             Text("Repeat:  $repeatLabel", fontSize = 13.sp,
                                 color = Color.White.copy(alpha = 0.6f))
                         }
-                        val nextRun = SimpleDateFormat("d MMM yy  h:mm a", Locale.getDefault())
-                            .format(Date(System.currentTimeMillis()))
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Icon(Icons.Default.SkipNext, contentDescription = null,
-                                tint = Color.White.copy(alpha = 0.6f), modifier = Modifier.size(14.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Next Run:  $nextRun", fontSize = 13.sp,
-                                color = Color.White.copy(alpha = 0.6f))
+                        // FIX: was always showing System.currentTimeMillis() (i.e. "now").
+                        // Now uses the actual pre-computed next trigger time passed from the receiver.
+                        val nextRun = if (nextRunMillis > 0L)
+                            SimpleDateFormat("d MMM yy  h:mm a", Locale.getDefault()).format(Date(nextRunMillis))
+                        else ""
+                        if (nextRun.isNotBlank()) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(Icons.Default.SkipNext, contentDescription = null,
+                                    tint = Color.White.copy(alpha = 0.6f), modifier = Modifier.size(14.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Next Run:  $nextRun", fontSize = 13.sp,
+                                    color = Color.White.copy(alpha = 0.6f))
+                            }
                         }
                     }
                 }
