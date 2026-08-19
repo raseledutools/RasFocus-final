@@ -4,43 +4,40 @@
 ╚══════════════════════════════════════════╝
 
 === KOTLIN ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/SidebarUI.kt:94:57 Unresolved reference: context
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/SidebarUI.kt:96:21 Unresolved reference: context
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:594:17 Cannot find a parameter with this name: colors
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/SidebarUI.kt:92:21 Conflicting declarations: val context: Context, val context: Context
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/SidebarUI.kt:120:21 Conflicting declarations: val context: Context, val context: Context
 
 === UNRESOLVED / TYPE ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/SidebarUI.kt:94:57 Unresolved reference: context
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/SidebarUI.kt:96:21 Unresolved reference: context
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:594:17 Cannot find a parameter with this name: colors
 
 === BUILD FAILURE ===
 > Task :app:compileFullReleaseKotlin FAILED
 * What went wrong:
 Execution failed for task ':app:compileFullReleaseKotlin'.
-BUILD FAILED in 3m 53s
+BUILD FAILED in 3m 42s
 
 === LAST 60 LINES ===
+> Task :app:generateFullReleaseBuildConfig
 > Task :app:packageFullReleaseResources FROM-CACHE
 > Task :app:parseFullReleaseLocalResources FROM-CACHE
 > Task :app:mapFullReleaseSourceSetPaths
-> Task :app:mergeFullReleaseAssets FROM-CACHE
 > Task :app:mergeFullReleaseArtProfile
 > Task :app:validateSigningFullRelease
 > Task :app:writeFullReleaseAppMetadata
-> Task :app:checkFullReleaseAarMetadata
 > Task :app:writeFullReleaseSigningConfigVersions
-> Task :app:compressFullReleaseAssets FROM-CACHE
-> Task :app:checkFullReleaseDuplicateClasses
 > Task :app:collectFullReleaseDependencies
+> Task :app:mergeFullReleaseAssets FROM-CACHE
+> Task :app:checkFullReleaseAarMetadata
+> Task :app:checkFullReleaseDuplicateClasses
+> Task :app:compressFullReleaseAssets FROM-CACHE
 > Task :app:mergeFullReleaseNativeLibs
 > Task :app:sdkFullReleaseDependencyData
+> Task :app:mergeFullReleaseResources FROM-CACHE
 
 > Task :app:stripFullReleaseDebugSymbols
 Unable to strip the following libraries, packaging them as they are: libbarhopper_v3.so, libimage_processing_util_jni.so, libjingle_peerconnection_so.so, libpdfium.so, libpdfiumandroid.so.
 
 > Task :app:extractFullReleaseNativeSymbolTables FROM-CACHE
 > Task :app:mergeFullReleaseNativeDebugMetadata NO-SOURCE
-> Task :app:mergeFullReleaseResources FROM-CACHE
 > Task :app:processFullReleaseMainManifest
 > Task :app:processFullReleaseManifest
 > Task :app:processFullReleaseManifestForPackage
@@ -51,12 +48,11 @@ note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round ico
 > Task :app:processFullReleaseResources
 > Task :app:kspFullReleaseKotlin
 > Task :app:compileFullReleaseKotlin
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/SidebarUI.kt:94:57 Unresolved reference: context
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/SidebarUI.kt:96:21 Unresolved reference: context
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:594:17 Cannot find a parameter with this name: colors
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/SidebarUI.kt:92:21 Conflicting declarations: val context: Context, val context: Context
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/SidebarUI.kt:120:21 Conflicting declarations: val context: Context, val context: Context
 
 > Task :app:compileFullReleaseKotlin FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1787147190032.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1787147570803.json
 
 FAILURE: Build failed with an exception.
 
@@ -77,6 +73,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 3m 53s
+BUILD FAILED in 3m 42s
 32 actionable tasks: 22 executed, 10 from cache
 Configuration cache entry stored.
