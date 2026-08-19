@@ -1206,6 +1206,10 @@ fun ChatsTab(
 
     // ─── Contact Sync (WhatsApp style) ───────────────────────────────────────
     var deviceContactNumbers by remember { mutableStateOf<Set<String>>(emptySet()) }
+    // contactsLoaded = true once we've actually attempted to read the phonebook
+    // (or confirmed permission is denied). Until then we skip the phonebook
+    // filter so the chat list is visible immediately — exactly like WhatsApp.
+    var contactsLoaded by remember { mutableStateOf(false) }
     var contactsPermissionGranted by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS)
@@ -1220,14 +1224,17 @@ fun ChatsTab(
         if (granted) {
             deviceContactNumbers = getDeviceContactNumbers(context)
         }
+        contactsLoaded = true // permission dialog dismissed — either way, stop blocking
     }
 
     // Permission check + load contacts on first open
     LaunchedEffect(contactsPermissionGranted) {
         if (contactsPermissionGranted) {
             deviceContactNumbers = getDeviceContactNumbers(context)
+            contactsLoaded = true
         } else {
             contactsPermissionLauncher.launch(Manifest.permission.READ_CONTACTS)
+            // contactsLoaded stays false until the launcher callback fires
         }
     }
     // ─────────────────────────────────────────────────────────────────────────
@@ -1289,13 +1296,13 @@ fun ChatsTab(
         }
     }
 
-    // WhatsApp style: শুধু phonebook contacts যারা RasGram-এ আছে
+    // WhatsApp style: শুধু phonebook contacts যারা RasGram-এ আছে।
+    // contactsLoaded না হওয়া পর্যন্ত phonebook filter skip — সরাসরি chat list দেখাও।
     val filteredUsers = users.filter { user ->
-        val isInPhonebook = if (deviceContactNumbers.isEmpty()) {
-            // Permission না পেলে সব users দেখাও (fallback)
-            true
-        } else {
-            deviceContactNumbers.contains(user.mobile)
+        val isInPhonebook = when {
+            !contactsLoaded -> true                              // এখনও load হয়নি → সব দেখাও
+            deviceContactNumbers.isEmpty() -> true               // permission deny → fallback সব দেখাও
+            else -> deviceContactNumbers.contains(user.mobile)   // normal phonebook filter
         }
         isInPhonebook && (
             user.name.contains(searchQuery, ignoreCase = true) ||
