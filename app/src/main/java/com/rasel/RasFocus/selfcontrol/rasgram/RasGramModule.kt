@@ -294,7 +294,12 @@ class MainActivity : ComponentActivity() {
 
 // ==================== ROOT APP ====================
 @Composable
-fun RasGramApp() {
+fun RasGramApp(
+    incomingCallId: String? = null,
+    incomingCallerMobile: String? = null,
+    incomingCallerName: String? = null,
+    incomingCallType: String? = null
+) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE) }
 
@@ -358,7 +363,11 @@ fun RasGramApp() {
                         .putString(PREF_NAME_KEY, updated.name)
                         .putString(PREF_AVATAR, updated.avatarUrl)
                         .apply()
-                }
+                },
+                incomingCallId = incomingCallId,
+                incomingCallerMobile = incomingCallerMobile,
+                incomingCallerName = incomingCallerName,
+                incomingCallType = incomingCallType
             )
         }
     }
@@ -915,7 +924,11 @@ fun MainScreen(
     isDarkMode: Boolean,
     onToggleTheme: () -> Unit,
     onLogout: () -> Unit,
-    onUserUpdate: (User) -> Unit
+    onUserUpdate: (User) -> Unit,
+    incomingCallId: String? = null,
+    incomingCallerMobile: String? = null,
+    incomingCallerName: String? = null,
+    incomingCallType: String? = null
 ) {
     val context = LocalContext.current
     val db = remember { FirebaseFirestore.getInstance() }
