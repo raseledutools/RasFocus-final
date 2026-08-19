@@ -99,11 +99,7 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent-filter>
-        <intent-filter>
-            <action android:name="android.intent.action.MAIN" />
-            <category android:name="android.intent.category.HOME" />
-            <category android:name="android.intent.category.DEFAULT" />
-        </intent-filter>
+
         <!-- ✅ Home screen static shortcut — PDF Viewer -->
         <meta-data
             android:name="android.app.shortcuts"
@@ -912,6 +908,20 @@
             android:exported="false"
             android:hardwareAccelerated="true"
             android:theme="@style/Theme.RasFocus.FileManager" />
+
+    <!-- ✅ Minimalist Launcher — HOME intent handled here, not in MainActivity -->
+    <activity
+        android:name=".selfcontrol.launcher.LauncherActivity"
+        android:exported="true"
+        android:launchMode="singleTask"
+        android:theme="@style/Theme.RasFocus">
+        <intent-filter>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.HOME" />
+            <category android:name="android.intent.category.DEFAULT" />
+        </intent-filter>
+    </activity>
+
     </application>
 
 </manifest>
