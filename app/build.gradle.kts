@@ -298,6 +298,8 @@ dependencies {
     // ✅ RasGram — file sharing + push notifications
     implementation("com.google.firebase:firebase-storage-ktx")
     implementation("com.google.firebase:firebase-messaging-ktx")
+    // ✅ RasGram — WebRTC voice/video calls
+    implementation("io.getstream:stream-webrtc-android:1.1.1")
 
     // Biometric
     implementation("androidx.biometric:biometric:1.1.0")
