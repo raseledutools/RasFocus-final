@@ -1,8 +1,131 @@
 ╔══════════════════════════════════════════╗
-║        LAST BUILD: SUCCESS ✅            ║
+║      LAST BUILD: ERROR ❌                ║
+║   Push করার আগে এই error fix করুন।     ║
 ╚══════════════════════════════════════════╝
 
-Build passed at: 2026-08-18 16:25:00 UTC
-Run: #868  |  Commit: 7cc628d8b4799a7935e4a2a5f68a72acb6a01fff
+=== KOTLIN ERRORS ===
+e: [ksp] /home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt: (3376, 68): Function declaration must have a name
+e: Error occurred in KSP, check log for detail
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3376:1 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3376:2 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3376:4 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3376:10 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3376:11 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3376:17 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3376:18 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3376:20 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3376:26 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3376:27 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3376:29 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3376:35 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3376:36 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3376:38 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3376:40 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3376:51 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3376:52 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3376:63 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3376:64 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3376:66 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3376:68 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:17 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:23 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:24 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:27 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:28 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:32 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:33 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:36 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:38 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:49 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:50 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:51 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:56 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:70 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:73 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:74 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:76 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:78 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3407:10 Expecting 'catch' or 'finally'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3425:7 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3425:13 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3425:14 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3425:15 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3425:17 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3425:26 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3425:28 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3428:1 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3667:61 Expecting ')'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3667:61 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3667:63 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3667:72 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3667:74 Expecting a top level declaration
 
-No errors. Safe to push.
+=== UNRESOLVED / TYPE ERRORS ===
+
+=== BUILD FAILURE ===
+> Task :app:kspFullReleaseKotlin FAILED
+* What went wrong:
+Execution failed for task ':app:kspFullReleaseKotlin'.
+BUILD FAILED in 32s
+
+=== LAST 60 LINES ===
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3376:63 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3376:64 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3376:66 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3376:68 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:17 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:23 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:24 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:27 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:28 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:32 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:33 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:36 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:38 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:49 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:50 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:51 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:56 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:70 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:73 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:74 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:76 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3400:78 Expecting member declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3407:10 Expecting 'catch' or 'finally'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3425:7 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3425:13 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3425:14 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3425:15 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3425:17 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3425:26 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3425:28 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3428:1 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3667:61 Expecting ')'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3667:61 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3667:63 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3667:72 Expecting a top level declaration
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3667:74 Expecting a top level declaration
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1787130886596.json
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:kspFullReleaseKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 32s
+31 actionable tasks: 21 executed, 10 from cache
+Configuration cache entry stored.
