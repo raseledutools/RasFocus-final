@@ -935,6 +935,14 @@ fun MainScreen(
     val context = LocalContext.current
     val db = remember { FirebaseFirestore.getInstance() }
 
+    // Incoming call state — lock screen বা app-open দুটো path থেকেই আসতে পারে
+    // Must be declared before any LaunchedEffect that references these variables
+    var showIncomingCall by remember { mutableStateOf(incomingCallId != null) }
+    var activeIncomingCallId by remember { mutableStateOf(incomingCallId ?: "") }
+    var activeIncomingCallerMobile by remember { mutableStateOf(incomingCallerMobile ?: "") }
+    var activeIncomingCallerName by remember { mutableStateOf(incomingCallerName ?: "") }
+    var activeIncomingCallType by remember { mutableStateOf(incomingCallType ?: "audio") }
+
     // Request permissions dynamically
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
     LaunchedEffect(Unit) {
@@ -968,13 +976,6 @@ fun MainScreen(
     var callContact by remember { mutableStateOf<User?>(null) }
     var liveCurrentUser by remember { mutableStateOf(currentUser) }
     val isCompact = isCompactScreen()
-
-    // Incoming call state — lock screen বা app-open দুটো path থেকেই আসতে পারে
-    var showIncomingCall by remember { mutableStateOf(incomingCallId != null) }
-    var activeIncomingCallId by remember { mutableStateOf(incomingCallId ?: "") }
-    var activeIncomingCallerMobile by remember { mutableStateOf(incomingCallerMobile ?: "") }
-    var activeIncomingCallerName by remember { mutableStateOf(incomingCallerName ?: "") }
-    var activeIncomingCallType by remember { mutableStateOf(incomingCallType ?: "audio") }
 
     // Keep user online + sync profile
     LaunchedEffect(currentUser.mobile) {
