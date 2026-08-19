@@ -96,18 +96,17 @@ fun DrawerContent(
                     intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                     context.startActivity(intent)
                 }
-                val launcherContext = context
                 DrawerMenuItem(Icons.Default.Apps, "Set as Default Launcher", tint = Color(0xFF4FC3F7)) {
                     closeDrawer()
                     val intent = Intent(Settings.ACTION_HOME_SETTINGS).apply {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
                     try {
-                        launcherContext.startActivity(intent)
+                        context.startActivity(intent)
                     } catch (_: Exception) {
                         // fallback: manage default apps
                         try {
-                            launcherContext.startActivity(
+                            context.startActivity(
                                 Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS).apply {
                                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                 }
@@ -117,7 +116,6 @@ fun DrawerContent(
                 }
 
                 var showUpdateDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-                val context = androidx.compose.ui.platform.LocalContext.current
                 DrawerMenuItem(Icons.Default.SystemUpdateAlt, "Check for Updates") { showUpdateDialog = true }
                 if (showUpdateDialog) {
                     AlertDialog(
