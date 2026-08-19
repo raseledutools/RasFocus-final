@@ -939,7 +939,7 @@ fun MainScreen(
         permissionLauncher.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO))
     }
 
-    // Listen for incoming calls when app is open (e.g. from Web version)
+    // Listen for incoming calls when app is open — IncomingCallScreen দেখাও directly
     LaunchedEffect(currentUser.mobile) {
         db.collection("calls")
             .whereEqualTo("callee", currentUser.mobile)
@@ -948,15 +948,11 @@ fun MainScreen(
                 snapshot?.documentChanges?.forEach { change ->
                     if (change.type == com.google.firebase.firestore.DocumentChange.Type.ADDED) {
                         val data = change.document.data
-                        val intent = Intent(context, RasGramActivity::class.java).apply {
-                            action = "ACTION_INCOMING_CALL"
-                            putExtra("callId", change.document.id)
-                            putExtra("callerMobile", data["caller"] as? String ?: "")
-                            putExtra("callerName", data["callerName"] as? String ?: "")
-                            putExtra("callType", data["type"] as? String ?: "audio")
-                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                        }
-                        context.startActivity(intent)
+                        activeIncomingCallId = change.document.id
+                        activeIncomingCallerMobile = data["caller"] as? String ?: ""
+                        activeIncomingCallerName = data["callerName"] as? String ?: ""
+                        activeIncomingCallType = data["type"] as? String ?: "audio"
+                        showIncomingCall = true
                     }
                 }
             }
@@ -970,6 +966,13 @@ fun MainScreen(
     var callContact by remember { mutableStateOf<User?>(null) }
     var liveCurrentUser by remember { mutableStateOf(currentUser) }
     val isCompact = isCompactScreen()
+
+    // Incoming call state — lock screen বা app-open দুটো path থেকেই আসতে পারে
+    var showIncomingCall by remember { mutableStateOf(incomingCallId != null) }
+    var activeIncomingCallId by remember { mutableStateOf(incomingCallId ?: "") }
+    var activeIncomingCallerMobile by remember { mutableStateOf(incomingCallerMobile ?: "") }
+    var activeIncomingCallerName by remember { mutableStateOf(incomingCallerName ?: "") }
+    var activeIncomingCallType by remember { mutableStateOf(incomingCallType ?: "audio") }
 
     // Keep user online + sync profile
     LaunchedEffect(currentUser.mobile) {
@@ -1086,13 +1089,41 @@ fun MainScreen(
         }
     }
 
-    // Incoming call overlay
+    // Outgoing call overlay
     if (showCallUI && callContact != null) {
         CallingScreen(
             currentUser = liveCurrentUser,
             contact = callContact!!,
             callType = callType,
             onEndCall = { showCallUI = false }
+        )
+    }
+
+    // Incoming call overlay — WhatsApp-style full screen accept/decline
+    if (showIncomingCall && activeIncomingCallId.isNotEmpty()) {
+        IncomingCallScreen(
+            currentUser = liveCurrentUser,
+            callerName = activeIncomingCallerName,
+            callerMobile = activeIncomingCallerMobile,
+            callType = activeIncomingCallType,
+            callId = activeIncomingCallId,
+            onAccept = {
+                // Accept হলে — CallingScreen এর receiver mode তে যাও
+                showIncomingCall = false
+                // callContact খোঁজো Firebase থেকে; না পেলে placeholder দিয়ে চালাও
+                callType = activeIncomingCallType
+                callContact = User(
+                    uid = "",
+                    name = activeIncomingCallerName,
+                    mobile = activeIncomingCallerMobile,
+                    avatarUrl = ""
+                )
+                showCallUI = true
+            },
+            onDecline = {
+                showIncomingCall = false
+                activeIncomingCallId = ""
+            }
         )
     }
 
@@ -3099,6 +3130,9 @@ fun CallingScreen(
     var isConnected by remember { mutableStateOf(false) }
     var callSeconds by remember { mutableIntStateOf(0) }
     var callId by remember { mutableStateOf("") }
+    // Call ended duration summary
+    var showEndedSummary by remember { mutableStateOf(false) }
+    var finalCallSeconds by remember { mutableIntStateOf(0) }
 
     val eglBase = remember { EglBase.create() }
     val peerConnectionFactory = remember {
@@ -3319,7 +3353,17 @@ fun CallingScreen(
                                 isMuted = !isMuted
                                 localStream?.audioTracks?.firstOrNull()?.setEnabled(!isMuted)
                             }
-                            FloatingActionButton(onClick = { scope.launch { if (callId.isNotEmpty()) db.collection("calls").document(callId).update("status", "ended"); onEndCall() } }, containerColor = RasGramTheme.Red, modifier = Modifier.size(72.dp)) {
+                            FloatingActionButton(onClick = {
+                                scope.launch {
+                                    if (callId.isNotEmpty()) db.collection("calls").document(callId).update("status", "ended")
+                                    if (isConnected && callSeconds > 0) {
+                                        finalCallSeconds = callSeconds
+                                        showEndedSummary = true
+                                    } else {
+                                        onEndCall()
+                                    }
+                                }
+                            }, containerColor = RasGramTheme.Red, modifier = Modifier.size(72.dp)) {
                                 Icon(Icons.Default.CallEnd, null, tint = Color.White, modifier = Modifier.size(32.dp))
                             }
                             CallControlButton(icon = if (isSpeakerOn) Icons.Default.VolumeUp else Icons.Default.VolumeOff, label = "Speaker", isActive = isSpeakerOn, activeColor = RasGramTheme.Green) {
@@ -3338,6 +3382,259 @@ fun CallingScreen(
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+
+    // ── Call ended duration summary overlay ──────────────────────────────────
+    if (showEndedSummary) {
+        Box(
+            modifier = Modifier.fillMaxSize().background(Color(0xCC000000)),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    modifier = Modifier
+                        .size(80.dp)
+                        .background(Color(0xFF1E2B23), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.CallEnd,
+                        contentDescription = null,
+                        tint = Color(0xFFFF4444),
+                        modifier = Modifier.size(36.dp)
+                    )
+                }
+                Spacer(Modifier.height(20.dp))
+                Text(
+                    contact.name,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 22.sp
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "কল শেষ",
+                    color = RasGramTheme.TextMuted,
+                    fontSize = 14.sp
+                )
+                Spacer(Modifier.height(16.dp))
+                // Duration pill
+                Box(
+                    modifier = Modifier
+                        .background(Color(0xFF1E3A2B), RoundedCornerShape(50.dp))
+                        .padding(horizontal = 24.dp, vertical = 12.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.AccessTime,
+                            contentDescription = null,
+                            tint = RasGramTheme.Green,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        val mins = finalCallSeconds / 60
+                        val secs = finalCallSeconds % 60
+                        val durationText = when {
+                            mins == 0 -> "$secs সেকেন্ড"
+                            secs == 0 -> "$mins মিনিট"
+                            else -> "$mins মিনিট $secs সেকেন্ড"
+                        }
+                        Text(
+                            "কথা হয়েছে $durationText",
+                            color = RasGramTheme.Green,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 16.sp
+                        )
+                    }
+                }
+                Spacer(Modifier.height(32.dp))
+                Button(
+                    onClick = { showEndedSummary = false; onEndCall() },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A2A2A)),
+                    shape = RoundedCornerShape(50.dp),
+                    contentPadding = PaddingValues(horizontal = 36.dp, vertical = 14.dp)
+                ) {
+                    Text("বন্ধ করুন", color = Color.White, fontWeight = FontWeight.Medium)
+                }
+            }
+        }
+    }
+}
+
+// ==================== INCOMING CALL SCREEN ====================
+// WhatsApp-style full-screen incoming call UI
+@Composable
+fun IncomingCallScreen(
+    currentUser: User,
+    callerName: String,
+    callerMobile: String,
+    callType: String,
+    callId: String,
+    onAccept: () -> Unit,
+    onDecline: () -> Unit
+) {
+    val context = LocalContext.current
+    val db = remember { FirebaseFirestore.getInstance() }
+    val scope = rememberCoroutineScope()
+
+    // Ringing animation
+    val infiniteTransition = rememberInfiniteTransition(label = "ring")
+    val ringScale by infiniteTransition.animateFloat(
+        initialValue = 1f, targetValue = 1.18f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(700, easing = EaseInOut),
+            repeatMode = RepeatMode.Reverse
+        ), label = "ringScale"
+    )
+    val ringAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.5f, targetValue = 0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000), repeatMode = RepeatMode.Restart
+        ), label = "ringAlpha"
+    )
+
+    // Auto-dismiss যদি caller cancel করে
+    LaunchedEffect(callId) {
+        db.collection("calls").document(callId).addSnapshotListener { snap, _ ->
+            val status = snap?.getString("status") ?: return@addSnapshotListener
+            if (status == "ended" || status == "rejected" || status == "missed") {
+                onDecline()
+            }
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color(0xFF0B3D2E), Color(0xFF071A14))
+                )
+            )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .systemBarsPadding()
+                .padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Spacer(Modifier.height(60.dp))
+
+            // Call type label
+            Text(
+                if (callType == "video") "📹  ভিডিও কল আসছে..." else "📞  অডিও কল আসছে...",
+                color = RasGramTheme.Green.copy(alpha = 0.85f),
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium
+            )
+
+            Spacer(Modifier.height(32.dp))
+
+            // Avatar with ripple ring
+            Box(contentAlignment = Alignment.Center) {
+                // Outer ripple
+                Box(
+                    modifier = Modifier
+                        .size((120 * ringScale).dp)
+                        .background(RasGramTheme.Green.copy(alpha = ringAlpha * 0.3f), CircleShape)
+                )
+                // Inner ring
+                Box(
+                    modifier = Modifier
+                        .size(130.dp)
+                        .background(RasGramTheme.Green.copy(alpha = 0.15f), CircleShape)
+                )
+                // Avatar
+                AsyncImage(
+                    model = "https://ui-avatars.com/api/?name=${callerName.replace(" ", "+")}&size=200&background=128C7E&color=fff",
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(110.dp)
+                        .clip(CircleShape)
+                        .border(3.dp, RasGramTheme.Green, CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            Text(
+                callerName,
+                color = Color.White,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 28.sp
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                callerMobile,
+                color = RasGramTheme.TextMuted,
+                fontSize = 15.sp
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "RasGram",
+                color = RasGramTheme.Green.copy(alpha = 0.7f),
+                fontSize = 13.sp
+            )
+
+            Spacer(Modifier.weight(1f))
+
+            // Accept / Decline buttons — WhatsApp layout
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 60.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Decline
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    FloatingActionButton(
+                        onClick = {
+                            scope.launch {
+                                db.collection("calls").document(callId).update("status", "rejected")
+                            }
+                            onDecline()
+                        },
+                        containerColor = Color(0xFFE53935),
+                        modifier = Modifier.size(72.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.CallEnd,
+                            contentDescription = "Decline",
+                            tint = Color.White,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Text("প্রত্যাখ্যান", color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp)
+                }
+
+                // Accept
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    FloatingActionButton(
+                        onClick = {
+                            scope.launch {
+                                db.collection("calls").document(callId).update("status", "answered")
+                            }
+                            onAccept()
+                        },
+                        containerColor = RasGramTheme.Green,
+                        modifier = Modifier.size(72.dp)
+                    ) {
+                        Icon(
+                            if (callType == "video") Icons.Default.Videocam else Icons.Default.Call,
+                            contentDescription = "Accept",
+                            tint = Color.White,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Text("গ্রহণ", color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp)
                 }
             }
         }
