@@ -300,6 +300,9 @@ dependencies {
     implementation("com.google.firebase:firebase-messaging-ktx")
     // ✅ RasGram — WebRTC voice/video calls
     implementation("io.getstream:stream-webrtc-android:1.1.1")
+    // ✅ RasGram — Cloudinary file upload
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okio:okio:3.9.0")
 
     // Biometric
     implementation("androidx.biometric:biometric:1.1.0")
