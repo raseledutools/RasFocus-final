@@ -375,7 +375,7 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         
         val contentIntent = PendingIntent.getActivity(
             context, notifId + 40000,
-            Intent(context, StudyToolsActivity::class.java).apply {
+            Intent(context, com.rasel.RasFocus.MainActivity::class.java).apply {
                 putExtra("open_tab", "reminder")
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             },
@@ -507,19 +507,20 @@ fun scheduleReminderAlarmFull(context: Context, item: ReminderItem) {
         context, item.id, intent,
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
-    val triggerAt = SystemClock.elapsedRealtime() + (item.triggerMillis - System.currentTimeMillis()).coerceAtLeast(1000L)
+    // RTC_WAKEUP: wall-clock এর সাথে directly match করে — ELAPSED_REALTIME এর চেয়ে reliable
+    // কারণ ELAPSED_REALTIME boot থেকে count করে, RTC_WAKEUP actual time use করে
+    val triggerAt = item.triggerMillis.coerceAtLeast(System.currentTimeMillis() + 1000L)
     try {
         val canExact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || am.canScheduleExactAlarms()
         when {
             canExact && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ->
-                am.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pi)
+                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi)
             canExact ->
-                am.setExact(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pi)
+                am.setExact(AlarmManager.RTC_WAKEUP, triggerAt, pi)
             else ->
-                // Exact alarm permission not granted — fall back to inexact (still fires, just may be slightly delayed)
-                am.set(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pi)
+                am.set(AlarmManager.RTC_WAKEUP, triggerAt, pi)
         }
-    } catch (_: Exception) { am.set(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pi) }
+    } catch (_: Exception) { am.set(AlarmManager.RTC_WAKEUP, triggerAt, pi) }
 }
 
 fun cancelReminderAlarm(context: Context, reminderId: Int) {
