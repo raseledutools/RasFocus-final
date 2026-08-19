@@ -4,6 +4,10 @@
 
 <uses-permission android:name="android.permission.INTERNET" />
 <uses-permission android:name="android.permission.WAKE_LOCK" />
+<uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+<uses-permission android:name="android.permission.TURN_SCREEN_ON" />
+<uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
 <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
@@ -930,6 +934,8 @@
         android:launchMode="singleTop"
         android:theme="@style/Theme.RasFocus"
         android:windowSoftInputMode="adjustResize"
+        android:showWhenLocked="true"
+        android:turnScreenOn="true"
         android:configChanges="orientation|screenSize|keyboardHidden" />
 
     <!-- RasGram — Decline incoming call broadcast -->
@@ -937,7 +943,7 @@
         android:name=".selfcontrol.rasgram.DeclineCallReceiver"
         android:exported="false" />
 
-    <!-- RasGram FCM messaging service -->
+    <!-- RasGram FCM messaging service — exported=true required for FCM delivery -->
     <service
         android:name=".selfcontrol.rasgram.RasgramMessagingService"
         android:exported="false">

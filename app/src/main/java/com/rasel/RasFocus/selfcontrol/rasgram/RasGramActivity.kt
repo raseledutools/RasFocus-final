@@ -1,6 +1,9 @@
 package com.rasel.RasFocus.selfcontrol.rasgram
 
+import android.app.KeyguardManager
+import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -19,6 +22,12 @@ class RasGramActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         handleIncomingIntent()
+
+        // Lock screen bypass — show call UI over lock screen (WhatsApp style)
+        if (isIncomingCall) {
+            enableLockScreenDisplay()
+        }
+
         setContent {
             RasFocusAppTheme {
                 RasGramApp(
@@ -31,10 +40,32 @@ class RasGramActivity : ComponentActivity() {
         }
     }
 
+    private fun enableLockScreenDisplay() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            // API 27+ — use Activity flags
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+            val km = getSystemService(KeyguardManager::class.java)
+            km?.requestDismissKeyguard(this, null)
+        } else {
+            // API < 27 — use Window flags (deprecated but still needed for old devices)
+            @Suppress("DEPRECATION")
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+            )
+        }
+    }
+
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         handleIncomingIntent()
+        if (isIncomingCall) {
+            enableLockScreenDisplay()
+        }
     }
 
     private fun handleIncomingIntent() {
