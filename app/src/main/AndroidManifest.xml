@@ -932,6 +932,11 @@
         android:windowSoftInputMode="adjustResize"
         android:configChanges="orientation|screenSize|keyboardHidden" />
 
+    <!-- RasGram — Decline incoming call broadcast -->
+    <receiver
+        android:name=".selfcontrol.rasgram.DeclineCallReceiver"
+        android:exported="false" />
+
     <!-- RasGram FCM messaging service -->
     <service
         android:name=".selfcontrol.rasgram.RasgramMessagingService"
