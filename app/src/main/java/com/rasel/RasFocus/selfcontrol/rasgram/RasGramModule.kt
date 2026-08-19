@@ -3196,7 +3196,9 @@ fun CallingScreen(
                             override fun onSetSuccess() {
                                 scope.launch {
                                     db.collection("calls").document(callId).set(hashMapOf(
-                                        "caller" to currentUser.mobile, "callee" to contact.mobile,
+                                        "caller" to currentUser.mobile,
+                                        "callerName" to currentUser.name,
+                                        "callee" to contact.mobile,
                                         "type" to callType, "status" to "calling",
                                         "timestamp" to System.currentTimeMillis(),
                                         "offer" to mapOf("type" to s.type.canonicalForm(), "sdp" to s.description)
@@ -3204,6 +3206,7 @@ fun CallingScreen(
                                     // Send FCM push to callee so call arrives even if app is closed
                                     sendFcmCallNotification(
                                         calleeMobile = contact.mobile,
+                                        callerMobile = currentUser.mobile,
                                         callerName = currentUser.name,
                                         callType = callType,
                                         callId = callId,
@@ -3692,6 +3695,7 @@ fun getFileName(context: Context, uri: Uri): String? = try {
  */
 suspend fun sendFcmCallNotification(
     calleeMobile: String,
+    callerMobile: String,
     callerName: String,
     callType: String,
     callId: String,
@@ -3759,7 +3763,7 @@ suspend fun sendFcmCallNotification(
                 put("data", org.json.JSONObject().apply {
                     put("type", "incoming_call")
                     put("callerName", callerName)
-                    put("callerMobile", android.util.Base64.encodeToString(callerName.toByteArray(), android.util.Base64.NO_WRAP))
+                    put("callerMobile", callerMobile)
                     put("callType", callType)
                     put("callId", callId)
                 })
