@@ -15,6 +15,8 @@ import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.MediaRecorder
+import android.media.Ringtone
+import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Bundle
 import android.os.VibrationEffect
@@ -3480,6 +3482,34 @@ fun IncomingCallScreen(
     val db = remember { FirebaseFirestore.getInstance() }
     val scope = rememberCoroutineScope()
 
+    // ── ফোনের default call ringtone বাজানো ──────────────────────────────────
+    val ringtone: Ringtone? = remember {
+        try {
+            val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+            RingtoneManager.getRingtone(context, uri)
+        } catch (e: Exception) { null }
+    }
+    val audioManager = remember {
+        context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    }
+
+    // Screen compose হলে ring শুরু, dispose হলে বন্ধ
+    DisposableEffect(Unit) {
+        try {
+            // সাময়িকভাবে volume max করো (user এর ring mode মেনে চলে)
+            ringtone?.play()
+        } catch (_: Exception) {}
+        onDispose {
+            try { ringtone?.stop() } catch (_: Exception) {}
+        }
+    }
+
+    // helper — ringtone বন্ধ করে callback চালাও
+    fun stopAndCall(action: () -> Unit) {
+        try { ringtone?.stop() } catch (_: Exception) {}
+        action()
+    }
+
     // Ringing animation
     val infiniteTransition = rememberInfiniteTransition(label = "ring")
     val ringScale by infiniteTransition.animateFloat(
@@ -3501,6 +3531,7 @@ fun IncomingCallScreen(
         db.collection("calls").document(callId).addSnapshotListener { snap, _ ->
             val status = snap?.getString("status") ?: return@addSnapshotListener
             if (status == "ended" || status == "rejected" || status == "missed") {
+                try { ringtone?.stop() } catch (_: Exception) {}
                 onDecline()
             }
         }
@@ -3595,10 +3626,12 @@ fun IncomingCallScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     FloatingActionButton(
                         onClick = {
-                            scope.launch {
-                                db.collection("calls").document(callId).update("status", "rejected")
+                            stopAndCall {
+                                scope.launch {
+                                    db.collection("calls").document(callId).update("status", "rejected")
+                                }
+                                onDecline()
                             }
-                            onDecline()
                         },
                         containerColor = Color(0xFFE53935),
                         modifier = Modifier.size(72.dp)
@@ -3618,10 +3651,12 @@ fun IncomingCallScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     FloatingActionButton(
                         onClick = {
-                            scope.launch {
-                                db.collection("calls").document(callId).update("status", "answered")
+                            stopAndCall {
+                                scope.launch {
+                                    db.collection("calls").document(callId).update("status", "answered")
+                                }
+                                onAccept()
                             }
-                            onAccept()
                         },
                         containerColor = RasGramTheme.Green,
                         modifier = Modifier.size(72.dp)
