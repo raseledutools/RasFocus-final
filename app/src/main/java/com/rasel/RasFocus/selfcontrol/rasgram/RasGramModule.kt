@@ -1610,12 +1610,15 @@ fun ChatsHeader(
     var showMenu by remember { mutableStateOf(false) }
 
     Row(
-        modifier = Modifier.fillMaxWidth().background(RasGramTheme.DarkPanel).padding(horizontal = 16.dp).height(60.dp),
+        modifier = Modifier.fillMaxWidth().background(RasGramTheme.DarkPanel)
+            .padding(horizontal = 16.dp).height(60.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-            Text("Ras", style = MaterialTheme.typography.titleLarge, color = RasGramTheme.TextPrimary, fontWeight = FontWeight.ExtraBold)
-            Text("Gram", style = MaterialTheme.typography.titleLarge, color = RasGramTheme.Green, fontWeight = FontWeight.ExtraBold)
+            Text("Ras", style = MaterialTheme.typography.titleLarge,
+                color = RasGramTheme.TextPrimary, fontWeight = FontWeight.ExtraBold)
+            Text("Gram", style = MaterialTheme.typography.titleLarge,
+                color = RasGramTheme.Green, fontWeight = FontWeight.ExtraBold)
         }
         IconButton(onClick = onSearchClick) {
             Icon(Icons.Default.Search, null, tint = RasGramTheme.TextMuted)
@@ -1658,29 +1661,43 @@ fun ChatsHeader(
 @Composable
 fun SearchBar(query: String, onQueryChange: (String) -> Unit, onClose: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().background(RasGramTheme.DarkPanel).padding(8.dp),
+        modifier = Modifier.fillMaxWidth().background(RasGramTheme.DarkPanel)
+            .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(onClick = onClose) {
-            Icon(Icons.Default.ArrowBack, null, tint = RasGramTheme.TextMuted)
+            Icon(Icons.Default.ArrowBack, null, tint = RasGramTheme.Green)
         }
-        OutlinedTextField(
-            value = query,
-            onValueChange = onQueryChange,
-            modifier = Modifier.weight(1f),
-            placeholder = { Text("Search...", color = RasGramTheme.TextMuted) },
-            singleLine = true,
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = Color.Transparent,
-                unfocusedBorderColor = Color.Transparent,
-                focusedTextColor = RasGramTheme.TextPrimary,
-                unfocusedTextColor = RasGramTheme.TextPrimary,
-                cursorColor = RasGramTheme.Green
+        Row(
+            modifier = Modifier.weight(1f)
+                .clip(RoundedCornerShape(24.dp))
+                .background(RasGramTheme.DarkBackground)
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.Search, null,
+                tint = RasGramTheme.TextMuted, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            BasicTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                singleLine = true,
+                textStyle = LocalTextStyle.current.copy(
+                    color = RasGramTheme.TextPrimary, fontSize = 15.sp
+                ),
+                decorationBox = { inner ->
+                    Box {
+                        if (query.isEmpty()) Text("Search...",
+                            color = RasGramTheme.TextMuted, fontSize = 15.sp)
+                        inner()
+                    }
+                },
+                modifier = Modifier.weight(1f)
             )
-        )
-        if (query.isNotEmpty()) {
-            IconButton(onClick = { onQueryChange("") }) {
-                Icon(Icons.Default.Clear, null, tint = RasGramTheme.TextMuted)
+            if (query.isNotEmpty()) {
+                Icon(Icons.Default.Clear, null,
+                    tint = RasGramTheme.TextMuted,
+                    modifier = Modifier.size(16.dp).clickable { onQueryChange("") })
             }
         }
     }
@@ -3639,33 +3656,183 @@ fun CallsTab(currentUser: User, modifier: Modifier = Modifier) {
     var callLogs by remember { mutableStateOf<List<Message>>(emptyList()) }
 
     LaunchedEffect(Unit) {
-        db.collectionGroup("pvt_msg_${currentUser.mobile}")
-            .whereEqualTo("isCallLog", true)
-            .orderBy("timestamp", Query.Direction.DESCENDING)
-            .limit(50)
-            .addSnapshotListener { _, _ -> }
+        // Get all contacts to find chat collections with call logs
+        db.collection("chat_users").get().addOnSuccessListener { snap ->
+            val chatIds = snap.documents
+                .map { it.id }
+                .filter { it != currentUser.mobile }
+                .map { mobile ->
+                    if (currentUser.mobile < mobile) "${currentUser.mobile}_${mobile}"
+                    else "${mobile}_${currentUser.mobile}"
+                }.toSet()
+
+            val allLogs = mutableListOf<Message>()
+            chatIds.forEach { chatId ->
+                db.collection("pvt_msg_$chatId")
+                    .whereEqualTo("isCallLog", true)
+                    .orderBy("timestamp", Query.Direction.DESCENDING)
+                    .limit(20)
+                    .addSnapshotListener { snap2, _ ->
+                        val logs = snap2?.documents?.mapNotNull { d ->
+                            d.data?.let { data ->
+                                Message(
+                                    id = d.id,
+                                    text = data["text"] as? String ?: "",
+                                    senderMobile = data["senderMobile"] as? String ?: "",
+                                    receiverMobile = data["receiverMobile"] as? String ?: "",
+                                    timestamp = data["timestamp"] as? Long ?: 0L,
+                                    timeString = data["timeString"] as? String ?: "",
+                                    isCallLog = true,
+                                    callStatus = data["callStatus"] as? String ?: "ended",
+                                    callType = data["callType"] as? String ?: "audio",
+                                    duration = (data["duration"] as? Long)?.toInt() ?: 0
+                                )
+                            }
+                        } ?: emptyList()
+                        allLogs.removeAll { m ->
+                            logs.any { it.senderMobile == m.senderMobile && it.receiverMobile == m.receiverMobile }
+                        }
+                        allLogs.addAll(logs)
+                        callLogs = allLogs.sortedByDescending { it.timestamp }
+                    }
+            }
+        }
     }
 
     Column(modifier = modifier.fillMaxSize().background(RasGramTheme.DarkBackground)) {
-        Surface(modifier = Modifier.fillMaxWidth(), color = RasGramTheme.DarkPanel) {
-            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(56.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Calls", style = MaterialTheme.typography.titleLarge, color = RasGramTheme.TextPrimary, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                // FIX #3: Icons.Default.AddCall doesn't exist â€” replaced with PhoneForwarded
+        // Header
+        Surface(modifier = Modifier.fillMaxWidth(), color = RasGramTheme.DarkPanel, shadowElevation = 2.dp) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(60.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Calls",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = RasGramTheme.TextPrimary,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
                 IconButton(onClick = { }) {
-                    Icon(Icons.Default.PhoneForwarded, null, tint = RasGramTheme.TextMuted)
+                    Icon(Icons.Default.PhoneForwarded, null, tint = RasGramTheme.Green)
                 }
             }
         }
 
-        Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Icon(Icons.Default.Call, null, modifier = Modifier.size(80.dp), tint = RasGramTheme.TextMuted.copy(0.3f))
-            Spacer(modifier = Modifier.height(16.dp))
-            Text("No Recent Calls", style = MaterialTheme.typography.titleMedium, color = RasGramTheme.TextMuted)
-            Spacer(modifier = Modifier.height(8.dp))
-            Text("Your call history will appear here.", color = RasGramTheme.TextMuted, style = MaterialTheme.typography.bodySmall)
+        if (callLogs.isEmpty()) {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Box(
+                    modifier = Modifier.size(90.dp).clip(CircleShape)
+                        .background(RasGramTheme.Green.copy(alpha = 0.1f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Call, null,
+                        modifier = Modifier.size(44.dp),
+                        tint = RasGramTheme.Green.copy(0.5f))
+                }
+                Spacer(Modifier.height(20.dp))
+                Text("No Recent Calls",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = RasGramTheme.TextPrimary, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(6.dp))
+                Text("Call history will appear here",
+                    color = RasGramTheme.TextMuted,
+                    style = MaterialTheme.typography.bodySmall)
+            }
+        } else {
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                items(callLogs, key = { it.id }) { log ->
+                    CallLogItem(log = log, currentUserMobile = currentUser.mobile)
+                    HorizontalDivider(
+                        color = RasGramTheme.DividerColor,
+                        modifier = Modifier.padding(start = 80.dp)
+                    )
+                }
+            }
         }
     }
 }
+
+@Composable
+fun CallLogItem(log: Message, currentUserMobile: String) {
+    val isOutgoing = log.senderMobile == currentUserMobile
+    val isMissed   = log.callStatus == "missed" || log.callStatus == "declined"
+    val isVideo    = log.callType == "video"
+    val otherMobile = if (isOutgoing) log.receiverMobile else log.senderMobile
+
+    val arrowIcon = when {
+        isMissed && !isOutgoing -> Icons.Default.CallMissed
+        isOutgoing              -> Icons.Default.CallMade
+        else                    -> Icons.Default.CallReceived
+    }
+    val arrowTint = if (isMissed && !isOutgoing) RasGramTheme.Red else RasGramTheme.Green
+
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .clickable { }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Avatar circle
+        Box(
+            modifier = Modifier.size(52.dp).clip(CircleShape)
+                .background(RasGramTheme.DarkPanel),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                otherMobile.takeLast(2),
+                color = RasGramTheme.Green,
+                fontWeight = FontWeight.Bold,
+                fontSize = 17.sp
+            )
+        }
+
+        Spacer(Modifier.width(14.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                otherMobile,
+                color = if (isMissed && !isOutgoing) RasGramTheme.Red else RasGramTheme.TextPrimary,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 15.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.height(3.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(arrowIcon, null, tint = arrowTint, modifier = Modifier.size(13.dp))
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    buildString {
+                        append(if (isVideo) "Video" else "Voice")
+                        when {
+                            log.duration > 0   -> append(" · ${formatTime(log.duration)}")
+                            isMissed           -> append(" · Missed")
+                        }
+                    },
+                    color = RasGramTheme.TextMuted,
+                    fontSize = 12.sp
+                )
+            }
+        }
+
+        Column(horizontalAlignment = Alignment.End) {
+            Text(log.timeString, color = RasGramTheme.TextMuted, fontSize = 11.sp)
+            Spacer(Modifier.height(5.dp))
+            Icon(
+                if (isVideo) Icons.Default.Videocam else Icons.Default.Call,
+                null,
+                tint = RasGramTheme.Green.copy(alpha = 0.7f),
+                modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+}
+
 
 // ==================== GROUPS TAB ====================
 @Composable
@@ -3735,20 +3902,74 @@ fun GroupsTab(currentUser: User, onGroupSelect: (Group) -> Unit, modifier: Modif
 @Composable
 fun GroupItem(group: Group, onClick: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp),
+        modifier = Modifier.fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        AsyncImage(
-            model = group.avatarUrl.ifEmpty { "https://ui-avatars.com/api/?name=${group.name.replace(" ", "+")}&background=005C4B&color=fff&bold=true" },
-            contentDescription = null,
-            modifier = Modifier.size(52.dp).clip(CircleShape),
-            contentScale = ContentScale.Crop
-        )
-        Spacer(modifier = Modifier.width(14.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(group.name, style = MaterialTheme.typography.bodyLarge, color = RasGramTheme.TextPrimary, fontWeight = FontWeight.SemiBold)
-            Text("${group.members.size} members", style = MaterialTheme.typography.bodySmall, color = RasGramTheme.TextMuted)
+        // Group avatar with group icon overlay
+        Box(modifier = Modifier.size(54.dp)) {
+            AsyncImage(
+                model = group.avatarUrl.ifEmpty {
+                    "https://ui-avatars.com/api/?name=${group.name.replace(" ", "+")}&background=005C4B&color=fff&bold=true&size=128"
+                },
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize().clip(CircleShape),
+                contentScale = ContentScale.Crop
+            )
+            // Members count badge
+            if (group.members.size > 1) {
+                Surface(
+                    modifier = Modifier.align(Alignment.BottomEnd),
+                    shape = CircleShape,
+                    color = RasGramTheme.DarkPanel
+                ) {
+                    Text(
+                        "${group.members.size}",
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                        color = RasGramTheme.TextMuted,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
         }
+
+        Spacer(modifier = Modifier.width(14.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                group.name,
+                style = MaterialTheme.typography.bodyLarge,
+                color = RasGramTheme.TextPrimary,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.People, null,
+                    tint = RasGramTheme.TextMuted,
+                    modifier = Modifier.size(12.dp))
+                Spacer(Modifier.width(3.dp))
+                Text(
+                    "${group.members.size} members",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = RasGramTheme.TextMuted
+                )
+            }
+        }
+
+        // Created time
+        val timeAgo = remember(group.createdAt) {
+            val diff = System.currentTimeMillis() - group.createdAt
+            when {
+                diff < 3_600_000 -> "${diff / 60000}m"
+                diff < 86_400_000 -> "${diff / 3_600_000}h"
+                else -> "${diff / 86_400_000}d"
+            }
+        }
+        Text(timeAgo, color = RasGramTheme.TextMuted, fontSize = 11.sp)
     }
 }
 
