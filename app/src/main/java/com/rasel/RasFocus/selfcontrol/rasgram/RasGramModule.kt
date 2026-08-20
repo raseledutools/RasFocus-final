@@ -331,8 +331,17 @@ fun RasGramApp(
     var isLoggedIn by remember { mutableStateOf(initialUser != null) }
     var currentUser by remember { mutableStateOf(initialUser) }
     var isDarkMode by remember { mutableStateOf(true) }
-    var showSplash by remember { mutableStateOf(true) }
-    // splash লুকাবে ChatsTab থেকে — Firebase এর প্রথম snapshot আসলেই
+    // Logged-in users: splash max 2s তারপর force-dismiss — Firebase slow হলেও আটকে থাকবে না।
+    // Logged-out users: splash দেখাবে না — সরাসরি login screen।
+    var showSplash by remember { mutableStateOf(initialUser != null) }
+
+    // Safety timeout: Firebase snapshot 2s এর মধ্যে না আসলে splash সরিয়ে দাও
+    LaunchedEffect(showSplash) {
+        if (showSplash) {
+            delay(2000L)
+            showSplash = false
+        }
+    }
 
     MaterialTheme(colorScheme = if (isDarkMode) darkColorScheme(
         primary = RasGramTheme.Green,
@@ -1203,7 +1212,8 @@ fun MainScreen(
                             onToggleTheme = onToggleTheme,
                             onLogout = onLogout,
                             onUserUpdate = onUserUpdate,
-                            onStatusClick = { selectedStatusUser = it }
+                            onStatusClick = { selectedStatusUser = it },
+                            onSplashDone = onSplashDone
                         )
                     }
                 } else {
