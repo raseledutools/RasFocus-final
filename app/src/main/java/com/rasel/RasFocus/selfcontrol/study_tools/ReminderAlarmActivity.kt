@@ -86,7 +86,7 @@ class ReminderAlarmActivity : ComponentActivity() {
                     else
                         android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM)
                             ?: android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
-                    ReminderAlarmPlayer.play(this@ReminderAlarmActivity, uri, duration, withVib)
+                    ReminderAlarmPlayer.play(applicationContext, uri, duration, withVib)
                     // ২ মিনিট পরে আবার
                     reRingHandler.postDelayed(this, 2 * 60_000L)
                 }

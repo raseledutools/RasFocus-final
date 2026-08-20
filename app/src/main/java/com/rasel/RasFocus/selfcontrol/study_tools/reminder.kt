@@ -189,18 +189,37 @@ fun repeatIntervalMillis(item: ReminderItem): Long? {
 // ── MediaPlayer & Vibrator singleton for alarm ────────────────────────────────
 object ReminderAlarmPlayer {
     private var player: MediaPlayer? = null
+    private var ringtone: android.media.Ringtone? = null
     private var stopTimer: java.util.Timer? = null
     private var vibrator: Vibrator? = null
     private var vibratorManager: VibratorManager? = null
     private var audioManager: android.media.AudioManager? = null
     private var audioFocusRequest: android.media.AudioFocusRequest? = null
+    private var originalAlarmVolume: Int = -1
 
     fun play(context: Context, ringtoneUri: Uri, durationEnum: RingtoneDuration, withVib: Boolean) {
         stop()
 
-        // Request audio focus FIRST — prevents mixing with other audio
-        val am = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+        val am = context.applicationContext.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
         audioManager = am
+
+        // ── Alarm volume enforce ──────────────────────────────────────────────
+        // Device এ alarm volume 0 হলে ring বাজে না। এখানে volume জোর করে বাড়ানো হচ্ছে।
+        try {
+            val maxVol = am.getStreamMaxVolume(android.media.AudioManager.STREAM_ALARM)
+            val curVol = am.getStreamVolume(android.media.AudioManager.STREAM_ALARM)
+            originalAlarmVolume = curVol
+            if (curVol < maxVol / 3) {
+                // ন্যূনতম ১/৩ ভলিউম ensure করো
+                am.setStreamVolume(
+                    android.media.AudioManager.STREAM_ALARM,
+                    maxVol / 2,
+                    android.media.AudioManager.FLAG_SHOW_UI
+                )
+            }
+        } catch (_: Exception) {}
+
+        // ── Audio focus ───────────────────────────────────────────────────────
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val req = android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
                 .setAudioAttributes(
@@ -218,6 +237,7 @@ object ReminderAlarmPlayer {
             am.requestAudioFocus(null, android.media.AudioManager.STREAM_ALARM, android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
         }
 
+        // ── Vibration ─────────────────────────────────────────────────────────
         if (withVib) {
             try {
                 val pattern = longArrayOf(0, 1000, 1000)
@@ -237,7 +257,12 @@ object ReminderAlarmPlayer {
             } catch (_: Exception) {}
         }
 
+        // ── Play ringtone ─────────────────────────────────────────────────────
+        // Strategy 1: MediaPlayer (synchronous prepare — reliable in BroadcastReceiver)
+        // Strategy 2: Fallback to Ringtone API if MediaPlayer fails
+        var mediaPlayerStarted = false
         try {
+            val appCtx = context.applicationContext
             val mp = MediaPlayer()
             mp.setAudioAttributes(
                 AudioAttributes.Builder()
@@ -245,39 +270,55 @@ object ReminderAlarmPlayer {
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                     .build()
             )
-            mp.setDataSource(context, ringtoneUri)
+            mp.setDataSource(appCtx, ringtoneUri)
             mp.isLooping = true
-            mp.setOnPreparedListener { p ->
-                // শুধু prepared হওয়ার পরেই start — mix আর হবে না
-                player = p
-                p.start()
+            // synchronous prepare (we're already on a background-compatible path from alarm receiver)
+            try {
+                mp.prepare()  // synchronous — no callback needed
+                mp.start()
+                player = mp
+                mediaPlayerStarted = true
                 if (durationEnum == RingtoneDuration.ONE_MINUTE) {
                     stopTimer = java.util.Timer()
                     stopTimer?.schedule(object : java.util.TimerTask() {
                         override fun run() { stop() }
                     }, 60_000L)
                 }
+            } catch (prepEx: Exception) {
+                // prepare() failed — try fallback URI
+                try { mp.release() } catch (_: Exception) {}
+                throw prepEx
             }
-            mp.setOnErrorListener { _, _, _ ->
-                // fallback: system default alarm
-                try {
-                    val fallbackUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-                        ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-                    if (fallbackUri != null && fallbackUri != ringtoneUri) {
-                        play(context, fallbackUri, durationEnum, false)
-                    }
-                } catch (_: Exception) {}
-                true
-            }
-            mp.prepareAsync()  // non-blocking — no more main-thread hang
         } catch (e: Exception) {
-            e.printStackTrace()
+            // ── Fallback: Ringtone API ──────────────────────────────────────
+            // Ringtone API is always reliable — system handles audio session
+            try {
+                val fallbackUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                    ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                    ?: ringtoneUri
+                val rt = RingtoneManager.getRingtone(context.applicationContext, fallbackUri)
+                if (rt != null) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        rt.isLooping = true
+                    }
+                    rt.streamType = android.media.AudioManager.STREAM_ALARM
+                    rt.play()
+                    ringtone = rt
+                    if (durationEnum == RingtoneDuration.ONE_MINUTE) {
+                        stopTimer = java.util.Timer()
+                        stopTimer?.schedule(object : java.util.TimerTask() {
+                            override fun run() { stop() }
+                        }, 60_000L)
+                    }
+                }
+            } catch (_: Exception) {}
         }
     }
 
     fun stop() {
         stopTimer?.cancel()
         stopTimer = null
+        // Stop vibration
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 vibratorManager?.defaultVibrator?.cancel()
@@ -286,10 +327,24 @@ object ReminderAlarmPlayer {
         } catch (_: Exception) {}
         vibrator = null
         vibratorManager = null
+        // Stop MediaPlayer
         try {
             player?.run { if (isPlaying) stop(); release() }
         } catch (_: Exception) {}
         player = null
+        // Stop Ringtone
+        try {
+            ringtone?.stop()
+        } catch (_: Exception) {}
+        ringtone = null
+        // Restore alarm volume
+        try {
+            val am = audioManager
+            if (am != null && originalAlarmVolume >= 0) {
+                am.setStreamVolume(android.media.AudioManager.STREAM_ALARM, originalAlarmVolume, 0)
+                originalAlarmVolume = -1
+            }
+        } catch (_: Exception) {}
         // Release audio focus
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -353,12 +408,23 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         ensureReminderChannel(context)
 
         // 1. Play ringtone and vibrate via singleton
+        // applicationContext ব্যবহার করছি — BroadcastReceiver context অল্প সময়ে expire হয়,
+        // applicationContext সবসময় valid থাকে।
+        val appCtx = context.applicationContext
         val ringtoneUri = when {
-            ringtoneUriStr.isNotEmpty() -> android.net.Uri.parse(ringtoneUriStr)
+            ringtoneUriStr.isNotEmpty() -> try {
+                android.net.Uri.parse(ringtoneUriStr).also {
+                    // URI valid কিনা check করো
+                    appCtx.contentResolver.getType(it) ?: throw Exception("invalid uri")
+                }
+            } catch (_: Exception) {
+                RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                    ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            }
             else -> RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
                 ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
         }
-        ReminderAlarmPlayer.play(context, ringtoneUri, duration, withVib)
+        ReminderAlarmPlayer.play(appCtx, ringtoneUri, duration, withVib)
 
         // 3. Build repeat label for popup
         val repeatLabel = when (repeatType) {
