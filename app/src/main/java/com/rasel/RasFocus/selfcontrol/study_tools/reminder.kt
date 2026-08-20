@@ -40,7 +40,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -189,55 +188,13 @@ fun repeatIntervalMillis(item: ReminderItem): Long? {
 // ── MediaPlayer & Vibrator singleton for alarm ────────────────────────────────
 object ReminderAlarmPlayer {
     private var player: MediaPlayer? = null
-    private var ringtone: android.media.Ringtone? = null
     private var stopTimer: java.util.Timer? = null
     private var vibrator: Vibrator? = null
     private var vibratorManager: VibratorManager? = null
-    private var audioManager: android.media.AudioManager? = null
-    private var audioFocusRequest: android.media.AudioFocusRequest? = null
-    private var originalAlarmVolume: Int = -1
 
     fun play(context: Context, ringtoneUri: Uri, durationEnum: RingtoneDuration, withVib: Boolean) {
         stop()
-
-        val am = context.applicationContext.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
-        audioManager = am
-
-        // ── Alarm volume enforce ──────────────────────────────────────────────
-        // Device এ alarm volume 0 হলে ring বাজে না। এখানে volume জোর করে বাড়ানো হচ্ছে।
-        try {
-            val maxVol = am.getStreamMaxVolume(android.media.AudioManager.STREAM_ALARM)
-            val curVol = am.getStreamVolume(android.media.AudioManager.STREAM_ALARM)
-            originalAlarmVolume = curVol
-            if (curVol < maxVol / 3) {
-                // ন্যূনতম ১/৩ ভলিউম ensure করো
-                am.setStreamVolume(
-                    android.media.AudioManager.STREAM_ALARM,
-                    maxVol / 2,
-                    android.media.AudioManager.FLAG_SHOW_UI
-                )
-            }
-        } catch (_: Exception) {}
-
-        // ── Audio focus ───────────────────────────────────────────────────────
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val req = android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
-                .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build()
-                )
-                .setWillPauseWhenDucked(true)
-                .build()
-            audioFocusRequest = req
-            am.requestAudioFocus(req)
-        } else {
-            @Suppress("DEPRECATION")
-            am.requestAudioFocus(null, android.media.AudioManager.STREAM_ALARM, android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
-        }
-
-        // ── Vibration ─────────────────────────────────────────────────────────
+        
         if (withVib) {
             try {
                 val pattern = longArrayOf(0, 1000, 1000)
@@ -257,68 +214,35 @@ object ReminderAlarmPlayer {
             } catch (_: Exception) {}
         }
 
-        // ── Play ringtone ─────────────────────────────────────────────────────
-        // Strategy 1: MediaPlayer (synchronous prepare — reliable in BroadcastReceiver)
-        // Strategy 2: Fallback to Ringtone API if MediaPlayer fails
-        var mediaPlayerStarted = false
         try {
-            val appCtx = context.applicationContext
-            val mp = MediaPlayer()
-            mp.setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ALARM)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .build()
-            )
-            mp.setDataSource(appCtx, ringtoneUri)
-            mp.isLooping = true
-            // synchronous prepare (we're already on a background-compatible path from alarm receiver)
-            try {
-                mp.prepare()  // synchronous — no callback needed
-                mp.start()
-                player = mp
-                mediaPlayerStarted = true
-                if (durationEnum == RingtoneDuration.ONE_MINUTE) {
-                    stopTimer = java.util.Timer()
-                    stopTimer?.schedule(object : java.util.TimerTask() {
-                        override fun run() { stop() }
-                    }, 60_000L)
-                }
-            } catch (prepEx: Exception) {
-                // prepare() failed — try fallback URI
-                try { mp.release() } catch (_: Exception) {}
-                throw prepEx
+            player = MediaPlayer().apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+                setDataSource(context, ringtoneUri)
+                // ONE_MINUTE: loop করে ১ মিনিট বাজবে, তারপর auto-stop
+                // CONTINUOUS: ইউজার dismiss না করা পর্যন্ত loop চলবে
+                isLooping = true
+                prepare()
+                start()
+            }
+            if (durationEnum == RingtoneDuration.ONE_MINUTE) {
+                stopTimer = java.util.Timer()
+                stopTimer?.schedule(object : java.util.TimerTask() {
+                    override fun run() { stop() }
+                }, 60_000L)
             }
         } catch (e: Exception) {
-            // ── Fallback: Ringtone API ──────────────────────────────────────
-            // Ringtone API is always reliable — system handles audio session
-            try {
-                val fallbackUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-                    ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-                    ?: ringtoneUri
-                val rt = RingtoneManager.getRingtone(context.applicationContext, fallbackUri)
-                if (rt != null) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                        rt.isLooping = true
-                    }
-                    rt.streamType = android.media.AudioManager.STREAM_ALARM
-                    rt.play()
-                    ringtone = rt
-                    if (durationEnum == RingtoneDuration.ONE_MINUTE) {
-                        stopTimer = java.util.Timer()
-                        stopTimer?.schedule(object : java.util.TimerTask() {
-                            override fun run() { stop() }
-                        }, 60_000L)
-                    }
-                }
-            } catch (_: Exception) {}
+            e.printStackTrace()
         }
     }
 
     fun stop() {
         stopTimer?.cancel()
         stopTimer = null
-        // Stop vibration
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 vibratorManager?.defaultVibrator?.cancel()
@@ -327,62 +251,22 @@ object ReminderAlarmPlayer {
         } catch (_: Exception) {}
         vibrator = null
         vibratorManager = null
-        // Stop MediaPlayer
         try {
             player?.run { if (isPlaying) stop(); release() }
         } catch (_: Exception) {}
         player = null
-        // Stop Ringtone
-        try {
-            ringtone?.stop()
-        } catch (_: Exception) {}
-        ringtone = null
-        // Restore alarm volume
-        try {
-            val am = audioManager
-            if (am != null && originalAlarmVolume >= 0) {
-                am.setStreamVolume(android.media.AudioManager.STREAM_ALARM, originalAlarmVolume, 0)
-                originalAlarmVolume = -1
-            }
-        } catch (_: Exception) {}
-        // Release audio focus
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                audioFocusRequest?.let { audioManager?.abandonAudioFocusRequest(it) }
-            } else {
-                @Suppress("DEPRECATION")
-                audioManager?.abandonAudioFocus(null)
-            }
-        } catch (_: Exception) {}
-        audioManager = null
-        audioFocusRequest = null
     }
 }
 
 // ── Notification channel ───────────────────────────────────────────────────────
 fun ensureReminderChannel(context: Context) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        // Only create if the channel doesn't already exist — once created, settings cannot
-        // be changed programmatically (user controls them). If channel already exists, skip.
-        if (nm.getNotificationChannel(RM_CHANNEL_ID) != null) return
-        val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-        val audioAttr = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_ALARM)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-            .build()
         val ch = NotificationChannel(RM_CHANNEL_ID, RM_CHANNEL_NAME, NotificationManager.IMPORTANCE_HIGH).apply {
-            // FIX: Do NOT silence the channel — setSound(null) and enableVibration(false) cause
-            // the OS to treat this as a silent channel and skip heads-up on the lock screen entirely,
-            // even at IMPORTANCE_HIGH. ReminderAlarmPlayer handles ringtone/vibration separately;
-            // the channel sound is a short OS-level alert that enables the heads-up banner.
-            setSound(alarmUri, audioAttr)
             enableVibration(true)
-            vibrationPattern = longArrayOf(0, 300, 200, 300)
-            lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+            vibrationPattern = longArrayOf(0, 500, 200, 500)
+            // Sound is played via MediaPlayer in receiver, not through channel
         }
-        nm.createNotificationChannel(ch)
+        (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(ch)
     }
 }
 
@@ -408,23 +292,12 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         ensureReminderChannel(context)
 
         // 1. Play ringtone and vibrate via singleton
-        // applicationContext ব্যবহার করছি — BroadcastReceiver context অল্প সময়ে expire হয়,
-        // applicationContext সবসময় valid থাকে।
-        val appCtx = context.applicationContext
         val ringtoneUri = when {
-            ringtoneUriStr.isNotEmpty() -> try {
-                android.net.Uri.parse(ringtoneUriStr).also {
-                    // URI valid কিনা check করো
-                    appCtx.contentResolver.getType(it) ?: throw Exception("invalid uri")
-                }
-            } catch (_: Exception) {
-                RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-                    ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-            }
+            ringtoneUriStr.isNotEmpty() -> android.net.Uri.parse(ringtoneUriStr)
             else -> RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
                 ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
         }
-        ReminderAlarmPlayer.play(appCtx, ringtoneUri, duration, withVib)
+        ReminderAlarmPlayer.play(context, ringtoneUri, duration, withVib)
 
         // 3. Build repeat label for popup
         val repeatLabel = when (repeatType) {
@@ -434,8 +307,6 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         }
 
         // 4. Launch full-screen alarm popup Activity
-        // FIX: repeatType, customAmount, customUnit, triggerMillis were missing — ReminderAlarmActivity
-        // needs them to compute the correct "Next Run" time shown on the alarm screen.
         val popupIntent = Intent(context, ReminderAlarmActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or
                     Intent.FLAG_ACTIVITY_CLEAR_TOP or
@@ -448,10 +319,6 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
             putExtra("withVibration", withVib)
             putExtra("ringtoneUri", ringtoneUriStr)
             putExtra("ringtoneDuration", durationStr)
-            putExtra("repeatType", repeatTypeStr)
-            putExtra("customAmount", customAmount)
-            putExtra("customUnit", customUnitStr)
-            putExtra("triggerMillis", triggerMillis)
         }
         context.startActivity(popupIntent)
 
@@ -462,7 +329,7 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         
         val contentIntent = PendingIntent.getActivity(
             context, notifId + 40000,
-            Intent(context, com.rasel.RasFocus.MainActivity::class.java).apply {
+            Intent(context, StudyToolsActivity::class.java).apply {
                 putExtra("open_tab", "reminder")
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             },
@@ -594,20 +461,13 @@ fun scheduleReminderAlarmFull(context: Context, item: ReminderItem) {
         context, item.id, intent,
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
-    // RTC_WAKEUP: wall-clock এর সাথে directly match করে — ELAPSED_REALTIME এর চেয়ে reliable
-    // কারণ ELAPSED_REALTIME boot থেকে count করে, RTC_WAKEUP actual time use করে
-    val triggerAt = item.triggerMillis.coerceAtLeast(System.currentTimeMillis() + 1000L)
+    val triggerAt = SystemClock.elapsedRealtime() + (item.triggerMillis - System.currentTimeMillis()).coerceAtLeast(1000L)
     try {
-        val canExact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || am.canScheduleExactAlarms()
-        when {
-            canExact && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ->
-                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi)
-            canExact ->
-                am.setExact(AlarmManager.RTC_WAKEUP, triggerAt, pi)
-            else ->
-                am.set(AlarmManager.RTC_WAKEUP, triggerAt, pi)
-        }
-    } catch (_: Exception) { am.set(AlarmManager.RTC_WAKEUP, triggerAt, pi) }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
+            am.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pi)
+        else
+            am.setExact(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pi)
+    } catch (_: Exception) { am.set(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pi) }
 }
 
 fun cancelReminderAlarm(context: Context, reminderId: Int) {
@@ -690,32 +550,13 @@ fun ReminderScreen(onBack: () -> Unit) {
                 permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
             }
         }
-        // Android 12+ (S): exact alarm permission must be granted by user in Settings.
-        // Without it, setExactAndAllowWhileIdle silently falls back to inexact or fails.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val am = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
-            if (!am.canScheduleExactAlarms()) {
-                try {
-                    context.startActivity(
-                        android.content.Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
-                            data = android.net.Uri.fromParts("package", context.packageName, null)
-                            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                        }
-                    )
-                } catch (_: Exception) {}
-            }
-        }
     }
     var activeTab      by remember { mutableStateOf(0) }
     var selectedFilter by remember { mutableStateOf("All") }
-    var reminders      by remember { mutableStateOf(ReminderStorage.load(context)) }
-    var nextId         by remember { mutableStateOf((reminders.maxOfOrNull { it.id } ?: 9200) + 1) }
+    var reminders      by remember { mutableStateOf(listOf<ReminderItem>()) }
+    var nextId         by remember { mutableStateOf(9200) }
     var showAddDialog  by remember { mutableStateOf(false) }
     var editItem       by remember { mutableStateOf<ReminderItem?>(null) }
-    
-    LaunchedEffect(reminders) {
-        ReminderStorage.save(context, reminders)
-    }
     var showSettings   by remember { mutableStateOf(false) }
     var showQuickDlg   by remember { mutableStateOf(false) }
 
@@ -824,40 +665,15 @@ fun ReminderScreen(onBack: () -> Unit) {
                         ReminderListItem(
                             reminder = reminder,
                             onComplete = {
-                                // FIX: cancelling/uncancelling the alarm was missing entirely.
-                                // Marking complete must cancel the scheduled alarm so it doesn't fire.
-                                // Un-completing must reschedule if the trigger is still in the future.
-                                val nowCompleted = !reminder.isCompleted
-                                if (nowCompleted) {
-                                    cancelReminderAlarm(context, reminder.id)
-                                } else if (reminder.triggerMillis > System.currentTimeMillis()) {
-                                    ensureReminderChannel(context)
-                                    scheduleReminderAlarmFull(context, reminder.copy(isCompleted = false, isActive = true))
-                                }
                                 reminders = reminders.map {
-                                    if (it.id == reminder.id) it.copy(isCompleted = nowCompleted) else it
+                                    if (it.id == reminder.id) it.copy(isCompleted = !it.isCompleted) else it
                                 }
                             },
                             onDelete = {
                                 cancelReminderAlarm(context, reminder.id)
                                 reminders = reminders.filter { it.id != reminder.id }
                             },
-                            onEdit = { editItem = reminder; showAddDialog = true },
-                            onToggleActive = {
-                                val nowActive = !reminder.isActive
-                                if (nowActive) {
-                                    // Re-schedule the alarm
-                                    ensureReminderChannel(context)
-                                    scheduleReminderAlarmFull(context, reminder.copy(isActive = true))
-                                } else {
-                                    // Cancel the alarm
-                                    cancelReminderAlarm(context, reminder.id)
-                                }
-                                reminders = reminders.map {
-                                    if (it.id == reminder.id) it.copy(isActive = nowActive) else it
-                                }
-                                ReminderStorage.save(context, reminders)
-                            }
+                            onEdit = { editItem = reminder; showAddDialog = true }
                         )
                     }
                 }
@@ -921,32 +737,38 @@ private fun ReminderListItem(
     reminder: ReminderItem,
     onComplete: () -> Unit,
     onDelete: () -> Unit,
-    onEdit: () -> Unit,
-    onToggleActive: () -> Unit
+    onEdit: () -> Unit
 ) {
     var showMenu by remember { mutableStateOf(false) }
-
-    // Active / Inactive colours
-    val activeColor   = Color(0xFF43A047)   // green
-    val inactiveColor = Color(0xFFBDBDBD)   // grey
-
     Column {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(if (reminder.isActive) RmWhite else Color(0xFFF5F5F5))
+                .background(RmWhite)
                 .clickable { onEdit() }
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Checkbox
+            Box(
+                modifier = Modifier.size(22.dp).clip(CircleShape)
+                    .border(2.dp, if (reminder.isCompleted) RmTeal else RmDivider, CircleShape)
+                    .background(if (reminder.isCompleted) RmTeal else Color.Transparent)
+                    .clickable { onComplete() },
+                contentAlignment = Alignment.Center
+            ) {
+                if (reminder.isCompleted)
+                    Icon(Icons.Default.Check, contentDescription = null, tint = RmWhite, modifier = Modifier.size(14.dp))
+            }
+            Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     reminder.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
-                    color = if (reminder.isCompleted || !reminder.isActive) RmTextSub else RmText,
+                    color = if (reminder.isCompleted) RmTextSub else RmText,
                     textDecoration = if (reminder.isCompleted) TextDecoration.LineThrough else null,
                     maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(3.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(formatDateTime(reminder.triggerMillis), fontSize = 12.sp, color = RmTextSub)
                     if (reminder.repeatType != RepeatType.NONE) {
@@ -956,31 +778,8 @@ private fun ReminderListItem(
                         Text("  •  $repeatLabel", fontSize = 12.sp, color = RmTextSub)
                     }
                 }
-                Spacer(Modifier.height(6.dp))
-                // ── Active Toggle ──
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Switch(
-                        checked = reminder.isActive,
-                        onCheckedChange = { onToggleActive() },
-                        modifier = Modifier.scale(0.85f),
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = RmWhite,
-                            checkedTrackColor = activeColor,
-                            uncheckedThumbColor = RmWhite,
-                            uncheckedTrackColor = inactiveColor,
-                            uncheckedBorderColor = Color.Transparent
-                        )
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        if (reminder.isActive) "Active" else "Inactive",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = if (reminder.isActive) activeColor else RmTextSub
-                    )
-                }
             }
-            Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.width(8.dp))
             Column(horizontalAlignment = Alignment.End) {
                 val rel = relativeDate(reminder.triggerMillis)
                 Text(
@@ -1366,12 +1165,12 @@ fun ReminderAddDialog(
                 ) {
                     Button(
                         onClick = {
-                            val finalTitle = if (title.isBlank()) "Unnamed" else title.trim()
+                            if (title.isBlank()) return@Button
                             val parsedAmount = customAmount.toIntOrNull()?.coerceAtLeast(1) ?: 1
                             onSave(
                                 ReminderItem(
                                     id = initial?.id ?: 0,
-                                    title = finalTitle,
+                                    title = title.trim(),
                                     description = description.trim(),
                                     triggerMillis = buildTrigger(),
                                     repeatType = repeatType,
