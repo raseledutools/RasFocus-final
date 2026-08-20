@@ -553,9 +553,12 @@ fun ReminderScreen(onBack: () -> Unit) {
     }
     var activeTab      by remember { mutableStateOf(0) }
     var selectedFilter by remember { mutableStateOf("All") }
-    var reminders      by remember { mutableStateOf(listOf<ReminderItem>()) }
-    var nextId         by remember { mutableStateOf(9200) }
+    var reminders      by remember { mutableStateOf(ReminderStorage.load(context)) }
+    var nextId         by remember { mutableStateOf((ReminderStorage.load(context).maxOfOrNull { it.id }?.plus(1))?.coerceAtLeast(9200) ?: 9200) }
     var showAddDialog  by remember { mutableStateOf(false) }
+
+    // Persist reminders on every change
+    LaunchedEffect(reminders) { ReminderStorage.save(context, reminders) }
     var editItem       by remember { mutableStateOf<ReminderItem?>(null) }
     var showSettings   by remember { mutableStateOf(false) }
     var showQuickDlg   by remember { mutableStateOf(false) }
@@ -669,6 +672,19 @@ fun ReminderScreen(onBack: () -> Unit) {
                                     if (it.id == reminder.id) it.copy(isCompleted = !it.isCompleted) else it
                                 }
                             },
+                            onToggleActive = {
+                                val updated = reminders.map {
+                                    if (it.id == reminder.id) it.copy(isActive = !it.isActive) else it
+                                }
+                                reminders = updated
+                                // Cancel or reschedule alarm based on new active state
+                                val toggledItem = updated.first { it.id == reminder.id }
+                                if (toggledItem.isActive) {
+                                    scheduleReminderAlarmFull(context, toggledItem)
+                                } else {
+                                    cancelReminderAlarm(context, reminder.id)
+                                }
+                            },
                             onDelete = {
                                 cancelReminderAlarm(context, reminder.id)
                                 reminders = reminders.filter { it.id != reminder.id }
@@ -736,6 +752,7 @@ fun ReminderScreen(onBack: () -> Unit) {
 private fun ReminderListItem(
     reminder: ReminderItem,
     onComplete: () -> Unit,
+    onToggleActive: () -> Unit,
     onDelete: () -> Unit,
     onEdit: () -> Unit
 ) {
@@ -746,25 +763,26 @@ private fun ReminderListItem(
                 .fillMaxWidth()
                 .background(RmWhite)
                 .clickable { onEdit() }
-                .padding(horizontal = 16.dp, vertical = 14.dp),
+                .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Checkbox
-            Box(
-                modifier = Modifier.size(22.dp).clip(CircleShape)
-                    .border(2.dp, if (reminder.isCompleted) RmTeal else RmDivider, CircleShape)
-                    .background(if (reminder.isCompleted) RmTeal else Color.Transparent)
-                    .clickable { onComplete() },
-                contentAlignment = Alignment.Center
-            ) {
-                if (reminder.isCompleted)
-                    Icon(Icons.Default.Check, contentDescription = null, tint = RmWhite, modifier = Modifier.size(14.dp))
-            }
-            Spacer(Modifier.width(14.dp))
+            // Active/Inactive toggle switch
+            Switch(
+                checked = reminder.isActive,
+                onCheckedChange = { onToggleActive() },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = RmTeal,
+                    checkedTrackColor = RmTeal.copy(.3f),
+                    uncheckedThumbColor = RmTextSub,
+                    uncheckedTrackColor = RmDivider
+                ),
+                modifier = Modifier.height(28.dp)
+            )
+            Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     reminder.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
-                    color = if (reminder.isCompleted) RmTextSub else RmText,
+                    color = if (!reminder.isActive || reminder.isCompleted) RmTextSub else RmText,
                     textDecoration = if (reminder.isCompleted) TextDecoration.LineThrough else null,
                     maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
@@ -1165,12 +1183,14 @@ fun ReminderAddDialog(
                 ) {
                     Button(
                         onClick = {
-                            if (title.isBlank()) return@Button
+                            val finalTitle = title.trim().ifBlank {
+                                SimpleDateFormat("d MMM, h:mm a", Locale.getDefault()).format(Date())
+                            }
                             val parsedAmount = customAmount.toIntOrNull()?.coerceAtLeast(1) ?: 1
                             onSave(
                                 ReminderItem(
                                     id = initial?.id ?: 0,
-                                    title = title.trim(),
+                                    title = finalTitle,
                                     description = description.trim(),
                                     triggerMillis = buildTrigger(),
                                     repeatType = repeatType,
