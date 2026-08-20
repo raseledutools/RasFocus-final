@@ -2218,6 +2218,26 @@ fun ChatArea(
             )
         }
 
+        // Call buttons
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.End
+        ) {
+            IconButton(
+                onClick = { onCallClick("video") },
+                modifier = Modifier.background(RasGramTheme.DarkPanel, CircleShape)
+            ) {
+                Icon(Icons.Default.VideoCall, "Video Call", tint = RasGramTheme.Green)
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            IconButton(
+                onClick = { onCallClick("audio") },
+                modifier = Modifier.background(RasGramTheme.DarkPanel, CircleShape)
+            ) {
+                Icon(Icons.Default.Call, "Voice Call", tint = RasGramTheme.Green)
+            }
+        }
+
         // Input area
         ChatInputBar(
             inputText = inputText,
@@ -2379,12 +2399,6 @@ fun ChatHeader(
                 }
             }
 
-            IconButton(onClick = { onCallClick("video") }) {
-                Icon(Icons.Default.VideoCall, null, tint = RasGramTheme.TextMuted)
-            }
-            IconButton(onClick = { onCallClick("audio") }) {
-                Icon(Icons.Default.Call, null, tint = RasGramTheme.TextMuted)
-            }
             Box {
                 IconButton(onClick = { showMenu = true }) {
                     Icon(Icons.Default.MoreVert, null, tint = RasGramTheme.TextMuted)
@@ -6058,7 +6072,7 @@ suspend fun sendFcmMessageNotification(
             .url("https://fcm.googleapis.com/v1/projects/$projectId/messages:send")
             .addHeader("Authorization", "Bearer $accessToken")
             .addHeader("Content-Type", "application/json")
-            .post(okhttp3.RequestBody.create(okhttp3.MediaType.parse("application/json"), payload.toString()))
+            .post(okhttp3.RequestBody.create(payload.toString().toByteArray(), okhttp3.MediaType.get("application/json")))
             .build()
         okhttp3.OkHttpClient().newCall(pushRequest).execute()
     } catch (_: Exception) { }
