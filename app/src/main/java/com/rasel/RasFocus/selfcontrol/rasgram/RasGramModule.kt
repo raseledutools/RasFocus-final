@@ -1139,6 +1139,8 @@ fun MainScreen(
     var selectedContact by remember { mutableStateOf<User?>(null) }
     var selectedGroup by remember { mutableStateOf<Group?>(null) }
     var showCallUI by remember { mutableStateOf(false) }
+    var isReceiverCall by remember { mutableStateOf(false) }
+    var acceptedCallId by remember { mutableStateOf("") }
     var selectedStatusUser by remember { mutableStateOf<List<Status>?>(null) }
     var callType by remember { mutableStateOf("audio") }
     var callContact by remember { mutableStateOf<User?>(null) }
@@ -1274,13 +1276,19 @@ fun MainScreen(
         }
     }
 
-    // Outgoing call overlay
+    // Outgoing / accepted call overlay
     if (showCallUI && callContact != null) {
         CallingScreen(
             currentUser = liveCurrentUser,
             contact = callContact!!,
             callType = callType,
-            onEndCall = { showCallUI = false }
+            onEndCall = {
+                showCallUI = false
+                isReceiverCall = false
+                acceptedCallId = ""
+            },
+            isReceiver = isReceiverCall,
+            existingCallId = acceptedCallId
         )
     }
 
@@ -4002,7 +4010,9 @@ fun CallingScreen(
     currentUser: User,
     contact: User,
     callType: String,
-    onEndCall: () -> Unit
+    onEndCall: () -> Unit,
+    isReceiver: Boolean = false,
+    existingCallId: String = ""
 ) {
     val context = LocalContext.current
     val db = remember { FirebaseFirestore.getInstance() }
@@ -4014,7 +4024,7 @@ fun CallingScreen(
     var isSpeakerOn by remember { mutableStateOf(callType == "video") }
     var isConnected by remember { mutableStateOf(false) }
     var callSeconds by remember { mutableIntStateOf(0) }
-    var callId by remember { mutableStateOf("") }
+    var callId by remember { mutableStateOf(existingCallId) }
     // Call ended duration summary
     var showEndedSummary by remember { mutableStateOf(false) }
     var finalCallSeconds by remember { mutableIntStateOf(0) }
@@ -4073,8 +4083,13 @@ fun CallingScreen(
         try {
             audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
             audioManager.isSpeakerphoneOn = isSpeakerOn
-            val chatHash = generateChatId(currentUser.mobile, contact.mobile)
-            callId = "call_${chatHash}_${System.currentTimeMillis()}"
+
+            // Receiver হলে existingCallId ব্যবহার করো; caller হলে নতুন callId তৈরি করো
+            if (!isReceiver) {
+                val chatHash = generateChatId(currentUser.mobile, contact.mobile)
+                callId = "call_${chatHash}_${System.currentTimeMillis()}"
+            }
+            // isReceiver=true হলে callId ইতিমধ্যে existingCallId দিয়ে initialized
 
             val stream = peerConnectionFactory.createLocalMediaStream("localStream")
             val audioSource = peerConnectionFactory.createAudioSource(MediaConstraints())
@@ -4107,7 +4122,9 @@ fun CallingScreen(
                 override fun onIceCandidate(candidate: IceCandidate?) {
                     candidate?.let { c ->
                         scope.launch {
-                            db.collection("calls").document(callId).collection("caller_ice").add(
+                            // Caller ICE → caller_ice, Receiver ICE → callee_ice
+                            val iceCollection = if (isReceiver) "callee_ice" else "caller_ice"
+                            db.collection("calls").document(callId).collection(iceCollection).add(
                                 mapOf("sdpMid" to c.sdpMid, "sdpMLineIndex" to c.sdpMLineIndex, "candidate" to c.sdp)
                             )
                         }
@@ -4138,73 +4155,133 @@ fun CallingScreen(
             if (callType == "video") stream.videoTracks.forEach { pc?.addTrack(it, listOf("localStream")) }
             peerConnection = pc
 
-            val offerConstraints = MediaConstraints().apply {
-                mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
-                if (callType == "video") mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
-            }
+            if (isReceiver) {
+                // ── RECEIVER PATH ─────────────────────────────────────────────────────
+                // Firestore থেকে offer পড়ো, answer তৈরি করো, status → "answered" লেখো
+                callStatus = "Connecting..."
+                val callDoc = db.collection("calls").document(callId).get().await()
+                val offerMap = callDoc.data?.get("offer") as? Map<*, *>
+                    ?: run { onEndCall(); return@LaunchedEffect }
+                val offerSdp = offerMap["sdp"] as? String
+                    ?: run { onEndCall(); return@LaunchedEffect }
 
-            pc?.createOffer(object : SdpObserver {
-                override fun onCreateSuccess(sdp: SessionDescription?) {
-                    sdp?.let { s ->
-                        pc.setLocalDescription(object : SdpObserver {
-                            override fun onCreateSuccess(s2: SessionDescription?) {}
-                            override fun onSetSuccess() {
-                                scope.launch {
-                                    db.collection("calls").document(callId).set(hashMapOf(
-                                        "caller" to currentUser.mobile,
-                                        "callerName" to currentUser.name,
-                                        "callee" to contact.mobile,
-                                        "type" to callType, "status" to "calling",
-                                        "timestamp" to System.currentTimeMillis(),
-                                        "offer" to mapOf("type" to s.type.canonicalForm(), "sdp" to s.description)
-                                    ))
-                                    // Send FCM push to callee so call arrives even if app is closed
-                                    sendFcmCallNotification(
-                                        calleeMobile = contact.mobile,
-                                        callerMobile = currentUser.mobile,
-                                        callerName = currentUser.name,
-                                        callType = callType,
-                                        callId = callId,
-                                        db = db,
-                                        context = context
-                                    )
+                pc?.setRemoteDescription(object : SdpObserver {
+                    override fun onCreateSuccess(s: SessionDescription?) {}
+                    override fun onSetSuccess() {
+                        val answerConstraints = MediaConstraints().apply {
+                            mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
+                            if (callType == "video") mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
+                        }
+                        pc.createAnswer(object : SdpObserver {
+                            override fun onCreateSuccess(sdp: SessionDescription?) {
+                                sdp?.let { s ->
+                                    pc.setLocalDescription(object : SdpObserver {
+                                        override fun onCreateSuccess(s2: SessionDescription?) {}
+                                        override fun onSetSuccess() {
+                                            scope.launch {
+                                                db.collection("calls").document(callId).update(
+                                                    "status", "answered",
+                                                    "answer", mapOf("type" to s.type.canonicalForm(), "sdp" to s.description)
+                                                )
+                                                // Caller এর ICE candidates যোগ করো
+                                                db.collection("calls").document(callId).collection("caller_ice").get().await()
+                                                    .documents.forEach { doc ->
+                                                        doc.data?.let { d ->
+                                                            pc?.addIceCandidate(IceCandidate(d["sdpMid"] as? String ?: "", (d["sdpMLineIndex"] as? Long)?.toInt() ?: 0, d["candidate"] as? String ?: ""))
+                                                        }
+                                                    }
+                                                callStatus = "Connected"; isConnected = true
+                                            }
+                                        }
+                                        override fun onCreateFailure(e: String?) {}
+                                        override fun onSetFailure(e: String?) {}
+                                    }, s)
                                 }
                             }
+                            override fun onSetSuccess() {}
                             override fun onCreateFailure(e: String?) {}
                             override fun onSetFailure(e: String?) {}
-                        }, s)
+                        }, answerConstraints)
                     }
-                }
-                override fun onSetSuccess() {}
-                override fun onCreateFailure(e: String?) {}
-                override fun onSetFailure(e: String?) {}
-            }, offerConstraints)
+                    override fun onCreateFailure(e: String?) {}
+                    override fun onSetFailure(e: String?) {}
+                }, SessionDescription(SessionDescription.Type.OFFER, offerSdp))
 
-            db.collection("calls").document(callId).addSnapshotListener { snapshot, _ ->
-                val data = snapshot?.data ?: return@addSnapshotListener
-                when (data["status"] as? String) {
-                    "answered" -> {
-                        (data["answer"] as? Map<*, *>)?.let { ans ->
-                            val sdpStr = ans["sdp"] as? String ?: return@addSnapshotListener
-                            pc?.setRemoteDescription(object : SdpObserver {
-                                override fun onCreateSuccess(s: SessionDescription?) {}
+                // Call ended/rejected by caller → screen বন্ধ করো
+                db.collection("calls").document(callId).addSnapshotListener { snapshot, _ ->
+                    val status = snapshot?.data?.get("status") as? String ?: return@addSnapshotListener
+                    if (status == "ended" || status == "rejected") scope.launch { onEndCall() }
+                }
+            } else {
+                // ── CALLER PATH ───────────────────────────────────────────────────────
+                val offerConstraints = MediaConstraints().apply {
+                    mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
+                    if (callType == "video") mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
+                }
+
+                pc?.createOffer(object : SdpObserver {
+                    override fun onCreateSuccess(sdp: SessionDescription?) {
+                        sdp?.let { s ->
+                            pc.setLocalDescription(object : SdpObserver {
+                                override fun onCreateSuccess(s2: SessionDescription?) {}
                                 override fun onSetSuccess() {
-                                    callStatus = "Connected"; isConnected = true
                                     scope.launch {
-                                        db.collection("calls").document(callId).collection("callee_ice").get().await()
-                                            .documents.forEach { doc ->
-                                                doc.data?.let { d ->
-                                                    pc?.addIceCandidate(IceCandidate(d["sdpMid"] as? String ?: "", (d["sdpMLineIndex"] as? Long)?.toInt() ?: 0, d["candidate"] as? String ?: ""))
-                                                }
-                                            }
+                                        db.collection("calls").document(callId).set(hashMapOf(
+                                            "caller" to currentUser.mobile,
+                                            "callerName" to currentUser.name,
+                                            "callee" to contact.mobile,
+                                            "type" to callType, "status" to "calling",
+                                            "timestamp" to System.currentTimeMillis(),
+                                            "offer" to mapOf("type" to s.type.canonicalForm(), "sdp" to s.description)
+                                        ))
+                                        // Send FCM push to callee so call arrives even if app is closed
+                                        sendFcmCallNotification(
+                                            calleeMobile = contact.mobile,
+                                            callerMobile = currentUser.mobile,
+                                            callerName = currentUser.name,
+                                            callType = callType,
+                                            callId = callId,
+                                            db = db,
+                                            context = context
+                                        )
                                     }
                                 }
                                 override fun onCreateFailure(e: String?) {}
                                 override fun onSetFailure(e: String?) {}
-                            }, SessionDescription(SessionDescription.Type.ANSWER, sdpStr))
+                            }, s)
                         }
                     }
-                    "ended", "rejected" -> scope.launch { onEndCall() }
+                    override fun onSetSuccess() {}
+                    override fun onCreateFailure(e: String?) {}
+                    override fun onSetFailure(e: String?) {}
+                }, offerConstraints)
+
+                db.collection("calls").document(callId).addSnapshotListener { snapshot, _ ->
+                    val data = snapshot?.data ?: return@addSnapshotListener
+                    when (data["status"] as? String) {
+                        "answered" -> {
+                            (data["answer"] as? Map<*, *>)?.let { ans ->
+                                val sdpStr = ans["sdp"] as? String ?: return@addSnapshotListener
+                                pc?.setRemoteDescription(object : SdpObserver {
+                                    override fun onCreateSuccess(s: SessionDescription?) {}
+                                    override fun onSetSuccess() {
+                                        callStatus = "Connected"; isConnected = true
+                                        scope.launch {
+                                            db.collection("calls").document(callId).collection("callee_ice").get().await()
+                                                .documents.forEach { doc ->
+                                                    doc.data?.let { d ->
+                                                        pc?.addIceCandidate(IceCandidate(d["sdpMid"] as? String ?: "", (d["sdpMLineIndex"] as? Long)?.toInt() ?: 0, d["candidate"] as? String ?: ""))
+                                                    }
+                                                }
+                                        }
+                                    }
+                                    override fun onCreateFailure(e: String?) {}
+                                    override fun onSetFailure(e: String?) {}
+                                }, SessionDescription(SessionDescription.Type.ANSWER, sdpStr))
+                            }
+                        }
+                        "ended", "rejected" -> scope.launch { onEndCall() }
+                    }
                 }
             }
         } catch (e: Exception) {
