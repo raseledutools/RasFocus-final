@@ -1116,7 +1116,19 @@ fun MainScreen(
     // Request permissions dynamically
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
     LaunchedEffect(Unit) {
-        permissionLauncher.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO))
+        val perms = mutableListOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            perms.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        permissionLauncher.launch(perms.toTypedArray())
+
+        try {
+            com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
+                if (token != null) {
+                    db.collection("chat_users").document(currentUser.mobile).update("fcmToken", token)
+                }
+            }
+        } catch (_: Exception) { }
     }
 
     // Listen for incoming calls when app is open — IncomingCallScreen দেখাও directly
