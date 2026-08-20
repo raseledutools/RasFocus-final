@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.core.graphics.drawable.toBitmap
+import androidx.activity.compose.BackHandler
 import androidx.navigation.NavController
 import kotlinx.coroutines.delay
 import kotlin.math.abs
@@ -125,6 +126,16 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
 
     val battery    = getBatteryLevel(context)
     val isCharging = isDeviceCharging(context)
+
+    // Back press: sidebar → settings → context menu → nothing (launcher is home, swallow back)
+    BackHandler(enabled = showSidebar || showSettings || longPressedApp != null || pickerSlot != PickerSlot.NONE) {
+        when {
+            longPressedApp != null  -> { longPressedApp = null }
+            pickerSlot != PickerSlot.NONE -> { pickerSlot = PickerSlot.NONE }
+            showSidebar             -> { showSidebar = false; query = "" }
+            showSettings            -> { showSettings = false }
+        }
+    }
 
     // sidebar slide animation
     val sidebarOffsetX by animateDpAsState(
@@ -1284,7 +1295,9 @@ private fun getInstalledApps(
 ): List<AppInfo> {
     val pm     = context.packageManager
     val intent = Intent(Intent.ACTION_MAIN).apply { addCategory(Intent.CATEGORY_LAUNCHER) }
-    return pm.queryIntentActivities(intent, 0)
+    val ownPkg = context.packageName  // com.rasel.RasFocus
+
+    val fromLauncher = pm.queryIntentActivities(intent, 0)
         .filter { it.activityInfo.packageName !in hidden }
         .map { ri ->
             val pkg = ri.activityInfo.packageName
@@ -1296,6 +1309,25 @@ private fun getInstalledApps(
                 usageMinutes  = usage[pkg] ?: 0L
             )
         }
+
+    // নিজের app (RasFocus+) যদি hidden না হয় কিন্তু LAUNCHER query তে না আসে,
+    // তাহলে explicitly যোগ করো — launcher নিজেকে miss করলেও দেখা যাবে
+    val hasOwnApp = fromLauncher.any { it.packageName == ownPkg }
+    val ownAppEntry = if (!hasOwnApp && ownPkg !in hidden) {
+        runCatching {
+            val ai    = pm.getApplicationInfo(ownPkg, 0)
+            val label = pm.getApplicationLabel(ai).toString()
+            AppInfo(
+                label        = label,
+                packageName  = ownPkg,
+                customName   = renamed[ownPkg] ?: "",
+                isBlocked    = ownPkg in blocked,
+                usageMinutes = usage[ownPkg] ?: 0L
+            )
+        }.getOrNull()
+    } else null
+
+    return (fromLauncher + listOfNotNull(ownAppEntry))
         .sortedBy { (renamed[it.packageName] ?: it.label).lowercase() }
         .distinctBy { it.packageName }
 }
