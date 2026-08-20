@@ -948,10 +948,15 @@
         android:name=".selfcontrol.rasgram.DeclineCallReceiver"
         android:exported="false" />
 
-    <!-- RasGram FCM messaging service — exported=true required for FCM delivery -->
+    <!-- RasGram FCM messaging service — exported=true required for FCM delivery
+         FIX: was exported="false" which prevented Firebase from binding to this
+         service when the app was in background or killed. FCM system runs in a
+         separate process and needs exported=true to dispatch onMessageReceived().
+         Result: incoming call FCM was silently dropped whenever the user left
+         the RasGram screen — only the in-app Firestore listener was alive. -->
     <service
         android:name=".selfcontrol.rasgram.RasgramMessagingService"
-        android:exported="false">
+        android:exported="true">
         <intent-filter>
             <action android:name="com.google.firebase.MESSAGING_EVENT" />
         </intent-filter>

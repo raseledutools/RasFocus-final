@@ -150,8 +150,10 @@ class RasgramMessagingService : FirebaseMessagingService() {
     private fun createChannels(nm: NotificationManager) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             // Call channel — IMPORTANCE_MAX so it pops over lock screen
+            // FIX: was IMPORTANCE_HIGH — only MAX guarantees the full-screen intent
+            // fires reliably on locked/sleeping screens across all Android OEMs.
             val callChannel = NotificationChannel(
-                "CALL_CHANNEL", "Incoming Calls", NotificationManager.IMPORTANCE_HIGH
+                "CALL_CHANNEL", "Incoming Calls", NotificationManager.IMPORTANCE_MAX
             ).apply {
                 description = "Incoming RasGram calls"
                 // Use default ringtone so it rings even on lock screen
