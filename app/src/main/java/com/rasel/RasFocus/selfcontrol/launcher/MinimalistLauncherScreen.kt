@@ -126,16 +126,27 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
     val battery    = getBatteryLevel(context)
     val isCharging = isDeviceCharging(context)
 
-    // drag state for swipe detection
+    // drag state for swipe detection — also tracks real-time finger position for sidebar reveal
     var dragDeltaX by remember { mutableStateOf(0f) }
     var dragDeltaY by remember { mutableStateOf(0f) }
+    // live offset of the finger during drag — used to progressively reveal sidebar
+    var liveSwipeX by remember { mutableStateOf(0f) }
 
-    // sidebar slide animation
-    val sidebarOffsetX by animateDpAsState(
+    // sidebar slide animation — follows finger during drag, then snaps
+    val sidebarOffsetXAnim by animateDpAsState(
         targetValue   = if (showSidebar) 0.dp else 320.dp,
-        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
         label         = "sidebarOffset"
     )
+    // During a live left-swipe, override the animated offset to follow the finger
+    val sidebarOffsetX = if (!showSidebar && liveSwipeX < 0f) {
+        // map finger delta (-0 to -320px) to dp offset (320dp to 0dp)
+        val screenWidth = 320f // approximate sidebar width in px-equivalent
+        val progress = (-liveSwipeX / (screenWidth * 3f)).coerceIn(0f, 1f)
+        (320.dp * (1f - progress))
+    } else {
+        sidebarOffsetXAnim
+    }
     val sidebarAlpha by animateFloatAsState(
         targetValue   = if (showSidebar) 1f else 0f,
         animationSpec = tween(durationMillis = 250),
@@ -148,6 +159,7 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
             .background(theme.bg)
             .pointerInput(showSidebar) {
                 detectDragGestures(
+                    onDragStart = { liveSwipeX = 0f },
                     onDragEnd = {
                         val absX = abs(dragDeltaX)
                         val absY = abs(dragDeltaY)
@@ -169,9 +181,13 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                             // right swipe → close sidebar
                             if (dragDeltaX > 80f) showSidebar = false
                         }
-                        dragDeltaX = 0f; dragDeltaY = 0f
+                        dragDeltaX = 0f; dragDeltaY = 0f; liveSwipeX = 0f
                     },
-                    onDrag = { _, d -> dragDeltaX += d.x; dragDeltaY += d.y }
+                    onDragCancel = { dragDeltaX = 0f; dragDeltaY = 0f; liveSwipeX = 0f },
+                    onDrag = { _, d ->
+                        dragDeltaX += d.x; dragDeltaY += d.y
+                        if (!showSidebar && dragDeltaX < 0f) liveSwipeX = dragDeltaX
+                    }
                 )
             }
     ) {
@@ -267,7 +283,14 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                     if (name.isBlank()) u.remove(app.packageName) else u[app.packageName] = name
                     renamedMap = u; saveRenamedMap(prefs, u); longPressedApp = null
                 },
-                onDismiss = { longPressedApp = null }
+                onDismiss = { longPressedApp = null },
+                extraActions = {
+                    // Always show Remove from Home since these ARE pinned apps
+                    ContextMenuRow(Icons.Default.PushPin, "Remove from Home") {
+                        val u = pinnedPkgs.toMutableList(); u.remove(app.packageName); pinnedPkgs = u
+                        prefs.edit().putStringSet(KEY_PINNED, u.toSet()).apply(); longPressedApp = null
+                    }
+                }
             )
         }
 
@@ -404,12 +427,10 @@ fun HomeScreen(
                         fontWeight = FontWeight.Light,
                         modifier   = Modifier
                             .fillMaxWidth()
-                            .pointerInput(Unit) {
-                                detectTapGestures(
-                                    onTap       = { onLaunch(app) },
-                                    onLongPress = { onLongPress(app) }
-                                )
-                            }
+                            .combinedClickable(
+                                onClick     = { onLaunch(app) },
+                                onLongClick = { onLongPress(app) }
+                            )
                             .padding(vertical = 12.dp)
                     )
                 }
@@ -763,12 +784,10 @@ fun SidebarContent(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .pointerInput(Unit) {
-                                detectTapGestures(
-                                    onTap       = { onLaunch(app) },
-                                    onLongPress = { contextApp = app }
-                                )
-                            }
+                            .combinedClickable(
+                                onClick     = { onLaunch(app) },
+                                onLongClick = { contextApp = app }
+                            )
                             .padding(horizontal = 16.dp, vertical = 13.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
