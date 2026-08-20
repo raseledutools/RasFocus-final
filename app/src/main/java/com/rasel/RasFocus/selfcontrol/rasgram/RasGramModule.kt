@@ -3783,11 +3783,34 @@ fun CallingScreen(
             .setVideoEncoderFactory(DefaultVideoEncoderFactory(eglBase.eglBaseContext, true, true))
             .createPeerConnectionFactory()
     }
+    // STUN: NAT traversal for same/different WiFi
+    // TURN: relay fallback for Mobile data ↔ WiFi, Symmetric NAT, corporate networks
+    // Using multiple TURN endpoints (TCP+UDP, port 80+443) for maximum compatibility
     val iceServers = listOf(
+        // Google STUN — free, reliable
         PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
         PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer(),
-        PeerConnection.IceServer.builder("turn:openrelay.metered.ca:80").setUsername("openrelayproject").setPassword("openrelayproject").createIceServer(),
-        PeerConnection.IceServer.builder("turn:openrelay.metered.ca:443").setUsername("openrelayproject").setPassword("openrelayproject").createIceServer()
+        PeerConnection.IceServer.builder("stun:stun2.l.google.com:19302").createIceServer(),
+        // Metered.ca TURN — UDP (fastest)
+        PeerConnection.IceServer.builder("turn:relay.metered.ca:80")
+            .setUsername("83eebabf8b4cce9d5dbcb649")
+            .setPassword("2D7JvfkOQtBdYW3R")
+            .createIceServer(),
+        // Metered.ca TURN — TCP port 80 (firewall bypass)
+        PeerConnection.IceServer.builder("turn:relay.metered.ca:80?transport=tcp")
+            .setUsername("83eebabf8b4cce9d5dbcb649")
+            .setPassword("2D7JvfkOQtBdYW3R")
+            .createIceServer(),
+        // Metered.ca TURN — TLS port 443 (strictest firewall bypass)
+        PeerConnection.IceServer.builder("turns:relay.metered.ca:443")
+            .setUsername("83eebabf8b4cce9d5dbcb649")
+            .setPassword("2D7JvfkOQtBdYW3R")
+            .createIceServer(),
+        // Metered.ca TURN — TCP 443
+        PeerConnection.IceServer.builder("turns:relay.metered.ca:443?transport=tcp")
+            .setUsername("83eebabf8b4cce9d5dbcb649")
+            .setPassword("2D7JvfkOQtBdYW3R")
+            .createIceServer()
     )
 
     var peerConnection by remember { mutableStateOf<PeerConnection?>(null) }
