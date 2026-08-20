@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package com.rasel.RasFocus.selfcontrol.launcher
 
 import android.app.usage.UsageStatsManager
@@ -167,8 +169,9 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                             val event = awaitPointerEvent()
                             val change = event.changes.firstOrNull() ?: break
                             if (change.pressed) {
-                                totalX += change.positionChange().x
-                                totalY += change.positionChange().y
+                                val delta = change.position - change.previousPosition
+                                totalX += delta.x
+                                totalY += delta.y
                                 // Only consume if clearly horizontal rightward drag
                                 val absX = abs(totalX); val absY = abs(totalY)
                                 if (absX > 20f && absX > absY && totalX > 0f) {
@@ -195,8 +198,9 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                             val event = awaitPointerEvent()
                             val change = event.changes.firstOrNull() ?: break
                             if (change.pressed) {
-                                val dx = change.positionChange().x
-                                val dy = change.positionChange().y
+                                val delta = change.position - change.previousPosition
+                                val dx = delta.x
+                                val dy = delta.y
                                 totalX += dx; totalY += dy
                                 val absX = abs(totalX); val absY = abs(totalY)
                                 // Only start consuming after clear directional intent (slop = 20px)
