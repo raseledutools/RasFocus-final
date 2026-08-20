@@ -4093,6 +4093,8 @@ fun CallingScreen(
                             }
                             CallControlButton(icon = if (isSpeakerOn) Icons.Default.VolumeUp else Icons.Default.VolumeOff, label = "Speaker", isActive = isSpeakerOn, activeColor = RasGramTheme.Green) {
                                 isSpeakerOn = !isSpeakerOn
+                                // MODE_IN_COMMUNICATION must stay active during toggle
+                                audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
                                 audioManager.isSpeakerphoneOn = isSpeakerOn
                             }
                         }
