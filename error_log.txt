@@ -1,8 +1,91 @@
 ╔══════════════════════════════════════════╗
-║        LAST BUILD: SUCCESS ✅            ║
+║      LAST BUILD: ERROR ❌                ║
+║   Push করার আগে এই error fix করুন।     ║
 ╚══════════════════════════════════════════╝
 
-Build passed at: 2026-08-20 09:41:46 UTC
-Run: #908  |  Commit: 456cec8fbe91745932ad2ec145d6b238bafcdd4c
+=== KOTLIN ERRORS ===
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/launcher/MinimalistLauncherScreen.kt:159:50 Unresolved reference: positionChange
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/launcher/MinimalistLauncherScreen.kt:160:50 Unresolved reference: positionChange
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/launcher/MinimalistLauncherScreen.kt:187:49 Unresolved reference: positionChange
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/launcher/MinimalistLauncherScreen.kt:188:49 Unresolved reference: positionChange
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/launcher/MinimalistLauncherScreen.kt:189:40 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/launcher/MinimalistLauncherScreen.kt:189:54 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/launcher/MinimalistLauncherScreen.kt:457:30 This foundation API is experimental and is likely to change or be removed in the future.
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/launcher/MinimalistLauncherScreen.kt:526:18 This foundation API is experimental and is likely to change or be removed in the future.
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/launcher/MinimalistLauncherScreen.kt:812:30 This foundation API is experimental and is likely to change or be removed in the future.
 
-No errors. Safe to push.
+=== UNRESOLVED / TYPE ERRORS ===
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/launcher/MinimalistLauncherScreen.kt:159:50 Unresolved reference: positionChange
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/launcher/MinimalistLauncherScreen.kt:160:50 Unresolved reference: positionChange
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/launcher/MinimalistLauncherScreen.kt:187:49 Unresolved reference: positionChange
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/launcher/MinimalistLauncherScreen.kt:188:49 Unresolved reference: positionChange
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/launcher/MinimalistLauncherScreen.kt:189:40 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/launcher/MinimalistLauncherScreen.kt:189:54 Overload resolution ambiguity: 
+
+=== BUILD FAILURE ===
+> Task :app:compileFullReleaseKotlin FAILED
+* What went wrong:
+Execution failed for task ':app:compileFullReleaseKotlin'.
+BUILD FAILED in 3m 43s
+
+=== LAST 60 LINES ===
+> Task :app:extractFullReleaseNativeSymbolTables FROM-CACHE
+> Task :app:mergeFullReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:processFullReleaseMainManifest
+> Task :app:sdkFullReleaseDependencyData
+> Task :app:processFullReleaseManifest
+> Task :app:processFullReleaseManifestForPackage
+note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
+
+note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
+
+> Task :app:processFullReleaseResources
+> Task :app:kspFullReleaseKotlin
+> Task :app:compileFullReleaseKotlin
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/launcher/MinimalistLauncherScreen.kt:159:50 Unresolved reference: positionChange
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/launcher/MinimalistLauncherScreen.kt:160:50 Unresolved reference: positionChange
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/launcher/MinimalistLauncherScreen.kt:187:49 Unresolved reference: positionChange
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/launcher/MinimalistLauncherScreen.kt:188:49 Unresolved reference: positionChange
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/launcher/MinimalistLauncherScreen.kt:189:40 Overload resolution ambiguity: 
+public final operator fun plus(other: Byte): Float defined in kotlin.Float
+public final operator fun plus(other: Double): Double defined in kotlin.Float
+public final operator fun plus(other: Float): Float defined in kotlin.Float
+public final operator fun plus(other: Int): Float defined in kotlin.Float
+public final operator fun plus(other: Long): Float defined in kotlin.Float
+public final operator fun plus(other: Short): Float defined in kotlin.Float
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/launcher/MinimalistLauncherScreen.kt:189:54 Overload resolution ambiguity: 
+public final operator fun plus(other: Byte): Float defined in kotlin.Float
+public final operator fun plus(other: Double): Double defined in kotlin.Float
+public final operator fun plus(other: Float): Float defined in kotlin.Float
+public final operator fun plus(other: Int): Float defined in kotlin.Float
+public final operator fun plus(other: Long): Float defined in kotlin.Float
+public final operator fun plus(other: Short): Float defined in kotlin.Float
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/launcher/MinimalistLauncherScreen.kt:457:30 This foundation API is experimental and is likely to change or be removed in the future.
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/launcher/MinimalistLauncherScreen.kt:526:18 This foundation API is experimental and is likely to change or be removed in the future.
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/launcher/MinimalistLauncherScreen.kt:812:30 This foundation API is experimental and is likely to change or be removed in the future.
+
+> Task :app:compileFullReleaseKotlin FAILED
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1787220390087.json
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:compileFullReleaseKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 3m 43s
+32 actionable tasks: 22 executed, 10 from cache
+Configuration cache entry stored.
