@@ -323,11 +323,7 @@ fun RasGramApp(
     var currentUser by remember { mutableStateOf(initialUser) }
     var isDarkMode by remember { mutableStateOf(true) }
     var showSplash by remember { mutableStateOf(true) }
-
-    LaunchedEffect(Unit) {
-        delay(1800)
-        showSplash = false
-    }
+    // splash লুকাবে ChatsTab থেকে — Firebase এর প্রথম snapshot আসলেই
 
     MaterialTheme(colorScheme = if (isDarkMode) darkColorScheme(
         primary = RasGramTheme.Green,
@@ -360,6 +356,7 @@ fun RasGramApp(
                 currentUser = currentUser!!,
                 isDarkMode = isDarkMode,
                 onToggleTheme = { isDarkMode = !isDarkMode },
+                onSplashDone = { showSplash = false },
                 onLogout = {
                     prefs.edit().clear().apply()
                     FirebaseAuth.getInstance().signOut()
@@ -1079,6 +1076,7 @@ fun MainScreen(
     onToggleTheme: () -> Unit,
     onLogout: () -> Unit,
     onUserUpdate: (User) -> Unit,
+    onSplashDone: () -> Unit = {},
     incomingCallId: String? = null,
     incomingCallerMobile: String? = null,
     incomingCallerName: String? = null,
@@ -1211,6 +1209,7 @@ fun MainScreen(
                         onLogout = onLogout,
                         onUserUpdate = onUserUpdate,
                         onStatusClick = { selectedStatusUser = it },
+                        onSplashDone = onSplashDone,
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -1359,6 +1358,7 @@ fun SidebarContent(
     onLogout: () -> Unit,
     onUserUpdate: (User) -> Unit,
     onStatusClick: (List<Status>) -> Unit,
+    onSplashDone: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     when (tab) {
@@ -1370,6 +1370,7 @@ fun SidebarContent(
             onToggleTheme = onToggleTheme,
             onLogout = onLogout,
             onUserUpdate = onUserUpdate,
+            onSplashDone = onSplashDone,
             modifier = modifier
         )
         1 -> StatusTab(currentUser = currentUser, onStatusClick = onStatusClick, modifier = modifier)
@@ -1389,6 +1390,7 @@ fun ChatsTab(
     onToggleTheme: () -> Unit,
     onLogout: () -> Unit,
     onUserUpdate: (User) -> Unit,
+    onSplashDone: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val db = remember { FirebaseFirestore.getInstance() }
@@ -1458,6 +1460,7 @@ fun ChatsTab(
                 }
             }?.filter { it.mobile != currentUser.mobile }?.also { users = it }
             usersLoaded = true  // প্রথম snapshot এলেই, খালি হলেও — empty state দেখানো ঠিক আছে
+            onSplashDone()     // splash লুকাও — data ready
         }
     }
 
