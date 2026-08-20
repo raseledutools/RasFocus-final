@@ -126,27 +126,12 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
     val battery    = getBatteryLevel(context)
     val isCharging = isDeviceCharging(context)
 
-    // drag state for swipe detection — also tracks real-time finger position for sidebar reveal
-    var dragDeltaX by remember { mutableStateOf(0f) }
-    var dragDeltaY by remember { mutableStateOf(0f) }
-    // live offset of the finger during drag — used to progressively reveal sidebar
-    var liveSwipeX by remember { mutableStateOf(0f) }
-
-    // sidebar slide animation — follows finger during drag, then snaps
-    val sidebarOffsetXAnim by animateDpAsState(
+    // sidebar slide animation
+    val sidebarOffsetX by animateDpAsState(
         targetValue   = if (showSidebar) 0.dp else 320.dp,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
         label         = "sidebarOffset"
     )
-    // During a live left-swipe, override the animated offset to follow the finger
-    val sidebarOffsetX = if (!showSidebar && liveSwipeX < 0f) {
-        // map finger delta (-0 to -320px) to dp offset (320dp to 0dp)
-        val screenWidth = 320f // approximate sidebar width in px-equivalent
-        val progress = (-liveSwipeX / (screenWidth * 3f)).coerceIn(0f, 1f)
-        (320.dp * (1f - progress))
-    } else {
-        sidebarOffsetXAnim
-    }
     val sidebarAlpha by animateFloatAsState(
         targetValue   = if (showSidebar) 1f else 0f,
         animationSpec = tween(durationMillis = 250),
@@ -158,37 +143,74 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
             .fillMaxSize()
             .background(theme.bg)
             .pointerInput(showSidebar) {
-                detectDragGestures(
-                    onDragStart = { liveSwipeX = 0f },
-                    onDragEnd = {
-                        val absX = abs(dragDeltaX)
-                        val absY = abs(dragDeltaY)
-                        if (!showSidebar) {
-                            if (absX > absY) {
-                                // left swipe → open sidebar
-                                if (dragDeltaX < -80f) showSidebar = true
+                // Only intercept gesture AFTER it's confirmed a drag (slop exceeded)
+                // This allows child taps (clock, apps) to register normally
+                if (showSidebar) {
+                    // Sidebar open: only detect rightward swipe to close
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        var totalX = 0f
+                        var totalY = 0f
+                        var drag = true
+                        while (drag) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull() ?: break
+                            if (change.pressed) {
+                                totalX += change.positionChange().x
+                                totalY += change.positionChange().y
+                                // Only consume if clearly horizontal rightward drag
+                                val absX = abs(totalX); val absY = abs(totalY)
+                                if (absX > 20f && absX > absY && totalX > 0f) {
+                                    change.consume()
+                                }
                             } else {
-                                if (dragDeltaY < -80f) showSidebar = true  // up swipe also opens
-                                if (dragDeltaY > 80f) {
-                                    // down → notifications
-                                    try {
-                                        val sb = context.getSystemService("statusbar")
-                                        sb?.javaClass?.getMethod("expandNotificationsPanel")?.invoke(sb)
-                                    } catch (_: Exception) {}
+                                drag = false
+                                if (totalX > 80f && abs(totalX) > abs(totalY)) {
+                                    showSidebar = false
                                 }
                             }
-                        } else {
-                            // right swipe → close sidebar
-                            if (dragDeltaX > 80f) showSidebar = false
                         }
-                        dragDeltaX = 0f; dragDeltaY = 0f; liveSwipeX = 0f
-                    },
-                    onDragCancel = { dragDeltaX = 0f; dragDeltaY = 0f; liveSwipeX = 0f },
-                    onDrag = { _, d ->
-                        dragDeltaX += d.x; dragDeltaY += d.y
-                        if (!showSidebar && dragDeltaX < 0f) liveSwipeX = dragDeltaX
                     }
-                )
+                } else {
+                    // Home: detect leftward swipe to open sidebar, up for apps, down for notifs
+                    // Uses awaitEachGesture so child clicks pass through untouched
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        var totalX = 0f
+                        var totalY = 0f
+                        var consumed = false
+                        var drag = true
+                        while (drag) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull() ?: break
+                            if (change.pressed) {
+                                val dx = change.positionChange().x
+                                val dy = change.positionChange().y
+                                totalX += dx; totalY += dy
+                                val absX = abs(totalX); val absY = abs(totalY)
+                                // Only start consuming after clear directional intent (slop = 20px)
+                                if (!consumed && absX > 20f && absX > absY && totalX < 0f) {
+                                    consumed = true
+                                }
+                                if (consumed) change.consume()
+                            } else {
+                                drag = false
+                                val absX = abs(totalX); val absY = abs(totalY)
+                                if (absX > absY) {
+                                    if (totalX < -80f) showSidebar = true
+                                } else {
+                                    if (totalY < -80f) showSidebar = true
+                                    if (totalY > 80f) {
+                                        try {
+                                            val sb = context.getSystemService("statusbar")
+                                            sb?.javaClass?.getMethod("expandNotificationsPanel")?.invoke(sb)
+                                        } catch (_: Exception) {}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
     ) {
         // ═══════════════════════════════════════════════════════
@@ -395,7 +417,7 @@ fun HomeScreen(
         ) {
             Spacer(Modifier.height(48.dp))
 
-            // ── Battery ring clock — long press to assign app ─────────────
+            // ── Battery ring clock — tap to launch, long press to assign ────
             ClockWithBatteryRing(
                 time       = timeState.first,
                 date       = timeState.second,
@@ -403,7 +425,12 @@ fun HomeScreen(
                 isCharging = isCharging,
                 onLongPress = onLongPressClockRing,
                 onTap = {
-                    if (clockPkg.isNotBlank()) launchApp(context, clockPkg)
+                    if (clockPkg.isNotBlank()) {
+                        launchApp(context, clockPkg)
+                    } else {
+                        // কোনো app assign নেই — picker খোলো
+                        onLongPressClockRing()
+                    }
                 }
             )
 
@@ -496,12 +523,10 @@ fun ClockWithBatteryRing(
         Box(
             Modifier
                 .size(180.dp)
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onTap       = { onTap() },
-                        onLongPress = { onLongPress() }
-                    )
-                }
+                .combinedClickable(
+                    onClick     = { onTap() },
+                    onLongClick = { onLongPress() }
+                )
                 .drawBehind {
                     val strokePx  = 2.8.dp.toPx()
                     val radius    = size.width / 2f - strokePx
