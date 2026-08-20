@@ -2014,10 +2014,32 @@ fun ChatArea(
 
         // Messages area
         Box(modifier = Modifier.weight(1f)) {
-            // Chat wallpaper pattern (subtle)
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                // subtle background pattern
-            }
+            // WhatsApp-style dark wallpaper with subtle icon pattern
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFF0B141A))
+                    .drawBehind {
+                        val patternColor = Color(0xFF1A2C35)
+                        val iconSize = 28.dp.toPx()
+                        val spacing = 52.dp.toPx()
+                        var y = 0f
+                        var row = 0
+                        while (y < size.height + spacing) {
+                            var x = if (row % 2 == 0) 0f else spacing / 2
+                            while (x < size.width + spacing) {
+                                drawCircle(
+                                    color = patternColor,
+                                    radius = iconSize / 2,
+                                    center = androidx.compose.ui.geometry.Offset(x, y)
+                                )
+                                x += spacing
+                            }
+                            y += spacing * 0.86f
+                            row++
+                        }
+                    }
+            )
 
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -2753,25 +2775,76 @@ fun DeletedMessageBubble(isMe: Boolean, timeString: String) {
 
 @Composable
 fun CallLogBubble(message: Message) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+    val isMe = message.callStatus != "missed" // missed call = received by me, so not "isMe" in display
+    val isMissed = message.callStatus == "missed"
+    val isVideo = message.callType == "video"
+    val bubbleColor = if (isMe) RasGramTheme.BubbleOut else RasGramTheme.BubbleIn
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+        horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start
+    ) {
         Surface(
-            shape = RoundedCornerShape(8.dp),
-            color = Color(0xFF182229),
-            border = BorderStroke(0.5.dp, RasGramTheme.Border)
+            shape = RoundedCornerShape(
+                topStart = 16.dp, topEnd = 16.dp,
+                bottomStart = if (isMe) 16.dp else 4.dp,
+                bottomEnd = if (isMe) 4.dp else 16.dp
+            ),
+            color = bubbleColor,
+            shadowElevation = 1.dp,
+            modifier = Modifier.widthIn(min = 200.dp, max = 280.dp)
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    if (message.callType == "video") Icons.Default.Videocam else Icons.Default.Call,
-                    null, modifier = Modifier.size(14.dp),
-                    tint = if (message.callStatus == "missed") RasGramTheme.Red else RasGramTheme.Green
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(message.text, style = MaterialTheme.typography.bodySmall, color = RasGramTheme.TextPrimary)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(message.timeString, style = MaterialTheme.typography.labelSmall, color = RasGramTheme.TextMuted, fontSize = 10.sp)
+                // Circle icon background
+                Surface(
+                    shape = CircleShape,
+                    color = Color.White.copy(alpha = 0.15f),
+                    modifier = Modifier.size(42.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            if (isVideo) Icons.Default.Videocam else Icons.Default.PhoneCallback,
+                            contentDescription = null,
+                            modifier = Modifier.size(22.dp),
+                            tint = if (isMissed) RasGramTheme.Red else Color.White
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        if (isVideo) "Video call" else "Voice call",
+                        color = RasGramTheme.TextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp
+                    )
+                    Text(
+                        if (isMissed) "No answer" else message.text.ifEmpty { "Ended" },
+                        color = if (isMissed) RasGramTheme.Red else RasGramTheme.TextMuted,
+                        fontSize = 12.sp
+                    )
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        message.timeString,
+                        color = RasGramTheme.TextMuted,
+                        fontSize = 10.sp
+                    )
+                    if (isMe) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Icon(
+                            if (message.read) Icons.Default.DoneAll else Icons.Default.Check,
+                            null,
+                            modifier = Modifier.size(14.dp),
+                            tint = if (message.read) RasGramTheme.BlueTick else RasGramTheme.TextMuted
+                        )
+                    }
+                }
             }
         }
     }
@@ -2893,39 +2966,105 @@ fun AudioMessageContent(url: String, fileName: String?, duration: Int) {
 
 @Composable
 fun DocumentMessageContent(url: String, fileName: String?, fileType: String?, fileSize: Long, context: Context) {
-    val icon = when {
-        fileType?.contains("pdf") == true -> Icons.Default.PictureAsPdf
-        fileType?.contains("word") == true || fileType?.contains("document") == true -> Icons.Default.Description
-        fileType?.contains("sheet") == true || fileType?.contains("excel") == true -> Icons.Default.TableChart
-        fileType?.contains("presentation") == true || fileType?.contains("powerpoint") == true -> Icons.Default.Slideshow
-        fileType?.contains("zip") == true || fileType?.contains("archive") == true -> Icons.Default.FolderZip
-        else -> Icons.Default.InsertDriveFile
+    val isPdf = fileType?.contains("pdf") == true
+    val isWord = fileType?.contains("word") == true || fileType?.contains("document") == true
+    val isExcel = fileType?.contains("sheet") == true || fileType?.contains("excel") == true
+    val isPpt = fileType?.contains("presentation") == true || fileType?.contains("powerpoint") == true
+    val isZip = fileType?.contains("zip") == true || fileType?.contains("archive") == true
+
+    val iconBgColor = when {
+        isPdf   -> Color(0xFFE53935)
+        isWord  -> Color(0xFF1565C0)
+        isExcel -> Color(0xFF2E7D32)
+        isPpt   -> Color(0xFFE65100)
+        isZip   -> Color(0xFF6A1B9A)
+        else    -> Color(0xFF37474F)
     }
-    val iconColor = when {
-        fileType?.contains("pdf") == true -> RasGramTheme.Red
-        fileType?.contains("word") == true -> Color(0xFF2196F3)
-        fileType?.contains("sheet") == true || fileType?.contains("excel") == true -> RasGramTheme.Green
-        else -> RasGramTheme.TextMuted
+    val iconLabel = when {
+        isPdf   -> "PDF"
+        isWord  -> "DOC"
+        isExcel -> "XLS"
+        isPpt   -> "PPT"
+        isZip   -> "ZIP"
+        else    -> fileName?.substringAfterLast(".")?.uppercase()?.take(3) ?: "FILE"
+    }
+    val icon = when {
+        isPdf   -> Icons.Default.PictureAsPdf
+        isWord  -> Icons.Default.Description
+        isExcel -> Icons.Default.TableChart
+        isPpt   -> Icons.Default.Slideshow
+        isZip   -> Icons.Default.FolderZip
+        else    -> Icons.Default.InsertDriveFile
     }
 
-    Row(
-        modifier = Modifier.fillMaxWidth().clickable {
-            val intent = Intent(Intent.ACTION_VIEW, url.toUri())
-            context.startActivity(intent)
-        }.padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically
+    // WhatsApp-style: thumbnail top + info row bottom
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                val intent = Intent(Intent.ACTION_VIEW, url.toUri())
+                context.startActivity(intent)
+            }
     ) {
-        Surface(shape = RoundedCornerShape(10.dp), color = iconColor.copy(0.1f), modifier = Modifier.size(46.dp)) {
-            Icon(icon, null, tint = iconColor, modifier = Modifier.padding(10.dp))
-        }
-        Spacer(modifier = Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(fileName ?: "Document", style = MaterialTheme.typography.bodyMedium, color = RasGramTheme.TextPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            if (fileSize > 0) {
-                Text(formatFileSize(fileSize), style = MaterialTheme.typography.labelSmall, color = RasGramTheme.TextMuted)
+        // Colored header block (thumbnail replacement)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(72.dp)
+                .background(iconBgColor.copy(alpha = 0.85f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(32.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    iconLabel,
+                    color = Color.White,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 18.sp,
+                    letterSpacing = 1.sp
+                )
             }
         }
-        Icon(Icons.Default.Download, null, tint = RasGramTheme.TextMuted, modifier = Modifier.size(20.dp))
+
+        // File info row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    fileName ?: "Document",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = RasGramTheme.TextPrimary,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (fileSize > 0) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        "${formatFileSize(fileSize)} • ${iconLabel}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = RasGramTheme.TextMuted
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Icon(
+                Icons.Default.Download,
+                contentDescription = null,
+                tint = RasGramTheme.TextMuted,
+                modifier = Modifier.size(22.dp)
+            )
+        }
     }
 }
 
