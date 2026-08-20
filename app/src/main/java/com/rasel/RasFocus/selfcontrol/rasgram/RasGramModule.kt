@@ -4759,7 +4759,7 @@ fun SettingsDialog(
     var selectedTab by remember { mutableIntStateOf(0) }
 
     val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-    var callDeliveryMethod by remember { mutableStateOf(prefs.getString(PREF_CALL_DELIVERY, "disabled") ?: "disabled") }
+    var callDeliveryMethod by remember { mutableStateOf(prefs.getString(PREF_CALL_DELIVERY, "fcm") ?: "fcm") }
     var serviceAccountJson by remember { mutableStateOf(prefs.getString(PREF_SA_JSON, "") ?: "") }
 
     val imageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -5304,16 +5304,21 @@ suspend fun sendFcmCallNotification(
         val fcmToken = calleeDoc.getString("fcmToken") ?: return@withContext
 
         val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        val deliveryMethod = prefs.getString(PREF_CALL_DELIVERY, "disabled") ?: "disabled"
+        val deliveryMethod = prefs.getString(PREF_CALL_DELIVERY, "fcm") ?: "fcm"
         if (deliveryMethod != "fcm") {
             // Not using FCM push
             return@withContext
         }
         
         val saJsonStr = prefs.getString(PREF_SA_JSON, "")
-        if (saJsonStr.isNullOrEmpty()) return@withContext
-        
-        val saJson = org.json.JSONObject(saJsonStr)
+        val saJson = if (saJsonStr.isNullOrEmpty()) {
+            val saStream = context.resources.openRawResource(
+                context.resources.getIdentifier("service_account", "raw", context.packageName)
+            )
+            org.json.JSONObject(saStream.bufferedReader().readText())
+        } else {
+            org.json.JSONObject(saJsonStr)
+        }
 
         // Get OAuth2 access token for FCM v1 API
         val privateKeyPem = saJson.getString("private_key")
