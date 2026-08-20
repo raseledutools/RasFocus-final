@@ -1165,6 +1165,18 @@ fun MainScreen(
 
     val inChat = selectedContact != null || selectedGroup != null
 
+    // Back button handling:
+    // - Chat open → close chat, go back to chat list
+    // - On non-home tab → go back to tab 0 (Chats)
+    // - On home tab (Chats) with nothing open → let system handle (exit app)
+    BackHandler(enabled = inChat || selectedTab != 0) {
+        when {
+            selectedContact != null -> selectedContact = null
+            selectedGroup != null -> selectedGroup = null
+            selectedTab != 0 -> selectedTab = 0
+        }
+    }
+
     if (isCompact && inChat) {
         // Full screen chat on mobile
         if (selectedContact != null) {
