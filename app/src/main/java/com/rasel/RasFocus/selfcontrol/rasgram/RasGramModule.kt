@@ -3960,6 +3960,14 @@ fun CallingScreen(
         }
     }
 
+    // Pulsing animation for outgoing/calling state
+    val pulseTransition = rememberInfiniteTransition(label = "pulse")
+    val pulseScale by pulseTransition.animateFloat(
+        initialValue = 1f, targetValue = 1.15f,
+        animationSpec = infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "pulseScale"
+    )
+
     Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF0B141A)) {
         Box(modifier = Modifier.fillMaxSize()) {
             if (callType == "video") {
@@ -3974,16 +3982,43 @@ fun CallingScreen(
             Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Spacer(modifier = Modifier.height(80.dp))
                 if (callType != "video" || !isConnected) {
-                    AsyncImage(
-                        model = contact.avatarUrl.ifEmpty { "https://ui-avatars.com/api/?name=${contact.name.replace(" ", "+")}&size=200&background=008069&color=fff" },
-                        contentDescription = null,
-                        modifier = Modifier.size(120.dp).clip(CircleShape).border(3.dp, RasGramTheme.Green, CircleShape),
-                        contentScale = ContentScale.Crop
-                    )
-                    Spacer(modifier = Modifier.height(20.dp))
+                    // Pulsing rings when not yet connected
+                    Box(contentAlignment = Alignment.Center) {
+                        if (!isConnected) {
+                            Box(
+                                modifier = Modifier
+                                    .size((120 * pulseScale).dp)
+                                    .clip(CircleShape)
+                                    .background(RasGramTheme.Green.copy(alpha = 0.12f))
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .size((100 * pulseScale).dp)
+                                    .clip(CircleShape)
+                                    .background(RasGramTheme.Green.copy(alpha = 0.18f))
+                            )
+                        }
+                        AsyncImage(
+                            model = contact.avatarUrl.ifEmpty { "https://ui-avatars.com/api/?name=${contact.name.replace(" ", "+")}&size=200&background=008069&color=fff&bold=true" },
+                            contentDescription = null,
+                            modifier = Modifier.size(100.dp).clip(CircleShape).border(3.dp, RasGramTheme.Green, CircleShape),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(24.dp))
                     Text(contact.name, style = MaterialTheme.typography.headlineMedium, color = Color.White, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(if (isConnected) formatTime(callSeconds) else callStatus, color = RasGramTheme.Green, style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    // Connected: green dot + timer | Calling: animated status
+                    if (isConnected) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(8.dp).clip(CircleShape).background(RasGramTheme.Green))
+                            Spacer(Modifier.width(6.dp))
+                            Text(formatTime(callSeconds), color = RasGramTheme.Green, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+                        }
+                    } else {
+                        Text(callStatus, color = RasGramTheme.TextMuted, style = MaterialTheme.typography.titleMedium)
+                        Text(contact.mobile, color = RasGramTheme.TextMuted.copy(alpha = 0.5f), fontSize = 13.sp)
+                    }
                 }
                 Spacer(modifier = Modifier.weight(1f))
 
@@ -3996,9 +4031,35 @@ fun CallingScreen(
                             }
                             FloatingActionButton(onClick = {
                                 scope.launch {
-                                    if (callId.isNotEmpty()) db.collection("calls").document(callId).update("status", "ended")
-                                    if (isConnected && callSeconds > 0) {
-                                        finalCallSeconds = callSeconds
+                                    val durationSecs = callSeconds
+                                    if (callId.isNotEmpty()) {
+                                        // Firestore এ duration save
+                                        db.collection("calls").document(callId).update(
+                                            "status", "ended",
+                                            "duration", durationSecs
+                                        )
+                                        // Chat এ call log bubble
+                                        val chatId = generateChatId(currentUser.mobile, contact.mobile)
+                                        val logText = if (callType == "video")
+                                            "📹 Video call · ${formatTime(durationSecs)}"
+                                        else
+                                            "📞 Voice call · ${formatTime(durationSecs)}"
+                                        db.collection("pvt_msg_$chatId").add(hashMapOf(
+                                            "text"           to logText,
+                                            "senderMobile"   to currentUser.mobile,
+                                            "receiverMobile" to contact.mobile,
+                                            "timestamp"      to System.currentTimeMillis(),
+                                            "timeString"     to java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault()).format(java.util.Date()),
+                                            "isCallLog"      to true,
+                                            "callStatus"     to "ended",
+                                            "callType"       to callType,
+                                            "duration"       to durationSecs,
+                                            "read"           to false,
+                                            "delivered"      to false
+                                        ))
+                                    }
+                                    if (isConnected && durationSecs > 0) {
+                                        finalCallSeconds = durationSecs
                                         showEndedSummary = true
                                     } else {
                                         onEndCall()
