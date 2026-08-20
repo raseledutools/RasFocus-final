@@ -34,6 +34,8 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -1964,7 +1966,7 @@ fun ChatArea(
         selectedMessages = emptySet()
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(RasGramTheme.DarkBackground)) {
+    Column(modifier = Modifier.fillMaxSize().background(RasGramTheme.DarkBackground).navigationBarsPadding().imePadding()) {
         // Header
         if (selectedMessages.isNotEmpty()) {
             SelectionHeader(
@@ -4903,7 +4905,7 @@ fun GroupChatArea(
 
     BackHandler(enabled = selectedMessages.isNotEmpty()) { selectedMessages = emptySet() }
 
-    Column(modifier = Modifier.fillMaxSize().background(RasGramTheme.DarkBackground)) {
+    Column(modifier = Modifier.fillMaxSize().background(RasGramTheme.DarkBackground).navigationBarsPadding().imePadding()) {
         if (selectedMessages.isNotEmpty()) {
             SelectionHeader(
                 count = selectedMessages.size,
