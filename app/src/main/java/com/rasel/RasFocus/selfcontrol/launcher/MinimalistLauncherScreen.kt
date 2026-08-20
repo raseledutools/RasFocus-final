@@ -4,8 +4,6 @@ import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
-import android.hardware.camera2.CameraManager
-import android.media.AudioManager
 import android.os.BatteryManager
 import android.os.Build
 import android.provider.Settings
@@ -15,7 +13,6 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -43,7 +40,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.core.graphics.drawable.toBitmap
 import androidx.navigation.NavController
 import kotlinx.coroutines.delay
-import kotlin.math.min
+import kotlin.math.abs
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Colors
@@ -63,6 +60,9 @@ private const val KEY_RENAMED = "renamed_apps"
 private const val KEY_THEME   = "launcher_theme"
 private const val KEY_FONT    = "font_size"
 private const val KEY_ICONS   = "show_icons"
+private const val KEY_BTN_L   = "bottom_btn_left"
+private const val KEY_BTN_R   = "bottom_btn_right"
+private const val KEY_CLOCK_PKG = "clock_btn_pkg"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Data
@@ -81,6 +81,9 @@ enum class LauncherTheme(val bg: Color, val text: Color, val accent: Color) {
     DarkGreen(Color(0xFF030E0A), Color(0xFFE8F5E9), Color(0xFF00FFB2))
 }
 
+// which picker slot is active
+enum class PickerSlot { CLOCK, BTN_LEFT, BTN_RIGHT, NONE }
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Screen
 // ─────────────────────────────────────────────────────────────────────────────
@@ -89,11 +92,11 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
     val context = LocalContext.current
     val prefs   = remember { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
 
-    var showAllApps  by rememberSaveable { mutableStateOf(false) }
-    var showSettings by rememberSaveable { mutableStateOf(false) }
-    var showAddDialog by rememberSaveable { mutableStateOf(false) }
+    var showSidebar   by rememberSaveable { mutableStateOf(false) }
+    var showSettings  by rememberSaveable { mutableStateOf(false) }
     var longPressedApp by remember { mutableStateOf<AppInfo?>(null) }
-    var query by rememberSaveable { mutableStateOf("") }
+    var pickerSlot    by remember { mutableStateOf(PickerSlot.NONE) }
+    var query         by rememberSaveable { mutableStateOf("") }
 
     var pinnedPkgs by remember { mutableStateOf(prefs.getStringSet(KEY_PINNED, setOf())!!.toMutableList()) }
     var hiddenPkgs by remember { mutableStateOf(prefs.getStringSet(KEY_HIDDEN, setOf())!!) }
@@ -101,6 +104,11 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
     var themeIdx   by rememberSaveable { mutableStateOf(prefs.getInt(KEY_THEME, 0)) }
     var fontSize   by rememberSaveable { mutableStateOf(prefs.getInt(KEY_FONT, 1)) }
     var showIcons  by rememberSaveable { mutableStateOf(prefs.getBoolean(KEY_ICONS, false)) }
+
+    // bottom button packages (default: phone + camera)
+    var btnLeftPkg  by remember { mutableStateOf(prefs.getString(KEY_BTN_L, "PHONE") ?: "PHONE") }
+    var btnRightPkg by remember { mutableStateOf(prefs.getString(KEY_BTN_R, "CAMERA") ?: "CAMERA") }
+    var clockPkg    by remember { mutableStateOf(prefs.getString(KEY_CLOCK_PKG, "") ?: "") }
 
     val theme       = LauncherTheme.entries[themeIdx.coerceIn(0, 2)]
     val appFontSize = when (fontSize) { 0 -> 16.sp; 2 -> 26.sp; else -> 21.sp }
@@ -115,32 +123,51 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
     var timeState by remember { mutableStateOf(getCurrentTime()) }
     LaunchedEffect(Unit) { while (true) { delay(1000L); timeState = getCurrentTime() } }
 
-    val battery     = getBatteryLevel(context)
-    val isCharging  = isDeviceCharging(context)
+    val battery    = getBatteryLevel(context)
+    val isCharging = isDeviceCharging(context)
 
-    var dragDeltaY by remember { mutableStateOf(0f) }
+    // drag state for swipe detection
     var dragDeltaX by remember { mutableStateOf(0f) }
+    var dragDeltaY by remember { mutableStateOf(0f) }
+
+    // sidebar slide animation
+    val sidebarOffsetX by animateDpAsState(
+        targetValue   = if (showSidebar) 0.dp else 320.dp,
+        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+        label         = "sidebarOffset"
+    )
+    val sidebarAlpha by animateFloatAsState(
+        targetValue   = if (showSidebar) 1f else 0f,
+        animationSpec = tween(durationMillis = 250),
+        label         = "sidebarAlpha"
+    )
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(theme.bg)
-            .pointerInput(Unit) {
+            .pointerInput(showSidebar) {
                 detectDragGestures(
                     onDragEnd = {
-                        val absX = kotlin.math.abs(dragDeltaX)
-                        val absY = kotlin.math.abs(dragDeltaY)
-                        if (absX > absY) {
-                            if (dragDeltaX < -80f) showAllApps = true
-                            if (dragDeltaX > 80f)  showAllApps = false
-                        } else {
-                            if (dragDeltaY < -80f) showAllApps = true
-                            if (dragDeltaY > 80f) {
-                                try {
-                                    val sb = context.getSystemService("statusbar")
-                                    sb?.javaClass?.getMethod("expandNotificationsPanel")?.invoke(sb)
-                                } catch (_: Exception) {}
+                        val absX = abs(dragDeltaX)
+                        val absY = abs(dragDeltaY)
+                        if (!showSidebar) {
+                            if (absX > absY) {
+                                // left swipe → open sidebar
+                                if (dragDeltaX < -80f) showSidebar = true
+                            } else {
+                                if (dragDeltaY < -80f) showSidebar = true  // up swipe also opens
+                                if (dragDeltaY > 80f) {
+                                    // down → notifications
+                                    try {
+                                        val sb = context.getSystemService("statusbar")
+                                        sb?.javaClass?.getMethod("expandNotificationsPanel")?.invoke(sb)
+                                    } catch (_: Exception) {}
+                                }
                             }
+                        } else {
+                            // right swipe → close sidebar
+                            if (dragDeltaX > 80f) showSidebar = false
                         }
                         dragDeltaX = 0f; dragDeltaY = 0f
                     },
@@ -148,62 +175,84 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                 )
             }
     ) {
-        if (!showAllApps) {
-            // ═══════════════════════════════════════════════════════
-            // HOME SCREEN  (Image 2 exact design)
-            // ═══════════════════════════════════════════════════════
-            HomeScreen(
-                timeState      = timeState,
-                battery        = battery,
-                isCharging     = isCharging,
-                pinnedApps     = pinnedApps,
-                theme          = theme,
-                appFontSize    = appFontSize,
-                showIcons      = showIcons,
-                renamedMap     = renamedMap,
-                onAddClick     = { showAddDialog = true },
-                onLaunch       = { app -> if (!app.isBlocked) launchApp(context, app.packageName) },
-                onLongPress    = { app -> longPressedApp = app },
-                onSettings     = { showSettings = true },
-                onPhone        = { launchDialer(context) },
-                onCamera       = { launchCamera(context) }
+        // ═══════════════════════════════════════════════════════
+        // HOME SCREEN
+        // ═══════════════════════════════════════════════════════
+        HomeScreen(
+            timeState   = timeState,
+            battery     = battery,
+            isCharging  = isCharging,
+            pinnedApps  = pinnedApps,
+            theme       = theme,
+            appFontSize = appFontSize,
+            showIcons   = showIcons,
+            renamedMap  = renamedMap,
+            btnLeftPkg  = btnLeftPkg,
+            btnRightPkg = btnRightPkg,
+            clockPkg    = clockPkg,
+            context     = context,
+            onLaunch       = { app -> if (!app.isBlocked) launchApp(context, app.packageName) },
+            onLongPress    = { app -> longPressedApp = app },
+            onSettings     = { showSettings = true },
+            onLongPressClockRing   = { pickerSlot = PickerSlot.CLOCK },
+            onLongPressBtnLeft     = { pickerSlot = PickerSlot.BTN_LEFT },
+            onLongPressBtnRight    = { pickerSlot = PickerSlot.BTN_RIGHT }
+        )
+
+        // ═══════════════════════════════════════════════════════
+        // SIDEBAR OVERLAY — animated from right
+        // ═══════════════════════════════════════════════════════
+        if (showSidebar || sidebarAlpha > 0f) {
+            // dim background
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.45f * sidebarAlpha))
+                    .clickable(enabled = showSidebar) { showSidebar = false }
             )
-        } else {
-            // ═══════════════════════════════════════════════════════
-            // ALL APPS SCREEN  (Image 1 exact design)
-            // ═══════════════════════════════════════════════════════
-            AllAppsScreen(
-                allApps    = allApps,
-                pinnedPkgs = pinnedPkgs,
-                hiddenPkgs = hiddenPkgs,
-                renamedMap = renamedMap,
-                theme      = theme,
-                fontSize   = appFontSize,
-                showIcons  = showIcons,
-                query      = query,
-                onQueryChange = { query = it },
-                onLaunch   = { app -> if (!app.isBlocked) launchApp(context, app.packageName) },
-                onPin      = { pkg ->
-                    val u = pinnedPkgs.toMutableList()
-                    if (pkg in u) u.remove(pkg) else u.add(pkg)
-                    pinnedPkgs = u
-                    prefs.edit().putStringSet(KEY_PINNED, u.toSet()).apply()
-                },
-                onHide     = { pkg ->
-                    val u = hiddenPkgs.toMutableSet(); u.add(pkg); hiddenPkgs = u
-                    prefs.edit().putStringSet(KEY_HIDDEN, u).apply()
-                },
-                onRename   = { pkg, name ->
-                    val u = renamedMap.toMutableMap()
-                    if (name.isBlank()) u.remove(pkg) else u[pkg] = name
-                    renamedMap = u; saveRenamedMap(prefs, u)
-                },
-                onSettings = { showSettings = true },
-                onClose    = { showAllApps = false; query = "" }
-            )
+            // sidebar panel slides in from right
+            Box(
+                Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(0.78f)
+                    .align(Alignment.CenterEnd)
+                    .offset(x = sidebarOffsetX)
+                    .background(Color(0xFF0D0D0D))
+                    .clickable(enabled = false) {}  // consume clicks so background doesn't close
+            ) {
+                SidebarContent(
+                    allApps    = allApps,
+                    pinnedPkgs = pinnedPkgs,
+                    hiddenPkgs = hiddenPkgs,
+                    renamedMap = renamedMap,
+                    theme      = theme,
+                    fontSize   = appFontSize,
+                    showIcons  = showIcons,
+                    query      = query,
+                    onQueryChange = { query = it },
+                    onLaunch   = { app -> if (!app.isBlocked) { launchApp(context, app.packageName); showSidebar = false } },
+                    onPin      = { pkg ->
+                        val u = pinnedPkgs.toMutableList()
+                        if (pkg in u) u.remove(pkg) else u.add(pkg)
+                        pinnedPkgs = u
+                        prefs.edit().putStringSet(KEY_PINNED, u.toSet()).apply()
+                    },
+                    onHide     = { pkg ->
+                        val u = hiddenPkgs.toMutableSet(); u.add(pkg); hiddenPkgs = u
+                        prefs.edit().putStringSet(KEY_HIDDEN, u).apply()
+                    },
+                    onRename   = { pkg, name ->
+                        val u = renamedMap.toMutableMap()
+                        if (name.isBlank()) u.remove(pkg) else u[pkg] = name
+                        renamedMap = u; saveRenamedMap(prefs, u)
+                    },
+                    onSettings = { showSettings = true; showSidebar = false },
+                    onClose    = { showSidebar = false; query = "" }
+                )
+            }
         }
 
-        // Long press menu
+        // Long press menu for pinned apps
         longPressedApp?.let { app ->
             AppContextMenu(
                 app      = app,
@@ -222,19 +271,41 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
             )
         }
 
-        // Add dialog
-        if (showAddDialog) {
-            AddAppDialog(
-                allApps    = allApps,
-                pinnedPkgs = pinnedPkgs,
-                theme      = theme,
-                onTogglePin = { pkg ->
-                    val u = pinnedPkgs.toMutableList()
-                    if (pkg in u) u.remove(pkg) else u.add(pkg)
-                    pinnedPkgs = u
-                    prefs.edit().putStringSet(KEY_PINNED, u.toSet()).apply()
+        // App picker for clock / bottom buttons
+        if (pickerSlot != PickerSlot.NONE) {
+            AppPickerDialog(
+                allApps   = allApps,
+                slotLabel = when (pickerSlot) {
+                    PickerSlot.CLOCK     -> "Clock Ring Button"
+                    PickerSlot.BTN_LEFT  -> "Left Button"
+                    PickerSlot.BTN_RIGHT -> "Right Button"
+                    else                 -> ""
                 },
-                onDismiss  = { showAddDialog = false }
+                currentPkg = when (pickerSlot) {
+                    PickerSlot.CLOCK     -> clockPkg
+                    PickerSlot.BTN_LEFT  -> btnLeftPkg
+                    PickerSlot.BTN_RIGHT -> btnRightPkg
+                    else                 -> ""
+                },
+                onPick = { pkg ->
+                    when (pickerSlot) {
+                        PickerSlot.CLOCK -> {
+                            clockPkg = pkg
+                            prefs.edit().putString(KEY_CLOCK_PKG, pkg).apply()
+                        }
+                        PickerSlot.BTN_LEFT -> {
+                            btnLeftPkg = pkg
+                            prefs.edit().putString(KEY_BTN_L, pkg).apply()
+                        }
+                        PickerSlot.BTN_RIGHT -> {
+                            btnRightPkg = pkg
+                            prefs.edit().putString(KEY_BTN_R, pkg).apply()
+                        }
+                        else -> {}
+                    }
+                    pickerSlot = PickerSlot.NONE
+                },
+                onDismiss = { pickerSlot = PickerSlot.NONE }
             )
         }
 
@@ -262,7 +333,7 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HOME SCREEN  — exact match Image 2
+// HOME SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 fun HomeScreen(
@@ -274,50 +345,64 @@ fun HomeScreen(
     appFontSize: androidx.compose.ui.unit.TextUnit,
     showIcons:   Boolean,
     renamedMap:  Map<String, String>,
-    onAddClick:  () -> Unit,
-    onLaunch:    (AppInfo) -> Unit,
-    onLongPress: (AppInfo) -> Unit,
-    onSettings:  () -> Unit,
-    onPhone:     () -> Unit,
-    onCamera:    () -> Unit
+    btnLeftPkg:  String,
+    btnRightPkg: String,
+    clockPkg:    String,
+    context:     Context,
+    onLaunch:             (AppInfo) -> Unit,
+    onLongPress:          (AppInfo) -> Unit,
+    onSettings:           () -> Unit,
+    onLongPressClockRing: () -> Unit,
+    onLongPressBtnLeft:   () -> Unit,
+    onLongPressBtnRight:  () -> Unit
 ) {
-    Box(Modifier.fillMaxSize().background(BG)) {
-
-        // ── Main content ──────────────────────────────────────────────────
+    // Use WindowInsets for Android 10 nav bar height
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(BG)
+            .navigationBarsPadding()
+    ) {
+        // ── Main scrollable content ──────────────────────────────────────
         Column(
             Modifier
                 .fillMaxSize()
                 .padding(horizontal = 24.dp)
+                .padding(bottom = 80.dp)   // leave room for bottom buttons
         ) {
-            Spacer(Modifier.height(52.dp))
+            Spacer(Modifier.height(48.dp))
 
-            // ── Clock with arc (Image 2 style) ────────────────────────────
-            ClockWithArc(
-                time = timeState.first,
-                date = timeState.second,
-                battery = battery,
-                isCharging = isCharging
+            // ── Battery ring clock — long press to assign app ─────────────
+            ClockWithBatteryRing(
+                time       = timeState.first,
+                date       = timeState.second,
+                battery    = battery,
+                isCharging = isCharging,
+                onLongPress = onLongPressClockRing,
+                onTap = {
+                    if (clockPkg.isNotBlank()) launchApp(context, clockPkg)
+                }
             )
 
-            Spacer(Modifier.height(48.dp))
+            Spacer(Modifier.height(44.dp))
 
             // ── Pinned apps list ──────────────────────────────────────────
             if (pinnedApps.isEmpty()) {
-                // Empty state — just show placeholder text softly
                 Text(
-                    "No apps added yet",
-                    color = TXT.copy(alpha = 0.2f),
-                    fontSize = 16.sp,
+                    "Long press the ring or buttons below to assign apps",
+                    color    = TXT.copy(alpha = 0.2f),
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
                     modifier = Modifier.padding(vertical = 12.dp)
                 )
             } else {
                 pinnedApps.forEach { app ->
                     Text(
-                        text     = renamedMap[app.packageName] ?: app.label,
-                        color    = if (app.isBlocked) RED.copy(alpha = 0.7f) else TXT,
-                        fontSize = appFontSize,
+                        text       = renamedMap[app.packageName] ?: app.label,
+                        color      = if (app.isBlocked) RED.copy(alpha = 0.7f) else TXT,
+                        fontSize   = appFontSize,
                         fontWeight = FontWeight.Light,
-                        modifier = Modifier
+                        modifier   = Modifier
                             .fillMaxWidth()
                             .pointerInput(Unit) {
                                 detectTapGestures(
@@ -331,54 +416,40 @@ fun HomeScreen(
             }
         }
 
-        // ── Bottom bar — phone left, camera right ─────────────────────────
-        Row(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 20.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment     = Alignment.CenterVertically
-        ) {
-            // Phone icon
-            Icon(
-                Icons.Default.Phone,
-                contentDescription = "Phone",
-                tint     = TXT,
-                modifier = Modifier.size(26.dp).clickable { onPhone() }
-            )
-            // Camera icon
-            Icon(
-                Icons.Default.CameraAlt,
-                contentDescription = "Camera",
-                tint     = TXT,
-                modifier = Modifier.size(26.dp).clickable { onCamera() }
-            )
-        }
+        // ── Bottom two buttons — sits just above navigation bar ──────────
+        // These buttons support tap (launch) + long press (assign app)
+        BottomButtonBar(
+            btnLeftPkg   = btnLeftPkg,
+            btnRightPkg  = btnRightPkg,
+            context      = context,
+            modifier     = Modifier.align(Alignment.BottomCenter),
+            onLongPressLeft  = onLongPressBtnLeft,
+            onLongPressRight = onLongPressBtnRight
+        )
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Clock with curved arc + battery ring  (Image 2 top section)
+// Battery Ring Clock  — full circle, fills clockwise as battery increases
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
-fun ClockWithArc(
-    time:       String,
-    date:       String,
-    battery:    Int,
-    isCharging: Boolean
+fun ClockWithBatteryRing(
+    time:        String,
+    date:        String,
+    battery:     Int,
+    isCharging:  Boolean,
+    onLongPress: () -> Unit,
+    onTap:       () -> Unit
 ) {
-    // charging color animation
     val chargingColor by animateColorAsState(
-        targetValue = if (isCharging) Color(0xFF00FFB2) else TXT,
+        targetValue   = if (isCharging) Color(0xFF00FFB2) else TXT,
         animationSpec = tween(600),
-        label = "chargeColor"
+        label         = "chargeColor"
     )
-    // pulse when charging
     val pulseAnim = rememberInfiniteTransition(label = "pulse")
     val pulseAlpha by pulseAnim.animateFloat(
-        initialValue = 0.6f,
-        targetValue  = 1.0f,
+        initialValue  = 0.55f,
+        targetValue   = 1.0f,
         animationSpec = infiniteRepeatable(
             animation  = tween(900, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
@@ -386,44 +457,60 @@ fun ClockWithArc(
         label = "pulseAlpha"
     )
 
+    val batteryFrac  = (battery / 100f).coerceIn(0f, 1f)
+    val ringColor    = if (isCharging) chargingColor else TXT
+    val ringAlpha    = if (isCharging) pulseAlpha else 1f
+
+    // Animate battery sweep for smooth change
+    val animatedSweep by animateFloatAsState(
+        targetValue   = 360f * batteryFrac,
+        animationSpec = tween(800, easing = FastOutSlowInEasing),
+        label         = "batterySweep"
+    )
+
     Box(
         Modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center
     ) {
-        // Arc decoration + battery ring drawn with Canvas
-        val arcColor     = if (isCharging) chargingColor else TXT.copy(alpha = 0.35f)
-        val arcAlpha     = if (isCharging) pulseAlpha else 1f
-        val batteryFrac  = battery / 100f
-
         Box(
             Modifier
                 .size(180.dp)
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onTap       = { onTap() },
+                        onLongPress = { onLongPress() }
+                    )
+                }
                 .drawBehind {
-                    val stroke     = 2.5.dp.toPx()
-                    val arcRadius  = size.width / 2f - stroke
-                    val cx         = size.width / 2f
-                    val cy         = size.height / 2f
+                    val strokePx  = 2.8.dp.toPx()
+                    val radius    = size.width / 2f - strokePx
+                    val cx        = size.width / 2f
+                    val cy        = size.height / 2f
+                    val topLeft   = Offset(cx - radius, cy - radius)
+                    val arcSize   = Size(radius * 2, radius * 2)
 
-                    // Background ring (dim)
+                    // Background ring — full circle, very dim
                     drawArc(
-                        color       = Color.White.copy(alpha = 0.08f),
-                        startAngle  = -200f,
-                        sweepAngle  = 220f,
-                        useCenter   = false,
-                        topLeft     = Offset(cx - arcRadius, cy - arcRadius),
-                        size        = Size(arcRadius * 2, arcRadius * 2),
-                        style       = Stroke(width = stroke, cap = StrokeCap.Round)
+                        color      = Color.White.copy(alpha = 0.07f),
+                        startAngle = -90f,      // start at 12 o'clock
+                        sweepAngle = 360f,
+                        useCenter  = false,
+                        topLeft    = topLeft,
+                        size       = arcSize,
+                        style      = Stroke(width = strokePx, cap = StrokeCap.Round)
                     )
-                    // Battery progress arc
-                    drawArc(
-                        color       = arcColor.copy(alpha = arcAlpha),
-                        startAngle  = -200f,
-                        sweepAngle  = 220f * batteryFrac,
-                        useCenter   = false,
-                        topLeft     = Offset(cx - arcRadius, cy - arcRadius),
-                        size        = Size(arcRadius * 2, arcRadius * 2),
-                        style       = Stroke(width = stroke, cap = StrokeCap.Round)
-                    )
+                    // Battery progress — clockwise from 12 o'clock
+                    if (animatedSweep > 0f) {
+                        drawArc(
+                            color      = ringColor.copy(alpha = ringAlpha),
+                            startAngle = -90f,
+                            sweepAngle = animatedSweep,
+                            useCenter  = false,
+                            topLeft    = topLeft,
+                            size       = arcSize,
+                            style      = Stroke(width = strokePx, cap = StrokeCap.Round)
+                        )
+                    }
                 }
         ) {
             Column(
@@ -434,7 +521,7 @@ fun ClockWithArc(
                 Text(
                     text       = time,
                     color      = if (isCharging) chargingColor else TXT,
-                    fontSize   = 32.sp,
+                    fontSize   = 30.sp,
                     fontWeight = FontWeight.Light
                 )
                 Spacer(Modifier.height(4.dp))
@@ -443,16 +530,131 @@ fun ClockWithArc(
                     color    = TXT.copy(alpha = 0.5f),
                     fontSize = 13.sp
                 )
+                Spacer(Modifier.height(2.dp))
+                // Small battery % inside ring
+                Text(
+                    text     = "$battery%",
+                    color    = (if (isCharging) chargingColor else DIM).copy(alpha = 0.7f),
+                    fontSize = 11.sp
+                )
             }
         }
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ALL APPS SCREEN  — exact match Image 1
+// Bottom Button Bar — phone/camera by default, long press to reassign
+// Sits just above the Android navigation bar
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
-fun AllAppsScreen(
+fun BottomButtonBar(
+    btnLeftPkg:      String,
+    btnRightPkg:     String,
+    context:         Context,
+    modifier:        Modifier = Modifier,
+    onLongPressLeft:  () -> Unit,
+    onLongPressRight: () -> Unit
+) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()           // stay above nav bar on all Android versions
+            .padding(horizontal = 32.dp, vertical = 16.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment     = Alignment.CenterVertically
+    ) {
+        // Left button
+        BottomIconButton(
+            pkg         = btnLeftPkg,
+            context     = context,
+            onLongPress = onLongPressLeft
+        )
+        // Right button
+        BottomIconButton(
+            pkg         = btnRightPkg,
+            context     = context,
+            onLongPress = onLongPressRight
+        )
+    }
+}
+
+@Composable
+fun BottomIconButton(
+    pkg:        String,
+    context:    Context,
+    onLongPress: () -> Unit
+) {
+    val icon: ImageVector
+    val contentDesc: String
+    val onTap: () -> Unit
+
+    when (pkg) {
+        "PHONE" -> {
+            icon = Icons.Default.Phone
+            contentDesc = "Phone"
+            onTap = { launchDialer(context) }
+        }
+        "CAMERA" -> {
+            icon = Icons.Default.CameraAlt
+            contentDesc = "Camera"
+            onTap = { launchCamera(context) }
+        }
+        "" -> {
+            // unassigned — show placeholder
+            icon = Icons.Default.Add
+            contentDesc = "Assign"
+            onTap = {}
+        }
+        else -> {
+            icon = Icons.Default.Apps
+            contentDesc = pkg
+            onTap = { launchApp(context, pkg) }
+        }
+    }
+
+    // Show icon if it's a system action, otherwise try to show app icon
+    if (pkg != "PHONE" && pkg != "CAMERA" && pkg.isNotBlank()) {
+        // custom app assigned — show small label
+        val appLabel = remember(pkg) {
+            try { context.packageManager.getApplicationLabel(
+                context.packageManager.getApplicationInfo(pkg, 0)
+            ).toString() } catch (_: Exception) { pkg.substringAfterLast('.') }
+        }
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.pointerInput(Unit) {
+                detectTapGestures(
+                    onTap       = { onTap() },
+                    onLongPress = { onLongPress() }
+                )
+            }.padding(8.dp)
+        ) {
+            Icon(icon, contentDesc, tint = TXT, modifier = Modifier.size(26.dp))
+            Spacer(Modifier.height(3.dp))
+            Text(appLabel, color = TXT.copy(alpha = 0.6f), fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    } else {
+        Icon(
+            icon, contentDesc,
+            tint     = TXT,
+            modifier = Modifier
+                .size(26.dp)
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onTap       = { onTap() },
+                        onLongPress = { onLongPress() }
+                    )
+                }
+        )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SIDEBAR (previously AllAppsScreen) — slides in from right with animation
+// Search bar at top, first letter filters instantly
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+fun SidebarContent(
     allApps:       List<AppInfo>,
     pinnedPkgs:    List<String>,
     hiddenPkgs:    Set<String>,
@@ -472,182 +674,177 @@ fun AllAppsScreen(
     val context    = LocalContext.current
     var contextApp by remember { mutableStateOf<AppInfo?>(null) }
 
+    // Filter: if query has content, show matching apps; empty shows all
     val filtered = remember(query, allApps) {
         if (query.isBlank()) allApps
-        else allApps.filter { (renamedMap[it.packageName] ?: it.label).contains(query, ignoreCase = true) }
+        else allApps.filter {
+            val name = renamedMap[it.packageName] ?: it.label
+            name.startsWith(query, ignoreCase = true) ||
+            name.contains(query, ignoreCase = true)
+        }.sortedByDescending { app ->
+            // prioritize starts-with matches
+            val name = renamedMap[app.packageName] ?: app.label
+            if (name.startsWith(query, ignoreCase = true)) 1 else 0
+        }
     }
+
     val letters = remember(filtered) {
         filtered.map { (renamedMap[it.packageName] ?: it.label).first().uppercaseChar() }.distinct().sorted()
     }
 
-    var swipeDragX by remember { mutableStateOf(0f) }
-
-    Box(
+    Column(
         Modifier
             .fillMaxSize()
-            .background(BG)
-            .pointerInput(Unit) {
-                detectDragGestures(
-                    onDragEnd = {
-                        if (swipeDragX > 100f) onClose()
-                        swipeDragX = 0f
-                    },
-                    onDrag = { _, d -> swipeDragX += d.x }
-                )
-            }
+            .background(Color(0xFF0D0D0D))
+            .navigationBarsPadding()
+            .statusBarsPadding()
     ) {
-        Column(Modifier.fillMaxSize()) {
-
-            // ── Search bar (top, like Image 1) ────────────────────────────
-            Spacer(Modifier.height(16.dp))
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                BasicTextField(
-                    value         = query,
-                    onValueChange = onQueryChange,
-                    singleLine    = true,
-                    textStyle     = TextStyle(color = TXT, fontSize = 17.sp),
-                    decorationBox = { inner ->
-                        Box(
-                            Modifier
-                                .weight(1f)
-                                .drawBehind {
-                                    val y = size.height
-                                    drawLine(
-                                        color       = Color(0xFF444444),
-                                        start       = Offset(0f, y),
-                                        end         = Offset(size.width, y),
-                                        strokeWidth = 1.dp.toPx()
-                                    )
-                                }
-                                .padding(bottom = 6.dp)
-                        ) {
-                            if (query.isBlank()) Text("", color = TXT.copy(alpha = 0f))
-                            inner()
-                        }
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-                Spacer(Modifier.width(12.dp))
-                Icon(
-                    Icons.Default.Search, null,
-                    tint     = TXT.copy(alpha = 0.7f),
-                    modifier = Modifier.size(22.dp)
-                )
+        // ── Header / close row ────────────────────────────────────────────
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment     = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("Apps", color = TXT, fontSize = 18.sp, fontWeight = FontWeight.Light)
+            Row {
+                Icon(Icons.Default.Settings, null, tint = DIM,
+                    modifier = Modifier.size(20.dp).clickable { onSettings() })
+                Spacer(Modifier.width(16.dp))
+                Icon(Icons.Default.Close, null, tint = DIM,
+                    modifier = Modifier.size(20.dp).clickable { onClose() })
             }
+        }
 
-            Spacer(Modifier.height(12.dp))
-
-            // ── App list + side letter index ──────────────────────────────
-            Box(Modifier.weight(1f)) {
-                LazyColumn(
-                    Modifier
-                        .fillMaxSize()
-                        .padding(end = 24.dp)
-                ) {
-                    items(filtered) { app ->
-                        val displayName = renamedMap[app.packageName] ?: app.label
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .pointerInput(Unit) {
-                                    detectTapGestures(
-                                        onTap       = { onLaunch(app) },
-                                        onLongPress = { contextApp = app }
-                                    )
-                                }
-                                .padding(horizontal = 20.dp, vertical = 13.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            if (showIcons) {
-                                val bmp = remember(app.packageName) {
-                                    runCatching {
-                                        context.packageManager.getApplicationIcon(app.packageName).toBitmap(48, 48)
-                                    }.getOrNull()
-                                }
-                                if (bmp != null) {
-                                    androidx.compose.foundation.Image(
-                                        bmp.asImageBitmap(), null,
-                                        modifier = Modifier.size(28.dp).clip(RoundedCornerShape(6.dp))
-                                    )
-                                    Spacer(Modifier.width(12.dp))
-                                }
-                            }
-                            Text(
-                                text     = displayName,
-                                color    = if (app.isBlocked) RED.copy(alpha = 0.7f) else TXT,
-                                fontSize = fontSize,
-                                fontWeight = FontWeight.Light,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
+        // ── Search bar — clearly visible, correct position ────────────────
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color(0xFF1A1A1A))
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.Search, null, tint = DIM, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(10.dp))
+            BasicTextField(
+                value         = query,
+                onValueChange = onQueryChange,
+                singleLine    = true,
+                textStyle     = TextStyle(color = TXT, fontSize = 16.sp),
+                decorationBox = { inner ->
+                    Box(Modifier.weight(1f)) {
+                        if (query.isBlank()) Text("Search apps…", color = TXT.copy(alpha = 0.3f), fontSize = 16.sp)
+                        inner()
                     }
-                }
+                },
+                modifier = Modifier.weight(1f)
+            )
+            if (query.isNotBlank()) {
+                Spacer(Modifier.width(8.dp))
+                Icon(Icons.Default.Clear, null, tint = DIM,
+                    modifier = Modifier.size(16.dp).clickable { onQueryChange("") })
+            }
+        }
 
-                // ── Right side letter index (Image 1 exact) ───────────────
-                Column(
-                    Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(end = 4.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    letters.forEach { letter ->
+        Spacer(Modifier.height(8.dp))
+
+        // ── App list + letter index ───────────────────────────────────────
+        Box(Modifier.weight(1f)) {
+            LazyColumn(
+                Modifier
+                    .fillMaxSize()
+                    .padding(end = 20.dp)
+            ) {
+                items(filtered, key = { it.packageName }) { app ->
+                    val displayName = renamedMap[app.packageName] ?: app.label
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .pointerInput(Unit) {
+                                detectTapGestures(
+                                    onTap       = { onLaunch(app) },
+                                    onLongPress = { contextApp = app }
+                                )
+                            }
+                            .padding(horizontal = 16.dp, vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (showIcons) {
+                            val bmp = remember(app.packageName) {
+                                runCatching {
+                                    context.packageManager.getApplicationIcon(app.packageName).toBitmap(48, 48)
+                                }.getOrNull()
+                            }
+                            if (bmp != null) {
+                                androidx.compose.foundation.Image(
+                                    bmp.asImageBitmap(), null,
+                                    modifier = Modifier.size(28.dp).clip(RoundedCornerShape(6.dp))
+                                )
+                                Spacer(Modifier.width(12.dp))
+                            }
+                        }
                         Text(
-                            letter.toString(),
-                            color    = TXT.copy(alpha = 0.45f),
-                            fontSize = 10.sp,
-                            modifier = Modifier.padding(vertical = 1.dp)
+                            text       = displayName,
+                            color      = if (app.isBlocked) RED.copy(alpha = 0.7f) else TXT,
+                            fontSize   = fontSize,
+                            fontWeight = FontWeight.Light,
+                            maxLines   = 1,
+                            overflow   = TextOverflow.Ellipsis,
+                            modifier   = Modifier.weight(1f)
                         )
                     }
                 }
             }
 
-            // ── Bottom row: padding so settings icon shows (Image 1 bottom right) ──
-            Spacer(Modifier.height(56.dp))
-        }
-
-        // ── Settings gear — bottom right (Image 1 exact) ──────────────────
-        Icon(
-            Icons.Default.Settings, null,
-            tint     = DIM,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 16.dp, bottom = 16.dp)
-                .size(22.dp)
-                .clickable { onSettings() }
-        )
-
-        // Context menu
-        contextApp?.let { app ->
-            AppContextMenu(
-                app      = app,
-                isPinned = app.packageName in pinnedPkgs,
-                theme    = theme,
-                onUnpin  = { onPin(app.packageName); contextApp = null },
-                onRename = { name -> onRename(app.packageName, name); contextApp = null },
-                onDismiss = { contextApp = null },
-                extraActions = {
-                    ContextMenuRow(Icons.Default.VisibilityOff, "Hide App") {
-                        onHide(app.packageName); contextApp = null
-                    }
-                    ContextMenuRow(
-                        if (app.packageName in pinnedPkgs) Icons.Default.PushPin else Icons.Default.PushPin,
-                        if (app.packageName in pinnedPkgs) "Remove from Home" else "Add to Home"
-                    ) { onPin(app.packageName); contextApp = null }
+            // ── Right side letter index ───────────────────────────────────
+            Column(
+                Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                letters.forEach { letter ->
+                    Text(
+                        letter.toString(),
+                        color    = TXT.copy(alpha = 0.4f),
+                        fontSize = 10.sp,
+                        modifier = Modifier.padding(vertical = 1.5.dp)
+                    )
                 }
-            )
+            }
         }
+
+        // Settings gear at bottom
+        Spacer(Modifier.height(8.dp))
+    }
+
+    // Context menu overlay
+    contextApp?.let { app ->
+        AppContextMenu(
+            app      = app,
+            isPinned = app.packageName in pinnedPkgs,
+            theme    = theme,
+            onUnpin  = { onPin(app.packageName); contextApp = null },
+            onRename = { name -> onRename(app.packageName, name); contextApp = null },
+            onDismiss = { contextApp = null },
+            extraActions = {
+                ContextMenuRow(Icons.Default.VisibilityOff, "Hide App") {
+                    onHide(app.packageName); contextApp = null
+                }
+                ContextMenuRow(
+                    Icons.Default.PushPin,
+                    if (app.packageName in pinnedPkgs) "Remove from Home" else "Add to Home"
+                ) { onPin(app.packageName); contextApp = null }
+            }
+        )
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// App Context Menu
+// App Context Menu — bigger text
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 fun AppContextMenu(
@@ -663,30 +860,37 @@ fun AppContextMenu(
     var renameText by remember { mutableStateOf(app.customName.ifBlank { app.label }) }
 
     Box(
-        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).clickable { onDismiss() },
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.65f))
+            .clickable { onDismiss() },
         contentAlignment = Alignment.Center
     ) {
         Column(
             Modifier
-                .fillMaxWidth(0.8f)
-                .clip(RoundedCornerShape(18.dp))
-                .background(Color(0xFF1A1A1A))
+                .fillMaxWidth(0.82f)
+                .clip(RoundedCornerShape(20.dp))
+                .background(Color(0xFF1C1C1C))
                 .clickable(enabled = false) {}
-                .padding(20.dp)
+                .padding(24.dp)                 // bigger padding
         ) {
-            Text(app.customName.ifBlank { app.label }, color = TXT, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-            Text(app.packageName, color = TXT.copy(alpha = 0.35f), fontSize = 10.sp)
-            Spacer(Modifier.height(16.dp))
+            // App name — bigger
+            Text(app.customName.ifBlank { app.label },
+                color = TXT, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(4.dp))
+            Text(app.packageName, color = TXT.copy(alpha = 0.3f), fontSize = 11.sp)
+            Spacer(Modifier.height(18.dp))
             HorizontalDivider(color = DIVIDER)
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(10.dp))
 
             extraActions?.invoke()
 
             if (showRename) {
+                Spacer(Modifier.height(8.dp))
                 BasicTextField(
                     value         = renameText,
                     onValueChange = { renameText = it },
-                    textStyle     = TextStyle(color = TXT, fontSize = 15.sp),
+                    textStyle     = TextStyle(color = TXT, fontSize = 17.sp),
                     decorationBox = { inner ->
                         Box(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
                             inner()
@@ -696,16 +900,16 @@ fun AppContextMenu(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
                 )
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = { showRename = false }) { Text("Cancel", color = DIM) }
-                    TextButton(onClick = { onRename(renameText) }) { Text("Save", color = ACCENT) }
+                    TextButton(onClick = { showRename = false }) { Text("Cancel", color = DIM, fontSize = 15.sp) }
+                    TextButton(onClick = { onRename(renameText) }) { Text("Save", color = ACCENT, fontSize = 15.sp) }
                 }
             } else {
                 ContextMenuRow(Icons.Default.Edit, "Rename") { showRename = true }
             }
 
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(6.dp))
             TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
-                Text("Cancel", color = DIM, textAlign = TextAlign.Center)
+                Text("Cancel", color = DIM, textAlign = TextAlign.Center, fontSize = 15.sp)
             }
         }
     }
@@ -714,78 +918,107 @@ fun AppContextMenu(
 @Composable
 fun ContextMenuRow(icon: ImageVector, label: String, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { onClick() }.padding(12.dp),
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .clickable { onClick() }
+            .padding(vertical = 14.dp, horizontal = 6.dp),   // more vertical spacing
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, null, tint = TXT.copy(alpha = 0.7f), modifier = Modifier.size(20.dp))
-        Spacer(Modifier.width(14.dp))
-        Text(label, color = TXT.copy(alpha = 0.85f), fontSize = 14.sp)
+        Icon(icon, null, tint = TXT.copy(alpha = 0.7f), modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(16.dp))
+        Text(label, color = TXT.copy(alpha = 0.9f), fontSize = 16.sp)  // bigger text
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Add App Dialog — long press on Home to add
+// App Picker Dialog — for clock ring / bottom buttons
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
-fun AddAppDialog(
-    allApps:     List<AppInfo>,
-    pinnedPkgs:  List<String>,
-    theme:       LauncherTheme,
-    onTogglePin: (String) -> Unit,
-    onDismiss:   () -> Unit
+fun AppPickerDialog(
+    allApps:    List<AppInfo>,
+    slotLabel:  String,
+    currentPkg: String,
+    onPick:     (String) -> Unit,
+    onDismiss:  () -> Unit
 ) {
     var search by remember { mutableStateOf("") }
     val filtered = remember(search, allApps) {
-        if (search.isBlank()) allApps else allApps.filter { it.label.contains(search, ignoreCase = true) }
+        if (search.isBlank()) allApps
+        else allApps.filter { it.label.contains(search, ignoreCase = true) }
     }
 
     Dialog(onDismissRequest = onDismiss) {
         Column(
             Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(18.dp))
+                .clip(RoundedCornerShape(20.dp))
                 .background(Color(0xFF141414))
-                .padding(16.dp)
+                .padding(18.dp)
         ) {
-            Text("Add to Home", color = TXT, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Text("Assign: $slotLabel", color = TXT, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(12.dp))
+
+            // Search field
             BasicTextField(
                 value         = search,
                 onValueChange = { search = it },
                 singleLine    = true,
-                textStyle     = TextStyle(color = TXT, fontSize = 14.sp),
+                textStyle     = TextStyle(color = TXT, fontSize = 15.sp),
                 decorationBox = { inner ->
-                    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(CARD_BG).padding(12.dp)) {
-                        if (search.isBlank()) Text("Search...", color = TXT.copy(alpha = 0.3f), fontSize = 14.sp)
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(CARD_BG)
+                            .padding(12.dp)
+                    ) {
+                        if (search.isBlank()) Text("Search…", color = TXT.copy(alpha = 0.3f), fontSize = 15.sp)
                         inner()
                     }
                 },
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(8.dp))
-            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
-                items(filtered) { app ->
-                    val pinned = app.packageName in pinnedPkgs
+
+            // Built-in special options first
+            if (search.isBlank()) {
+                listOf("PHONE" to "📞 Phone Dialer", "CAMERA" to "📷 Camera").forEach { (pkg, label) ->
                     Row(
-                        Modifier.fillMaxWidth().clickable { onTogglePin(app.packageName) }
-                            .padding(vertical = 11.dp, horizontal = 4.dp),
-                        verticalAlignment    = Alignment.CenterVertically,
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { onPick(pkg) }
+                            .padding(vertical = 13.dp, horizontal = 4.dp),
+                        verticalAlignment     = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text(app.label, color = TXT, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                        Icon(
-                            if (pinned) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
-                            null,
-                            tint     = if (pinned) ACCENT else DIM,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        Text(label, color = TXT, fontSize = 16.sp, modifier = Modifier.weight(1f))
+                        if (pkg == currentPkg) Icon(Icons.Default.CheckCircle, null, tint = ACCENT, modifier = Modifier.size(20.dp))
+                    }
+                    HorizontalDivider(color = DIVIDER)
+                }
+            }
+
+            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 340.dp)) {
+                items(filtered) { app ->
+                    val selected = app.packageName == currentPkg
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { onPick(app.packageName) }
+                            .padding(vertical = 13.dp, horizontal = 4.dp),
+                        verticalAlignment     = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(app.label, color = TXT, fontSize = 16.sp, modifier = Modifier.weight(1f))
+                        if (selected) Icon(Icons.Default.CheckCircle, null, tint = ACCENT, modifier = Modifier.size(20.dp))
                     }
                     HorizontalDivider(color = DIVIDER)
                 }
             }
             Spacer(Modifier.height(8.dp))
             TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
-                Text("Done", color = ACCENT)
+                Text("Cancel", color = DIM, fontSize = 15.sp)
             }
         }
     }
@@ -817,7 +1050,13 @@ fun LauncherSettingsSheet(
     var expandGestures by remember { mutableStateOf(false) }
     var expandMore     by remember { mutableStateOf(false) }
 
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+    ) {
         Column(Modifier.fillMaxSize()) {
             Box(
                 Modifier.fillMaxWidth().background(Color.Black).padding(horizontal = 16.dp, vertical = 18.dp)
@@ -871,10 +1110,12 @@ fun LauncherSettingsSheet(
                 SettingsDivider()
 
                 SettingsExpandableSection("Gestures", expandGestures, { expandGestures = !expandGestures }) {
-                    SettingsInfoRow("Swipe left / up  →  All Apps")
-                    SettingsInfoRow("Swipe right  →  Home")
+                    SettingsInfoRow("Swipe left  →  Open Apps sidebar")
+                    SettingsInfoRow("Swipe right (in sidebar)  →  Close")
                     SettingsInfoRow("Swipe down  →  Notifications")
-                    SettingsInfoRow("Long press app  →  Options")
+                    SettingsInfoRow("Long press clock ring  →  Assign app")
+                    SettingsInfoRow("Long press bottom buttons  →  Assign app")
+                    SettingsInfoRow("Long press app name  →  Options")
                 }
 
                 SettingsDivider()
@@ -883,8 +1124,9 @@ fun LauncherSettingsSheet(
                     SettingsClickRow("Back to RasFocus") { onBack(); onDismiss() }
                     SettingsClickRow("Set as default launcher") {
                         try {
-                            val i = Intent(Settings.ACTION_HOME_SETTINGS).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
-                            context.startActivity(i)
+                            context.startActivity(
+                                Intent(Settings.ACTION_HOME_SETTINGS).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+                            )
                         } catch (_: Exception) {}
                     }
                 }
@@ -1047,50 +1289,17 @@ private fun getCurrentTime(): Pair<String, String> {
 }
 
 private fun getBatteryLevel(context: Context): Int {
-    val bm = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
-    return bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+    return try {
+        val bm = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+        bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY).coerceIn(0, 100)
+    } catch (_: Exception) { 100 }
 }
 
 private fun isDeviceCharging(context: Context): Boolean {
-    val bm = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
-    return bm.isCharging
-}
-
-private fun isFocusActive(context: Context): Boolean {
-    val prefs = context.getSharedPreferences("self_control_prefs", Context.MODE_PRIVATE)
-    return prefs.getBoolean("deep_study_enabled", false) || prefs.getBoolean("extreme_block_enabled", false)
-}
-
-private fun getScreenTimeToday(context: Context): String {
     return try {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP_MR1) return "N/A"
-        val usm  = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-        val now  = System.currentTimeMillis()
-        val start = java.util.Calendar.getInstance().apply {
-            set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0)
-        }.timeInMillis
-        val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, start, now)
-        val mins  = (stats?.sumOf { it.totalTimeInForeground } ?: 0L) / 60000
-        if (mins < 60) "${mins}m" else "${mins / 60}h ${mins % 60}m"
-    } catch (_: Exception) { "N/A" }
-}
-
-private fun getStreak(context: Context): Int {
-    val prefs   = context.getSharedPreferences("launcher_prefs", Context.MODE_PRIVATE)
-    val today   = java.util.Calendar.getInstance().apply {
-        set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0)
-        set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
-    }.timeInMillis
-    val lastDay = prefs.getLong("last_open_day", 0L)
-    val streak  = prefs.getInt("streak", 0)
-    val dayMs   = 86_400_000L
-    val newStreak = when {
-        lastDay == today          -> streak
-        lastDay == today - dayMs  -> streak + 1
-        else                      -> 1
-    }
-    prefs.edit().putLong("last_open_day", today).putInt("streak", newStreak).apply()
-    return newStreak
+        val bm = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+        bm.isCharging
+    } catch (_: Exception) { false }
 }
 
 private fun getUsageMap(context: Context): Map<String, Long> {
