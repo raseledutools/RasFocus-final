@@ -118,6 +118,8 @@ const val PREF_MOBILE = "saved_mobile"
 const val PREF_NAME_KEY = "saved_name"
 const val PREF_UID = "saved_uid"
 const val PREF_AVATAR = "saved_avatar"
+const val PREF_CALL_DELIVERY = "call_delivery_method"
+const val PREF_SA_JSON = "service_account_json"
 const val MAX_RETRY = 3
 const val TYPING_DEBOUNCE_MS = 2500L
 const val ONLINE_THRESHOLD_MS = 120_000L
@@ -4756,6 +4758,10 @@ fun SettingsDialog(
     var avatarUrl by remember { mutableStateOf(currentUser.avatarUrl) }
     var selectedTab by remember { mutableIntStateOf(0) }
 
+    val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+    var callDeliveryMethod by remember { mutableStateOf(prefs.getString(PREF_CALL_DELIVERY, "disabled") ?: "disabled") }
+    var serviceAccountJson by remember { mutableStateOf(prefs.getString(PREF_SA_JSON, "") ?: "") }
+
     val imageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
             isUploading = true
@@ -4797,7 +4803,7 @@ fun SettingsDialog(
                 Column(modifier = Modifier.padding(20.dp)) {
                     // Tabs
                     Row(modifier = Modifier.fillMaxWidth().background(RasGramTheme.DarkBackground, RoundedCornerShape(10.dp)).padding(4.dp)) {
-                        listOf("Profile", "Privacy", "Notifications").forEachIndexed { i, label ->
+                        listOf("Profile", "Privacy", "Notifs", "Calls").forEachIndexed { i, label ->
                             Surface(
                                 modifier = Modifier.weight(1f).clickable { selectedTab = i },
                                 shape = RoundedCornerShape(8.dp),
@@ -4836,12 +4842,71 @@ fun SettingsDialog(
                             SettingsToggleRow(Icons.Default.Vibration, "Vibration", true) { }
                             SettingsToggleRow(Icons.Default.Groups, "Group Notifications", true) { }
                         }
+                        3 -> {
+                            Text("Background Call Method", color = RasGramTheme.Green, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("Select how RasGram should receive calls when app is closed.", color = RasGramTheme.TextMuted, fontSize = 12.sp)
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // FCM Radio
+                            Row(modifier = Modifier.fillMaxWidth().clickable { callDeliveryMethod = "fcm" }, verticalAlignment = Alignment.CenterVertically) {
+                                RadioButton(selected = callDeliveryMethod == "fcm", onClick = { callDeliveryMethod = "fcm" }, colors = RadioButtonDefaults.colors(selectedColor = RasGramTheme.Green))
+                                Column {
+                                    Text("FCM Push (Recommended)", color = RasGramTheme.TextPrimary)
+                                    Text("Requires Service Account JSON. Works even if phone is locked.", color = RasGramTheme.TextMuted, fontSize = 11.sp, lineHeight = 14.sp)
+                                }
+                            }
+                            if (callDeliveryMethod == "fcm") {
+                                OutlinedTextField(
+                                    value = serviceAccountJson,
+                                    onValueChange = { serviceAccountJson = it },
+                                    label = { Text("Paste service_account.json contents here", color = RasGramTheme.TextMuted) },
+                                    modifier = Modifier.fillMaxWidth().height(100.dp).padding(start = 36.dp, top = 4.dp),
+                                    colors = outlinedFieldColors(),
+                                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 10.sp, color = RasGramTheme.TextPrimary)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+                            
+                            // Foreground Service Radio
+                            Row(modifier = Modifier.fillMaxWidth().clickable { callDeliveryMethod = "foreground" }, verticalAlignment = Alignment.CenterVertically) {
+                                RadioButton(selected = callDeliveryMethod == "foreground", onClick = { callDeliveryMethod = "foreground" }, colors = RadioButtonDefaults.colors(selectedColor = RasGramTheme.Green))
+                                Column {
+                                    Text("Foreground Service", color = RasGramTheme.TextPrimary)
+                                    Text("Shows a persistent notification to keep app listener alive.", color = RasGramTheme.TextMuted, fontSize = 11.sp)
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // WorkManager Radio
+                            Row(modifier = Modifier.fillMaxWidth().clickable { callDeliveryMethod = "workmanager" }, verticalAlignment = Alignment.CenterVertically) {
+                                RadioButton(selected = callDeliveryMethod == "workmanager", onClick = { callDeliveryMethod = "workmanager" }, colors = RadioButtonDefaults.colors(selectedColor = RasGramTheme.Green))
+                                Column {
+                                    Text("Background Polling", color = RasGramTheme.TextPrimary)
+                                    Text("Checks every 15 mins. Battery intensive and delayed.", color = RasGramTheme.TextMuted, fontSize = 11.sp)
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Disabled Radio
+                            Row(modifier = Modifier.fillMaxWidth().clickable { callDeliveryMethod = "disabled" }, verticalAlignment = Alignment.CenterVertically) {
+                                RadioButton(selected = callDeliveryMethod == "disabled", onClick = { callDeliveryMethod = "disabled" }, colors = RadioButtonDefaults.colors(selectedColor = RasGramTheme.Green))
+                                Column {
+                                    Text("In-App Only (Current)", color = RasGramTheme.TextPrimary)
+                                    Text("App must be open on screen to receive calls.", color = RasGramTheme.TextMuted, fontSize = 11.sp)
+                                }
+                            }
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(20.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f).height(48.dp), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, RasGramTheme.Border), colors = ButtonDefaults.outlinedButtonColors(contentColor = RasGramTheme.TextMuted)) { Text("Cancel") }
                         Button(onClick = {
+                            prefs.edit()
+                                .putString(PREF_CALL_DELIVERY, callDeliveryMethod)
+                                .putString(PREF_SA_JSON, serviceAccountJson)
+                                .apply()
                             scope.launch {
                                 db.collection("chat_users").document(currentUser.mobile).update("name", name, "about", about)
                             }
@@ -5238,11 +5303,17 @@ suspend fun sendFcmCallNotification(
         val calleeDoc = db.collection("chat_users").document(calleeMobile).get().await()
         val fcmToken = calleeDoc.getString("fcmToken") ?: return@withContext
 
-        // Read service account from assets
-        val saStream = context.resources.openRawResource(
-            context.resources.getIdentifier("service_account", "raw", context.packageName)
-        )
-        val saJson = org.json.JSONObject(saStream.bufferedReader().readText())
+        val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        val deliveryMethod = prefs.getString(PREF_CALL_DELIVERY, "disabled") ?: "disabled"
+        if (deliveryMethod != "fcm") {
+            // Not using FCM push
+            return@withContext
+        }
+        
+        val saJsonStr = prefs.getString(PREF_SA_JSON, "")
+        if (saJsonStr.isNullOrEmpty()) return@withContext
+        
+        val saJson = org.json.JSONObject(saJsonStr)
 
         // Get OAuth2 access token for FCM v1 API
         val privateKeyPem = saJson.getString("private_key")
