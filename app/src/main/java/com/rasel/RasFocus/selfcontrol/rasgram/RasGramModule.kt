@@ -18,9 +18,14 @@ import android.media.MediaRecorder
 import android.media.Ringtone
 import android.media.RingtoneManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.media.MediaScannerConnection
+import android.webkit.MimeTypeMap
+import androidx.core.content.FileProvider
 import android.provider.ContactsContract
 import android.provider.OpenableColumns
 import android.widget.Toast
@@ -1833,13 +1838,16 @@ fun ChatArea(
     // File launchers
     val imageVideoLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
+            val mimeType = context.contentResolver.getType(it) ?: "application/octet-stream"
             isUploading = true
             scope.launch {
                 try {
                     val (url, fileName, fileType) = uploadToCloudinary(context, it) { prog -> uploadProgress = prog }
                     if (url != null) {
                         sendMessage(db, chatId, currentUser.mobile, contact.mobile, "", url, fileName, fileType)
-                    } else Toast.makeText(context, "Upload failed", Toast.LENGTH_SHORT).show()
+                        val label = if (mimeType.startsWith("video/")) "ভিডিও" else "ছবি"
+                        Toast.makeText(context, "$label পাঠানো হয়েছে", Toast.LENGTH_SHORT).show()
+                    } else Toast.makeText(context, "আপলোড ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
                 } catch (e: Exception) {
                     Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
@@ -1857,7 +1865,8 @@ fun ChatArea(
                     val (url, fileName, fileType) = uploadToCloudinary(context, it) { prog -> uploadProgress = prog }
                     if (url != null) {
                         sendMessage(db, chatId, currentUser.mobile, contact.mobile, "", url, fileName, fileType)
-                    } else Toast.makeText(context, "Upload failed", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "ফাইল পাঠানো হয়েছে", Toast.LENGTH_SHORT).show()
+                    } else Toast.makeText(context, "আপলোড ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
                 } catch (e: Exception) {
                     Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
@@ -2853,10 +2862,15 @@ fun CallLogBubble(message: Message) {
 @Composable
 fun ImageMessageContent(url: String, context: Context) {
     var showFullScreen by remember { mutableStateOf(false) }
+    var isSaving by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
     AsyncImage(
         model = url,
         contentDescription = "Image",
-        modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp, max = 220.dp).clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 4.dp, bottomEnd = 4.dp)).clickable { showFullScreen = true },
+        modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp, max = 220.dp)
+            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 4.dp, bottomEnd = 4.dp))
+            .clickable { showFullScreen = true },
         contentScale = ContentScale.Crop
     )
     if (showFullScreen) {
@@ -2866,11 +2880,24 @@ fun ImageMessageContent(url: String, context: Context) {
                 IconButton(onClick = { showFullScreen = false }, modifier = Modifier.align(Alignment.TopStart).padding(16.dp)) {
                     Icon(Icons.Default.Close, null, tint = Color.White)
                 }
+                // Download to Rasgram folder
                 IconButton(
-                    onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri())) },
+                    onClick = {
+                        scope.launch {
+                            isSaving = true
+                            val saved = downloadToRasgramFolder(context, url, null, "image/jpeg")
+                            isSaving = false
+                            if (saved != null) {
+                                Toast.makeText(context, "Rasgram ফোল্ডারে সেভ হয়েছে", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "সেভ করা যায়নি", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
                     modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
                 ) {
-                    Icon(Icons.Default.Download, null, tint = Color.White)
+                    if (isSaving) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White, strokeWidth = 2.dp)
+                    else Icon(Icons.Default.Download, null, tint = Color.White)
                 }
             }
         }
@@ -2879,18 +2906,101 @@ fun ImageMessageContent(url: String, context: Context) {
 
 @Composable
 fun VideoMessageContent(url: String, fileName: String?, fileType: String?, context: Context) {
+    val scope = rememberCoroutineScope()
+    var isDownloading by remember { mutableStateOf(false) }
+    var downloadProgress by remember { mutableFloatStateOf(0f) }
+
+    // Check if already downloaded in Rasgram folder
+    val localFile = remember(url) { getRasgramCachedFile(context, url, fileName, fileType ?: "video/mp4") }
+    var isLocal by remember(localFile) { mutableStateOf(localFile?.exists() == true) }
+
     Surface(
-        modifier = Modifier.fillMaxWidth().height(200.dp).clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 4.dp, bottomEnd = 4.dp)).clickable {
-            val intent = Intent(Intent.ACTION_VIEW, url.toUri())
-            intent.setDataAndType(url.toUri(), fileType)
-            context.startActivity(intent)
-        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(200.dp)
+            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 4.dp, bottomEnd = 4.dp)),
         color = Color.Black.copy(0.6f)
     ) {
         Box(contentAlignment = Alignment.Center) {
-            Icon(Icons.Default.PlayCircle, null, tint = Color.White, modifier = Modifier.size(60.dp))
-            Surface(modifier = Modifier.align(Alignment.BottomStart).padding(8.dp), shape = RoundedCornerShape(4.dp), color = Color.Black.copy(0.6f)) {
-                Text(fileName ?: "Video", modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp), color = Color.White, style = MaterialTheme.typography.labelSmall)
+            if (isDownloading) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(
+                        progress = { downloadProgress },
+                        modifier = Modifier.size(52.dp),
+                        color = RasGramTheme.Green,
+                        strokeWidth = 3.dp
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text("${(downloadProgress * 100).toInt()}%", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                }
+            } else if (isLocal) {
+                // Already downloaded — tap to play
+                Icon(
+                    Icons.Default.PlayCircleFilled,
+                    null,
+                    tint = RasGramTheme.Green,
+                    modifier = Modifier.size(64.dp).clickable {
+                        openLocalFileWithProvider(context, localFile!!, fileType ?: "video/mp4")
+                    }
+                )
+            } else {
+                // Not downloaded — Telegram-style download button
+                Surface(
+                    shape = CircleShape,
+                    color = Color.Black.copy(0.55f),
+                    modifier = Modifier.size(64.dp).clickable {
+                        scope.launch {
+                            isDownloading = true
+                            val saved = downloadToRasgramFolder(context, url, fileName ?: "video_${System.currentTimeMillis()}.mp4", fileType ?: "video/mp4") { prog ->
+                                downloadProgress = prog
+                            }
+                            isDownloading = false
+                            if (saved != null) {
+                                isLocal = true
+                                Toast.makeText(context, "Rasgram ফোল্ডারে ডাউনলোড হয়েছে", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "ডাউনলোড ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.Download, null, tint = Color.White, modifier = Modifier.size(30.dp))
+                    }
+                }
+            }
+
+            // File name badge (bottom left)
+            Surface(
+                modifier = Modifier.align(Alignment.BottomStart).padding(8.dp),
+                shape = RoundedCornerShape(4.dp),
+                color = Color.Black.copy(0.6f)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                ) {
+                    Icon(Icons.Default.Videocam, null, tint = Color.White, modifier = Modifier.size(12.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        fileName ?: "Video",
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            // Downloaded badge (top right)
+            if (isLocal) {
+                Surface(
+                    modifier = Modifier.align(Alignment.TopEnd).padding(6.dp),
+                    shape = RoundedCornerShape(4.dp),
+                    color = RasGramTheme.Green.copy(0.85f)
+                ) {
+                    Text("✓", color = Color.White, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
+                }
             }
         }
     }
@@ -2966,6 +3076,7 @@ fun AudioMessageContent(url: String, fileName: String?, duration: Int) {
 
 @Composable
 fun DocumentMessageContent(url: String, fileName: String?, fileType: String?, fileSize: Long, context: Context) {
+    val scope = rememberCoroutineScope()
     val isPdf = fileType?.contains("pdf") == true
     val isWord = fileType?.contains("word") == true || fileType?.contains("document") == true
     val isExcel = fileType?.contains("sheet") == true || fileType?.contains("excel") == true
@@ -2997,16 +3108,40 @@ fun DocumentMessageContent(url: String, fileName: String?, fileType: String?, fi
         else    -> Icons.Default.InsertDriveFile
     }
 
-    // WhatsApp-style: thumbnail top + info row bottom
+    // Check if file already exists locally in Rasgram folder
+    val localFile = remember(url) { getRasgramCachedFile(context, url, fileName, fileType ?: "application/octet-stream") }
+    var isLocal by remember(localFile) { mutableStateOf(localFile?.exists() == true) }
+    var isDownloading by remember { mutableStateOf(false) }
+    var downloadProgress by remember { mutableFloatStateOf(0f) }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clickable {
-                val intent = Intent(Intent.ACTION_VIEW, url.toUri())
-                context.startActivity(intent)
+                if (isLocal && localFile != null) {
+                    // File is local — open directly (no browser!)
+                    openLocalFileWithProvider(context, localFile, fileType ?: "application/octet-stream")
+                } else {
+                    // Not downloaded yet — start download
+                    scope.launch {
+                        isDownloading = true
+                        val saved = downloadToRasgramFolder(context, url, fileName ?: "document_${System.currentTimeMillis()}", fileType ?: "application/octet-stream") { prog ->
+                            downloadProgress = prog
+                        }
+                        isDownloading = false
+                        if (saved != null) {
+                            isLocal = true
+                            Toast.makeText(context, "Rasgram ফোল্ডারে ডাউনলোড হয়েছে", Toast.LENGTH_SHORT).show()
+                            // Auto-open after download
+                            openLocalFileWithProvider(context, saved, fileType ?: "application/octet-stream")
+                        } else {
+                            Toast.makeText(context, "ডাউনলোড ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
             }
     ) {
-        // Colored header block (thumbnail replacement)
+        // Colored header block
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -3015,28 +3150,34 @@ fun DocumentMessageContent(url: String, fileName: String?, fileType: String?, fi
             contentAlignment = Alignment.Center
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    icon,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(32.dp)
-                )
+                Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(32.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    iconLabel,
-                    color = Color.White,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 18.sp,
-                    letterSpacing = 1.sp
-                )
+                Text(iconLabel, color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, letterSpacing = 1.sp)
+            }
+
+            // Download progress overlay
+            if (isDownloading) {
+                Box(
+                    modifier = Modifier.fillMaxSize().background(Color.Black.copy(0.55f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(
+                            progress = { downloadProgress },
+                            modifier = Modifier.size(36.dp),
+                            color = Color.White,
+                            strokeWidth = 3.dp
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("${(downloadProgress * 100).toInt()}%", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                    }
+                }
             }
         }
 
         // File info row
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
@@ -3058,12 +3199,12 @@ fun DocumentMessageContent(url: String, fileName: String?, fileType: String?, fi
                 }
             }
             Spacer(modifier = Modifier.width(8.dp))
-            Icon(
-                Icons.Default.Download,
-                contentDescription = null,
-                tint = RasGramTheme.TextMuted,
-                modifier = Modifier.size(22.dp)
-            )
+            // Icon: check if local (open icon) or not (download icon)
+            if (isLocal) {
+                Icon(Icons.Default.OpenInNew, contentDescription = "Open", tint = RasGramTheme.Green, modifier = Modifier.size(22.dp))
+            } else {
+                Icon(Icons.Default.Download, contentDescription = "Download", tint = RasGramTheme.TextMuted, modifier = Modifier.size(22.dp))
+            }
         }
     }
 }
@@ -4456,6 +4597,143 @@ fun EmptyChatState() {
             Icon(Icons.Default.Lock, null, modifier = Modifier.size(14.dp), tint = RasGramTheme.Green)
             Text("Your personal messages are end-to-end encrypted", style = MaterialTheme.typography.bodySmall, color = RasGramTheme.TextMuted)
         }
+    }
+}
+
+// ==================== RASGRAM FILE HELPERS ====================
+
+/**
+ * Rasgram folder এর path বের করে দেয়।
+ * Android Q+ (API 29+): Environment.getExternalStoragePublicDirectory(DIRECTORY_DOCUMENTS)/Rasgram
+ * Older: External storage /Rasgram
+ */
+fun getRasgramFolder(context: Context): java.io.File {
+    val base = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
+    val dir = java.io.File(base, "Rasgram")
+    if (!dir.exists()) dir.mkdirs()
+    return dir
+}
+
+/**
+ * URL থেকে একটি consistent local file নাম তৈরি করে।
+ * URL hash + original file name যুক্ত করে দেয়।
+ */
+fun rasgramLocalFileName(url: String, fileName: String?, fileType: String?): String {
+    val urlHash = url.hashCode().let { if (it < 0) "n${-it}" else "p$it" }
+    val ext = when {
+        fileName != null && fileName.contains('.') -> ".${fileName.substringAfterLast('.')}"
+        fileType != null -> ".${MimeTypeMap.getSingleton().getExtensionFromMimeType(fileType) ?: "bin"}"
+        else -> ".bin"
+    }
+    val baseName = fileName?.substringBeforeLast('.')?.take(32) ?: "rasgram"
+    return "${baseName}_${urlHash}${ext}"
+}
+
+/**
+ * Rasgram folder এ ওই URL-এর জন্য cached file আছে কিনা দেখে।
+ * থাকলে File object ফেরত দেয়, না থাকলে null।
+ */
+fun getRasgramCachedFile(context: Context, url: String, fileName: String?, fileType: String?): java.io.File {
+    val folder = getRasgramFolder(context)
+    val name = rasgramLocalFileName(url, fileName, fileType)
+    return java.io.File(folder, name)
+}
+
+/**
+ * Telegram/WhatsApp style download:
+ * URL থেকে file download করে Rasgram folder এ রাখে।
+ * Progress callback (0.0 - 1.0) দিয়ে progress update করে।
+ * সফল হলে saved File, ব্যর্থ হলে null।
+ */
+suspend fun downloadToRasgramFolder(
+    context: Context,
+    url: String,
+    fileName: String?,
+    fileType: String,
+    onProgress: (Float) -> Unit = {}
+): java.io.File? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    try {
+        val folder = getRasgramFolder(context)
+        val name = rasgramLocalFileName(url, fileName, fileType)
+        val destFile = java.io.File(folder, name)
+
+        // Already exists? Return immediately
+        if (destFile.exists() && destFile.length() > 0) {
+            return@withContext destFile
+        }
+
+        val client = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+
+        val request = okhttp3.Request.Builder().url(url).build()
+        val response = client.newCall(request).execute()
+
+        if (!response.isSuccessful) return@withContext null
+
+        val body = response.body ?: return@withContext null
+        val totalBytes = body.contentLength()
+        var downloadedBytes = 0L
+
+        val tmpFile = java.io.File(folder, "${name}.tmp")
+        body.byteStream().use { input ->
+            tmpFile.outputStream().use { output ->
+                val buffer = ByteArray(8192)
+                var read: Int
+                while (input.read(buffer).also { read = it } != -1) {
+                    output.write(buffer, 0, read)
+                    downloadedBytes += read
+                    if (totalBytes > 0) {
+                        val prog = downloadedBytes.toFloat() / totalBytes.toFloat()
+                        kotlinx.coroutines.runBlocking {
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { onProgress(prog) }
+                        }
+                    }
+                }
+            }
+        }
+
+        tmpFile.renameTo(destFile)
+
+        // Scan so it appears in gallery/file managers
+        MediaScannerConnection.scanFile(context, arrayOf(destFile.absolutePath), arrayOf(fileType), null)
+
+        destFile
+    } catch (e: Exception) {
+        null
+    }
+}
+
+/**
+ * Local file কে FileProvider দিয়ে open করে।
+ * Browser/external URL এ যায় না — সরাসরি device-এর viewer খুলে।
+ */
+fun openLocalFileWithProvider(context: Context, file: java.io.File, mimeType: String) {
+    try {
+        val authority = "${context.packageName}.fileprovider"
+        val uri = FileProvider.getUriForFile(context, authority, file)
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, mimeType)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        // Check if any app can handle this
+        if (intent.resolveActivity(context.packageManager) != null) {
+            context.startActivity(intent)
+        } else {
+            // Fallback: try without specific mime type
+            val fallback = Intent(Intent.ACTION_VIEW).apply {
+                data = uri
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(Intent.createChooser(fallback, "Open with").apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
+        }
+    } catch (e: Exception) {
+        Toast.makeText(context, "ফাইল খোলা যায়নি", Toast.LENGTH_SHORT).show()
     }
 }
 
