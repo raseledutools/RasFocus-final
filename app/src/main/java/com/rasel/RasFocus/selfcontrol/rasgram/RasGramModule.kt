@@ -322,6 +322,12 @@ fun RasGramApp(
     var isLoggedIn by remember { mutableStateOf(initialUser != null) }
     var currentUser by remember { mutableStateOf(initialUser) }
     var isDarkMode by remember { mutableStateOf(true) }
+    var showSplash by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        delay(1800)
+        showSplash = false
+    }
 
     MaterialTheme(colorScheme = if (isDarkMode) darkColorScheme(
         primary = RasGramTheme.Green,
@@ -334,7 +340,9 @@ fun RasGramApp(
         primary = RasGramTheme.Green,
         secondary = RasGramTheme.GreenDark
     )) {
-        if (!isLoggedIn || currentUser == null) {
+        if (showSplash) {
+            RasGramSplashScreen()
+        } else if (!isLoggedIn || currentUser == null) {
             OtpLoginScreen(
                 onLogin = { user ->
                     prefs.edit()
@@ -369,6 +377,151 @@ fun RasGramApp(
                 incomingCallerMobile = incomingCallerMobile,
                 incomingCallerName = incomingCallerName,
                 incomingCallType = incomingCallType
+            )
+        }
+    }
+}
+
+// ==================== SPLASH SCREEN ====================
+@Composable
+fun RasGramSplashScreen() {
+    val infiniteTransition = rememberInfiniteTransition(label = "splash_pulse")
+
+    // আইকনটা ধীরে breathe করবে
+    val iconScale by infiniteTransition.animateFloat(
+        initialValue = 0.92f,
+        targetValue = 1.08f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = EaseInOut),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "icon_scale"
+    )
+
+    // নিচের tagline fade করবে
+    val taglineAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1100, easing = EaseInOut),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "tagline_alpha"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0xFF0B2318),
+                        RasGramTheme.DarkBackground,
+                        Color(0xFF071A14)
+                    )
+                )
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        // পেছনে বড় glow
+        Box(
+            modifier = Modifier
+                .size(260.dp)
+                .background(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            RasGramTheme.Green.copy(alpha = 0.18f),
+                            Color.Transparent
+                        )
+                    ),
+                    shape = CircleShape
+                )
+        )
+
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            // Logo circle
+            Box(
+                modifier = Modifier
+                    .scale(iconScale)
+                    .size(110.dp)
+                    .background(
+                        brush = Brush.linearGradient(
+                            listOf(RasGramTheme.Green, RasGramTheme.GreenDark)
+                        ),
+                        shape = CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Send,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(52.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(28.dp))
+
+            // RasGram নাম
+            Row {
+                Text(
+                    "Ras",
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 38.sp,
+                    color = RasGramTheme.TextPrimary,
+                    letterSpacing = 0.5.sp
+                )
+                Text(
+                    "Gram",
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 38.sp,
+                    color = RasGramTheme.Green,
+                    letterSpacing = 0.5.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                "Simple. Secure. Reliable.",
+                color = RasGramTheme.Green.copy(alpha = taglineAlpha),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                letterSpacing = 1.sp
+            )
+        }
+
+        // নিচে "from" badge
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 48.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(
+                    Icons.Default.Lock,
+                    contentDescription = null,
+                    tint = RasGramTheme.TextMuted,
+                    modifier = Modifier.size(12.dp)
+                )
+                Text(
+                    "End-to-end encrypted",
+                    color = RasGramTheme.TextMuted,
+                    fontSize = 12.sp
+                )
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                "from RasEduTools",
+                color = RasGramTheme.TextMuted.copy(alpha = 0.5f),
+                fontSize = 11.sp
             )
         }
     }
@@ -1240,6 +1393,8 @@ fun ChatsTab(
 ) {
     val db = remember { FirebaseFirestore.getInstance() }
     var users by remember { mutableStateOf<List<User>>(emptyList()) }
+    // Firebase এর প্রথম snapshot আসার আগে empty state দেখাবে না — WhatsApp এর মতো
+    var usersLoaded by remember { mutableStateOf(false) }
     var latestMessages by remember { mutableStateOf<Map<String, Message>>(emptyMap()) }
     var unreadCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     var searchQuery by remember { mutableStateOf("") }
@@ -1302,6 +1457,7 @@ fun ChatsTab(
                     )
                 }
             }?.filter { it.mobile != currentUser.mobile }?.also { users = it }
+            usersLoaded = true  // প্রথম snapshot এলেই, খালি হলেও — empty state দেখানো ঠিক আছে
         }
     }
 
@@ -1379,7 +1535,9 @@ fun ChatsTab(
         HorizontalDivider(color = RasGramTheme.DividerColor, thickness = 0.5.dp)
 
         LazyColumn(modifier = Modifier.fillMaxSize()) {
-            if (filteredUsers.isEmpty()) {
+            // usersLoaded না হওয়া পর্যন্ত empty state দেখাবে না — blank list থাকবে
+            // Firebase cache থেকে দ্রুত load হলে এই flash কখনোই দেখা যাবে না
+            if (usersLoaded && filteredUsers.isEmpty()) {
                 item {
                     Column(
                         modifier = Modifier.fillMaxWidth().padding(48.dp),
