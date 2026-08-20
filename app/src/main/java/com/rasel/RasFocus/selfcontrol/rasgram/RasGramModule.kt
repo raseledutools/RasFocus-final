@@ -1311,6 +1311,9 @@ fun MainScreen(
                     mobile = activeIncomingCallerMobile,
                     avatarUrl = ""
                 )
+                // ✅ FIX: receiver mode সেট করো এবং existing callId পাস করো
+                isReceiverCall = true
+                acceptedCallId = activeIncomingCallId
                 showCallUI = true
             },
             onDecline = {
