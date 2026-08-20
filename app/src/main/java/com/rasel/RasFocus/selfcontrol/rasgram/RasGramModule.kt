@@ -6072,7 +6072,7 @@ suspend fun sendFcmMessageNotification(
             .url("https://fcm.googleapis.com/v1/projects/$projectId/messages:send")
             .addHeader("Authorization", "Bearer $accessToken")
             .addHeader("Content-Type", "application/json")
-            .post(okhttp3.RequestBody.create(payload.toString().toByteArray(), okhttp3.MediaType.get("application/json")))
+            .post(okhttp3.RequestBody.create("application/json".toMediaTypeOrNull(), payload.toString()))
             .build()
         okhttp3.OkHttpClient().newCall(pushRequest).execute()
     } catch (_: Exception) { }
