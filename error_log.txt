@@ -4,30 +4,27 @@
 ╚══════════════════════════════════════════╝
 
 === KOTLIN ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:6061:64 Using 'parse(String): MediaType?' is an error. moved to extension function
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:6075:39 None of the following functions can be called with the arguments supplied: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:6075:98 Using 'get(String): MediaType' is an error. moved to extension function
 
 === UNRESOLVED / TYPE ERRORS ===
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:6075:39 None of the following functions can be called with the arguments supplied: 
 
 === BUILD FAILURE ===
 > Task :app:compileFullReleaseKotlin FAILED
 * What went wrong:
 Execution failed for task ':app:compileFullReleaseKotlin'.
-BUILD FAILED in 2m 50s
+BUILD FAILED in 3m 50s
 
 === LAST 60 LINES ===
-> Task :app:extractDeepLinksFullRelease FROM-CACHE
-> Task :app:generateFullReleaseBuildConfig
-> Task :app:packageFullReleaseResources FROM-CACHE
-> Task :app:parseFullReleaseLocalResources FROM-CACHE
-> Task :app:mapFullReleaseSourceSetPaths
+> Task :app:mergeFullReleaseAssets FROM-CACHE
 > Task :app:mergeFullReleaseArtProfile
 > Task :app:validateSigningFullRelease
 > Task :app:writeFullReleaseAppMetadata
-> Task :app:checkFullReleaseAarMetadata
 > Task :app:writeFullReleaseSigningConfigVersions
-> Task :app:mergeFullReleaseAssets FROM-CACHE
-> Task :app:checkFullReleaseDuplicateClasses
+> Task :app:checkFullReleaseAarMetadata
 > Task :app:compressFullReleaseAssets FROM-CACHE
+> Task :app:checkFullReleaseDuplicateClasses
 > Task :app:mergeFullReleaseNativeLibs
 > Task :app:collectFullReleaseDependencies
 > Task :app:mergeFullReleaseResources FROM-CACHE
@@ -48,10 +45,15 @@ note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round ico
 > Task :app:processFullReleaseResources
 > Task :app:kspFullReleaseKotlin
 > Task :app:compileFullReleaseKotlin
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:6061:64 Using 'parse(String): MediaType?' is an error. moved to extension function
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:6075:39 None of the following functions can be called with the arguments supplied: 
+public final fun create(contentType: MediaType?, file: File): RequestBody defined in okhttp3.RequestBody.Companion
+public final fun create(contentType: MediaType?, content: ByteArray, offset: Int = ..., byteCount: Int = ...): RequestBody defined in okhttp3.RequestBody.Companion
+public final fun create(contentType: MediaType?, content: String): RequestBody defined in okhttp3.RequestBody.Companion
+public final fun create(contentType: MediaType?, content: ByteString): RequestBody defined in okhttp3.RequestBody.Companion
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:6075:98 Using 'get(String): MediaType' is an error. moved to extension function
 
 > Task :app:compileFullReleaseKotlin FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1787249133030.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1787250599413.json
 
 FAILURE: Build failed with an exception.
 
@@ -72,6 +74,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 2m 50s
+BUILD FAILED in 3m 50s
 32 actionable tasks: 22 executed, 10 from cache
 Configuration cache entry stored.
