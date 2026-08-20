@@ -306,22 +306,21 @@ fun RasGramApp(
     val prefs = remember { context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE) }
 
     val auth = remember { FirebaseAuth.getInstance() }
-    var isLoggedIn by remember {
-        mutableStateOf(
-            prefs.getString(PREF_MOBILE, null) != null &&
-            prefs.getString(PREF_UID, null) != null
-        )
-    }
-    var currentUser by remember {
-        mutableStateOf(
-            if (prefs.getString(PREF_MOBILE, null) != null) User(
-                uid = prefs.getString(PREF_UID, "") ?: "",
-                name = prefs.getString(PREF_NAME_KEY, "") ?: "",
-                mobile = prefs.getString(PREF_MOBILE, "") ?: "",
-                avatarUrl = prefs.getString(PREF_AVATAR, "") ?: ""
-            ) else null
-        )
-    }
+
+    // Read login state ONCE synchronously from SharedPreferences — no Compose state flip,
+    // so OtpLoginScreen never renders (even for one frame) when the user is already logged in.
+    // This is exactly how WhatsApp avoids a splash: it goes straight to the chat list.
+    val savedMobile = prefs.getString(PREF_MOBILE, null)
+    val savedUid = prefs.getString(PREF_UID, null)
+    val initialUser: User? = if (savedMobile != null && savedUid != null) User(
+        uid = savedUid,
+        name = prefs.getString(PREF_NAME_KEY, "") ?: "",
+        mobile = savedMobile,
+        avatarUrl = prefs.getString(PREF_AVATAR, "") ?: ""
+    ) else null
+
+    var isLoggedIn by remember { mutableStateOf(initialUser != null) }
+    var currentUser by remember { mutableStateOf(initialUser) }
     var isDarkMode by remember { mutableStateOf(true) }
 
     MaterialTheme(colorScheme = if (isDarkMode) darkColorScheme(
