@@ -35,6 +35,7 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -3048,108 +3049,303 @@ fun StatusTab(currentUser: User, onStatusClick: (List<Status>) -> Unit, modifier
             }
     }
 
+    val myStatuses = statuses.filter { it.userMobile == currentUser.mobile }
+    // অন্যদের status — mobile অনুযায়ী group করা
+    val othersStatuses = statuses
+        .filter { it.userMobile != currentUser.mobile }
+        .groupBy { it.userMobile }
+        .values.toList()
+
     Column(modifier = modifier.fillMaxSize().background(RasGramTheme.DarkBackground)) {
+
+        // ── Header ──────────────────────────────────────────────────────────
         Surface(modifier = Modifier.fillMaxWidth(), color = RasGramTheme.DarkPanel) {
-            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(56.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Status", style = MaterialTheme.typography.titleLarge, color = RasGramTheme.TextPrimary, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(56.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Status",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = RasGramTheme.TextPrimary,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
                 IconButton(onClick = { imageLauncher.launch(arrayOf("image/*", "video/*")) }) {
                     Icon(Icons.Default.Edit, null, tint = RasGramTheme.TextMuted)
                 }
             }
         }
 
-        val myStatuses = statuses.filter { it.userMobile == currentUser.mobile }
-        val othersStatuses = statuses.filter { it.userMobile != currentUser.mobile }
-            .groupBy { it.userMobile }
+        // ── Story cards — horizontal LazyRow ────────────────────────────────
+        val allStoryGroups: List<Pair<Boolean, List<Status>>> = buildList {
+            // নিজের story সবার আগে
+            add(Pair(true, myStatuses))
+            // বাকিরা
+            othersStatuses.forEach { add(Pair(false, it)) }
+        }
 
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
-            // My status
-            item {
-                StatusItem(
-                    avatarUrl = currentUser.avatarUrl,
-                    name = "My Status",
-                    subtitle = if (isUploading) "Uploading..." else "Tap to add status update",
-                    hasNewStatus = false,
-                    onClick = { 
-                        if (myStatuses.isNotEmpty()) onStatusClick(myStatuses) 
-                        else imageLauncher.launch(arrayOf("image/*", "video/*"))
-                    },
-                    isMyStatus = true
+        LazyRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp),
+            contentPadding = PaddingValues(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            items(allStoryGroups) { (isMe, group) ->
+                val first = group.firstOrNull()
+                val viewed = !isMe && group.all { currentUser.mobile in it.viewedBy }
+                val name = if (isMe) currentUser.name else (first?.userName ?: "")
+                val avatarUrl = if (isMe) currentUser.avatarUrl else (first?.userAvatar ?: "")
+                val thumbnailUrl = first?.mediaUrl ?: ""
+
+                StatusStoryCard(
+                    name = name,
+                    avatarUrl = avatarUrl,
+                    thumbnailUrl = thumbnailUrl,
+                    isMe = isMe,
+                    viewed = viewed,
+                    isUploading = isMe && isUploading,
+                    hasStatus = group.isNotEmpty(),
+                    onClick = {
+                        if (isMe) {
+                            if (myStatuses.isNotEmpty()) onStatusClick(myStatuses)
+                            else imageLauncher.launch(arrayOf("image/*", "video/*"))
+                        } else {
+                            onStatusClick(group)
+                        }
+                    }
                 )
-                HorizontalDivider(color = RasGramTheme.DividerColor, modifier = Modifier.padding(start = 80.dp))
             }
+        }
 
-            if (othersStatuses.isNotEmpty()) {
-                item {
-                    Text("Recent Updates", modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), color = RasGramTheme.TextMuted, style = MaterialTheme.typography.labelSmall)
-                }
-                items(othersStatuses.entries.toList()) { (mobile, userStatuses) ->
+        HorizontalDivider(color = RasGramTheme.DividerColor, thickness = 0.5.dp)
+
+        // ── Recent Updates list (নিচে text list) ────────────────────────────
+        if (othersStatuses.isEmpty()) {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    Icons.Default.RadioButtonChecked,
+                    null,
+                    modifier = Modifier.size(72.dp),
+                    tint = RasGramTheme.TextMuted.copy(0.2f)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("No recent updates", color = RasGramTheme.TextMuted, style = MaterialTheme.typography.bodyLarge)
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    "Status updates from your contacts will appear here.",
+                    color = RasGramTheme.TextMuted.copy(0.6f),
+                    style = MaterialTheme.typography.bodySmall,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 32.dp)
+                )
+            }
+        } else {
+            Text(
+                "Recent updates",
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                color = RasGramTheme.TextMuted,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                items(othersStatuses) { userStatuses ->
                     val first = userStatuses.first()
                     val viewed = userStatuses.all { currentUser.mobile in it.viewedBy }
-                    StatusItem(
+                    StatusListItem(
                         avatarUrl = first.userAvatar,
                         name = first.userName,
-                        subtitle = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(first.timestamp)),
-                        hasNewStatus = !viewed,
-                        onClick = { onStatusClick(userStatuses) },
-                        isMyStatus = false
+                        time = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(first.timestamp)),
+                        viewed = viewed,
+                        onClick = { onStatusClick(userStatuses) }
                     )
-                    HorizontalDivider(color = RasGramTheme.DividerColor, modifier = Modifier.padding(start = 80.dp))
-                }
-            } else {
-                item {
-                    Column(modifier = Modifier.fillMaxWidth().padding(48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Default.Circle, null, modifier = Modifier.size(64.dp), tint = RasGramTheme.TextMuted.copy(0.3f))
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text("No recent updates", color = RasGramTheme.TextMuted)
-                        Text("Status updates from your contacts will appear here.", color = RasGramTheme.TextMuted, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
-                    }
+                    HorizontalDivider(
+                        color = RasGramTheme.DividerColor,
+                        thickness = 0.5.dp,
+                        modifier = Modifier.padding(start = 76.dp)
+                    )
                 }
             }
         }
     }
 }
 
+// ── Story card (WhatsApp style thumbnail card) ───────────────────────────────
 @Composable
-fun StatusItem(avatarUrl: String, name: String, subtitle: String, hasNewStatus: Boolean, onClick: () -> Unit, isMyStatus: Boolean) {
-    Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
+fun StatusStoryCard(
+    name: String,
+    avatarUrl: String,
+    thumbnailUrl: String,
+    isMe: Boolean,
+    viewed: Boolean,
+    isUploading: Boolean,
+    hasStatus: Boolean,
+    onClick: () -> Unit
+) {
+    val cardWidth = 100.dp
+    val cardHeight = 156.dp
+    val ringColor = when {
+        isMe -> RasGramTheme.Green
+        !viewed && hasStatus -> RasGramTheme.Green
+        else -> RasGramTheme.TextMuted.copy(0.35f)
+    }
+
+    Box(
+        modifier = Modifier
+            .width(cardWidth)
+            .height(cardHeight)
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
     ) {
-        Box(modifier = Modifier.size(54.dp)) {
+        // Thumbnail background
+        if (thumbnailUrl.isNotEmpty()) {
+            AsyncImage(
+                model = thumbnailUrl,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        } else {
             Box(
-                modifier = Modifier.fillMaxSize().border(
-                    width = 2.5.dp,
-                    color = when {
-                        isMyStatus -> RasGramTheme.Green
-                        hasNewStatus -> RasGramTheme.Green
-                        else -> RasGramTheme.TextMuted.copy(0.3f)
-                    },
-                    shape = CircleShape
-                ).padding(3.dp)
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(RasGramTheme.DarkPanel)
+            )
+        }
+
+        // gradient overlay নিচে
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.Transparent,
+                            Color.Black.copy(alpha = 0.72f)
+                        )
+                    )
+                )
+        )
+
+        // Avatar — উপরে বাঁয়ে ring সহ
+        Box(
+            modifier = Modifier
+                .padding(8.dp)
+                .align(Alignment.TopStart)
+        ) {
+            // ring
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .border(2.5.dp, ringColor, CircleShape)
+                    .padding(3.dp)
             ) {
                 AsyncImage(
-                    model = avatarUrl.ifEmpty { "https://ui-avatars.com/api/?name=${name.replace(" ", "+")}&background=008069&color=fff" },
+                    model = avatarUrl.ifEmpty {
+                        "https://ui-avatars.com/api/?name=${name.replace(" ", "+")}&background=008069&color=fff&size=80"
+                    },
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize().clip(CircleShape),
                     contentScale = ContentScale.Crop
                 )
             }
-            if (isMyStatus) {
+            // নিজেরটায় + বাটন
+            if (isMe) {
                 Surface(
-                    modifier = Modifier.size(20.dp).align(Alignment.BottomEnd),
+                    modifier = Modifier
+                        .size(16.dp)
+                        .align(Alignment.BottomEnd),
                     shape = CircleShape,
                     color = RasGramTheme.Green,
-                    border = BorderStroke(2.dp, RasGramTheme.DarkBackground)
+                    border = BorderStroke(1.5.dp, RasGramTheme.DarkBackground)
                 ) {
-                    Icon(Icons.Default.Add, null, tint = Color.White, modifier = Modifier.padding(4.dp))
+                    Icon(
+                        Icons.Default.Add,
+                        null,
+                        tint = Color.White,
+                        modifier = Modifier.padding(2.dp)
+                    )
                 }
             }
         }
+
+        // uploading indicator
+        if (isUploading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp).align(Alignment.Center),
+                color = RasGramTheme.Green,
+                strokeWidth = 2.dp
+            )
+        }
+
+        // নাম — নিচে
+        Text(
+            text = if (isMe) "My Status" else name.split(" ").first(),
+            color = Color.White,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 8.dp, end = 8.dp, bottom = 8.dp)
+        )
+    }
+}
+
+// ── Recent updates list item (নিচের সাধারণ list) ────────────────────────────
+@Composable
+fun StatusListItem(
+    avatarUrl: String,
+    name: String,
+    time: String,
+    viewed: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(52.dp)
+                .border(
+                    2.dp,
+                    if (viewed) RasGramTheme.TextMuted.copy(0.3f) else RasGramTheme.Green,
+                    CircleShape
+                )
+                .padding(3.dp)
+        ) {
+            AsyncImage(
+                model = avatarUrl.ifEmpty {
+                    "https://ui-avatars.com/api/?name=${name.replace(" ", "+")}&background=008069&color=fff"
+                },
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize().clip(CircleShape),
+                contentScale = ContentScale.Crop
+            )
+        }
         Spacer(modifier = Modifier.width(14.dp))
-        Column {
-            Text(name, style = MaterialTheme.typography.bodyLarge, color = RasGramTheme.TextPrimary, fontWeight = FontWeight.SemiBold)
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = RasGramTheme.TextMuted)
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                name,
+                style = MaterialTheme.typography.bodyLarge,
+                color = RasGramTheme.TextPrimary,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                time,
+                style = MaterialTheme.typography.bodySmall,
+                color = RasGramTheme.TextMuted
+            )
         }
     }
 }
