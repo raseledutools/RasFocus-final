@@ -1897,7 +1897,7 @@ fun ChatArea(
                 try {
                     val (url, fileName, fileType) = uploadToCloudinary(context, it) { prog -> uploadProgress = prog }
                     if (url != null) {
-                        sendMessage(db, chatId, currentUser.mobile, contact.mobile, "", url, fileName, fileType)
+                        sendMessage(db, chatId, currentUser.mobile, currentUser.name, contact.mobile, "", context, url, fileName, fileType)
                         val label = if (mimeType.startsWith("video/")) "ভিডিও" else "ছবি"
                         Toast.makeText(context, "$label পাঠানো হয়েছে", Toast.LENGTH_SHORT).show()
                     } else Toast.makeText(context, "আপলোড ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
@@ -1917,7 +1917,7 @@ fun ChatArea(
                 try {
                     val (url, fileName, fileType) = uploadToCloudinary(context, it) { prog -> uploadProgress = prog }
                     if (url != null) {
-                        sendMessage(db, chatId, currentUser.mobile, contact.mobile, "", url, fileName, fileType)
+                        sendMessage(db, chatId, currentUser.mobile, currentUser.name, contact.mobile, "", context, url, fileName, fileType)
                         Toast.makeText(context, "ফাইল পাঠানো হয়েছে", Toast.LENGTH_SHORT).show()
                     } else Toast.makeText(context, "আপলোড ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
                 } catch (e: Exception) {
@@ -2015,7 +2015,7 @@ fun ChatArea(
         val text = inputText.trim()
         if (text.isBlank()) return
         sendMessage(
-            db, chatId, currentUser.mobile, contact.mobile, text, null, null, null,
+            db, chatId, currentUser.mobile, currentUser.name, contact.mobile, text, context, null, null, null,
             replyToMessage?.id, replyToMessage?.text, replyToMessage?.senderMobile
         )
         inputText = ""
@@ -2261,7 +2261,7 @@ fun ChatArea(
                             scope.launch {
                                 val (url, fileName, _) = uploadToCloudinary(context, file.toUri()) { prog -> uploadProgress = prog }
                                 if (url != null) {
-                                    sendMessage(db, chatId, currentUser.mobile, contact.mobile, "", url, fileName ?: "voice.m4a", "audio/mp4", null, null, null, recordingSeconds)
+                                    sendMessage(db, chatId, currentUser.mobile, currentUser.name, contact.mobile, "", context, url, fileName ?: "voice.m4a", "audio/mp4", null, null, null, recordingSeconds)
                                 }
                                 isUploading = false
                                 uploadProgress = 0f
@@ -5394,8 +5394,10 @@ fun sendMessage(
     db: FirebaseFirestore,
     chatId: String,
     senderMobile: String,
+    senderName: String,
     receiverMobile: String,
     text: String,
+    context: Context,
     fileUrl: String? = null,
     fileName: String? = null,
     fileType: String? = null,
@@ -5446,6 +5448,18 @@ fun sendMessage(
         "duration" to duration
     )
     db.collection("pvt_msg_$chatId").add(message)
+
+    @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+    kotlinx.coroutines.GlobalScope.launch {
+        sendFcmMessageNotification(
+            receiverMobile = receiverMobile,
+            senderMobile = senderMobile,
+            senderName = senderName,
+            messageText = if (text.isNotBlank()) text else if (fileType?.startsWith("image") == true) "📷 Image" else if (fileType?.startsWith("video") == true) "📹 Video" else if (fileType?.startsWith("audio") == true) "🎵 Voice Message" else "📎 File",
+            db = db,
+            context = context
+        )
+    }
 }
 
 // Helper functions for WhatsApp-style date formatting
@@ -5949,3 +5963,91 @@ fun GroupChatArea(
     }
 }
 
+// ==================== SEND FCM MESSAGE ====================
+suspend fun sendFcmMessageNotification(
+    receiverMobile: String,
+    senderMobile: String,
+    senderName: String,
+    messageText: String,
+    db: FirebaseFirestore,
+    context: Context
+) = withContext(Dispatchers.IO) {
+    try {
+        val receiverDoc = db.collection("chat_users").document(receiverMobile).get().await()
+        val fcmToken = receiverDoc.getString("fcmToken") ?: return@withContext
+
+        val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        val deliveryMethod = prefs.getString(PREF_CALL_DELIVERY, "fcm") ?: "fcm"
+        if (deliveryMethod != "fcm") return@withContext
+        
+        val saJsonStr = prefs.getString(PREF_SA_JSON, "")
+        val saJson = if (saJsonStr.isNullOrEmpty()) {
+            val saStream = context.resources.openRawResource(
+                context.resources.getIdentifier("service_account", "raw", context.packageName)
+            )
+            org.json.JSONObject(saStream.bufferedReader().readText())
+        } else {
+            org.json.JSONObject(saJsonStr)
+        }
+
+        val privateKeyPem = saJson.getString("private_key")
+            .replace("-----BEGIN PRIVATE KEY-----", "")
+            .replace("-----END PRIVATE KEY-----", "")
+            .replace("\\n", "")
+            .replace("\n", "")
+            .trim()
+        val keyBytes = android.util.Base64.decode(privateKeyPem, android.util.Base64.DEFAULT)
+        val keySpec = java.security.spec.PKCS8EncodedKeySpec(keyBytes)
+        val privateKey = java.security.KeyFactory.getInstance("RSA").generatePrivate(keySpec)
+
+        val projectId = saJson.getString("project_id")
+        val clientEmail = saJson.getString("client_email")
+        val now = System.currentTimeMillis() / 1000
+        val scope = "https://www.googleapis.com/auth/firebase.messaging"
+
+        val header = android.util.Base64.encodeToString("{\"alg\":\"RS256\",\"typ\":\"JWT\"}".toByteArray(), android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE)
+        val claim = android.util.Base64.encodeToString(
+            "{\"iss\":\"$clientEmail\",\"scope\":\"$scope\",\"aud\":\"https://oauth2.googleapis.com/token\",\"exp\":${now + 3600},\"iat\":$now}".toByteArray(),
+            android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE
+        )
+        val signatureBytes = java.security.Signature.getInstance("SHA256withRSA").run {
+            initSign(privateKey)
+            update("$header.$claim".toByteArray())
+            sign()
+        }
+        val signature = android.util.Base64.encodeToString(signatureBytes, android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE)
+        val jwt = "$header.$claim.$signature"
+
+        val tokenRequest = okhttp3.Request.Builder()
+            .url("https://oauth2.googleapis.com/token")
+            .post(okhttp3.FormBody.Builder().add("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer").add("assertion", jwt).build())
+            .build()
+
+        val tokenResponse = okhttp3.OkHttpClient().newCall(tokenRequest).execute()
+        if (!tokenResponse.isSuccessful) return@withContext
+        val accessToken = org.json.JSONObject(tokenResponse.body?.string() ?: "").getString("access_token")
+
+        val payload = org.json.JSONObject().apply {
+            put("message", org.json.JSONObject().apply {
+                put("token", fcmToken)
+                put("data", org.json.JSONObject().apply {
+                    put("type", "message")
+                    put("senderMobile", senderMobile)
+                    put("senderName", senderName)
+                    put("message", messageText)
+                })
+                put("android", org.json.JSONObject().apply {
+                    put("priority", "high")
+                })
+            })
+        }
+
+        val pushRequest = okhttp3.Request.Builder()
+            .url("https://fcm.googleapis.com/v1/projects/$projectId/messages:send")
+            .addHeader("Authorization", "Bearer $accessToken")
+            .addHeader("Content-Type", "application/json")
+            .post(okhttp3.RequestBody.create(okhttp3.MediaType.parse("application/json"), payload.toString()))
+            .build()
+        okhttp3.OkHttpClient().newCall(pushRequest).execute()
+    } catch (_: Exception) { }
+}
