@@ -971,7 +971,13 @@
     // Signaling: Firestore calls/{callId} + sub-collections for ICE candidates
     const ICE_SERVERS = { iceServers: [
       { urls: "stun:stun.l.google.com:19302" },
-      { urls: "stun:stun1.l.google.com:19302" }
+      { urls: "stun:stun1.l.google.com:19302" },
+      { urls: "stun:stun2.l.google.com:19302" },
+      // Metered.ca free TURN — NAT/firewall bypass (mobile data ↔ WiFi)
+      { urls: "turn:relay.metered.ca:80",      username: "83eebabf8b4cce9d5dbcb649", credential: "2D7JvfkOQtBdYW3R" },
+      { urls: "turn:relay.metered.ca:80?transport=tcp", username: "83eebabf8b4cce9d5dbcb649", credential: "2D7JvfkOQtBdYW3R" },
+      { urls: "turns:relay.metered.ca:443",    username: "83eebabf8b4cce9d5dbcb649", credential: "2D7JvfkOQtBdYW3R" },
+      { urls: "turns:relay.metered.ca:443?transport=tcp", username: "83eebabf8b4cce9d5dbcb649", credential: "2D7JvfkOQtBdYW3R" }
     ]};
 
     let pc = null;
@@ -988,6 +994,7 @@
     let callRingtoneIv = null;
 
     function callDocId(a, b) { return "call_" + (a < b ? `${a}_${b}` : `${b}_${a}`); }
+    // Android compatible: same prefix as CallingScreen.kt
 
     function playRingtone() {
       try {
@@ -1061,22 +1068,47 @@
     }
 
     function createPC() {
-      const p = new RTCPeerConnection(ICE_SERVERS);
+      const rtcConfig = {
+        iceServers: ICE_SERVERS.iceServers,
+        iceCandidatePoolSize: 10,
+        bundlePolicy: "max-bundle",
+        rtcpMuxPolicy: "require"
+      };
+      const p = new RTCPeerConnection(rtcConfig);
       p.onicecandidate = async e => {
-        if (e.candidate && callDocRef) {
-          const side = isCaller ? "callerCandidates" : "calleeCandidates";
-          await addDoc(collection(db, "calls", activeCallId, side), e.candidate.toJSON());
+        if (e.candidate && callDocRef && activeCallId) {
+          // caller ICE → caller_ice, callee ICE → callee_ice
+          // Android এর same subcollection names ব্যবহার করো
+          const side = isCaller ? "caller_ice" : "callee_ice";
+          await addDoc(collection(db, "calls", activeCallId, side), {
+            sdpMid: e.candidate.sdpMid,
+            sdpMLineIndex: e.candidate.sdpMLineIndex,
+            candidate: e.candidate.candidate
+          }).catch(() => {});
         }
       };
       p.ontrack = e => {
         const vid  = isCaller ? $("outgoing-remote-video") : $("incoming-remote-video");
         const wrap = isCaller ? $("outgoing-remote-video-wrap") : $("incoming-remote-video-wrap");
-        vid.srcObject = e.streams[0];
-        if (activeCallType === "video") show(wrap);
+        if (e.streams && e.streams[0]) {
+          vid.srcObject = e.streams[0];
+        } else if (e.track) {
+          // fallback: single track
+          const stream = vid.srcObject || new MediaStream();
+          stream.addTrack(e.track);
+          vid.srcObject = stream;
+        }
+        if (activeCallType === "video") show(wrap.id || wrap);
         $("outgoing-call-status").textContent = "Connected";
       };
       p.onconnectionstatechange = () => {
-        if (["disconnected","failed","closed"].includes(p.connectionState)) cleanupCall(false);
+        console.log("Connection state:", p.connectionState);
+        if (["disconnected","failed","closed"].includes(p.connectionState)) {
+          cleanupCall(false);
+        }
+      };
+      p.oniceconnectionstatechange = () => {
+        console.log("ICE state:", p.iceConnectionState);
       };
       return p;
     }
@@ -1096,27 +1128,50 @@
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       await setDoc(callDocRef, {
+        // Web + Android compatible fields
         offer: { type: offer.type, sdp: offer.sdp },
-        callerMobile: currentUser.mobile,
+        caller: currentUser.mobile,          // Android reads "caller"
+        callee: contactUser.mobile,          // Android reads "callee"
+        callerMobile: currentUser.mobile,    // Web reads "callerMobile"
+        calleeMobile: contactUser.mobile,    // Web reads "calleeMobile"
         callerName: currentUser.name || "",
         callerAvatar: currentUser.avatarUrl || "",
-        calleeMobile: contactUser.mobile,
-        callType: type,
-        status: "ringing",
+        type: type,                          // Android reads "type"
+        callType: type,                      // Web reads "callType"
+        status: "calling",                   // Android uses "calling" (not "ringing")
+        timestamp: Date.now(),
         createdAt: serverTimestamp()
       });
+
+      // Listen for answer from callee
       callUnsub2 = onSnapshot(callDocRef, async snap => {
         const data = snap.data(); if (!data) return;
-        if (data.status === "ended" || data.status === "declined") { await cleanupCall(false); return; }
-        if (data.status === "answered" && data.answer && pc && !pc.currentRemoteDescription) {
+        const status = data.status;
+        if (status === "ended" || status === "declined" || status === "rejected") {
+          await cleanupCall(false); return;
+        }
+        if ((status === "answered" || status === "accepted") && data.answer && pc && !pc.currentRemoteDescription) {
           stopRingtone();
           $("outgoing-call-status").textContent = "Connecting...";
-          await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+          } catch(e) { console.error("setRemoteDescription failed:", e); }
         }
       });
-      callCandUnsub = onSnapshot(collection(db, "calls", activeCallId, "calleeCandidates"), snap => {
+
+      // Listen for callee ICE candidates (callee_ice — Android compatible)
+      callCandUnsub = onSnapshot(collection(db, "calls", activeCallId, "callee_ice"), snap => {
         snap.docChanges().forEach(async ch => {
-          if (ch.type === "added" && pc) await pc.addIceCandidate(new RTCIceCandidate(ch.doc.data()));
+          if (ch.type === "added" && pc) {
+            try {
+              const d = ch.doc.data();
+              await pc.addIceCandidate(new RTCIceCandidate({
+                sdpMid: d.sdpMid,
+                sdpMLineIndex: d.sdpMLineIndex,
+                candidate: d.candidate
+              }));
+            } catch(e) { console.warn("addIceCandidate failed:", e); }
+          }
         });
       });
       await sendMessage(`${type === "video" ? "📹" : "📞"} ${type === "video" ? "Video" : "Voice"} call`, null, null, null, null, 0);
@@ -1147,40 +1202,91 @@
       show("outgoing-call-overlay");
       pc = createPC();
       localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
-      activeCallId = callDocId(callData.callerMobile, callData.calleeMobile);
-      callDocRef = doc(db, "calls", activeCallId);
-      await pc.setRemoteDescription(new RTCSessionDescription(callData.offer));
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      await updateDoc(callDocRef, { answer: { type: answer.type, sdp: answer.sdp }, status: "answered" });
-      callCandUnsub = onSnapshot(collection(db, "calls", activeCallId, "callerCandidates"), snap => {
+      // Support both Android field ("caller") and Web field ("callerMobile")
+      const callerMob = callData.caller || callData.callerMobile || "";
+      const calleeMob = callData.callee || callData.calleeMobile || "";
+      activeCallId = callDocRef ? callDocRef.id : callDocId(callerMob, calleeMob);
+      callDocRef = callDocRef || doc(db, "calls", activeCallId);
+
+      // Start listening for caller ICE candidates BEFORE setRemoteDescription
+      // (early candidates may arrive during SDP negotiation)
+      callCandUnsub = onSnapshot(collection(db, "calls", activeCallId, "caller_ice"), snap => {
         snap.docChanges().forEach(async ch => {
-          if (ch.type === "added" && pc) await pc.addIceCandidate(new RTCIceCandidate(ch.doc.data()));
+          if (ch.type === "added" && pc) {
+            try {
+              const d = ch.doc.data();
+              await pc.addIceCandidate(new RTCIceCandidate({
+                sdpMid: d.sdpMid,
+                sdpMLineIndex: d.sdpMLineIndex,
+                candidate: d.candidate
+              }));
+            } catch(e) { console.warn("addIceCandidate (answer):", e); }
+          }
         });
       });
+
+      // Set remote offer → create answer → set local description
+      try {
+        await pc.setRemoteDescription(new RTCSessionDescription(callData.offer));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        await updateDoc(callDocRef, {
+          answer: { type: answer.type, sdp: answer.sdp },
+          status: "answered"
+        });
+      } catch(e) {
+        console.error("answerCall SDP error:", e);
+        cleanupCall(false);
+        return;
+      }
+
+      // Watch for call end
       callUnsub2 = onSnapshot(callDocRef, async snap => {
-        if (snap.data()?.status === "ended") await cleanupCall(false);
+        const status = snap.data()?.status;
+        if (status === "ended" || status === "rejected") await cleanupCall(false);
       });
     }
 
     function listenIncomingCalls(myMobile) {
-      const q = query(collection(db, "calls"), where("calleeMobile", "==", myMobile), where("status", "==", "ringing"));
-      onSnapshot(q, snap => {
-        snap.docChanges().forEach(ch => {
-          if (ch.type === "added" && !pc) {
-            const data = ch.doc.data(); if (!data.offer) return;
+      // Listen for both Android ("callee" field, "calling" status)
+      // and Web ("calleeMobile" field, "ringing" status) formats
+      const queries = [
+        query(collection(db, "calls"), where("calleeMobile", "==", myMobile), where("status", "==", "ringing")),
+        query(collection(db, "calls"), where("callee",       "==", myMobile), where("status", "==", "calling"))
+      ];
+
+      queries.forEach(q => {
+        onSnapshot(q, snap => {
+          snap.docChanges().forEach(ch => {
+            if (ch.type !== "added" || pc) return;
+            const data = ch.doc.data();
+            if (!data.offer) return;
+
             activeCallId = ch.doc.id;
-            callDocRef = doc(db, "calls", activeCallId);
-            const callerUser = { name: data.callerName, mobile: data.callerMobile, avatarUrl: data.callerAvatar };
-            showIncomingOverlay(callerUser, data.callType || "voice");
+            callDocRef   = doc(db, "calls", activeCallId);
+
+            // Support both field name formats
+            const callerName   = data.callerName   || data.callerMobile || data.caller || "Unknown";
+            const callerMobile = data.callerMobile || data.caller || "";
+            const callerAvatar = data.callerAvatar || "";
+            const callType     = data.callType     || data.type  || "voice";
+
+            const callerUser = { name: callerName, mobile: callerMobile, avatarUrl: callerAvatar };
+            showIncomingOverlay(callerUser, callType);
             playRingtone();
-            $("incoming-accept-btn").onclick = () => answerCall(data);
+
+            $("incoming-accept-btn").onclick = () => answerCall({
+              ...data,
+              callerMobile, callerName, calleeMobile: myMobile,
+              callType, offer: data.offer
+            });
             $("incoming-decline-btn").onclick = async () => {
               stopRingtone();
               try { await updateDoc(callDocRef, { status: "declined" }); } catch {}
-              hideAllCallOverlays(); activeCallId = null; callDocRef = null;
+              hideAllCallOverlays();
+              activeCallId = null; callDocRef = null;
             };
-          }
+          });
         });
       });
     }
