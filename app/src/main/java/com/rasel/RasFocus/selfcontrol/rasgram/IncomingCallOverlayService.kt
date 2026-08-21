@@ -116,6 +116,10 @@ class IncomingCallOverlayService : Service(),
         const val OVERLAY_NOTIF_ID   = 8888
         const val OVERLAY_CHANNEL_ID = "OVERLAY_CALL_CHANNEL"
 
+        // Duplicate start guard — একই callId এর জন্য একাধিক overlay যাতে না আসে
+        @Volatile var isRunning: Boolean = false
+        @Volatile var activeCallId: String = ""
+
         fun start(
             context: Context,
             callId: String,
@@ -154,6 +158,11 @@ class IncomingCallOverlayService : Service(),
         val callerName   = intent.getStringExtra(EXTRA_CALLER_NAME)   ?: "Unknown"
         val callerMobile = intent.getStringExtra(EXTRA_CALLER_MOBILE) ?: ""
         val callType     = intent.getStringExtra(EXTRA_CALL_TYPE)     ?: "audio"
+
+        // ── Duplicate guard: same callId এর জন্য আবার start এলে ignore ────
+        if (isRunning && activeCallId == callId) return START_NOT_STICKY
+        isRunning    = true
+        activeCallId = callId
 
         // ── 1) Foreground notification (Android 8+ requirement) ──────────────
         // IMPORTANCE_MIN → shade এ দেখাবে না, ring করবে না।
@@ -365,6 +374,8 @@ class IncomingCallOverlayService : Service(),
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
     override fun onDestroy() {
+        isRunning    = false
+        activeCallId = ""
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)

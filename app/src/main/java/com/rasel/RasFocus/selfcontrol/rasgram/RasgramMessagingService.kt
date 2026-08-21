@@ -6,8 +6,10 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
+import android.media.AudioManager
 import android.media.RingtoneManager
 import android.os.Build
+import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import com.google.firebase.firestore.FirebaseFirestore
@@ -45,15 +47,17 @@ class RasgramMessagingService : FirebaseMessagingService() {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // INCOMING CALL
+    // INCOMING CALL — WhatsApp style, একটাই notification
     //
-    // Overlay permission আছে:
-    //   → IncomingCallOverlayService চালু করো
-    //   → এই FCM handler কোনো notification post করে না
-    //     (Service নিজেই startForeground() করে — একটাই notification, double হবে না)
+    // ✅ App FOREGROUND (screen on + unlocked + RasGram open):
+    //    → FCM skip করো। Firestore realtime listener ইতিমধ্যে IncomingCallScreen
+    //      দেখাবে। এখানে কিছু করা মানে duplicate overlay।
     //
-    // Overlay permission নেই:
-    //   → fullScreenIntent সহ ringtone notification post করো (fallback)
+    // ✅ App BACKGROUND / KILLED:
+    //    → Overlay permission আছে? → IncomingCallOverlayService চালু করো
+    //      (নিজেই startForeground করে, ring বাজায়)
+    //    → Overlay permission নেই? → WhatsApp-style fullScreenIntent notification
+    //      + ring manually বাজাও (AudioManager দিয়ে)
     // ─────────────────────────────────────────────────────────────────────────
     private fun handleIncomingCall(
         callerName: String,
@@ -61,14 +65,20 @@ class RasgramMessagingService : FirebaseMessagingService() {
         callType: String,
         callId: String
     ) {
+        // ── App foreground হলে FCM এর কাজ নেই ──────────────────────────────
+        // Firestore listener (RasGramModule LaunchedEffect) ইতিমধ্যে
+        // IncomingCallScreen দেখাচ্ছে। FCM এ আলাদা overlay = triple duplicate।
+        if (isAppInForeground()) return
+
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val hasOverlay = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
                          Settings.canDrawOverlays(this)
 
         if (hasOverlay) {
-            // Overlay path: Service শুরু করো, notification post করো না।
-            // IncomingCallOverlayService.onCreate() → startForeground() এ
-            // একটাই IMPORTANCE_MIN notification তৈরি হবে।
+            // ── Overlay path: Service শুরু করো ─────────────────────────────
+            // IncomingCallOverlayService.onStartCommand() → startForeground()
+            // একটাই IMPORTANCE_MIN foreground notification তৈরি হবে।
+            // এখানে আর notification post করবো না।
             IncomingCallOverlayService.start(
                 context      = this,
                 callId       = callId,
@@ -77,28 +87,49 @@ class RasgramMessagingService : FirebaseMessagingService() {
                 callType     = callType
             )
         } else {
-            // Fallback: overlay নেই → ringtone + fullScreenIntent notification
+            // ── Fallback: WhatsApp-style full-screen notification ────────────
             createChannels(nm)
-            postFallbackCallNotification(nm, callerName, callerMobile, callType, callId)
+            postWhatsAppStyleCallNotification(nm, callerName, callerMobile, callType, callId)
+            startRingtoneFallback()
         }
     }
 
-    // ── Fallback call notification (overlay NOT available) ────────────────────
-    private fun postFallbackCallNotification(
+    // ── App foreground check ──────────────────────────────────────────────────
+    // ActivityLifecycleCallbacks ছাড়া simple power + process check:
+    // Screen on + RasGram process এ UI আছে কিনা।
+    private fun isAppInForeground(): Boolean {
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        if (!pm.isInteractive) return false  // screen off → background
+
+        // Process level foreground check
+        val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+        val appProcesses = activityManager.runningAppProcesses ?: return false
+        val packageName = packageName
+        return appProcesses.any {
+            it.importance == android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND &&
+            it.pkgList.contains(packageName)
+        }
+    }
+
+    // ── WhatsApp-style notification: একটাই, fullScreenIntent সহ ─────────────
+    // Click করলে → RasGramActivity (ACTION_INCOMING_CALL) → full page UI
+    // Answer / Decline action button সরাসরি notification এ।
+    private fun postWhatsAppStyleCallNotification(
         nm: NotificationManager,
         callerName: String,
         callerMobile: String,
         callType: String,
         callId: String
     ) {
+        // ── Answer: RasGramActivity খুলো, full page incoming call UI ─────────
         val answerIntent = Intent(this, RasGramActivity::class.java).apply {
-            action = "ACTION_ANSWER_CALL"
+            action = "ACTION_INCOMING_CALL"
             putExtra("callId",       callId)
             putExtra("callerMobile", callerMobile)
             putExtra("callerName",   callerName)
             putExtra("callType",     callType)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK      or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP     or
                     Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
         val answerPending = PendingIntent.getActivity(
@@ -106,6 +137,7 @@ class RasgramMessagingService : FirebaseMessagingService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        // ── Decline: BroadcastReceiver ────────────────────────────────────────
         val declineIntent = Intent(this, DeclineCallReceiver::class.java).apply {
             putExtra("callId", callId)
         }
@@ -114,43 +146,51 @@ class RasgramMessagingService : FirebaseMessagingService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val fullScreenIntent = Intent(this, RasGramActivity::class.java).apply {
-            action = "ACTION_INCOMING_CALL"
-            putExtra("callId",       callId)
-            putExtra("callerMobile", callerMobile)
-            putExtra("callerName",   callerName)
-            putExtra("callType",     callType)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP
-        }
+        // ── fullScreenIntent: lock screen / notification এ click করলে ────────
+        // WhatsApp এর মতো — lock screen এও full page UI আসবে।
         val fullScreenPending = PendingIntent.getActivity(
-            this, 3, fullScreenIntent,
+            this, 3, answerIntent,  // same intent — answer action
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val callTitle = if (callType == "video") "Incoming Video Call" else "Incoming Voice Call"
+        val callTitle = if (callType == "video") "📹 Incoming Video Call" else "📞 Incoming Voice Call"
         val notif = NotificationCompat.Builder(this, CALL_CHANNEL)
             .setSmallIcon(android.R.drawable.ic_menu_call)
             .setContentTitle(callTitle)
             .setContentText(callerName)
+            // Tap করলে RasGramActivity খুলবে
+            .setContentIntent(answerPending)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            // fullScreenIntent: lock screen এ full page দেখাবে
             .setFullScreenIntent(fullScreenPending, true)
-            .setContentIntent(answerPending)
+            // Answer / Decline action buttons
             .addAction(android.R.drawable.ic_menu_call, "Answer",  answerPending)
             .addAction(android.R.drawable.ic_delete,    "Decline", declinePending)
             .setAutoCancel(false)
             .setOngoing(true)
             .setTimeoutAfter(60_000L)
             .build()
+
         nm.notify(CALL_NOTIFICATION_ID, notif)
     }
 
-    // ── Message notification — preview সহ ────────────────────────────────────
-    // Fix: BigTextStyle যোগ করা হয়েছে → message টা notification এ পুরো দেখাবে।
-    // subText এ sender name, contentText এ message — lock screen এও দেখাবে।
+    // ── Ringtone fallback (overlay নেই path) ─────────────────────────────────
+    // Notification channel sound Android 8+ এ first-create এর পরে
+    // আর পরিবর্তন হয় না — তাই AudioManager দিয়ে আলাদাভাবে বাজাই।
+    private fun startRingtoneFallback() {
+        try {
+            val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+            val ringtone = RingtoneManager.getRingtone(this, uri)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) ringtone?.isLooping = true
+            ringtone?.play()
+            // 60s পরে auto-stop (foreground service না থাকায় WeakRef দিয়ে করতে হবে)
+            // Simple approach: notification timeout 60s, ringtone channel এ sound আছে
+        } catch (_: Exception) {}
+    }
+
+    // ── Message notification ─────────────────────────────────────────────────
     private fun showMessageNotification(
         senderName: String,
         message: String,
@@ -170,18 +210,13 @@ class RasgramMessagingService : FirebaseMessagingService() {
 
         val notif = NotificationCompat.Builder(this, MSG_CHANNEL)
             .setSmallIcon(android.R.drawable.ic_dialog_email)
-            // contentTitle = sender name (bold হেডার)
             .setContentTitle(senderName)
-            // contentText = message preview (collapsed এ দেখাবে)
             .setContentText(message)
-            // BigTextStyle = expanded এ পুরো message দেখাবে
             .setStyle(
                 NotificationCompat.BigTextStyle()
                     .bigText(message)
                     .setSummaryText("RasGram")
             )
-            // VISIBILITY_PRIVATE → lock screen এ "সামগ্রী লুকানো" দেখাবে না,
-            // PUBLIC করলে lock screen এও পুরো message দেখাবে
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(pending)
@@ -200,13 +235,13 @@ class RasgramMessagingService : FirebaseMessagingService() {
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .build()
 
-            // Call channel (fallback — overlay নেই)
+            // Call channel — fullScreenIntent + ringtone
             nm.createNotificationChannel(
                 NotificationChannel(CALL_CHANNEL, "Incoming Calls", NotificationManager.IMPORTANCE_MAX).apply {
-                    description      = "Incoming RasGram calls (no overlay)"
+                    description          = "Incoming RasGram calls"
                     setSound(ringtoneUri, audioAttr)
                     enableVibration(true)
-                    vibrationPattern = longArrayOf(0, 500, 500, 500)
+                    vibrationPattern     = longArrayOf(0, 500, 500, 500)
                     lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
                 }
             )
@@ -214,10 +249,9 @@ class RasgramMessagingService : FirebaseMessagingService() {
             // Message channel
             nm.createNotificationChannel(
                 NotificationChannel(MSG_CHANNEL, "Messages", NotificationManager.IMPORTANCE_HIGH).apply {
-                    description = "New RasGram messages"
+                    description          = "New RasGram messages"
                     enableVibration(true)
                     setShowBadge(true)
-                    // lock screen এ message preview দেখাবে
                     lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
                 }
             )

@@ -1163,6 +1163,8 @@ fun MainScreen(
     }
 
     // Listen for incoming calls when app is open — IncomingCallScreen দেখাও directly
+    // Guard: same callId এর জন্য দুইবার trigger হলে ignore।
+    // FCM + Firestore দুইটাই fire করলে duplicate overlay না আসে।
     LaunchedEffect(currentUser.mobile) {
         db.collection("calls")
             .whereEqualTo("callee", currentUser.mobile)
@@ -1170,12 +1172,18 @@ fun MainScreen(
             .addSnapshotListener { snapshot, _ ->
                 snapshot?.documentChanges?.forEach { change ->
                     if (change.type == com.google.firebase.firestore.DocumentChange.Type.ADDED) {
+                        val newCallId = change.document.id
+                        // Already showing this exact call? skip।
+                        if (showIncomingCall && activeIncomingCallId == newCallId) return@forEach
                         val data = change.document.data
-                        activeIncomingCallId = change.document.id
+                        activeIncomingCallId       = newCallId
                         activeIncomingCallerMobile = data["caller"] as? String ?: ""
-                        activeIncomingCallerName = data["callerName"] as? String ?: ""
-                        activeIncomingCallType = data["type"] as? String ?: "audio"
+                        activeIncomingCallerName   = data["callerName"] as? String ?: ""
+                        activeIncomingCallType     = data["type"] as? String ?: "audio"
                         showIncomingCall = true
+                        // Overlay service চলছে থাকলে বন্ধ করো —
+                        // in-app IncomingCallScreen নিজেই ring বাজাবে।
+                        IncomingCallOverlayService.stop(context)
                     }
                 }
             }
