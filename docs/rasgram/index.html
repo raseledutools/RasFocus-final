@@ -262,6 +262,7 @@
       $("my-avatar").src = currentUser.avatarUrl || avatarUrl(currentUser.name);
       startOnline();
       listenContacts();
+      listenIncomingCalls(currentUser.mobile);
       // Live user profile sync
       onSnapshot(doc(db, "chat_users", currentUser.mobile), snap => {
         if (snap.exists()) {
@@ -832,6 +833,232 @@
     $("name-input")?.addEventListener("keydown", e => { if(e.key==="Enter") doLogin(); });
 
     // ── BOOTSTRAP ────────────────────────────────────────────────────────────
+
+    // ── WEBRTC CALL ──────────────────────────────────────────────────────────
+    // Signaling: Firestore calls/{callId} + sub-collections for ICE candidates
+    const ICE_SERVERS = { iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "stun:stun1.l.google.com:19302" }
+    ]};
+
+    let pc = null;
+    let localStream = null;
+    let callDocRef = null;
+    let callUnsub2 = null;
+    let callCandUnsub = null;
+    let activeCallId = null;
+    let activeCallType = "voice";
+    let isCaller = false;
+    let isMuted = false;
+    let isCamOff = false;
+    let callRingtoneCtx = null;
+    let callRingtoneIv = null;
+
+    function callDocId(a, b) { return "call_" + (a < b ? `${a}_${b}` : `${b}_${a}`); }
+
+    function playRingtone() {
+      try {
+        const ctx = new AudioContext();
+        function beep() {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.connect(gain); gain.connect(ctx.destination);
+          osc.frequency.value = 480;
+          const t = ctx.currentTime;
+          gain.gain.setValueAtTime(0.3, t);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.8);
+          osc.start(t); osc.stop(t + 0.85);
+        }
+        beep();
+        callRingtoneCtx = ctx;
+        callRingtoneIv = setInterval(beep, 2000);
+      } catch {}
+    }
+    function stopRingtone() {
+      clearInterval(callRingtoneIv); callRingtoneIv = null;
+      try { if (callRingtoneCtx) callRingtoneCtx.close(); } catch {}
+      callRingtoneCtx = null;
+    }
+
+    async function getLocalStream(video) {
+      const constraints = video
+        ? { audio: true, video: { width: 640, height: 480, facingMode: "user" } }
+        : { audio: true, video: false };
+      return await navigator.mediaDevices.getUserMedia(constraints);
+    }
+
+    function showOutgoingOverlay(contactUser, type) {
+      $("outgoing-call-avatar").src = contactUser.avatarUrl || avatarUrl(contactUser.name);
+      $("outgoing-call-name").textContent = contactUser.name || contactUser.mobile;
+      $("outgoing-call-type-label").textContent = type === "video" ? "Video call" : "Voice call";
+      $("outgoing-call-status").textContent = "Calling...";
+      if (type === "video") { show("outgoing-local-video-wrap"); show("outgoing-cam-btn"); }
+      else { hide("outgoing-local-video-wrap"); hide("outgoing-cam-btn"); }
+      hide("outgoing-remote-video-wrap");
+      show("outgoing-call-overlay");
+    }
+
+    function showIncomingOverlay(callerUser, type) {
+      $("incoming-call-avatar").src = callerUser.avatarUrl || avatarUrl(callerUser.name || "?");
+      $("incoming-call-name").textContent = callerUser.name || callerUser.mobile;
+      $("incoming-call-type-label").textContent = type === "video" ? "Incoming video call" : "Incoming voice call";
+      hide("incoming-remote-video-wrap");
+      show("incoming-call-overlay");
+    }
+
+    function hideAllCallOverlays() {
+      hide("outgoing-call-overlay");
+      hide("incoming-call-overlay");
+    }
+
+    async function cleanupCall(sendEndSignal) {
+      stopRingtone();
+      if (sendEndSignal && callDocRef) {
+        try { await updateDoc(callDocRef, { status: "ended" }); } catch {}
+      }
+      if (callUnsub2)    { callUnsub2();    callUnsub2 = null; }
+      if (callCandUnsub) { callCandUnsub(); callCandUnsub = null; }
+      if (pc) { pc.close(); pc = null; }
+      if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+      ["outgoing-local-video","incoming-local-video","outgoing-remote-video","incoming-remote-video"]
+        .forEach(id => { if ($(id)) $(id).srcObject = null; });
+      callDocRef = null; activeCallId = null;
+      isMuted = false; isCamOff = false;
+      hideAllCallOverlays();
+    }
+
+    function createPC() {
+      const p = new RTCPeerConnection(ICE_SERVERS);
+      p.onicecandidate = async e => {
+        if (e.candidate && callDocRef) {
+          const side = isCaller ? "callerCandidates" : "calleeCandidates";
+          await addDoc(collection(db, "calls", activeCallId, side), e.candidate.toJSON());
+        }
+      };
+      p.ontrack = e => {
+        const vid  = isCaller ? $("outgoing-remote-video") : $("incoming-remote-video");
+        const wrap = isCaller ? $("outgoing-remote-video-wrap") : $("incoming-remote-video-wrap");
+        vid.srcObject = e.streams[0];
+        if (activeCallType === "video") show(wrap);
+        $("outgoing-call-status").textContent = "Connected";
+      };
+      p.onconnectionstatechange = () => {
+        if (["disconnected","failed","closed"].includes(p.connectionState)) cleanupCall(false);
+      };
+      return p;
+    }
+
+    async function startCall(contactUser, type) {
+      if (pc) return;
+      activeCallType = type; isCaller = true;
+      try { localStream = await getLocalStream(type === "video"); }
+      catch { alert("Camera/microphone access denied"); return; }
+      showOutgoingOverlay(contactUser, type);
+      if (type === "video") $("outgoing-local-video").srcObject = localStream;
+      playRingtone();
+      pc = createPC();
+      localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+      activeCallId = callDocId(currentUser.mobile, contactUser.mobile);
+      callDocRef = doc(db, "calls", activeCallId);
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      await setDoc(callDocRef, {
+        offer: { type: offer.type, sdp: offer.sdp },
+        callerMobile: currentUser.mobile,
+        callerName: currentUser.name || "",
+        callerAvatar: currentUser.avatarUrl || "",
+        calleeMobile: contactUser.mobile,
+        callType: type,
+        status: "ringing",
+        createdAt: serverTimestamp()
+      });
+      callUnsub2 = onSnapshot(callDocRef, async snap => {
+        const data = snap.data(); if (!data) return;
+        if (data.status === "ended" || data.status === "declined") { await cleanupCall(false); return; }
+        if (data.status === "answered" && data.answer && pc && !pc.currentRemoteDescription) {
+          stopRingtone();
+          $("outgoing-call-status").textContent = "Connecting...";
+          await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+        }
+      });
+      callCandUnsub = onSnapshot(collection(db, "calls", activeCallId, "calleeCandidates"), snap => {
+        snap.docChanges().forEach(async ch => {
+          if (ch.type === "added" && pc) await pc.addIceCandidate(new RTCIceCandidate(ch.doc.data()));
+        });
+      });
+      await sendMessage(`${type === "video" ? "📹" : "📞"} ${type === "video" ? "Video" : "Voice"} call`, null, null, null, null, 0);
+    }
+
+    async function answerCall(callData) {
+      activeCallType = callData.callType || "voice"; isCaller = false;
+      try { localStream = await getLocalStream(activeCallType === "video"); }
+      catch { alert("Camera/microphone access denied"); return; }
+      stopRingtone(); hideAllCallOverlays();
+      $("outgoing-call-name").textContent = callData.callerName || callData.callerMobile;
+      $("outgoing-call-type-label").textContent = activeCallType === "video" ? "Video call" : "Voice call";
+      $("outgoing-call-status").textContent = "Connecting...";
+      if (activeCallType === "video") {
+        $("outgoing-local-video").srcObject = localStream;
+        show("outgoing-local-video-wrap"); show("outgoing-cam-btn");
+      }
+      hide("outgoing-remote-video-wrap");
+      show("outgoing-call-overlay");
+      pc = createPC();
+      localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+      activeCallId = callDocId(callData.callerMobile, callData.calleeMobile);
+      callDocRef = doc(db, "calls", activeCallId);
+      await pc.setRemoteDescription(new RTCSessionDescription(callData.offer));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      await updateDoc(callDocRef, { answer: { type: answer.type, sdp: answer.sdp }, status: "answered" });
+      callCandUnsub = onSnapshot(collection(db, "calls", activeCallId, "callerCandidates"), snap => {
+        snap.docChanges().forEach(async ch => {
+          if (ch.type === "added" && pc) await pc.addIceCandidate(new RTCIceCandidate(ch.doc.data()));
+        });
+      });
+      callUnsub2 = onSnapshot(callDocRef, async snap => {
+        if (snap.data()?.status === "ended") await cleanupCall(false);
+      });
+    }
+
+    function listenIncomingCalls(myMobile) {
+      const q = query(collection(db, "calls"), where("calleeMobile", "==", myMobile), where("status", "==", "ringing"));
+      onSnapshot(q, snap => {
+        snap.docChanges().forEach(ch => {
+          if (ch.type === "added" && !pc) {
+            const data = ch.doc.data(); if (!data.offer) return;
+            activeCallId = ch.doc.id;
+            callDocRef = doc(db, "calls", activeCallId);
+            const callerUser = { name: data.callerName, mobile: data.callerMobile, avatarUrl: data.callerAvatar };
+            showIncomingOverlay(callerUser, data.callType || "voice");
+            playRingtone();
+            $("incoming-accept-btn").onclick = () => answerCall(data);
+            $("incoming-decline-btn").onclick = async () => {
+              stopRingtone();
+              try { await updateDoc(callDocRef, { status: "declined" }); } catch {}
+              hideAllCallOverlays(); activeCallId = null; callDocRef = null;
+            };
+          }
+        });
+      });
+    }
+
+    $("voice-call-btn")?.addEventListener("click", () => { if (selectedContact) startCall(selectedContact, "voice"); });
+    $("video-call-btn")?.addEventListener("click", () => { if (selectedContact) startCall(selectedContact, "video"); });
+    $("outgoing-end-btn")?.addEventListener("click", () => cleanupCall(true));
+    $("outgoing-mute-btn")?.addEventListener("click", () => {
+      if (!localStream) return;
+      isMuted = !isMuted;
+      localStream.getAudioTracks().forEach(t => t.enabled = !isMuted);
+      $("outgoing-mute-btn").textContent = isMuted ? "🔇" : "🎙";
+    });
+    $("outgoing-cam-btn")?.addEventListener("click", () => {
+      if (!localStream) return;
+      isCamOff = !isCamOff;
+      localStream.getVideoTracks().forEach(t => t.enabled = !isCamOff);
+      $("outgoing-cam-btn").textContent = isCamOff ? "🚫" : "📷";
+    });
+
     const saved = localStorage.getItem("rg_user");
     if (saved) {
       try {
@@ -1278,6 +1505,62 @@
       /* When chat is open, hide sidebar */
       #app.chat-open #sidebar { transform:translateX(-100%); }
     }
+
+    /* ── CALL OVERLAYS ───────────────────────────────────────────────── */
+    .call-overlay {
+      position: fixed; inset: 0; z-index: 9999;
+      background: linear-gradient(180deg, #1a2c35 0%, #0b141a 100%);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
+    .call-overlay-inner {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 16px; padding: 32px 24px; position: relative; z-index: 2;
+    }
+    .call-avatar-wrap {
+      position: relative; width: 100px; height: 100px; margin-bottom: 8px;
+    }
+    .call-avatar-wrap img {
+      width: 100px; height: 100px; border-radius: 50%;
+      object-fit: cover; border: 3px solid var(--green);
+    }
+    .call-ripple {
+      position: absolute; inset: -8px; border-radius: 50%;
+      border: 2px solid rgba(0,168,132,.4);
+      animation: ripple 1.5s ease-out infinite;
+    }
+    @keyframes ripple {
+      0%   { transform: scale(1); opacity: .7; }
+      100% { transform: scale(1.5); opacity: 0; }
+    }
+    .call-name { font-size: 24px; font-weight: 700; color: var(--txt); }
+    .call-type-label { font-size: 14px; color: var(--muted); }
+    .call-status { font-size: 14px; color: var(--txt2); }
+    .call-actions {
+      display: flex; gap: 24px; margin-top: 24px;
+    }
+    .call-action-btn {
+      width: 64px; height: 64px; border-radius: 50%; border: none;
+      font-size: 24px; cursor: pointer; display: flex;
+      align-items: center; justify-content: center;
+      transition: transform .15s, filter .15s;
+    }
+    .call-action-btn:active { transform: scale(.9); }
+    .end-btn, .decline-btn { background: #e53935; }
+    .accept-btn { background: var(--green); }
+    .mute-btn, .cam-btn { background: var(--panel); }
+    .local-video-pip {
+      position: fixed; bottom: 160px; right: 16px;
+      width: 100px; height: 140px; border-radius: 12px;
+      overflow: hidden; border: 2px solid var(--border); z-index: 3;
+    }
+    .local-video-pip video { width: 100%; height: 100%; object-fit: cover; }
+    .remote-video-wrap {
+      position: fixed; inset: 0; z-index: 1;
+    }
+    .remote-video-wrap video {
+      width: 100%; height: 100%; object-fit: cover;
+    }
+
   </style>
 </head>
 <body>
@@ -1368,7 +1651,8 @@
           <div class="chat-name" id="chat-name">Contact</div>
           <div class="chat-status" id="chat-status"></div>
         </div>
-        <button class="icon-btn" title="Search in chat">🔍</button>
+        <button class="icon-btn" id="voice-call-btn" title="Voice call">📞</button>
+        <button class="icon-btn" id="video-call-btn" title="Video call">🎥</button>
         <button class="icon-btn" title="More">⋮</button>
       </div>
 
@@ -1402,6 +1686,56 @@
 <!-- Hidden inputs -->
 <input type="file" id="file-input" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar" style="display:none" />
 <input type="file" id="settings-avatar-input" accept="image/*" style="display:none" />
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     OUTGOING CALL OVERLAY
+═══════════════════════════════════════════════════════════════════ -->
+<div id="outgoing-call-overlay" class="call-overlay hidden">
+  <div class="call-overlay-inner">
+    <div class="call-avatar-wrap">
+      <img id="outgoing-call-avatar" src="" alt="" />
+      <div class="call-ripple"></div>
+    </div>
+    <div class="call-name" id="outgoing-call-name">Calling...</div>
+    <div class="call-type-label" id="outgoing-call-type-label">Voice call</div>
+    <div class="call-status" id="outgoing-call-status">Calling...</div>
+    <div id="outgoing-local-video-wrap" class="local-video-pip hidden">
+      <video id="outgoing-local-video" autoplay muted playsinline></video>
+    </div>
+    <div class="call-actions">
+      <button class="call-action-btn mute-btn" id="outgoing-mute-btn" title="Mute">🎙</button>
+      <button class="call-action-btn end-btn" id="outgoing-end-btn" title="End call">📵</button>
+      <button class="call-action-btn cam-btn hidden" id="outgoing-cam-btn" title="Toggle camera">📷</button>
+    </div>
+  </div>
+  <div id="outgoing-remote-video-wrap" class="remote-video-wrap hidden">
+    <video id="outgoing-remote-video" autoplay playsinline></video>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     INCOMING CALL OVERLAY
+═══════════════════════════════════════════════════════════════════ -->
+<div id="incoming-call-overlay" class="call-overlay hidden">
+  <div class="call-overlay-inner">
+    <div class="call-avatar-wrap">
+      <img id="incoming-call-avatar" src="" alt="" />
+      <div class="call-ripple"></div>
+    </div>
+    <div class="call-name" id="incoming-call-name">Unknown</div>
+    <div class="call-type-label" id="incoming-call-type-label">Incoming voice call</div>
+    <div id="incoming-local-video-wrap" class="local-video-pip hidden">
+      <video id="incoming-local-video" autoplay muted playsinline></video>
+    </div>
+    <div class="call-actions">
+      <button class="call-action-btn decline-btn" id="incoming-decline-btn" title="Decline">📵</button>
+      <button class="call-action-btn accept-btn" id="incoming-accept-btn" title="Accept">📞</button>
+    </div>
+  </div>
+  <div id="incoming-remote-video-wrap" class="remote-video-wrap hidden">
+    <video id="incoming-remote-video" autoplay playsinline></video>
+  </div>
+</div>
 
 <!-- ═══════════════════════════════════════════════════════════════════
      SETTINGS PANEL
