@@ -939,17 +939,15 @@
         dataPayload.callId = opts.callId || "";
       }
 
+      // IMPORTANT: android.notification block রাখলে FCM notification message হয়ে যায়।
+      // App killed থাকলে system handle করে, onMessageReceived call হয় না।
+      // Pure data message রাখতে হবে — শুধু android.priority।
       const fcmBody = {
         message: {
           token: fcmToken,
           data: dataPayload,
           android: {
-            priority: opts.type === "incoming_call" ? "HIGH" : "NORMAL",
-            notification: opts.type === "message" ? {
-              channel_id: "MSG_CHANNEL"
-            } : {
-              channel_id: "CALL_CHANNEL"
-            }
+            priority: opts.type === "incoming_call" ? "HIGH" : "high"
           }
         }
       };
