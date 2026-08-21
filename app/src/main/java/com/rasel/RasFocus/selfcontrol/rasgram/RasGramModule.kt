@@ -1128,6 +1128,8 @@ fun MainScreen(
     // Incoming call state — lock screen বা app-open দুটো path থেকেই আসতে পারে
     // Must be declared before any LaunchedEffect that references these variables
     var showIncomingCall by remember { mutableStateOf(incomingCallId != null) }
+    // Overlay permission — ask once on first launch inside RasGram
+    var showOverlayPermissionDialog by remember { mutableStateOf(false) }
     var activeIncomingCallId by remember { mutableStateOf(incomingCallId ?: "") }
     var activeIncomingCallerMobile by remember { mutableStateOf(incomingCallerMobile ?: "") }
     var activeIncomingCallerName by remember { mutableStateOf(incomingCallerName ?: "") }
@@ -1141,6 +1143,11 @@ fun MainScreen(
             perms.add(Manifest.permission.POST_NOTIFICATIONS)
         }
         permissionLauncher.launch(perms.toTypedArray())
+
+        // Overlay permission check — needed for WhatsApp-style call overlay
+        if (!OverlayPermissionHelper.hasPermission(context)) {
+            showOverlayPermissionDialog = true
+        }
 
         try {
             com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
@@ -1354,6 +1361,17 @@ fun MainScreen(
                 showIncomingCall = false
                 activeIncomingCallId = ""
             }
+        )
+    }
+
+    // Overlay permission dialog — shown once if SYSTEM_ALERT_WINDOW not granted
+    if (showOverlayPermissionDialog) {
+        OverlayPermissionDialog(
+            onAllow = {
+                showOverlayPermissionDialog = false
+                OverlayPermissionHelper.openSettings(context)
+            },
+            onDismiss = { showOverlayPermissionDialog = false }
         )
     }
 
