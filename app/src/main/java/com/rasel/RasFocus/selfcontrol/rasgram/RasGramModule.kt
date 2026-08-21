@@ -4346,12 +4346,26 @@ fun CallingScreen(
                 }
                 override fun onIceConnectionReceivingChange(b: Boolean) {}
                 override fun onIceGatheringChange(s: PeerConnection.IceGatheringState?) {}
-                override fun onAddStream(s: MediaStream?) { s?.videoTracks?.firstOrNull()?.let { remoteVideoTrack = it } }
+                // Bug Fix #1: onAddStream (Plan B) ও onAddTrack (UNIFIED_PLAN) দুটোই handle করো।
+                // আগে remoteVideoTrack set হচ্ছিল কিন্তু SurfaceViewRenderer তখনও
+                // compose হয়নি — তাই sink কখনো attach হয়নি → black screen।
+                // Fix: track set করার সাথে সাথে remoteSurfaceView এ sink করো।
+                override fun onAddStream(s: MediaStream?) {
+                    s?.videoTracks?.firstOrNull()?.let { track ->
+                        remoteVideoTrack = track
+                        remoteSurfaceView?.let { track.addSink(it) }
+                    }
+                }
                 override fun onRemoveStream(s: MediaStream?) {}
                 override fun onDataChannel(d: DataChannel?) {}
                 override fun onRenegotiationNeeded() {}
                 override fun onAddTrack(r: RtpReceiver?, streams: Array<out MediaStream>?) {
-                    streams?.firstOrNull()?.videoTracks?.firstOrNull()?.let { remoteVideoTrack = it }
+                    r?.track()?.let { track ->
+                        if (track is VideoTrack) {
+                            remoteVideoTrack = track
+                            remoteSurfaceView?.let { track.addSink(it) }
+                        }
+                    }
                 }
             }
 
@@ -4362,7 +4376,6 @@ fun CallingScreen(
 
             if (isReceiver) {
                 // ── RECEIVER PATH ─────────────────────────────────────────────────────
-                // Firestore থেকে offer পড়ো, answer তৈরি করো, status → "answered" লেখো
                 callStatus = "Connecting..."
                 val callDoc = db.collection("calls").document(callId).get().await()
                 val offerMap = callDoc.data?.get("offer") as? Map<*, *>
@@ -4388,11 +4401,25 @@ fun CallingScreen(
                                                     "status", "answered",
                                                     "answer", mapOf("type" to s.type.canonicalForm(), "sdp" to s.description)
                                                 )
-                                                // Caller এর ICE candidates যোগ করো
-                                                db.collection("calls").document(callId).collection("caller_ice").get().await()
-                                                    .documents.forEach { doc ->
-                                                        doc.data?.let { d ->
-                                                            pc?.addIceCandidate(IceCandidate(d["sdpMid"] as? String ?: "", (d["sdpMLineIndex"] as? Long)?.toInt() ?: 0, d["candidate"] as? String ?: ""))
+                                                // Bug Fix #2: ICE candidates এর জন্য one-time get() ব্যবহার করা ছিল।
+                                                // Problem: receiver answer পাঠানোর আগেই caller ICE candidates
+                                                // Firestore এ আসে, কিন্তু get() তখন empty ছিল।
+                                                // Fix: snapshot listener দিয়ে ICE continuously শোনো —
+                                                // যখনই নতুন candidate আসুক, সাথে সাথে addIceCandidate করো।
+                                                db.collection("calls").document(callId)
+                                                    .collection("caller_ice")
+                                                    .addSnapshotListener { snap, _ ->
+                                                        snap?.documentChanges?.forEach { change ->
+                                                            if (change.type == com.google.firebase.firestore.DocumentChange.Type.ADDED) {
+                                                                val d = change.document.data
+                                                                pc?.addIceCandidate(
+                                                                    IceCandidate(
+                                                                        d["sdpMid"] as? String ?: "",
+                                                                        (d["sdpMLineIndex"] as? Long)?.toInt() ?: 0,
+                                                                        d["candidate"] as? String ?: ""
+                                                                    )
+                                                                )
+                                                            }
                                                         }
                                                     }
                                                 callStatus = "Connected"; isConnected = true
@@ -4471,11 +4498,22 @@ fun CallingScreen(
                                     override fun onCreateSuccess(s: SessionDescription?) {}
                                     override fun onSetSuccess() {
                                         callStatus = "Connected"; isConnected = true
+                                        // Caller side ও snapshot listener — same fix as receiver
                                         scope.launch {
-                                            db.collection("calls").document(callId).collection("callee_ice").get().await()
-                                                .documents.forEach { doc ->
-                                                    doc.data?.let { d ->
-                                                        pc?.addIceCandidate(IceCandidate(d["sdpMid"] as? String ?: "", (d["sdpMLineIndex"] as? Long)?.toInt() ?: 0, d["candidate"] as? String ?: ""))
+                                            db.collection("calls").document(callId)
+                                                .collection("callee_ice")
+                                                .addSnapshotListener { snap, _ ->
+                                                    snap?.documentChanges?.forEach { change ->
+                                                        if (change.type == com.google.firebase.firestore.DocumentChange.Type.ADDED) {
+                                                            val d = change.document.data
+                                                            pc?.addIceCandidate(
+                                                                IceCandidate(
+                                                                    d["sdpMid"] as? String ?: "",
+                                                                    (d["sdpMLineIndex"] as? Long)?.toInt() ?: 0,
+                                                                    d["candidate"] as? String ?: ""
+                                                                )
+                                                            )
+                                                        }
                                                     }
                                                 }
                                         }
@@ -4520,12 +4558,49 @@ fun CallingScreen(
     Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF0B141A)) {
         Box(modifier = Modifier.fillMaxSize()) {
             if (callType == "video") {
-                AndroidView(factory = { ctx ->
-                    SurfaceViewRenderer(ctx).also { it.init(eglBase.eglBaseContext, null); it.setMirror(false); remoteSurfaceView = it; remoteVideoTrack?.addSink(it) }
-                }, modifier = Modifier.fillMaxSize())
-                AndroidView(factory = { ctx ->
-                    SurfaceViewRenderer(ctx).also { it.init(eglBase.eglBaseContext, null); it.setMirror(true); localSurfaceView = it; localVideoTrack?.addSink(it) }
-                }, modifier = Modifier.size(120.dp, 160.dp).align(Alignment.TopEnd).padding(16.dp).clip(RoundedCornerShape(12.dp)))
+                // Bug Fix #3: AndroidView factory এ remoteVideoTrack?.addSink(it) করা ছিল।
+                // Problem: factory তখনই চলে যখন view প্রথম compose হয় —
+                // কিন্তু remote track সেই সময় এখনো null (WebRTC negotiate হয়নি)।
+                // Fix: LaunchedEffect দিয়ে track আসলে sink attach করো।
+                AndroidView(
+                    factory = { ctx ->
+                        SurfaceViewRenderer(ctx).also { renderer ->
+                            renderer.init(eglBase.eglBaseContext, null)
+                            renderer.setMirror(false)
+                            remoteSurfaceView = renderer
+                            // Track এখনই আছে? তাহলে এখনই attach করো
+                            remoteVideoTrack?.addSink(renderer)
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+                AndroidView(
+                    factory = { ctx ->
+                        SurfaceViewRenderer(ctx).also { renderer ->
+                            renderer.init(eglBase.eglBaseContext, null)
+                            renderer.setMirror(true)
+                            localSurfaceView = renderer
+                            localVideoTrack?.addSink(renderer)
+                        }
+                    },
+                    modifier = Modifier
+                        .size(120.dp, 160.dp)
+                        .align(Alignment.TopEnd)
+                        .padding(16.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                )
+
+                // Track পরে আসলে sink attach করো (race condition fix)
+                LaunchedEffect(remoteVideoTrack) {
+                    val track = remoteVideoTrack ?: return@LaunchedEffect
+                    val renderer = remoteSurfaceView ?: return@LaunchedEffect
+                    track.addSink(renderer)
+                }
+                LaunchedEffect(localVideoTrack) {
+                    val track = localVideoTrack ?: return@LaunchedEffect
+                    val renderer = localSurfaceView ?: return@LaunchedEffect
+                    track.addSink(renderer)
+                }
             }
 
             Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
