@@ -971,7 +971,11 @@
     <service
         android:name=".selfcontrol.rasgram.IncomingCallOverlayService"
         android:exported="false"
-        android:foregroundServiceType="phoneCall" />
+        android:foregroundServiceType="specialUse">
+        <property
+            android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+            android:value="Handle incoming VoIP calls by showing an overlay." />
+    </service>
 
     </application>
 

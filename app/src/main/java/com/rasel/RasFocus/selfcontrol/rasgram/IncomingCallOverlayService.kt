@@ -327,8 +327,11 @@ class IncomingCallOverlayService : Service(),
             .setShowWhen(true)
             .setAutoCancel(false)
             .build()
-
-        startForeground(OVERLAY_NOTIF_ID, notif)
+        if (Build.VERSION.SDK_INT >= 34) {
+            startForeground(OVERLAY_NOTIF_ID, notif, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        } else {
+            startForeground(OVERLAY_NOTIF_ID, notif)
+        }
     }
 
     // ── Wake lock: screen জ্বালাও ────────────────────────────────────────────
