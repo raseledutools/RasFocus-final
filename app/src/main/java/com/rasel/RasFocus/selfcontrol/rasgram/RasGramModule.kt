@@ -5146,18 +5146,8 @@ fun SettingsDialog(
                                 RadioButton(selected = callDeliveryMethod == "fcm", onClick = { callDeliveryMethod = "fcm" }, colors = RadioButtonDefaults.colors(selectedColor = RasGramTheme.Green))
                                 Column {
                                     Text("FCM Push (Recommended)", color = RasGramTheme.TextPrimary)
-                                    Text("Requires Service Account JSON. Works even if phone is locked.", color = RasGramTheme.TextMuted, fontSize = 11.sp, lineHeight = 14.sp)
+                                    Text("Service account embedded in app. Works even if phone is locked.", color = RasGramTheme.TextMuted, fontSize = 11.sp, lineHeight = 14.sp)
                                 }
-                            }
-                            if (callDeliveryMethod == "fcm") {
-                                OutlinedTextField(
-                                    value = serviceAccountJson,
-                                    onValueChange = { serviceAccountJson = it },
-                                    label = { Text("Paste service_account.json contents here", color = RasGramTheme.TextMuted) },
-                                    modifier = Modifier.fillMaxWidth().height(100.dp).padding(start = 36.dp, top = 4.dp),
-                                    colors = outlinedFieldColors(),
-                                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 10.sp, color = RasGramTheme.TextPrimary)
-                                )
                             }
                             Spacer(modifier = Modifier.height(12.dp))
                             
