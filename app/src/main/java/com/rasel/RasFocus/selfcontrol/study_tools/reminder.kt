@@ -150,6 +150,34 @@ object ReminderStorage {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
+// ── Quiet Hours Helpers ───────────────────────────────────────────────────────
+private fun isInQuietHours(context: Context): Boolean {
+    val prefs = context.getSharedPreferences("reminder_settings", Context.MODE_PRIVATE)
+    val enabled = prefs.getBoolean("quiet_hours_enabled", false)
+    if (!enabled) return false
+    val startH = prefs.getInt("quiet_start_hour", 22)
+    val startM = prefs.getInt("quiet_start_minute", 0)
+    val endH   = prefs.getInt("quiet_end_hour", 7)
+    val endM   = prefs.getInt("quiet_end_minute", 0)
+
+    val now = Calendar.getInstance()
+    val curMins = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
+    val startMins = startH * 60 + startM
+    val endMins   = endH * 60 + endM
+
+    return if (startMins <= endMins) {
+        curMins in startMins until endMins
+    } else {
+        // overnight: e.g. 22:00 – 07:00
+        curMins >= startMins || curMins < endMins
+    }
+}
+
+private fun formatHourMinute(hour: Int, minute: Int): String {
+    val c = Calendar.getInstance().also { it.set(Calendar.HOUR_OF_DAY, hour); it.set(Calendar.MINUTE, minute) }
+    return SimpleDateFormat("h:mm a", Locale.getDefault()).format(c.time)
+}
+
 private fun relativeDate(millis: Long): String {
     val diffDays = ((millis - System.currentTimeMillis()) / (1000L * 60 * 60 * 24)).toInt()
     return when {
@@ -290,6 +318,30 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         val customUnit = try { CustomRepeatUnit.valueOf(customUnitStr) } catch (_: Exception) { CustomRepeatUnit.DAYS }
 
         ensureReminderChannel(context)
+
+        // Quiet Hours check — skip alarm sound+notification, but still schedule next repeat
+        if (isInQuietHours(context)) {
+            val fakeItemQH = ReminderItem(
+                id = notifId, title = label, description = description,
+                triggerMillis = triggerMillis,
+                repeatType = repeatType,
+                customRepeatAmount = customAmount,
+                customRepeatUnit = customUnit,
+                withVibration = withVib,
+                ringtoneDuration = try { RingtoneDuration.valueOf(durationStr) } catch (_: Exception) { RingtoneDuration.ONE_MINUTE },
+                ringtoneUriString = ringtoneUriStr,
+                priority = try { ReminderPriority.valueOf(priorityStr) } catch (_: Exception) { ReminderPriority.NORMAL }
+            )
+            val intervalQH = repeatIntervalMillis(fakeItemQH)
+            if (intervalQH != null && intervalQH > 0) {
+                val nextQH = triggerMillis + intervalQH
+                scheduleReminderAlarmFull(context, fakeItemQH.copy(triggerMillis = nextQH))
+                val items = ReminderStorage.load(context).toMutableList()
+                val idx = items.indexOfFirst { it.id == notifId }
+                if (idx != -1) { items[idx] = items[idx].copy(triggerMillis = nextQH); ReminderStorage.save(context, items) }
+            }
+            return
+        }
 
         // 1. Play ringtone and vibrate via singleton
         val ringtoneUri = when {
@@ -1436,6 +1488,12 @@ fun ReminderSettingsDialog(onDismiss: () -> Unit) {
                     }
                     Divider(color = RmDivider, modifier = Modifier.padding(start = 56.dp))
 
+                    // Section: Quiet Hours
+                    SettingsSectionHeader("Quiet Hours")
+
+                    QuietHoursSettingsSection(prefs)
+                    Divider(color = RmDivider, modifier = Modifier.padding(start = 56.dp))
+
                     // Section: Info
                     SettingsSectionHeader("Help")
 
@@ -1486,6 +1544,112 @@ fun ReminderSettingsDialog(onDismiss: () -> Unit) {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun QuietHoursSettingsSection(prefs: android.content.SharedPreferences) {
+    val context = LocalContext.current
+    var enabled  by remember { mutableStateOf(prefs.getBoolean("quiet_hours_enabled", false)) }
+    var startH   by remember { mutableStateOf(prefs.getInt("quiet_start_hour", 22)) }
+    var startM   by remember { mutableStateOf(prefs.getInt("quiet_start_minute", 0)) }
+    var endH     by remember { mutableStateOf(prefs.getInt("quiet_end_hour", 7)) }
+    var endM     by remember { mutableStateOf(prefs.getInt("quiet_end_minute", 0)) }
+
+    fun persist() {
+        prefs.edit()
+            .putBoolean("quiet_hours_enabled", enabled)
+            .putInt("quiet_start_hour", startH).putInt("quiet_start_minute", startM)
+            .putInt("quiet_end_hour", endH).putInt("quiet_end_minute", endM)
+            .apply()
+    }
+
+    // Enable toggle row
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .clickable { enabled = !enabled; persist() }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(Icons.Default.NightlightRound, contentDescription = null,
+            tint = RmTextSub, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Quiet Hours", fontSize = 15.sp, color = RmText)
+            Text("Reminders won't ring during this time", fontSize = 12.sp, color = RmTextSub)
+        }
+        Switch(
+            checked = enabled, onCheckedChange = { enabled = it; persist() },
+            colors = SwitchDefaults.colors(checkedThumbColor = RmTeal, checkedTrackColor = RmTeal.copy(0.3f))
+        )
+    }
+
+    // Time pickers — only visible when enabled
+    if (enabled) {
+        Divider(color = RmDivider, modifier = Modifier.padding(start = 56.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.BedtimeOff, contentDescription = null,
+                tint = RmTextSub, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.width(16.dp))
+            Text("Start", fontSize = 15.sp, color = RmText, modifier = Modifier.weight(1f))
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(RmBg)
+                    .clickable {
+                        TimePickerDialog(context, { _, h, m ->
+                            startH = h; startM = m; persist()
+                        }, startH, startM, false).show()
+                    }
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                Text(formatHourMinute(startH, startM), color = RmTeal,
+                    fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        Divider(color = RmDivider, modifier = Modifier.padding(start = 56.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.WbSunny, contentDescription = null,
+                tint = RmTextSub, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.width(16.dp))
+            Text("End", fontSize = 15.sp, color = RmText, modifier = Modifier.weight(1f))
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(RmBg)
+                    .clickable {
+                        TimePickerDialog(context, { _, h, m ->
+                            endH = h; endM = m; persist()
+                        }, endH, endM, false).show()
+                    }
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                Text(formatHourMinute(endH, endM), color = RmTeal,
+                    fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        Divider(color = RmDivider, modifier = Modifier.padding(start = 56.dp))
+        // Preview text
+        Row(
+            modifier = Modifier.fillMaxWidth()
+                .background(RmTeal.copy(.06f))
+                .padding(horizontal = 20.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.Info, contentDescription = null,
+                tint = RmTeal, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "Silent from ${formatHourMinute(startH, startM)} to ${formatHourMinute(endH, endM)}",
+                fontSize = 13.sp, color = RmTeal, fontWeight = FontWeight.Medium
+            )
         }
     }
 }
