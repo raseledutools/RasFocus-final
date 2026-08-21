@@ -47,16 +47,13 @@ class RasgramMessagingService : FirebaseMessagingService() {
     // ─────────────────────────────────────────────────────────────────────────
     // INCOMING CALL
     //
-    // দুটো path:
-    //   A) Overlay permission আছে  → IncomingCallOverlayService চালু করো
-    //                                 (overlay নিজেই ring + vibrate করে)
-    //                                 backup notification = SILENT (শুধু Android 14+
-    //                                 screen wake signal হিসেবে দরকার, ring না)
+    // Overlay permission আছে:
+    //   → IncomingCallOverlayService চালু করো
+    //   → এই FCM handler কোনো notification post করে না
+    //     (Service নিজেই startForeground() করে — একটাই notification, double হবে না)
     //
-    //   B) Overlay permission নেই  → fullScreenIntent সহ ringtone notification
-    //                                 (পুরনো fallback, এটাই ring করে)
-    //
-    // এভাবে double ring সম্পূর্ণ বন্ধ হয়।
+    // Overlay permission নেই:
+    //   → fullScreenIntent সহ ringtone notification post করো (fallback)
     // ─────────────────────────────────────────────────────────────────────────
     private fun handleIncomingCall(
         callerName: String,
@@ -68,11 +65,10 @@ class RasgramMessagingService : FirebaseMessagingService() {
         val hasOverlay = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
                          Settings.canDrawOverlays(this)
 
-        // Overlay path: overlay service নিজেই ring করবে।
-        // Notification শুধু silent foreground anchor — notification shade এ দেখাবে না।
         if (hasOverlay) {
-            createChannels(nm, overlayActive = true)
-            postCallNotification(nm, callerName, callerMobile, callType, callId, silent = true)
+            // Overlay path: Service শুরু করো, notification post করো না।
+            // IncomingCallOverlayService.onCreate() → startForeground() এ
+            // একটাই IMPORTANCE_MIN notification তৈরি হবে।
             IncomingCallOverlayService.start(
                 context      = this,
                 callId       = callId,
@@ -81,23 +77,19 @@ class RasgramMessagingService : FirebaseMessagingService() {
                 callType     = callType
             )
         } else {
-            // Fallback path: overlay নেই, notification নিজেই ring + fullScreenIntent
-            createChannels(nm, overlayActive = false)
-            postCallNotification(nm, callerName, callerMobile, callType, callId, silent = false)
+            // Fallback: overlay নেই → ringtone + fullScreenIntent notification
+            createChannels(nm)
+            postFallbackCallNotification(nm, callerName, callerMobile, callType, callId)
         }
     }
 
-    // ── Full-screen notification ──────────────────────────────────────────────
-    // silent = true  → overlay চালু, এই notification শুধু Android 14+ wake signal,
-    //                  IMPORTANCE_MIN চ্যানেলে যাবে — shade এ দেখাবে না, ring করবে না
-    // silent = false → overlay নেই, CALL_CHANNEL এ যাবে — ring + fullScreenIntent
-    private fun postCallNotification(
+    // ── Fallback call notification (overlay NOT available) ────────────────────
+    private fun postFallbackCallNotification(
         nm: NotificationManager,
         callerName: String,
         callerMobile: String,
         callType: String,
-        callId: String,
-        silent: Boolean
+        callId: String
     ) {
         val answerIntent = Intent(this, RasGramActivity::class.java).apply {
             action = "ACTION_ANSWER_CALL"
@@ -122,67 +114,50 @@ class RasgramMessagingService : FirebaseMessagingService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        if (silent) {
-            // ── Silent anchor notification (overlay active) ──────────────────
-            // IMPORTANCE_MIN → shade এ দেখাবে না, ring করবে না।
-            // শুধু overlay service dismiss হওয়ার পর auto-cancel এর জন্য।
-            val notif = NotificationCompat.Builder(this, CALL_SILENT_CHANNEL)
-                .setSmallIcon(android.R.drawable.ic_menu_call)
-                .setContentTitle(if (callType == "video") "Incoming Video Call" else "Incoming Voice Call")
-                .setContentText(callerName)
-                .setPriority(NotificationCompat.PRIORITY_MIN)
-                .setVisibility(NotificationCompat.VISIBILITY_SECRET)
-                .setContentIntent(answerPending)
-                .setAutoCancel(true)
-                .setOngoing(false)
-                .setTimeoutAfter(65_000L)
-                .build()
-            nm.notify(CALL_NOTIFICATION_ID, notif)
-        } else {
-            // ── Full ring notification (overlay NOT available) ────────────────
-            val fullScreenIntent = Intent(this, RasGramActivity::class.java).apply {
-                action = "ACTION_INCOMING_CALL"
-                putExtra("callId",       callId)
-                putExtra("callerMobile", callerMobile)
-                putExtra("callerName",   callerName)
-                putExtra("callType",     callType)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP
-            }
-            val fullScreenPending = PendingIntent.getActivity(
-                this, 3, fullScreenIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-
-            val callTitle = if (callType == "video") "Incoming Video Call" else "Incoming Voice Call"
-            val notif = NotificationCompat.Builder(this, CALL_CHANNEL)
-                .setSmallIcon(android.R.drawable.ic_menu_call)
-                .setContentTitle(callTitle)
-                .setContentText(callerName)
-                .setPriority(NotificationCompat.PRIORITY_MAX)
-                .setCategory(NotificationCompat.CATEGORY_CALL)
-                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .setFullScreenIntent(fullScreenPending, true)
-                .setContentIntent(answerPending)
-                .addAction(android.R.drawable.ic_menu_call, "Answer",  answerPending)
-                .addAction(android.R.drawable.ic_delete,    "Decline", declinePending)
-                .setAutoCancel(false)
-                .setOngoing(true)
-                .setTimeoutAfter(60_000L)
-                .build()
-            nm.notify(CALL_NOTIFICATION_ID, notif)
+        val fullScreenIntent = Intent(this, RasGramActivity::class.java).apply {
+            action = "ACTION_INCOMING_CALL"
+            putExtra("callId",       callId)
+            putExtra("callerMobile", callerMobile)
+            putExtra("callerName",   callerName)
+            putExtra("callType",     callType)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
+        val fullScreenPending = PendingIntent.getActivity(
+            this, 3, fullScreenIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val callTitle = if (callType == "video") "Incoming Video Call" else "Incoming Voice Call"
+        val notif = NotificationCompat.Builder(this, CALL_CHANNEL)
+            .setSmallIcon(android.R.drawable.ic_menu_call)
+            .setContentTitle(callTitle)
+            .setContentText(callerName)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setFullScreenIntent(fullScreenPending, true)
+            .setContentIntent(answerPending)
+            .addAction(android.R.drawable.ic_menu_call, "Answer",  answerPending)
+            .addAction(android.R.drawable.ic_delete,    "Decline", declinePending)
+            .setAutoCancel(false)
+            .setOngoing(true)
+            .setTimeoutAfter(60_000L)
+            .build()
+        nm.notify(CALL_NOTIFICATION_ID, notif)
     }
 
-    // ── Message notification ──────────────────────────────────────────────────
+    // ── Message notification — preview সহ ────────────────────────────────────
+    // Fix: BigTextStyle যোগ করা হয়েছে → message টা notification এ পুরো দেখাবে।
+    // subText এ sender name, contentText এ message — lock screen এও দেখাবে।
     private fun showMessageNotification(
         senderName: String,
         message: String,
         senderMobile: String
     ) {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        createChannels(nm, overlayActive = false)
+        createChannels(nm)
 
         val intent = Intent(this, RasGramActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -195,8 +170,19 @@ class RasgramMessagingService : FirebaseMessagingService() {
 
         val notif = NotificationCompat.Builder(this, MSG_CHANNEL)
             .setSmallIcon(android.R.drawable.ic_dialog_email)
+            // contentTitle = sender name (bold হেডার)
             .setContentTitle(senderName)
+            // contentText = message preview (collapsed এ দেখাবে)
             .setContentText(message)
+            // BigTextStyle = expanded এ পুরো message দেখাবে
+            .setStyle(
+                NotificationCompat.BigTextStyle()
+                    .bigText(message)
+                    .setSummaryText("RasGram")
+            )
+            // VISIBILITY_PRIVATE → lock screen এ "সামগ্রী লুকানো" দেখাবে না,
+            // PUBLIC করলে lock screen এও পুরো message দেখাবে
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(pending)
             .setAutoCancel(true)
@@ -206,9 +192,7 @@ class RasgramMessagingService : FirebaseMessagingService() {
     }
 
     // ── Notification channels ─────────────────────────────────────────────────
-    // overlayActive = true  → CALL_CHANNEL কে silent করো (overlay ring করবে)
-    // overlayActive = false → CALL_CHANNEL এ ringtone রাখো (fallback)
-    private fun createChannels(nm: NotificationManager, overlayActive: Boolean) {
+    private fun createChannels(nm: NotificationManager) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
             val audioAttr = AudioAttributes.Builder()
@@ -216,52 +200,35 @@ class RasgramMessagingService : FirebaseMessagingService() {
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .build()
 
-            // CALL_CHANNEL — overlay চালু থাকলে silent, নইলে ring
-            // NOTE: NotificationChannel একবার তৈরি হলে sound পরে পরিবর্তন হয় না।
-            // তাই দুটো আলাদা channel ব্যবহার করছি।
-            if (!overlayActive) {
-                // Full-ring channel (fallback path)
-                val callCh = NotificationChannel(
-                    CALL_CHANNEL, "Incoming Calls", NotificationManager.IMPORTANCE_MAX
-                ).apply {
-                    description       = "Incoming RasGram calls (no overlay)"
+            // Call channel (fallback — overlay নেই)
+            nm.createNotificationChannel(
+                NotificationChannel(CALL_CHANNEL, "Incoming Calls", NotificationManager.IMPORTANCE_MAX).apply {
+                    description      = "Incoming RasGram calls (no overlay)"
                     setSound(ringtoneUri, audioAttr)
                     enableVibration(true)
-                    vibrationPattern  = longArrayOf(0, 500, 500, 500)
+                    vibrationPattern = longArrayOf(0, 500, 500, 500)
                     lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
                 }
-                nm.createNotificationChannel(callCh)
-            }
+            )
 
-            // Silent anchor channel (overlay path) — IMPORTANCE_MIN
-            val silentCh = NotificationChannel(
-                CALL_SILENT_CHANNEL, "Call Anchor (Silent)", NotificationManager.IMPORTANCE_MIN
-            ).apply {
-                description = "Silent anchor for overlay calls — not visible to user"
-                setSound(null, null)
-                enableVibration(false)
-                lockscreenVisibility = android.app.Notification.VISIBILITY_SECRET
-                setShowBadge(false)
-            }
-            nm.createNotificationChannel(silentCh)
-
-            // MSG_CHANNEL
+            // Message channel
             nm.createNotificationChannel(
                 NotificationChannel(MSG_CHANNEL, "Messages", NotificationManager.IMPORTANCE_HIGH).apply {
                     description = "New RasGram messages"
                     enableVibration(true)
                     setShowBadge(true)
+                    // lock screen এ message preview দেখাবে
+                    lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
                 }
             )
         }
     }
 
     companion object {
-        const val CALL_NOTIFICATION_ID  = 9999
-        const val CALL_CHANNEL          = "CALL_CHANNEL"
-        const val CALL_SILENT_CHANNEL   = "CALL_SILENT_CHANNEL"
-        const val MSG_CHANNEL           = "MSG_CHANNEL"
-        const val PREF_NAME             = "rasgram_prefs"
-        const val PREF_MOBILE           = "saved_mobile"
+        const val CALL_NOTIFICATION_ID = 9999
+        const val CALL_CHANNEL         = "CALL_CHANNEL"
+        const val MSG_CHANNEL          = "MSG_CHANNEL"
+        const val PREF_NAME            = "rasgram_prefs"
+        const val PREF_MOBILE          = "saved_mobile"
     }
 }
