@@ -1882,6 +1882,8 @@ fun ChatArea(
     val isCompact = isCompactScreen()
 
     var messages by remember { mutableStateOf<List<Message>>(emptyList()) }
+    // messagesLoaded: Firebase প্রথম snapshot আসার আগে LazyColumn লুকানো থাকবে — flicker নেই
+    var messagesLoaded by remember { mutableStateOf(false) }
     var inputText by remember { mutableStateOf("") }
     var liveContact by remember { mutableStateOf(contact) }
     var isUploading by remember { mutableStateOf(false) }
@@ -1984,6 +1986,7 @@ fun ChatArea(
                             )
                         }
                     }
+                    messagesLoaded = true  // প্রথম snapshot পাওয়া গেছে — এখন list দেখাও
                     // Mark as read
                     qs.documents.filter { doc ->
                         doc.getString("senderMobile") == contact.mobile && doc.getBoolean("read") == false
@@ -2008,9 +2011,20 @@ fun ChatArea(
         }
     }
 
-    // Auto scroll to bottom
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
+    // Auto scroll to bottom — WhatsApp exact behavior:
+    // প্রথমবার load হলে instant jump (কোনো animation নেই, flicker নেই)
+    // নতুন message আসলে smooth animate
+    var prevMessagesSize by remember { mutableIntStateOf(0) }
+    LaunchedEffect(messagesLoaded, messages.size) {
+        if (!messagesLoaded || messages.isEmpty()) return@LaunchedEffect
+        if (prevMessagesSize == 0) {
+            // প্রথম load: instant, no animation — WhatsApp এর মতো সরাসরি নিচে
+            listState.scrollToItem(messages.size - 1)
+        } else if (messages.size > prevMessagesSize) {
+            // নতুন message পাঠানো/আসা হলে smooth animate
+            listState.animateScrollToItem(messages.size - 1)
+        }
+        prevMessagesSize = messages.size
     }
 
     // Recording timer
@@ -2115,6 +2129,11 @@ fun ChatArea(
                     }
             )
 
+            // Firebase এর প্রথম snapshot আসার আগে blank রাখো — flash/jolok নেই
+            if (!messagesLoaded) {
+                // শুধু background দেখা যাবে, কোনো content নেই — WhatsApp এর মতো
+                Box(modifier = Modifier.fillMaxSize())
+            } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 state = listState,
@@ -2177,6 +2196,7 @@ fun ChatArea(
                     }
                 }
             }
+            } // end if (messagesLoaded)
 
             // Scroll-to-bottom FAB - inside Box(weight(1f)) BoxScope, using wrapContentSize
             val showScrollFab by remember { derivedStateOf { listState.firstVisibleItemIndex < messages.size - 5 && messages.size > 10 } }
