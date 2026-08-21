@@ -97,6 +97,7 @@ import com.google.firebase.firestore.ktx.snapshots
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.tasks.await
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.asRequestBody
@@ -1482,6 +1483,40 @@ fun ChatsTab(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
+    // ── WhatsApp-style: Room DB থেকে cached chat previews instant load ─────────
+    val rasGramRepo = remember { RasGramRepository.getInstance(context) }
+    val cachedPreviews by rasGramRepo.chatPreviewDao
+        .getChatPreviews()
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+
+    // Room cache থেকে latestMessages ও unreadCounts pre-populate
+    // এতে app open এ সাথে সাথে last message দেখা যায় — Firestore wait করতে হয় না
+    LaunchedEffect(cachedPreviews) {
+        val cachedLatest = mutableMapOf<String, Message>()
+        val cachedUnread = mutableMapOf<String, Int>()
+        cachedPreviews.forEach { preview ->
+            if (preview.lastTimestamp > 0) {
+                cachedLatest[preview.contactMobile] = Message(
+                    id = "",
+                    text = preview.lastMessageText,
+                    senderMobile = preview.lastMessageSender,
+                    timestamp = preview.lastTimestamp,
+                    timeString = preview.lastTimeString,
+                    fileType = preview.lastFileType,
+                    isCallLog = preview.lastIsCallLog
+                )
+                cachedUnread[preview.contactMobile] = preview.unreadCount
+            }
+        }
+        if (cachedLatest.isNotEmpty()) {
+            latestMessages = cachedLatest
+            unreadCounts = cachedUnread
+            // Cache আছে মানে এখনই ready — blank screen নেই
+            usersLoaded = true
+            onSplashDone()
+        }
+    }
+
     // ─── Contact Sync (WhatsApp style) ───────────────────────────────────────
     var deviceContactNumbers by remember { mutableStateOf<Set<String>>(emptySet()) }
     // contactsLoaded = true once we've actually attempted to read the phonebook
@@ -1539,7 +1574,9 @@ fun ChatsTab(
         }
     }
 
-    // Fast batch latest messages
+    // ── Firestore latest message sync → Room + UI update ──────────────────────
+    // এটা background sync — chat list এ last message দেখানোর জন্য
+    // Room থেকে instant load হয়েছে already — এটা শুধু update করে
     LaunchedEffect(users) {
         users.forEach { user ->
             val chatId = generateChatId(currentUser.mobile, user.mobile)
@@ -1562,15 +1599,39 @@ fun ChatsTab(
                                 isDeleted = d["isDeleted"] as? Boolean ?: false
                             )
                             latestMessages = latestMessages + (user.mobile to msg)
+
+                            // Room chat preview update করো (persistent cache)
+                            scope.launch(Dispatchers.IO) {
+                                val unread = (unreadCounts[user.mobile] ?: 0)
+                                rasGramRepo.chatPreviewDao.upsertPreview(
+                                    CachedChatPreview(
+                                        contactMobile = user.mobile,
+                                        contactName = user.name,
+                                        contactAvatarUrl = user.avatarUrl,
+                                        lastMessageText = msg.text,
+                                        lastMessageSender = msg.senderMobile,
+                                        lastTimestamp = msg.timestamp,
+                                        lastTimeString = msg.timeString,
+                                        lastFileType = msg.fileType,
+                                        lastIsCallLog = msg.isCallLog,
+                                        unreadCount = unread
+                                    )
+                                )
+                            }
                         }
                     }
 
-                    // Unread count
+                    // Unread count — Firestore query
                     db.collection("pvt_msg_$chatId")
                         .whereEqualTo("senderMobile", user.mobile)
                         .whereEqualTo("read", false)
                         .get().addOnSuccessListener { qs ->
-                            unreadCounts = unreadCounts + (user.mobile to qs.size())
+                            val count = qs.size()
+                            unreadCounts = unreadCounts + (user.mobile to count)
+                            // Room preview এ unread count আপডেট
+                            scope.launch(Dispatchers.IO) {
+                                rasGramRepo.chatPreviewDao.updateUnreadCount(user.mobile, count)
+                            }
                         }
                 }
         }
@@ -1900,7 +1961,9 @@ fun ChatArea(
     val scope = rememberCoroutineScope()
     val isCompact = isCompactScreen()
 
-    var messages by remember { mutableStateOf<List<Message>>(emptyList()) }
+    // ── WhatsApp-style: Room DB থেকে instant load, Firestore background sync ──
+    val rasGramRepo = remember { RasGramRepository.getInstance(context) }
+
     // messagesLoaded: Firebase প্রথম snapshot আসার আগে LazyColumn লুকানো থাকবে — flicker নেই
     var messagesLoaded by remember { mutableStateOf(false) }
     var inputText by remember { mutableStateOf("") }
@@ -1919,6 +1982,19 @@ fun ChatArea(
 
     val chatId = remember(currentUser.mobile, contact.mobile) {
         generateChatId(currentUser.mobile, contact.mobile)
+    }
+
+    // ── STEP 1: Room DB থেকে instant local load (offline ও কাজ করে) ──────────
+    // collectAsStateWithLifecycle → Flow থেকে auto UI update, lifecycle-safe
+    val cachedMessages by rasGramRepo.messageDao
+        .getMessages(chatId)
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+
+    // CachedMessage → Message conversion for UI
+    val messages = remember(cachedMessages) {
+        with(rasGramRepo) {
+            cachedMessages.map { it.toMessage() }
+        }
     }
 
     // File launchers
@@ -1968,17 +2044,33 @@ fun ChatArea(
         }
     }
 
-    // Load messages with real-time listener
+    // ── STEP 2: Room cache আছে কিনা দেখো → থাকলে সাথে সাথে ready ─────────────
+    LaunchedEffect(chatId) {
+        // Room এ যদি আগের message থাকে → সাথে সাথে messagesLoaded = true
+        // এতে blank screen দেখা যাবে না — WhatsApp exact behavior
+        val hasCachedData = cachedMessages.isNotEmpty()
+        if (hasCachedData) messagesLoaded = true
+    }
+
+    // cachedMessages update হলে messagesLoaded ensure করো
+    LaunchedEffect(cachedMessages.size) {
+        if (cachedMessages.isNotEmpty()) messagesLoaded = true
+    }
+
+    // ── STEP 3: Firestore real-time sync → Room এ save → UI auto-update ───────
+    // UI directly Firestore থেকে পড়ে না — Room Flow থেকে পড়ে (above)
+    // এটা background sync — UI এর সাথে decouple
     LaunchedEffect(chatId) {
         db.collection("pvt_msg_$chatId")
             .orderBy("timestamp", Query.Direction.ASCENDING)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) return@addSnapshotListener
                 snapshot?.let { qs ->
-                    messages = qs.documents.mapNotNull { doc ->
+                    val newMessages = qs.documents.mapNotNull { doc ->
                         doc.data?.let { d ->
-                            Message(
+                            CachedMessage(
                                 id = doc.id,
+                                chatId = chatId,
                                 text = AESCrypto.decrypt(chatId, d["text"] as? String ?: ""),
                                 senderMobile = d["senderMobile"] as? String ?: "",
                                 receiverMobile = d["receiverMobile"] as? String ?: "",
@@ -2005,12 +2097,47 @@ fun ChatArea(
                             )
                         }
                     }
-                    messagesLoaded = true  // প্রথম snapshot পাওয়া গেছে — এখন list দেখাও
-                    // Mark as read
+
+                    // Background এ Room এ save করো (IO thread এ)
+                    scope.launch(Dispatchers.IO) {
+                        rasGramRepo.messageDao.upsertMessages(newMessages)
+
+                        // Update chat preview (last message + unread)
+                        val lastMsg = newMessages.maxByOrNull { it.timestamp }
+                        if (lastMsg != null) {
+                            val unread = newMessages.count {
+                                it.senderMobile == contact.mobile && !it.read
+                            }
+                            rasGramRepo.chatPreviewDao.upsertPreview(
+                                CachedChatPreview(
+                                    contactMobile = contact.mobile,
+                                    contactName = contact.name,
+                                    contactAvatarUrl = contact.avatarUrl,
+                                    lastMessageText = lastMsg.text,
+                                    lastMessageSender = lastMsg.senderMobile,
+                                    lastTimestamp = lastMsg.timestamp,
+                                    lastTimeString = lastMsg.timeString,
+                                    lastFileType = lastMsg.fileType,
+                                    lastIsCallLog = lastMsg.isCallLog,
+                                    unreadCount = unread
+                                )
+                            )
+                        }
+                    }
+
+                    // First Firestore snapshot এলে messagesLoaded confirm
+                    messagesLoaded = true
+
+                    // Mark unread as read in Firestore
                     qs.documents.filter { doc ->
                         doc.getString("senderMobile") == contact.mobile && doc.getBoolean("read") == false
                     }.forEach { doc ->
                         doc.reference.update("read", true, "delivered", true)
+                    }
+
+                    // Room এ ও read mark করো
+                    scope.launch(Dispatchers.IO) {
+                        rasGramRepo.messageDao.markAsRead(chatId, contact.mobile)
                     }
                 }
             }
@@ -5498,7 +5625,52 @@ fun sendMessage(
         // Older: Show full date
         else -> SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(now))
     }
-    
+
+    // ── WhatsApp Optimistic Send: Room এ আগে save, তারপর Firestore ──────────
+    // এতে message send করার সাথে সাথে UI তে দেখা যায় — network wait নেই
+    val tempId = "pending_${now}_${senderMobile.takeLast(4)}"
+
+    @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+    kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+        // Room এ pending message save করো (instant UI update)
+        val repo = RasGramRepository.getInstance(context)
+        repo.messageDao.upsertMessage(
+            CachedMessage(
+                id = tempId,
+                chatId = chatId,
+                text = text,                    // plain text (already decrypted form)
+                senderMobile = senderMobile,
+                receiverMobile = receiverMobile,
+                timestamp = now,
+                timeString = timeString,
+                fileUrl = fileUrl,
+                fileName = fileName,
+                fileType = fileType,
+                read = false,
+                delivered = false,
+                isPending = true,               // ✓ = sending... indicator
+                replyToId = replyToId,
+                replyToText = replyToText,
+                replyToSender = replyToSender,
+                duration = duration
+            )
+        )
+
+        // Chat preview update (last message)
+        repo.chatPreviewDao.upsertPreview(
+            CachedChatPreview(
+                contactMobile = receiverMobile,
+                contactName = "",               // contact name Firestore থেকে already cached
+                lastMessageText = text,
+                lastMessageSender = senderMobile,
+                lastTimestamp = now,
+                lastTimeString = timeString,
+                lastFileType = fileType
+            )
+        )
+    }
+
+    // Firestore এ পাঠাও (background)
     val message = hashMapOf(
         "text" to encryptedText,
         "senderMobile" to senderMobile,
@@ -5521,6 +5693,18 @@ fun sendMessage(
         "duration" to duration
     )
     db.collection("pvt_msg_$chatId").add(message)
+        .addOnSuccessListener { docRef ->
+            // Firestore confirm → pending temp message replace করো real ID দিয়ে
+            @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+            kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+                val repo = RasGramRepository.getInstance(context)
+                // Temp message delete করো (real message Firestore listener এ আসবে)
+                // isPending → false করো যদি same ID রাখতে চাও
+                // এখানে temp delete, real message Firestore listener handle করবে
+                repo.messageDao.softDelete(tempId) // temp mark হিসেবে
+                // Note: Firestore snapshot listener CachedMessage উপরে upsert করবে real ID দিয়ে
+            }
+        }
 
     @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
     kotlinx.coroutines.GlobalScope.launch {
