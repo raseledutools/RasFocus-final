@@ -8,6 +8,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
+import android.media.AudioManager
 import android.media.Ringtone
 import android.media.RingtoneManager
 import android.os.Build
@@ -83,11 +84,27 @@ import kotlinx.coroutines.launch
 /**
  * WhatsApp / Truecaller style incoming call overlay.
  *
- * Fix summary (v2):
- * - Screen off / locked → full-page Activity launch করো (WakeLock দিয়ে screen জ্বালাও)
- * - Screen on + unlocked → overlay card (TYPE_APPLICATION_OVERLAY)
- * - Foreground notification: IMPORTANCE_MIN, shade এ দেখাবে না → single notification
- *   RasgramMessagingService আর আলাদা notification post করবে না (silent=true path এ)
+ * Fix summary (v3):
+ * ─────────────────────────────────────────────────────────────────────────────
+ * 1. Double notification বন্ধ:
+ *    - startForeground() notification এ এখন caller name, number, call type
+ *      এবং Answer / Decline action button আছে।
+ *    - IMPORTANCE_HIGH (ছিল IMPORTANCE_MIN) → notification টা visible হয়।
+ *    - RasgramMessagingService আলাদা notification পোস্ট করে না (overlay path এ)।
+ *
+ * 2. Ring সমস্যা ঠিক:
+ *    - AudioManager.requestAudioFocus() নেওয়া হচ্ছে → ring শোনা যাবে।
+ *    - Activity launch হলে (lock screen path) ring STOP করা হচ্ছে না —
+ *      Activity খোলার পর সে নিজেই ring চালায় (IncomingCallScreen এ ring আছে)।
+ *    - Activity খুললে stopSelf() না করে শুধু overlay remove করা হয়।
+ *
+ * 3. Overlay এ caller info + Accept/Decline:
+ *    - CallOverlayCard এ caller name, mobile, call type সব আছে।
+ *    - Answer/Decline button কাজ করে।
+ *
+ * 4. Screen off/locked → Activity launch + ring চলতে থাকে।
+ *    Screen on/unlocked → overlay card + ring।
+ * ─────────────────────────────────────────────────────────────────────────────
  */
 class IncomingCallOverlayService : Service(),
     LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
@@ -105,6 +122,7 @@ class IncomingCallOverlayService : Service(),
     private var ringtone: Ringtone? = null
     private var vibrator: Vibrator? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var audioManager: AudioManager? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     companion object {
@@ -151,6 +169,7 @@ class IncomingCallOverlayService : Service(),
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+        audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -159,24 +178,22 @@ class IncomingCallOverlayService : Service(),
         val callerMobile = intent.getStringExtra(EXTRA_CALLER_MOBILE) ?: ""
         val callType     = intent.getStringExtra(EXTRA_CALL_TYPE)     ?: "audio"
 
-        // ── Duplicate guard: same callId এর জন্য আবার start এলে ignore ────
+        // ── Duplicate guard ──────────────────────────────────────────────────
         if (isRunning && activeCallId == callId) return START_NOT_STICKY
         isRunning    = true
         activeCallId = callId
 
-        // ── 1) Foreground notification (Android 8+ requirement) ──────────────
-        // IMPORTANCE_MIN → shade এ দেখাবে না, ring করবে না।
-        // এটাই একমাত্র notification — RasgramMessagingService আর কোনো
-        // call notification post করে না যখন overlay active থাকে।
-        startForegroundWithNotification(callerName, callType)
+        // ── 1) Foreground notification — visible, caller info সহ ────────────
+        startForegroundWithNotification(callerName, callerMobile, callType, callId)
 
-        // ── 2) Screen জ্বালানো (screen off হলে) ─────────────────────────────
+        // ── 2) Screen জ্বালানো ──────────────────────────────────────────────
         acquireWakeLock()
 
-        // ── 3) Ring + vibrate ─────────────────────────────────────────────────
+        // ── 3) AudioFocus নাও, তারপর ring + vibrate ─────────────────────────
+        requestAudioFocus()
         startRinging()
 
-        // ── 4) Screen off / locked → Activity; unlocked → overlay ────────────
+        // ── 4) Screen/lock state বুঝে overlay বা Activity ──────────────────
         val pm = getSystemService(POWER_SERVICE) as PowerManager
         val km = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
 
@@ -185,18 +202,22 @@ class IncomingCallOverlayService : Service(),
 
         if (screenOff || keyguardUp) {
             // Lock screen / screen off: full page Activity খোলো।
-            // enableLockScreenDisplay() সেখানে আছে।
+            // Activity খোলার পর ring চলতে থাকে — IncomingCallScreen এ
+            // নিজের ring আছে কিন্তু service এর ring বন্ধ করতে হবে।
+            // RasGramActivity → stopOverlayService() → onDestroy() → stopRinging()
             launchFullScreenCallActivity(callId, callerName, callerMobile, callType)
         } else {
             // Unlocked + screen on: floating overlay card
             showOverlay(callId, callerName, callerMobile, callType)
         }
 
-        // ── 5) 60s auto-dismiss ───────────────────────────────────────────────
+        // ── 5) 60s auto-dismiss ──────────────────────────────────────────────
         serviceScope.launch {
             kotlinx.coroutines.delay(60_000L)
-            missedCall(callId)
-            stopSelf()
+            if (isRunning && activeCallId == callId) {
+                missedCall(callId)
+                stopSelf()
+            }
         }
 
         return START_NOT_STICKY
@@ -221,32 +242,68 @@ class IncomingCallOverlayService : Service(),
         startActivity(i)
     }
 
-    // ── Foreground notification: silent, shade এ দেখাবে না ─────────────────
-    private fun startForegroundWithNotification(callerName: String, callType: String) {
+    // ── Foreground notification: visible, caller info + action buttons ────────
+    // IMPORTANCE_HIGH → shade এ দেখাবে (heads-up notification হিসেবে)।
+    // Answer/Decline button সরাসরি notification এ।
+    private fun startForegroundWithNotification(
+        callerName: String, callerMobile: String, callType: String, callId: String
+    ) {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // IMPORTANCE_HIGH → heads-up দেখাবে কিন্তু ringtone বাজাবে না
+            // (ring আলাদাভাবে startRinging() এ করা হচ্ছে)
             val ch = NotificationChannel(
                 OVERLAY_CHANNEL_ID,
-                "Call Overlay Service",
-                NotificationManager.IMPORTANCE_MIN
+                "Incoming Call",
+                NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                setSound(null, null)
-                enableVibration(false)
-                setShowBadge(false)
-                lockscreenVisibility = android.app.Notification.VISIBILITY_SECRET
+                setSound(null, null)        // overlay path এ ring code এ বাজে
+                enableVibration(false)      // vibration ও code এ হয়
+                setShowBadge(true)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             }
             nm.createNotificationChannel(ch)
         }
 
-        val title = if (callType == "video") "Incoming Video Call" else "Incoming Voice Call"
+        // ── Answer intent ────────────────────────────────────────────────────
+        val answerIntent = Intent(this, RasGramActivity::class.java).apply {
+            action = "ACTION_INCOMING_CALL"
+            putExtra("callId",       callId)
+            putExtra("callerMobile", callerMobile)
+            putExtra("callerName",   callerName)
+            putExtra("callType",     callType)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+        val answerPending = PendingIntent.getActivity(
+            this, 10, answerIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // ── Decline intent ───────────────────────────────────────────────────
+        val declineIntent = Intent(this, DeclineCallReceiver::class.java).apply {
+            putExtra("callId", callId)
+        }
+        val declinePending = PendingIntent.getBroadcast(
+            this, 11, declineIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val title = if (callType == "video") "📹 Incoming Video Call" else "📞 Incoming Voice Call"
         val notif = NotificationCompat.Builder(this, OVERLAY_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_menu_call)
             .setContentTitle(title)
-            .setContentText(callerName)
-            .setPriority(NotificationCompat.PRIORITY_MIN)
-            .setVisibility(NotificationCompat.VISIBILITY_SECRET)
+            .setContentText("$callerName · $callerMobile")
+            .setSubText("RasGram")
+            .setContentIntent(answerPending)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .addAction(android.R.drawable.ic_menu_call, "Answer",  answerPending)
+            .addAction(android.R.drawable.ic_delete,    "Decline", declinePending)
             .setOngoing(true)
-            .setShowWhen(false)
+            .setShowWhen(true)
+            .setAutoCancel(false)
             .build()
 
         startForeground(OVERLAY_NOTIF_ID, notif)
@@ -263,6 +320,34 @@ class IncomingCallOverlayService : Service(),
             "RasGram:IncomingCallOverlay"
         )
         wakeLock?.acquire(65_000L)
+    }
+
+    // ── AudioFocus: ring শোনার জন্য অপরিহার্য ────────────────────────────────
+    // AudioFocus না নিলে Android অনেক সময় ringtone কে silent করে দেয়।
+    @Suppress("DEPRECATION")
+    private fun requestAudioFocus() {
+        audioManager?.apply {
+            mode = AudioManager.MODE_RINGTONE
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                requestAudioFocus(
+                    android.media.AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
+                        .setAudioAttributes(
+                            android.media.AudioAttributes.Builder()
+                                .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
+                                .build()
+                        )
+                        .setWillPauseWhenDucked(true)
+                        .build()
+                )
+            } else {
+                requestAudioFocus(null, AudioManager.STREAM_RING, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
+            }
+            // Ring বাজার জন্য stream volume ঠিক করো
+            val vol = getStreamMaxVolume(AudioManager.STREAM_RING)
+            setStreamVolume(AudioManager.STREAM_RING, vol, 0)
+            isSpeakerphoneOn = false  // earpiece/speaker system default ব্যবহার করবে
+        }
     }
 
     // ── Ring + vibrate ────────────────────────────────────────────────────────
@@ -291,6 +376,9 @@ class IncomingCallOverlayService : Service(),
     private fun stopRinging() {
         try { ringtone?.stop() } catch (_: Exception) {}
         try { vibrator?.cancel() } catch (_: Exception) {}
+        try {
+            audioManager?.mode = AudioManager.MODE_NORMAL
+        } catch (_: Exception) {}
     }
 
     // ── Window overlay card (screen on + unlocked) ────────────────────────────
@@ -308,8 +396,6 @@ class IncomingCallOverlayService : Service(),
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             layoutFlag,
-            // FLAG_NOT_FOCUSABLE সরানো হয়েছে → overlay এ touch কাজ করবে
-            // FLAG_KEEP_SCREEN_ON রাখা হয়েছে
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
             WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
             WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON,
@@ -365,10 +451,11 @@ class IncomingCallOverlayService : Service(),
     }
 
     private fun missedCall(callId: String) {
-        stopRinging()
         serviceScope.launch {
-            FirebaseFirestore.getInstance().collection("calls").document(callId)
-                .update("status", "missed")
+            try {
+                FirebaseFirestore.getInstance().collection("calls").document(callId)
+                    .update("status", "missed")
+            } catch (_: Exception) {}
         }
     }
 

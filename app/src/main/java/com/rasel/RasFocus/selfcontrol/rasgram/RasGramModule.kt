@@ -4878,16 +4878,52 @@ fun IncomingCallScreen(
     val db = remember { FirebaseFirestore.getInstance() }
     val scope = rememberCoroutineScope()
 
-    // Ring বাজানো IncomingCallOverlayService এর দায়িত্ব।
-    // Screen off/locked → service চালু → ring করে → Activity launch করে।
-    // Activity খুললেই service stop হয় (RasGramActivity.stopOverlayService)।
-    // তাই IncomingCallScreen এখানে নিজে আর ring করে না — double ring বন্ধ।
+    // ── Ring management ──────────────────────────────────────────────────────
+    // দুটো path:
+    //   A) App BACKGROUND: IncomingCallOverlayService ring করে।
+    //      Activity/screen খুললে service stop → onDestroy → ring বন্ধ।
+    //      এই path এ IncomingCallScreen নিজে ring করলে double ring হবে।
+    //      তাই: IncomingCallOverlayService.isRunning check করে ring এড়াব।
     //
-    // Fallback (overlay permission নেই): RasgramMessagingService CALL_CHANNEL
-    // notification এ ringtone সেট আছে — সেটাই বাজে, এখানেও দরকার নেই।
+    //   B) App FOREGROUND (Firestore listener trigger):
+    //      IncomingCallOverlayService চলছে না।
+    //      IncomingCallScreen কে নিজেই ring বাজাতে হবে।
+    //
+    // উপসংহার: isRunning=false হলেই ring বাজাব।
 
-    // helper — callback চালাও
-    fun stopAndCall(action: () -> Unit) { action() }
+    val ringtoneRef = remember { mutableStateOf<android.media.Ringtone?>(null) }
+
+    // Ring start + cleanup
+    DisposableEffect(callId) {
+        if (!IncomingCallOverlayService.isRunning) {
+            // Foreground path: নিজেই ring বাজাও
+            try {
+                val am = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+                am.mode = android.media.AudioManager.MODE_RINGTONE
+                val vol = am.getStreamMaxVolume(android.media.AudioManager.STREAM_RING)
+                if (vol > 0) am.setStreamVolume(android.media.AudioManager.STREAM_RING, vol, 0)
+
+                val uri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_RINGTONE)
+                val rt = android.media.RingtoneManager.getRingtone(context, uri)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) rt?.isLooping = true
+                rt?.play()
+                ringtoneRef.value = rt
+            } catch (_: Exception) {}
+        }
+        onDispose {
+            try {
+                ringtoneRef.value?.stop()
+                ringtoneRef.value = null
+                val am = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+                am.mode = android.media.AudioManager.MODE_NORMAL
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun stopRingAndCall(action: () -> Unit) {
+        try { ringtoneRef.value?.stop(); ringtoneRef.value = null } catch (_: Exception) {}
+        action()
+    }
 
     // Ringing animation
     val infiniteTransition = rememberInfiniteTransition(label = "ring")
@@ -5004,7 +5040,7 @@ fun IncomingCallScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     FloatingActionButton(
                         onClick = {
-                            stopAndCall {
+                            stopRingAndCall {
                                 scope.launch {
                                     db.collection("calls").document(callId).update("status", "rejected")
                                 }
@@ -5029,7 +5065,7 @@ fun IncomingCallScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     FloatingActionButton(
                         onClick = {
-                            stopAndCall {
+                            stopRingAndCall {
                                 scope.launch {
                                     db.collection("calls").document(callId).update("status", "answered")
                                 }
