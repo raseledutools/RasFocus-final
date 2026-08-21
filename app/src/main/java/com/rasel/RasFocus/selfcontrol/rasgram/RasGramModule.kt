@@ -4727,9 +4727,11 @@ fun CallingScreen(
                                 scope.launch {
                                     val durationSecs = callSeconds
                                     if (callId.isNotEmpty()) {
-                                        // Firestore এ duration save
+                                        // Not connected = caller cancelled before pickup → "missed"
+                                        // Connected = normal end → "ended"
+                                        val finalStatus = if (isConnected) "ended" else "missed"
                                         db.collection("calls").document(callId).update(
-                                            "status", "ended",
+                                            "status", finalStatus,
                                             "duration", durationSecs
                                         )
                                         // Chat এ call log bubble
@@ -4945,7 +4947,8 @@ fun IncomingCallScreen(
     LaunchedEffect(callId) {
         db.collection("calls").document(callId).addSnapshotListener { snap, _ ->
             val status = snap?.getString("status") ?: return@addSnapshotListener
-            if (status == "ended" || status == "rejected" || status == "missed") {
+            if (status == "ended" || status == "rejected" ||
+                    status == "missed" || status == "cancelled" || status == "declined") {
                 onDecline()
             }
         }

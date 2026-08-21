@@ -79,6 +79,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.launch
 
 /**
@@ -124,6 +125,7 @@ class IncomingCallOverlayService : Service(),
     private var wakeLock: PowerManager.WakeLock? = null
     private var audioManager: AudioManager? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var activeListenerRegistration: ListenerRegistration? = null
 
     companion object {
         const val EXTRA_CALL_ID       = "callId"
@@ -219,7 +221,19 @@ class IncomingCallOverlayService : Service(),
             }
         }
 
-        // ── 5) 60s auto-dismiss ──────────────────────────────────────────────
+        // ── 5) Firestore listener — caller কল কাটলে ring বন্ধ করো ────────────
+        // Caller end করলে status "ended"/"missed"/"cancelled" হবে।
+        // এই listener না থাকলে callee এর phone 60s ধরে ring করতে থাকে।
+        val callRef = FirebaseFirestore.getInstance().collection("calls").document(callId)
+        activeListenerRegistration = callRef.addSnapshotListener { snap, _ ->
+            val status = snap?.getString("status") ?: return@addSnapshotListener
+            if (status == "ended" || status == "missed" ||
+                status == "cancelled" || status == "declined" || status == "rejected") {
+                stopSelf()
+            }
+        }
+
+        // ── 6) 60s auto-dismiss ──────────────────────────────────────────────
         serviceScope.launch {
             kotlinx.coroutines.delay(60_000L)
             if (isRunning && activeCallId == callId) {
@@ -477,6 +491,8 @@ class IncomingCallOverlayService : Service(),
     override fun onDestroy() {
         isRunning    = false
         activeCallId = ""
+        activeListenerRegistration?.remove()
+        activeListenerRegistration = null
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
