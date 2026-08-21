@@ -30,8 +30,11 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -92,8 +95,9 @@ enum class PickerSlot { CLOCK, BTN_LEFT, BTN_RIGHT, NONE }
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 fun MinimalistLauncherScreen(navController: NavController? = null) {
-    val context = LocalContext.current
-    val prefs   = remember { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
+    val context  = LocalContext.current
+    val prefs    = remember { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
+    val keyboard = LocalSoftwareKeyboardController.current
 
     var showSidebar   by rememberSaveable { mutableStateOf(false) }
     var showSettings  by rememberSaveable { mutableStateOf(false) }
@@ -101,7 +105,24 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
     var pickerSlot    by remember { mutableStateOf(PickerSlot.NONE) }
     var query         by rememberSaveable { mutableStateOf("") }
 
-    var pinnedPkgs by remember { mutableStateOf(prefs.getStringSet(KEY_PINNED, setOf())!!.toMutableList()) }
+    // Hide keyboard when sidebar closes
+    LaunchedEffect(showSidebar) {
+        if (!showSidebar) keyboard?.hide()
+    }
+
+    // Load pinned apps in saved order (pinned_order string preserves sequence; fall back to Set)
+    var pinnedPkgs by remember {
+        mutableStateOf(
+            run {
+                val orderStr = prefs.getString("pinned_order", "")
+                if (!orderStr.isNullOrBlank()) {
+                    orderStr.split(",").filter { it.isNotBlank() }.toMutableList()
+                } else {
+                    prefs.getStringSet(KEY_PINNED, setOf())!!.toMutableList()
+                }
+            }
+        )
+    }
     var hiddenPkgs by remember { mutableStateOf(prefs.getStringSet(KEY_HIDDEN, setOf())!!) }
     var renamedMap by remember { mutableStateOf(loadRenamedMap(prefs)) }
     var themeIdx   by rememberSaveable { mutableStateOf(prefs.getInt(KEY_THEME, 0)) }
@@ -212,9 +233,11 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                                 drag = false
                                 val absX = abs(totalX); val absY = abs(totalY)
                                 if (absX > absY) {
+                                    // Horizontal swipe: left → open sidebar
                                     if (totalX < -80f) showSidebar = true
                                 } else {
-                                    if (totalY < -80f) showSidebar = true
+                                    // Vertical swipe: only swipe down → notifications
+                                    // (swipe up no longer opens sidebar)
                                     if (totalY > 80f) {
                                         try {
                                             val sb = context.getSystemService("statusbar")
@@ -249,7 +272,16 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
             onSettings     = { showSettings = true },
             onLongPressClockRing   = { pickerSlot = PickerSlot.CLOCK },
             onLongPressBtnLeft     = { pickerSlot = PickerSlot.BTN_LEFT },
-            onLongPressBtnRight    = { pickerSlot = PickerSlot.BTN_RIGHT }
+            onLongPressBtnRight    = { pickerSlot = PickerSlot.BTN_RIGHT },
+            onReorder = { reorderedApps ->
+                val newOrder = reorderedApps.map { it.packageName }.toMutableList()
+                pinnedPkgs = newOrder
+                // Save order in a comma-separated string to preserve sequence (Set loses order)
+                prefs.edit()
+                    .putStringSet(KEY_PINNED, newOrder.toSet())
+                    .putString("pinned_order", newOrder.joinToString(","))
+                    .apply()
+            }
         )
 
         // ═══════════════════════════════════════════════════════
@@ -414,9 +446,16 @@ fun HomeScreen(
     onSettings:           () -> Unit,
     onLongPressClockRing: () -> Unit,
     onLongPressBtnLeft:   () -> Unit,
-    onLongPressBtnRight:  () -> Unit
+    onLongPressBtnRight:  () -> Unit,
+    onReorder:            (List<AppInfo>) -> Unit = {}
 ) {
-    // Use WindowInsets for Android 10 nav bar height
+    // Drag-reorder state
+    var draggingIndex by remember { mutableStateOf<Int?>(null) }
+    var dragTargetIndex by remember { mutableStateOf<Int?>(null) }
+    // Local mutable copy for live drag preview
+    var localOrder by remember(pinnedApps) { mutableStateOf(pinnedApps.toMutableList()) }
+    LaunchedEffect(pinnedApps) { localOrder = pinnedApps.toMutableList() }
+
     Box(
         Modifier
             .fillMaxSize()
@@ -424,15 +463,17 @@ fun HomeScreen(
             .navigationBarsPadding()
     ) {
         // ── Main scrollable content ──────────────────────────────────────
+        val scrollState = rememberScrollState()
         Column(
             Modifier
                 .fillMaxSize()
+                .verticalScroll(scrollState)
                 .padding(horizontal = 24.dp)
-                .padding(bottom = 80.dp)   // leave room for bottom buttons
+                .padding(bottom = 96.dp)   // leave room for bottom buttons
         ) {
             Spacer(Modifier.height(48.dp))
 
-            // ── Battery ring clock — tap to launch, long press to assign ────
+            // ── Battery ring clock ────────────────────────────────────────
             ClockWithBatteryRing(
                 time       = timeState.first,
                 date       = timeState.second,
@@ -443,7 +484,6 @@ fun HomeScreen(
                     if (clockPkg.isNotBlank()) {
                         launchApp(context, clockPkg)
                     } else {
-                        // কোনো app assign নেই — picker খোলো
                         onLongPressClockRing()
                     }
                 }
@@ -451,8 +491,8 @@ fun HomeScreen(
 
             Spacer(Modifier.height(44.dp))
 
-            // ── Pinned apps list ──────────────────────────────────────────
-            if (pinnedApps.isEmpty()) {
+            // ── Pinned apps list — scrollable + drag reorder ──────────────
+            if (localOrder.isEmpty()) {
                 Text(
                     "Long press the ring or buttons below to assign apps",
                     color    = TXT.copy(alpha = 0.2f),
@@ -461,26 +501,160 @@ fun HomeScreen(
                     modifier = Modifier.padding(vertical = 12.dp)
                 )
             } else {
-                pinnedApps.forEach { app ->
-                    Text(
-                        text       = renamedMap[app.packageName] ?: app.label,
-                        color      = if (app.isBlocked) RED.copy(alpha = 0.7f) else TXT,
-                        fontSize   = appFontSize,
-                        fontWeight = FontWeight.Light,
-                        modifier   = Modifier
+                localOrder.forEachIndexed { index, app ->
+                    val isDragging = draggingIndex == index
+                    val isDragTarget = dragTargetIndex == index && draggingIndex != null && draggingIndex != index
+
+                    Row(
+                        modifier = Modifier
                             .fillMaxWidth()
-                            .combinedClickable(
-                                onClick     = { onLaunch(app) },
-                                onLongClick = { onLongPress(app) }
+                            .then(
+                                if (isDragTarget)
+                                    Modifier.drawBehind {
+                                        drawRect(
+                                            color = ACCENT.copy(alpha = 0.12f),
+                                            size  = size
+                                        )
+                                    }
+                                else Modifier
                             )
-                            .padding(vertical = 12.dp)
-                    )
+                            .combinedClickable(
+                                onClick = {
+                                    if (draggingIndex == null) onLaunch(app)
+                                },
+                                onLongClick = {
+                                    // Long press: start drag mode
+                                    draggingIndex = index
+                                    dragTargetIndex = index
+                                }
+                            )
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Drag handle — only visible in drag mode
+                        if (draggingIndex != null) {
+                            Icon(
+                                Icons.Default.DragHandle,
+                                null,
+                                tint = if (isDragging) ACCENT else TXT.copy(alpha = 0.3f),
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .pointerInput(index) {
+                                        detectDragGestures(
+                                            onDragStart = { draggingIndex = index; dragTargetIndex = index },
+                                            onDragEnd = {
+                                                val from = draggingIndex
+                                                val to   = dragTargetIndex
+                                                if (from != null && to != null && from != to) {
+                                                    val newList = localOrder.toMutableList()
+                                                    val item = newList.removeAt(from)
+                                                    newList.add(to, item)
+                                                    localOrder = newList
+                                                    onReorder(newList)
+                                                }
+                                                draggingIndex  = null
+                                                dragTargetIndex = null
+                                            },
+                                            onDragCancel = {
+                                                draggingIndex  = null
+                                                dragTargetIndex = null
+                                            },
+                                            onDrag = { change, dragAmount ->
+                                                change.consume()
+                                                // Each ~52dp row = 52 * density px
+                                                val rowHeightPx = 52.dp.toPx()
+                                                val currentFrom = draggingIndex ?: return@detectDragGestures
+                                                val currentTarget = dragTargetIndex ?: currentFrom
+                                                // How many rows did we move?
+                                                val steps = (dragAmount.y / rowHeightPx).let {
+                                                    when {
+                                                        it > 0.5f  ->  1
+                                                        it < -0.5f -> -1
+                                                        else       ->  0
+                                                    }
+                                                }
+                                                if (steps != 0) {
+                                                    val next = (currentTarget + steps).coerceIn(0, localOrder.size - 1)
+                                                    dragTargetIndex = next
+                                                }
+                                            }
+                                        )
+                                    }
+                            )
+                            Spacer(Modifier.width(10.dp))
+                        }
+
+                        Text(
+                            text       = renamedMap[app.packageName] ?: app.label,
+                            color      = when {
+                                isDragging -> ACCENT
+                                app.isBlocked -> RED.copy(alpha = 0.7f)
+                                else -> TXT
+                            },
+                            fontSize   = appFontSize,
+                            fontWeight = FontWeight.Light,
+                            modifier   = Modifier.weight(1f)
+                        )
+
+                        // Context menu button in drag mode (exit drag mode)
+                        if (draggingIndex != null) {
+                            if (isDragging) {
+                                Icon(
+                                    Icons.Default.Check, null,
+                                    tint = ACCENT,
+                                    modifier = Modifier
+                                        .size(18.dp)
+                                        .clickable {
+                                            val from = draggingIndex
+                                            val to   = dragTargetIndex
+                                            if (from != null && to != null && from != to) {
+                                                val newList = localOrder.toMutableList()
+                                                val item = newList.removeAt(from)
+                                                newList.add(to, item)
+                                                localOrder = newList
+                                                onReorder(newList)
+                                            }
+                                            draggingIndex  = null
+                                            dragTargetIndex = null
+                                        }
+                                )
+                            }
+                        }
+                    }
+
+                    // Thin divider between items when dragging
+                    if (draggingIndex != null && index < localOrder.size - 1) {
+                        HorizontalDivider(color = DIVIDER.copy(alpha = 0.5f), thickness = 0.5.dp)
+                    }
+                }
+
+                // Done button to exit drag mode
+                if (draggingIndex != null) {
+                    Spacer(Modifier.height(16.dp))
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(ACCENT.copy(alpha = 0.15f))
+                            .clickable {
+                                draggingIndex  = null
+                                dragTargetIndex = null
+                            }
+                            .padding(vertical = 12.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment     = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Check, null, tint = ACCENT, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Done Reordering", color = ACCENT, fontSize = 14.sp)
+                    }
                 }
             }
+
+            Spacer(Modifier.height(16.dp))
         }
 
-        // ── Bottom two buttons — sits just above navigation bar ──────────
-        // These buttons support tap (launch) + long press (assign app)
+        // ── Bottom two buttons ───────────────────────────────────────────
         BottomButtonBar(
             btnLeftPkg   = btnLeftPkg,
             btnRightPkg  = btnRightPkg,
@@ -734,6 +908,14 @@ fun SidebarContent(
 ) {
     val context    = LocalContext.current
     var contextApp by remember { mutableStateOf<AppInfo?>(null) }
+    val searchFocus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+
+    // Auto-focus search bar when sidebar opens
+    LaunchedEffect(Unit) {
+        delay(300) // wait for slide-in animation
+        try { searchFocus.requestFocus(); keyboard?.show() } catch (_: Exception) {}
+    }
 
     // Filter: if query has content, show matching apps; empty shows all
     val filtered = remember(query, allApps) {
@@ -801,7 +983,9 @@ fun SidebarContent(
                         inner()
                     }
                 },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .weight(1f)
+                    .focusRequester(searchFocus)
             )
             if (query.isNotBlank()) {
                 Spacer(Modifier.width(8.dp))
