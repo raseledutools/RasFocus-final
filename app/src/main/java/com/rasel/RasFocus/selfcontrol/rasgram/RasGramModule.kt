@@ -2507,14 +2507,14 @@ fun ChatInputBar(
 ) {
     Surface(modifier = Modifier.fillMaxWidth(), color = RasGramTheme.DarkBackground) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.Bottom
         ) {
             if (isRecording) {
                 // Recording UI
                 Surface(
-                    modifier = Modifier.weight(1f).height(48.dp),
-                    shape = RoundedCornerShape(24.dp),
+                    modifier = Modifier.weight(1f).height(44.dp),
+                    shape = RoundedCornerShape(22.dp),
                     color = RasGramTheme.InputBg
                 ) {
                     Row(
@@ -2527,7 +2527,7 @@ fun ChatInputBar(
                             formatTime(recordingSeconds),
                             color = RasGramTheme.Red,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
+                            fontSize = 14.sp
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text("< Slide to cancel", color = RasGramTheme.TextMuted, style = MaterialTheme.typography.bodySmall)
@@ -2536,46 +2536,65 @@ fun ChatInputBar(
                 Spacer(modifier = Modifier.width(8.dp))
                 FloatingActionButton(
                     onClick = onMicRelease,
-                    modifier = Modifier.size(48.dp),
+                    modifier = Modifier.size(44.dp),
                     containerColor = RasGramTheme.Green,
                     elevation = FloatingActionButtonDefaults.elevation(2.dp)
                 ) {
-                    Icon(Icons.Default.Send, null, tint = Color.White, modifier = Modifier.size(22.dp))
+                    Icon(Icons.Default.Send, null, tint = Color.White, modifier = Modifier.size(20.dp))
                 }
             } else {
                 // Emoji + Attach
                 Surface(
                     modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(24.dp),
+                    shape = RoundedCornerShape(22.dp),
                     color = RasGramTheme.InputBg
                 ) {
                     Row(verticalAlignment = Alignment.Bottom) {
-                        IconButton(onClick = { /* emoji picker */ }) {
-                            Icon(Icons.Default.EmojiEmotions, null, tint = RasGramTheme.TextMuted)
+                        // Emoji icon — ছোট করা
+                        Box(
+                            modifier = Modifier.size(44.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.EmojiEmotions, null,
+                                tint = RasGramTheme.TextMuted,
+                                modifier = Modifier.size(22.dp))
                         }
                         OutlinedTextField(
                             value = inputText,
                             onValueChange = onTextChange,
-                            modifier = Modifier.weight(1f).heightIn(min = 48.dp, max = 140.dp),
-                            placeholder = { Text("Message", color = RasGramTheme.TextMuted) },
-                            maxLines = 6,
+                            // WhatsApp: single line by default, max 4 lines যাতে last message hide না হয়
+                            modifier = Modifier.weight(1f).heightIn(min = 44.dp, max = 96.dp),
+                            placeholder = { Text("Message", color = RasGramTheme.TextMuted, fontSize = 15.sp) },
+                            maxLines = 4,
+                            textStyle = androidx.compose.ui.text.TextStyle(
+                                fontSize = 15.sp,
+                                color = RasGramTheme.TextPrimary
+                            ),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = Color.Transparent,
                                 unfocusedBorderColor = Color.Transparent,
                                 focusedTextColor = RasGramTheme.TextPrimary,
                                 unfocusedTextColor = RasGramTheme.TextPrimary,
-                                cursorColor = RasGramTheme.Green
+                                cursorColor = RasGramTheme.Green,
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent
                             ),
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                             keyboardActions = KeyboardActions(onSend = { onSend() })
                         )
-                        IconButton(onClick = onAttachClick) {
-                            Icon(Icons.Default.AttachFile, null, tint = RasGramTheme.TextMuted)
+                        // Attach icon — ছোট করা
+                        Box(
+                            modifier = Modifier.size(44.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.AttachFile, null,
+                                tint = RasGramTheme.TextMuted,
+                                modifier = Modifier.size(22.dp).clickable { onAttachClick() })
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(6.dp))
 
                 AnimatedContent(
                     targetState = inputText.isNotEmpty(),
@@ -2584,7 +2603,7 @@ fun ChatInputBar(
                 ) { hasText ->
                     FloatingActionButton(
                         onClick = if (hasText) onSend else onMicPress,
-                        modifier = Modifier.size(48.dp),
+                        modifier = Modifier.size(44.dp),
                         containerColor = RasGramTheme.Green,
                         elevation = FloatingActionButtonDefaults.elevation(2.dp)
                     ) {
@@ -2592,7 +2611,7 @@ fun ChatInputBar(
                             if (hasText) Icons.Default.Send else Icons.Default.Mic,
                             null,
                             tint = Color.White,
-                            modifier = Modifier.size(22.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
