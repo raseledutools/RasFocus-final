@@ -2222,6 +2222,8 @@ fun ChatArea(
 
     Column(modifier = Modifier.fillMaxSize().background(RasGramTheme.DarkBackground).statusBarsPadding().navigationBarsPadding().imePadding()) {
         // Header
+        if (selectedMessages.isNotEmpty()) {
+            SelectionHeader(
                 count = selectedMessages.size,
                 onClose = { selectedMessages = emptySet() },
                 onDelete = {
@@ -6157,6 +6159,8 @@ fun GroupChatArea(
     BackHandler(enabled = selectedMessages.isNotEmpty()) { selectedMessages = emptySet() }
 
     Column(modifier = Modifier.fillMaxSize().background(RasGramTheme.DarkBackground).statusBarsPadding().navigationBarsPadding().imePadding()) {
+        if (selectedMessages.isNotEmpty()) {
+            SelectionHeader(
                 count = selectedMessages.size,
                 onClose = { selectedMessages = emptySet() },
                 onDelete = {
