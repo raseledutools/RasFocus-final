@@ -190,6 +190,10 @@ class IncomingCallOverlayService : Service(),
     }
 
     // ── Foreground notification ─────────────────────────────────────────────
+    // IMPORTANCE_MIN + VISIBILITY_SECRET → notification shade এ দেখাবে না,
+    // ring করবে না, badge দেখাবে না।
+    // Overlay card নিজেই সব দেখায় — এই notification শুধু Android foreground
+    // service requirement পূরণ করার জন্য (required, remove করা যাবে না)।
     private fun startForegroundWithNotification(
         callerName: String,
         callType: String,
@@ -200,9 +204,14 @@ class IncomingCallOverlayService : Service(),
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val ch = NotificationChannel(
                 OVERLAY_CHANNEL_ID,
-                "Active Call",
-                NotificationManager.IMPORTANCE_LOW  // silent — overlay already shows full UI
-            )
+                "Call Overlay Service",
+                NotificationManager.IMPORTANCE_MIN   // shade এ দেখাবে না
+            ).apply {
+                setSound(null, null)
+                enableVibration(false)
+                setShowBadge(false)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_SECRET
+            }
             nm.createNotificationChannel(ch)
         }
 
@@ -211,8 +220,10 @@ class IncomingCallOverlayService : Service(),
             .setSmallIcon(android.R.drawable.ic_menu_call)
             .setContentTitle(title)
             .setContentText(callerName)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setVisibility(NotificationCompat.VISIBILITY_SECRET)
             .setOngoing(true)
+            .setShowWhen(false)
             .build()
 
         startForeground(OVERLAY_NOTIF_ID, notif)
@@ -380,6 +391,12 @@ class IncomingCallOverlayService : Service(),
         } catch (_: Exception) {}
         serviceScope.cancel()
         stopForeground(STOP_FOREGROUND_REMOVE)
+        // RasgramMessagingService যে silent anchor notification (9999) post করেছিল
+        // সেটাও cancel করো — overlay dismiss হলে shade থেকে সরাতে হবে
+        try {
+            (getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager)
+                .cancel(RasgramMessagingService.CALL_NOTIFICATION_ID)
+        } catch (_: Exception) {}
         super.onDestroy()
     }
 
