@@ -962,7 +962,19 @@
         </intent-filter>
     </service>
 
+
+    <!-- RasGram — WhatsApp-style incoming call overlay service
+         Starts a foreground service that renders a ComposeView via WindowManager.
+         TYPE_APPLICATION_OVERLAY lets the card float over any app or lock screen.
+         foregroundServiceType="phoneCall" required on Android 14+ for overlay
+         services that handle calls. -->
+    <service
+        android:name=".selfcontrol.rasgram.IncomingCallOverlayService"
+        android:exported="false"
+        android:foregroundServiceType="phoneCall" />
+
     </application>
 
 </manifest>
+
 
