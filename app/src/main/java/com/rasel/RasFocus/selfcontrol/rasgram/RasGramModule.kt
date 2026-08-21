@@ -2218,26 +2218,6 @@ fun ChatArea(
             )
         }
 
-        // Call buttons
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.End
-        ) {
-            IconButton(
-                onClick = { onCallClick("video") },
-                modifier = Modifier.background(RasGramTheme.DarkPanel, CircleShape)
-            ) {
-                Icon(Icons.Default.VideoCall, "Video Call", tint = RasGramTheme.Green)
-            }
-            Spacer(modifier = Modifier.width(8.dp))
-            IconButton(
-                onClick = { onCallClick("audio") },
-                modifier = Modifier.background(RasGramTheme.DarkPanel, CircleShape)
-            ) {
-                Icon(Icons.Default.Call, "Voice Call", tint = RasGramTheme.Green)
-            }
-        }
-
         // Input area
         ChatInputBar(
             inputText = inputText,
@@ -2397,6 +2377,15 @@ fun ChatHeader(
                         fontSize = 11.sp
                     )
                 }
+            }
+
+            // Video call button in header
+            IconButton(onClick = { onCallClick("video") }) {
+                Icon(Icons.Default.Videocam, "Video Call", tint = RasGramTheme.TextMuted)
+            }
+            // Audio call button in header
+            IconButton(onClick = { onCallClick("audio") }) {
+                Icon(Icons.Default.Call, "Voice Call", tint = RasGramTheme.TextMuted)
             }
 
             Box {
