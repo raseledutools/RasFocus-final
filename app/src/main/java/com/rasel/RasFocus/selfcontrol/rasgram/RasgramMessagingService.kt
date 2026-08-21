@@ -1,6 +1,5 @@
 package com.rasel.RasFocus.selfcontrol.rasgram
 
-import android.app.ActivityManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -96,23 +95,15 @@ class RasgramMessagingService : FirebaseMessagingService() {
     }
 
     // ── App foreground check ──────────────────────────────────────────────────
-    // Android 11+ এ runningAppProcesses অনেক সময় empty বা restricted।
-    // তাই ActivityManager.AppTask check করা হচ্ছে যেটা আরো reliable।
-    // IMPORTANCE_FOREGROUND (100) বা IMPORTANCE_FOREGROUND_SERVICE (125) —
-    // দুটোই মানে app visible/active।
-    private fun isAppForeground(): Boolean {
-        val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        val pkgName = packageName
-
-        // Method 1: AppTasks — app এর recent task list এ আছে কিনা এবং foreground কিনা
-        // এটা Android 11+ এ বেশি reliable
-        val processes = am.runningAppProcesses ?: return false
-        return processes.any { proc ->
-            proc.pkgList.contains(pkgName) &&
-            (proc.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND ||
-             proc.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE)
-        }
-    }
+    // runningAppProcesses Android 11+ এ broken — FCM নিজেই process জ্বালায়,
+    // তাই IMPORTANCE_FOREGROUND_SERVICE দেখায়, কিন্তু UI visible না।
+    // এই bug এর কারণে app killed থাকলেও isAppForeground() → true হতো,
+    // ফলে call notification / ring কিছুই আসত না।
+    //
+    // Fix: RasGramActivity.isVisible static flag ব্যবহার করো।
+    //   onResume → true, onStop → false।
+    //   App killed বা background হলে এটা সবসময় false থাকবে।
+    private fun isAppForeground(): Boolean = RasGramActivity.isVisible
 
     // ── Full-screen notification: overlay নেই path ───────────────────────────
     // Lock screen এ full page দেখাবে + Answer/Decline button।

@@ -19,6 +19,23 @@ class RasGramActivity : ComponentActivity() {
     var isIncomingCall: Boolean       = false
     var openChatWith: String?         = null   // notification tap → direct chat open
 
+    companion object {
+        // RasgramMessagingService এই flag দেখে foreground check করে।
+        // onResume → true, onStop → false।
+        // এটাই একমাত্র reliable way — runningAppProcesses Android 11+ এ broken।
+        @Volatile var isVisible: Boolean = false
+    }
+
+    override fun onResume() {
+        super.onResume()
+        isVisible = true
+    }
+
+    override fun onStop() {
+        super.onStop()
+        isVisible = false
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
