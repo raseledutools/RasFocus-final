@@ -337,10 +337,10 @@ fun RasGramApp(
     // Logged-out users: splash দেখাবে না — সরাসরি login screen।
     var showSplash by remember { mutableStateOf(initialUser != null) }
 
-    // Safety timeout: Firebase snapshot 2s এর মধ্যে না আসলে splash সরিয়ে দাও
+    // Safety timeout: Firebase 1.5s এর মধ্যে না আসলে splash জোর করে সরাও
     LaunchedEffect(showSplash) {
         if (showSplash) {
-            delay(2000L)
+            delay(1500L)
             showSplash = false
         }
     }
@@ -356,45 +356,64 @@ fun RasGramApp(
         primary = RasGramTheme.Green,
         secondary = RasGramTheme.GreenDark
     )) {
-        if (showSplash) {
-            RasGramSplashScreen()
-        } else if (!isLoggedIn || currentUser == null) {
-            OtpLoginScreen(
-                onLogin = { user ->
-                    prefs.edit()
-                        .putString(PREF_MOBILE, user.mobile)
-                        .putString(PREF_NAME_KEY, user.name)
-                        .putString(PREF_UID, user.uid)
-                        .putString(PREF_AVATAR, user.avatarUrl)
-                        .apply()
-                    currentUser = user
-                    isLoggedIn = true
+        // ── WhatsApp exact pattern ──────────────────────────────────────────────
+        // Splash + MainScreen একসাথে Box এ রাখো।
+        // MainScreen splash এর পেছনে compose হয়, Firebase load হতে থাকে।
+        // Firebase snapshot আসলে onSplashDone() → splash fade out → chat list ready।
+        // কোনো blank/empty screen দেখা যাবে না।
+        // ────────────────────────────────────────────────────────────────────────
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (!isLoggedIn || currentUser == null) {
+                // Login screen — splash নেই
+                OtpLoginScreen(
+                    onLogin = { user ->
+                        prefs.edit()
+                            .putString(PREF_MOBILE, user.mobile)
+                            .putString(PREF_NAME_KEY, user.name)
+                            .putString(PREF_UID, user.uid)
+                            .putString(PREF_AVATAR, user.avatarUrl)
+                            .apply()
+                        currentUser = user
+                        isLoggedIn = true
+                    }
+                )
+            } else {
+                // MainScreen সবসময় compose হয় — splash এর পেছনেও
+                // এতে Firebase load splash চলাকালীনই শুরু হয়
+                MainScreen(
+                    currentUser = currentUser!!,
+                    isDarkMode = isDarkMode,
+                    onToggleTheme = { isDarkMode = !isDarkMode },
+                    onSplashDone = { showSplash = false },
+                    onLogout = {
+                        prefs.edit().clear().apply()
+                        FirebaseAuth.getInstance().signOut()
+                        isLoggedIn = false
+                        currentUser = null
+                    },
+                    onUserUpdate = { updated ->
+                        currentUser = updated
+                        prefs.edit()
+                            .putString(PREF_NAME_KEY, updated.name)
+                            .putString(PREF_AVATAR, updated.avatarUrl)
+                            .apply()
+                    },
+                    incomingCallId = incomingCallId,
+                    incomingCallerMobile = incomingCallerMobile,
+                    incomingCallerName = incomingCallerName,
+                    incomingCallType = incomingCallType
+                )
+
+                // Splash — MainScreen এর উপরে overlay হিসেবে
+                // Firebase data আসলে fade out হয়, chat list ইতিমধ্যে ready
+                AnimatedVisibility(
+                    visible = showSplash,
+                    enter = EnterTransition.None,
+                    exit = fadeOut(animationSpec = tween(300))
+                ) {
+                    RasGramSplashScreen()
                 }
-            )
-        } else {
-            MainScreen(
-                currentUser = currentUser!!,
-                isDarkMode = isDarkMode,
-                onToggleTheme = { isDarkMode = !isDarkMode },
-                onSplashDone = { showSplash = false },
-                onLogout = {
-                    prefs.edit().clear().apply()
-                    FirebaseAuth.getInstance().signOut()
-                    isLoggedIn = false
-                    currentUser = null
-                },
-                onUserUpdate = { updated ->
-                    currentUser = updated
-                    prefs.edit()
-                        .putString(PREF_NAME_KEY, updated.name)
-                        .putString(PREF_AVATAR, updated.avatarUrl)
-                        .apply()
-                },
-                incomingCallId = incomingCallId,
-                incomingCallerMobile = incomingCallerMobile,
-                incomingCallerName = incomingCallerName,
-                incomingCallType = incomingCallType
-            )
+            }
         }
     }
 }
