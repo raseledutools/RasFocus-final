@@ -313,7 +313,8 @@ fun RasGramApp(
     incomingCallId: String? = null,
     incomingCallerMobile: String? = null,
     incomingCallerName: String? = null,
-    incomingCallType: String? = null
+    incomingCallType: String? = null,
+    openChatWithMobile: String? = null
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE) }
@@ -403,7 +404,8 @@ fun RasGramApp(
                     incomingCallId = incomingCallId,
                     incomingCallerMobile = incomingCallerMobile,
                     incomingCallerName = incomingCallerName,
-                    incomingCallType = incomingCallType
+                    incomingCallType = incomingCallType,
+                    openChatWithMobile = openChatWithMobile
                 )
 
                 // Splash — MainScreen এর উপরে overlay হিসেবে
@@ -1121,7 +1123,8 @@ fun MainScreen(
     incomingCallId: String? = null,
     incomingCallerMobile: String? = null,
     incomingCallerName: String? = null,
-    incomingCallType: String? = null
+    incomingCallType: String? = null,
+    openChatWithMobile: String? = null
 ) {
     val context = LocalContext.current
     val db = remember { FirebaseFirestore.getInstance() }
@@ -1180,6 +1183,33 @@ fun MainScreen(
     var selectedTab by remember { mutableIntStateOf(0) }
     var selectedContact by remember { mutableStateOf<User?>(null) }
     var selectedGroup by remember { mutableStateOf<Group?>(null) }
+
+    // Notification tap → directly open that chat
+    // openChatWithMobile = sender এর mobile number (FCM data এ ছিল)
+    // Firestore থেকে User fetch করে selectedContact set করো
+    LaunchedEffect(openChatWithMobile) {
+        val mobile = openChatWithMobile ?: return@LaunchedEffect
+        try {
+            val snap = FirebaseFirestore.getInstance()
+                .collection("chat_users")
+                .document(mobile)
+                .get()
+                .await()
+            if (snap.exists()) {
+                val user = User(
+                    uid       = snap.getString("uid")       ?: "",
+                    name      = snap.getString("name")      ?: mobile,
+                    mobile    = mobile,
+                    avatarUrl = snap.getString("avatarUrl") ?: "",
+                    about     = snap.getString("about")     ?: "",
+                    fcmToken  = snap.getString("fcmToken")  ?: ""
+                )
+                selectedContact = user
+                selectedGroup   = null
+                selectedTab     = 0   // Chats tab এ যাও
+            }
+        } catch (_: Exception) { }
+    }
     var showCallUI by remember { mutableStateOf(false) }
     var isReceiverCall by remember { mutableStateOf(false) }
     var acceptedCallId by remember { mutableStateOf("") }

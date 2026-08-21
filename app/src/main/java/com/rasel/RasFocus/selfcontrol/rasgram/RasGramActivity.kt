@@ -12,11 +12,12 @@ import com.rasel.RasFocus.ui.theme.RasFocusAppTheme
 
 class RasGramActivity : ComponentActivity() {
 
-    var incomingCallId: String?     = null
+    var incomingCallId: String?       = null
     var incomingCallerMobile: String? = null
-    var incomingCallerName: String?  = null
-    var incomingCallType: String?    = null
-    var isIncomingCall: Boolean      = false
+    var incomingCallerName: String?   = null
+    var incomingCallType: String?     = null
+    var isIncomingCall: Boolean       = false
+    var openChatWith: String?         = null   // notification tap → direct chat open
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -25,8 +26,6 @@ class RasGramActivity : ComponentActivity() {
 
         if (isIncomingCall) {
             enableLockScreenDisplay()
-            // IncomingCallOverlayService চালু থাকলে stop করো —
-            // Activity এখন full page দেখাচ্ছে, overlay বা ring দরকার নেই
             stopOverlayService()
         }
 
@@ -36,7 +35,8 @@ class RasGramActivity : ComponentActivity() {
                     incomingCallId       = if (isIncomingCall) incomingCallId       else null,
                     incomingCallerMobile = if (isIncomingCall) incomingCallerMobile else null,
                     incomingCallerName   = if (isIncomingCall) incomingCallerName   else null,
-                    incomingCallType     = if (isIncomingCall) incomingCallType     else null
+                    incomingCallType     = if (isIncomingCall) incomingCallType     else null,
+                    openChatWithMobile   = openChatWith
                 )
             }
         }
@@ -88,8 +88,11 @@ class RasGramActivity : ComponentActivity() {
             incomingCallerMobile = intent.getStringExtra("callerMobile")
             incomingCallerName   = intent.getStringExtra("callerName")
             incomingCallType     = intent.getStringExtra("callType") ?: "audio"
+            openChatWith         = null
         } else {
             isIncomingCall = false
+            // Message notification tap → direct chat open
+            openChatWith = intent?.getStringExtra("openChatWith")
         }
     }
 }
