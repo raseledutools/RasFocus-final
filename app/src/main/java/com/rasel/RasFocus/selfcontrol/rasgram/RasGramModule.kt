@@ -2220,10 +2220,8 @@ fun ChatArea(
         selectedMessages = emptySet()
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(RasGramTheme.DarkBackground).navigationBarsPadding().imePadding()) {
+    Column(modifier = Modifier.fillMaxSize().background(RasGramTheme.DarkBackground).statusBarsPadding().navigationBarsPadding().imePadding()) {
         // Header
-        if (selectedMessages.isNotEmpty()) {
-            SelectionHeader(
                 count = selectedMessages.size,
                 onClose = { selectedMessages = emptySet() },
                 onDelete = {
@@ -2523,11 +2521,14 @@ fun ChatHeader(
     val isOnline = contact.lastActive > System.currentTimeMillis() - ONLINE_THRESHOLD_MS
     var showMenu by remember { mutableStateOf(false) }
 
-    Surface(modifier = Modifier.fillMaxWidth(), color = RasGramTheme.DarkPanel) {
+    Surface(modifier = Modifier.fillMaxWidth(), color = RasGramTheme.DarkPanel, shadowElevation = 2.dp) {
         Column {
-            // Top row: back + avatar/name + menu
+            // Single row: back + avatar/name + call icons + menu
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp).height(56.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp)
+                    .height(56.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (isCompact) {
@@ -2553,7 +2554,7 @@ fun ChatHeader(
                     }
                     Spacer(modifier = Modifier.width(10.dp))
                     Column {
-                        Text(contact.name, style = MaterialTheme.typography.bodyLarge, color = RasGramTheme.TextPrimary, fontWeight = FontWeight.SemiBold)
+                        Text(contact.name, style = MaterialTheme.typography.bodyLarge, color = RasGramTheme.TextPrimary, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(
                             when {
                                 contact.typingTo == currentUserMobile -> "typing..."
@@ -2565,6 +2566,15 @@ fun ChatHeader(
                             fontSize = 11.sp
                         )
                     }
+                }
+
+                // Video call icon
+                IconButton(onClick = { onCallClick("video") }) {
+                    Icon(Icons.Default.Videocam, "Video Call", tint = RasGramTheme.TextPrimary, modifier = Modifier.size(24.dp))
+                }
+                // Voice call icon
+                IconButton(onClick = { onCallClick("audio") }) {
+                    Icon(Icons.Default.Call, "Voice Call", tint = RasGramTheme.TextPrimary, modifier = Modifier.size(22.dp))
                 }
 
                 Box {
@@ -2586,48 +2596,6 @@ fun ChatHeader(
                             leadingIcon = { Icon(Icons.Default.Delete, null, tint = RasGramTheme.Red) },
                             onClick = { onClearChat(); showMenu = false }
                         )
-                    }
-                }
-            }
-
-            // Call buttons row — নিচে আলাদা bar
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(RasGramTheme.DarkPanel)
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Video call
-                Surface(
-                    onClick = { onCallClick("video") },
-                    shape = RoundedCornerShape(20.dp),
-                    color = RasGramTheme.Green.copy(alpha = 0.12f),
-                    modifier = Modifier.padding(end = 8.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(Icons.Default.Videocam, "Video Call", tint = RasGramTheme.Green, modifier = Modifier.size(18.dp))
-                        Text("Video", color = RasGramTheme.Green, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                    }
-                }
-                // Voice call
-                Surface(
-                    onClick = { onCallClick("audio") },
-                    shape = RoundedCornerShape(20.dp),
-                    color = RasGramTheme.Green.copy(alpha = 0.12f)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(Icons.Default.Call, "Voice Call", tint = RasGramTheme.Green, modifier = Modifier.size(18.dp))
-                        Text("Voice", color = RasGramTheme.Green, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                     }
                 }
             }
@@ -6188,9 +6156,7 @@ fun GroupChatArea(
 
     BackHandler(enabled = selectedMessages.isNotEmpty()) { selectedMessages = emptySet() }
 
-    Column(modifier = Modifier.fillMaxSize().background(RasGramTheme.DarkBackground).navigationBarsPadding().imePadding()) {
-        if (selectedMessages.isNotEmpty()) {
-            SelectionHeader(
+    Column(modifier = Modifier.fillMaxSize().background(RasGramTheme.DarkBackground).statusBarsPadding().navigationBarsPadding().imePadding()) {
                 count = selectedMessages.size,
                 onClose = { selectedMessages = emptySet() },
                 onDelete = {
