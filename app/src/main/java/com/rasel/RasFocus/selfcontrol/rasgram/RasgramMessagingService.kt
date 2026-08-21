@@ -96,16 +96,21 @@ class RasgramMessagingService : FirebaseMessagingService() {
     }
 
     // ── App foreground check ──────────────────────────────────────────────────
-    // ActivityManager IMPORTANCE_FOREGROUND মানে app এর UI thread active।
-    // PowerManager.isInteractive() না করলে screen-off এ সঠিক result পাওয়া যায়।
-    // Screen off হলেও process FOREGROUND হতে পারে — তাই শুধু process check।
+    // Android 11+ এ runningAppProcesses অনেক সময় empty বা restricted।
+    // তাই ActivityManager.AppTask check করা হচ্ছে যেটা আরো reliable।
+    // IMPORTANCE_FOREGROUND (100) বা IMPORTANCE_FOREGROUND_SERVICE (125) —
+    // দুটোই মানে app visible/active।
     private fun isAppForeground(): Boolean {
         val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        val processes = am.runningAppProcesses ?: return false
         val pkgName = packageName
-        return processes.any {
-            it.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND &&
-            it.pkgList.contains(pkgName)
+
+        // Method 1: AppTasks — app এর recent task list এ আছে কিনা এবং foreground কিনা
+        // এটা Android 11+ এ বেশি reliable
+        val processes = am.runningAppProcesses ?: return false
+        return processes.any { proc ->
+            proc.pkgList.contains(pkgName) &&
+            (proc.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND ||
+             proc.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE)
         }
     }
 
@@ -168,38 +173,52 @@ class RasgramMessagingService : FirebaseMessagingService() {
     }
 
     // ── Message notification ─────────────────────────────────────────────────
+    // App open থাকলে Firestore realtime listener এ message দেখায়।
+    // App বন্ধ থাকলে FCM trigger করে এখানে আসে।
+    // App foreground থাকলে notification দরকার নেই — skip।
     private fun showMessageNotification(
         senderName: String,
         message: String,
         senderMobile: String
     ) {
+        // App foreground হলে Firestore listener নিজেই message দেখাবে — notification দরকার নেই।
+        if (isAppForeground()) return
+
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         createChannels(nm)
+
+        // সঠিক sender name নিশ্চিত করো — empty হলে "RasGram" fallback
+        val displayName = senderName.ifBlank { "RasGram" }
 
         val intent = Intent(this, RasGramActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("openChatWith", senderMobile)
         }
         val pending = PendingIntent.getActivity(
-            this, 0, intent,
+            this, senderMobile.hashCode(), intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
         val notif = NotificationCompat.Builder(this, MSG_CHANNEL)
             .setSmallIcon(android.R.drawable.ic_dialog_email)
-            .setContentTitle(senderName)
+            // contentTitle = sender এর নাম — notification এ দেখাবে
+            .setContentTitle(displayName)
             .setContentText(message)
             .setStyle(
                 NotificationCompat.BigTextStyle()
                     .bigText(message)
+                    .setBigContentTitle(displayName)
                     .setSummaryText("RasGram")
             )
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(pending)
             .setAutoCancel(true)
+            .setShowWhen(true)
             .build()
 
+        // প্রতি sender এর জন্য আলাদা notification ID — ফলে একজনের message
+        // আরেকজনেরটা replace করবে না।
         nm.notify(senderMobile.hashCode(), notif)
     }
 

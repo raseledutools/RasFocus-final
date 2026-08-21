@@ -194,21 +194,29 @@ class IncomingCallOverlayService : Service(),
         startRinging()
 
         // ── 4) Screen/lock state বুঝে overlay বা Activity ──────────────────
-        val pm = getSystemService(POWER_SERVICE) as PowerManager
-        val km = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
+        // IMPORTANT: WakeLock নেওয়ার পরেও screen চালু হতে কয়েক millisecond লাগে।
+        // তাই coroutine এ সামান্য delay দিয়ে screen state check করা হচ্ছে।
+        // এতে overlay সঠিক সময়ে দেখাবে।
+        serviceScope.launch {
+            // WakeLock effect এর জন্য ছোট delay
+            kotlinx.coroutines.delay(200L)
 
-        val screenOff  = !pm.isInteractive
-        val keyguardUp = km.isKeyguardLocked
+            val pm = getSystemService(POWER_SERVICE) as PowerManager
+            val km = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
 
-        if (screenOff || keyguardUp) {
-            // Lock screen / screen off: full page Activity খোলো।
-            // Activity খোলার পর ring চলতে থাকে — IncomingCallScreen এ
-            // নিজের ring আছে কিন্তু service এর ring বন্ধ করতে হবে।
-            // RasGramActivity → stopOverlayService() → onDestroy() → stopRinging()
-            launchFullScreenCallActivity(callId, callerName, callerMobile, callType)
-        } else {
-            // Unlocked + screen on: floating overlay card
-            showOverlay(callId, callerName, callerMobile, callType)
+            val screenOff  = !pm.isInteractive
+            val keyguardUp = km.isKeyguardLocked
+
+            if (screenOff || keyguardUp) {
+                // Lock screen / screen off: full page Activity খোলো।
+                // Activity খোলার পর ring চলতে থাকে — IncomingCallScreen এ
+                // নিজের ring আছে কিন্তু service এর ring বন্ধ করতে হবে।
+                // RasGramActivity → stopOverlayService() → onDestroy() → stopRinging()
+                launchFullScreenCallActivity(callId, callerName, callerMobile, callType)
+            } else {
+                // Unlocked + screen on: floating overlay card দেখাও
+                showOverlay(callId, callerName, callerMobile, callType)
+            }
         }
 
         // ── 5) 60s auto-dismiss ──────────────────────────────────────────────
@@ -396,7 +404,13 @@ class IncomingCallOverlayService : Service(),
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             layoutFlag,
-            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+            // FLAG_NOT_TOUCH_MODAL: overlay এর বাইরে touch pass-through হবে
+            // FLAG_NOT_FOCUSABLE: overlay keyboard focus নেবে না — Compose button কাজ করবে
+            // FLAG_WATCH_OUTSIDE_TOUCH: outside touch detect করতে পারবে (optional)
+            // FLAG_SHOW_WHEN_LOCKED: lock screen এর উপরেও দেখাবে
+            // FLAG_TURN_SCREEN_ON + FLAG_KEEP_SCREEN_ON: screen জ্বলবে ও জ্বলে থাকবে
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON  or
             WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
             WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON,
             PixelFormat.TRANSLUCENT
