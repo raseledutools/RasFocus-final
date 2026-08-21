@@ -108,6 +108,9 @@ class ReminderAlarmActivity : ComponentActivity() {
                     isDismissed = true
                     reRingRunnable?.let { reRingHandler.removeCallbacks(it) }
                     ReminderAlarmPlayer.stop()
+                    sendBroadcast(Intent(this, StopRingtoneReceiver::class.java))
+                    (getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager)
+                        .cancel(notifId)
                     // Re-schedule alarm 5 minutes from now
                     val snoozeMillis = System.currentTimeMillis() + 5 * 60_000L
                     val snoozeItem = ReminderItem(
@@ -126,7 +129,12 @@ class ReminderAlarmActivity : ComponentActivity() {
                 onDismiss = {
                     isDismissed = true
                     reRingRunnable?.let { reRingHandler.removeCallbacks(it) }
+                    // Stop via both singleton AND broadcast so any separately-started player also stops
                     ReminderAlarmPlayer.stop()
+                    sendBroadcast(Intent(this, StopRingtoneReceiver::class.java))
+                    // Cancel the persistent notification so it doesn't linger
+                    (getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager)
+                        .cancel(notifId)
                     finish()
                 }
             )
