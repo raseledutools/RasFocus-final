@@ -2522,77 +2522,115 @@ fun ChatHeader(
     var showMenu by remember { mutableStateOf(false) }
 
     Surface(modifier = Modifier.fillMaxWidth(), color = RasGramTheme.DarkPanel) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp).height(60.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (isCompact) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.Default.ArrowBack, null, tint = RasGramTheme.TextPrimary)
-                }
-            }
-
+        Column {
+            // Top row: back + avatar/name + menu
             Row(
-                modifier = Modifier.weight(1f).clickable { onViewContact() },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp).height(56.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(modifier = Modifier.size(40.dp)) {
-                    AsyncImage(
-                        model = contact.avatarUrl.ifEmpty { "https://ui-avatars.com/api/?name=${contact.name.replace(" ", "+")}&background=008069&color=fff&bold=true&size=80" },
-                        contentDescription = "Avatar",
-                        modifier = Modifier.fillMaxSize().clip(CircleShape),
-                        contentScale = ContentScale.Crop
-                    )
-                    if (isOnline) {
-                        Box(modifier = Modifier.size(10.dp).align(Alignment.BottomEnd).border(2.dp, RasGramTheme.DarkPanel, CircleShape).background(RasGramTheme.OnlineGreen, CircleShape))
+                if (isCompact) {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, null, tint = RasGramTheme.TextPrimary)
                     }
                 }
-                Spacer(modifier = Modifier.width(10.dp))
-                Column {
-                    Text(contact.name, style = MaterialTheme.typography.bodyLarge, color = RasGramTheme.TextPrimary, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        when {
-                            contact.typingTo == currentUserMobile -> "typing..."
-                            isOnline -> "online"
-                            else -> "last seen ${formatLastSeen(System.currentTimeMillis() - contact.lastActive)}"
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (contact.typingTo == currentUserMobile || isOnline) RasGramTheme.Green else RasGramTheme.TextMuted,
-                        fontSize = 11.sp
-                    )
-                }
-            }
 
-            // Video call button in header
-            IconButton(onClick = { onCallClick("video") }) {
-                Icon(Icons.Default.Videocam, "Video Call", tint = RasGramTheme.TextMuted)
-            }
-            // Audio call button in header
-            IconButton(onClick = { onCallClick("audio") }) {
-                Icon(Icons.Default.Call, "Voice Call", tint = RasGramTheme.TextMuted)
-            }
-
-            Box {
-                IconButton(onClick = { showMenu = true }) {
-                    Icon(Icons.Default.MoreVert, null, tint = RasGramTheme.TextMuted)
-                }
-                DropdownMenu(
-                    expanded = showMenu,
-                    onDismissRequest = { showMenu = false },
-                    modifier = Modifier.background(RasGramTheme.DarkPanel)
+                Row(
+                    modifier = Modifier.weight(1f).clickable { onViewContact() },
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    DropdownMenuItem(
-                        text = { Text("View Contact", color = RasGramTheme.TextPrimary) },
-                        leadingIcon = { Icon(Icons.Default.Person, null, tint = RasGramTheme.TextMuted) },
-                        onClick = { onViewContact(); showMenu = false }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Clear Chat", color = RasGramTheme.Red) },
-                        leadingIcon = { Icon(Icons.Default.Delete, null, tint = RasGramTheme.Red) },
-                        onClick = { onClearChat(); showMenu = false }
-                    )
+                    Box(modifier = Modifier.size(40.dp)) {
+                        AsyncImage(
+                            model = contact.avatarUrl.ifEmpty { "https://ui-avatars.com/api/?name=${contact.name.replace(" ", "+")}&background=008069&color=fff&bold=true&size=80" },
+                            contentDescription = "Avatar",
+                            modifier = Modifier.fillMaxSize().clip(CircleShape),
+                            contentScale = ContentScale.Crop
+                        )
+                        if (isOnline) {
+                            Box(modifier = Modifier.size(10.dp).align(Alignment.BottomEnd).border(2.dp, RasGramTheme.DarkPanel, CircleShape).background(RasGramTheme.OnlineGreen, CircleShape))
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(contact.name, style = MaterialTheme.typography.bodyLarge, color = RasGramTheme.TextPrimary, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            when {
+                                contact.typingTo == currentUserMobile -> "typing..."
+                                isOnline -> "online"
+                                else -> "last seen ${formatLastSeen(System.currentTimeMillis() - contact.lastActive)}"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (contact.typingTo == currentUserMobile || isOnline) RasGramTheme.Green else RasGramTheme.TextMuted,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+
+                Box {
+                    IconButton(onClick = { showMenu = true }) {
+                        Icon(Icons.Default.MoreVert, null, tint = RasGramTheme.TextMuted)
+                    }
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false },
+                        modifier = Modifier.background(RasGramTheme.DarkPanel)
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("View Contact", color = RasGramTheme.TextPrimary) },
+                            leadingIcon = { Icon(Icons.Default.Person, null, tint = RasGramTheme.TextMuted) },
+                            onClick = { onViewContact(); showMenu = false }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Clear Chat", color = RasGramTheme.Red) },
+                            leadingIcon = { Icon(Icons.Default.Delete, null, tint = RasGramTheme.Red) },
+                            onClick = { onClearChat(); showMenu = false }
+                        )
+                    }
                 }
             }
+
+            // Call buttons row — নিচে আলাদা bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(RasGramTheme.DarkPanel)
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Video call
+                Surface(
+                    onClick = { onCallClick("video") },
+                    shape = RoundedCornerShape(20.dp),
+                    color = RasGramTheme.Green.copy(alpha = 0.12f),
+                    modifier = Modifier.padding(end = 8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(Icons.Default.Videocam, "Video Call", tint = RasGramTheme.Green, modifier = Modifier.size(18.dp))
+                        Text("Video", color = RasGramTheme.Green, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+                // Voice call
+                Surface(
+                    onClick = { onCallClick("audio") },
+                    shape = RoundedCornerShape(20.dp),
+                    color = RasGramTheme.Green.copy(alpha = 0.12f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(Icons.Default.Call, "Voice Call", tint = RasGramTheme.Green, modifier = Modifier.size(18.dp))
+                        Text("Voice", color = RasGramTheme.Green, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+            }
+
+            HorizontalDivider(color = RasGramTheme.DividerColor, thickness = 0.5.dp)
         }
     }
 }
@@ -2727,7 +2765,7 @@ fun ChatInputBar(
                             value = inputText,
                             onValueChange = onTextChange,
                             // WhatsApp: single line by default, max 4 lines যাতে last message hide না হয়
-                            modifier = Modifier.weight(1f).heightIn(min = 44.dp, max = 96.dp),
+                            modifier = Modifier.weight(1f).heightIn(min = 36.dp, max = 96.dp),
                             placeholder = { Text("Message", color = RasGramTheme.TextMuted, fontSize = 15.sp) },
                             maxLines = 4,
                             textStyle = androidx.compose.ui.text.TextStyle(
