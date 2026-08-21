@@ -102,10 +102,10 @@ class IncomingCallOverlayService : Service(),
     // ── Lifecycle boilerplate for ComposeView in a Service ─────────────────
     private val lifecycleRegistry = LifecycleRegistry(this)
     private val savedStateRegistryController = SavedStateRegistryController.create(this)
-    private val viewModelStore = ViewModelStore()
+    private val _viewModelStore = ViewModelStore()
 
     override val lifecycle: Lifecycle get() = lifecycleRegistry
-    override val viewModelStore: ViewModelStore get() = viewModelStore
+    override val viewModelStore: ViewModelStore get() = _viewModelStore
     override val savedStateRegistry: SavedStateRegistry get() = savedStateRegistryController.savedStateRegistry
 
     private var windowManager: WindowManager? = null
