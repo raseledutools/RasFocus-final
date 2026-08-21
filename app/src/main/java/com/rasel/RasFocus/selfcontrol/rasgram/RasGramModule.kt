@@ -69,6 +69,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -1342,9 +1343,10 @@ fun MainScreen(
             callType = activeIncomingCallType,
             callId = activeIncomingCallId,
             onAccept = {
-                // Accept হলে — CallingScreen এর receiver mode তে যাও
+                // Overlay service এখনো চলছে? বন্ধ করো — ring থামাও
+                IncomingCallOverlayService.stop(context)
+                // IncomingCallScreen সরাও, CallingScreen receiver mode এ চালু করো
                 showIncomingCall = false
-                // callContact খোঁজো Firebase থেকে; না পেলে placeholder দিয়ে চালাও
                 callType = activeIncomingCallType
                 callContact = User(
                     uid = "",
@@ -1352,12 +1354,12 @@ fun MainScreen(
                     mobile = activeIncomingCallerMobile,
                     avatarUrl = ""
                 )
-                // ✅ FIX: receiver mode সেট করো এবং existing callId পাস করো
                 isReceiverCall = true
                 acceptedCallId = activeIncomingCallId
                 showCallUI = true
             },
             onDecline = {
+                IncomingCallOverlayService.stop(context)
                 showIncomingCall = false
                 activeIncomingCallId = ""
             }
@@ -4593,8 +4595,12 @@ fun CallingScreen(
         if (isConnected) while (true) { delay(1000); callSeconds++ }
     }
 
+    // Call চলাকালীন screen যেন না নেভে (WhatsApp এর মতো)
+    val currentView = LocalView.current
     DisposableEffect(Unit) {
+        currentView.keepScreenOn = true
         onDispose {
+            currentView.keepScreenOn = false
             peerConnection?.close()
             localStream?.dispose()
             audioManager.mode = AudioManager.MODE_NORMAL
@@ -4864,33 +4870,16 @@ fun IncomingCallScreen(
     val db = remember { FirebaseFirestore.getInstance() }
     val scope = rememberCoroutineScope()
 
-    // ── ফোনের default call ringtone বাজানো ──────────────────────────────────
-    val ringtone: Ringtone? = remember {
-        try {
-            val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
-            RingtoneManager.getRingtone(context, uri)
-        } catch (e: Exception) { null }
-    }
-    val audioManager = remember {
-        context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-    }
+    // Ring বাজানো IncomingCallOverlayService এর দায়িত্ব।
+    // Screen off/locked → service চালু → ring করে → Activity launch করে।
+    // Activity খুললেই service stop হয় (RasGramActivity.stopOverlayService)।
+    // তাই IncomingCallScreen এখানে নিজে আর ring করে না — double ring বন্ধ।
+    //
+    // Fallback (overlay permission নেই): RasgramMessagingService CALL_CHANNEL
+    // notification এ ringtone সেট আছে — সেটাই বাজে, এখানেও দরকার নেই।
 
-    // Screen compose হলে ring শুরু, dispose হলে বন্ধ
-    DisposableEffect(Unit) {
-        try {
-            // সাময়িকভাবে volume max করো (user এর ring mode মেনে চলে)
-            ringtone?.play()
-        } catch (_: Exception) {}
-        onDispose {
-            try { ringtone?.stop() } catch (_: Exception) {}
-        }
-    }
-
-    // helper — ringtone বন্ধ করে callback চালাও
-    fun stopAndCall(action: () -> Unit) {
-        try { ringtone?.stop() } catch (_: Exception) {}
-        action()
-    }
+    // helper — callback চালাও
+    fun stopAndCall(action: () -> Unit) { action() }
 
     // Ringing animation
     val infiniteTransition = rememberInfiniteTransition(label = "ring")
@@ -4913,7 +4902,6 @@ fun IncomingCallScreen(
         db.collection("calls").document(callId).addSnapshotListener { snap, _ ->
             val status = snap?.getString("status") ?: return@addSnapshotListener
             if (status == "ended" || status == "rejected" || status == "missed") {
-                try { ringtone?.stop() } catch (_: Exception) {}
                 onDecline()
             }
         }
