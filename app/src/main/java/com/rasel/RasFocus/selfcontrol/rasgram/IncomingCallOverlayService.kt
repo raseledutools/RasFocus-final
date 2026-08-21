@@ -1,5 +1,6 @@
 package com.rasel.RasFocus.selfcontrol.rasgram
 
+import android.app.KeyguardManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -176,10 +177,27 @@ class IncomingCallOverlayService : Service(),
         // 3) Ring + vibrate
         startRinging()
 
-        // 4) Show the overlay
-        showOverlay(callId, callerName, callerMobile, callType)
+        // 4) Screen off বা lock screen? → RasGramActivity launch করো (full page)
+        //    Screen on + unlocked?       → Overlay card দেখাও (যেকোনো app এর উপর)
+        //
+        //    WhatsApp exactly এভাবেই কাজ করে:
+        //    - Lock/sleep → full screen Activity
+        //    - Unlocked   → floating card
+        val pm = getSystemService(POWER_SERVICE) as PowerManager
+        val km = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
 
-        // 5) Auto-dismiss after 60s if no answer (same as WhatsApp)
+        val screenOff    = !pm.isInteractive          // screen off বা sleep
+        val keyguardUp   = km.isKeyguardLocked         // lock screen active
+
+        if (screenOff || keyguardUp) {
+            // Full page call window — lock screen এর উপর দিয়ে Activity খোলো
+            launchFullScreenCallActivity(callId, callerName, callerMobile, callType)
+        } else {
+            // Screen on + unlocked → floating overlay card
+            showOverlay(callId, callerName, callerMobile, callType)
+        }
+
+        // 5) Auto-dismiss after 60s if no answer
         serviceScope.launch {
             kotlinx.coroutines.delay(60_000L)
             missedCall(callId)
@@ -187,6 +205,32 @@ class IncomingCallOverlayService : Service(),
         }
 
         return START_NOT_STICKY
+    }
+
+    // ── Full page call Activity — lock screen / screen off এর জন্য ──────────
+    private fun launchFullScreenCallActivity(
+        callId: String,
+        callerName: String,
+        callerMobile: String,
+        callType: String
+    ) {
+        val launchIntent = Intent(this, RasGramActivity::class.java).apply {
+            action = "ACTION_INCOMING_CALL"
+            putExtra("callId",       callId)
+            putExtra("callerMobile", callerMobile)
+            putExtra("callerName",   callerName)
+            putExtra("callType",     callType)
+            addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK        or
+                Intent.FLAG_ACTIVITY_CLEAR_TOP       or
+                Intent.FLAG_ACTIVITY_SINGLE_TOP      or
+                Intent.FLAG_ACTIVITY_NO_USER_ACTION   // lock screen bypass
+            )
+        }
+        startActivity(launchIntent)
+        // RasGramActivity এ enableLockScreenDisplay() আছে — সে নিজেই
+        // setShowWhenLocked(true) + setTurnScreenOn(true) call করে।
+        // তাই এখানে আলাদা window flag দরকার নেই।
     }
 
     // ── Foreground notification ─────────────────────────────────────────────
