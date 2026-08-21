@@ -3,8 +3,21 @@ name: Build RasFocus APK
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'app/**'
+      - 'build.gradle*'
+      - 'settings.gradle*'
+      - 'gradle/**'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - '.github/workflows/main.yml'
   pull_request:
     branches: [ main ]
+    paths:
+      - 'app/**'
+      - 'build.gradle*'
+      - 'settings.gradle*'
+      - 'gradle/**'
   workflow_dispatch:
 
 # ══════════════════════════════════════════════════════
