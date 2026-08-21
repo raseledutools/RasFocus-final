@@ -170,8 +170,10 @@ class RasgramMessagingService : FirebaseMessagingService() {
             nm.createNotificationChannel(callChannel)
 
             nm.createNotificationChannel(
-                NotificationChannel("MSG_CHANNEL", "Messages", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                NotificationChannel("MSG_CHANNEL", "Messages", NotificationManager.IMPORTANCE_HIGH).apply {
                     description = "Notifications for new RasGram messages"
+                    enableVibration(true)
+                    setShowBadge(true)
                 }
             )
         }

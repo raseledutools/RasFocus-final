@@ -6233,10 +6233,8 @@ suspend fun sendFcmMessageNotification(
         val receiverDoc = db.collection("chat_users").document(receiverMobile).get().await()
         val fcmToken = receiverDoc.getString("fcmToken") ?: return@withContext
 
+        // Message notification সবসময় যাবে — call delivery setting শুধু call এর জন্য
         val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        val deliveryMethod = prefs.getString(PREF_CALL_DELIVERY, "fcm") ?: "fcm"
-        if (deliveryMethod != "fcm") return@withContext
-        
         val saJsonStr = prefs.getString(PREF_SA_JSON, "")
         val saJson = if (saJsonStr.isNullOrEmpty()) {
             val saStream = context.resources.openRawResource(
