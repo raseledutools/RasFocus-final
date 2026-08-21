@@ -33,20 +33,26 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.core.graphics.drawable.toBitmap
 import androidx.activity.compose.BackHandler
 import androidx.navigation.NavController
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Colors
@@ -105,11 +111,6 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
     var pickerSlot    by remember { mutableStateOf(PickerSlot.NONE) }
     var query         by rememberSaveable { mutableStateOf("") }
 
-    // Hide keyboard when sidebar closes
-    LaunchedEffect(showSidebar) {
-        if (!showSidebar) keyboard?.hide()
-    }
-
     // Load pinned apps in saved order (pinned_order string preserves sequence; fall back to Set)
     var pinnedPkgs by remember {
         mutableStateOf(
@@ -160,85 +161,138 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
         }
     }
 
-    // sidebar slide animation
-    val sidebarOffsetX by animateDpAsState(
-        targetValue   = if (showSidebar) 0.dp else 320.dp,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
-        label         = "sidebarOffset"
-    )
-    val sidebarAlpha by animateFloatAsState(
-        targetValue   = if (showSidebar) 1f else 0f,
-        animationSpec = tween(durationMillis = 250),
-        label         = "sidebarAlpha"
-    )
+    // ── Live-drag sidebar: Animatable offset controls position in real time ──
+    // sidebarWidthPx ≈ 78% of screen width (set during layout via BoxWithConstraints)
+    // offsetX: 0f = fully open (left edge at right side start), sidebarWidthPx = hidden
+    val density = LocalDensity.current
+    // We use a large initial value; it gets clamped properly once we know screen width
+    val sidebarOffsetAnim = remember { Animatable(10000f) }  // starts offscreen
+    val scope = rememberCoroutineScope()
 
-    Box(
+    // Track whether sidebar is "logically open" for BackHandler / keyboard etc.
+    // We derive this from the animation value but keep showSidebar as the intent source.
+    val SIDEBAR_WIDTH_FRACTION = 0.78f
+    val OPEN_THRESHOLD_FRACTION = 0.45f   // past 45% → snap open on release
+    val SWIPE_SLOP_PX = 18f               // px before we start tracking horizontal drag
+
+    // Sync animation to showSidebar state (for programmatic open/close)
+    LaunchedEffect(showSidebar) {
+        keyboard?.hide()
+        // We don't know screen width here; use a placeholder — the gesture will set it properly.
+        // For programmatic open/close we animate to 0 or a large value.
+        if (showSidebar) {
+            sidebarOffsetAnim.animateTo(
+                0f,
+                animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow)
+            )
+        } else {
+            // We don't know exact width yet; animate far off screen
+            sidebarOffsetAnim.animateTo(
+                sidebarOffsetAnim.upperBound ?: 10000f,
+                animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium)
+            )
+        }
+    }
+
+    // Derive dim alpha directly from offset: 0 offset = alpha 0.5, far offset = 0
+    val dimAlpha = if ((sidebarOffsetAnim.upperBound ?: 10000f) > 0f) {
+        (1f - (sidebarOffsetAnim.value / (sidebarOffsetAnim.upperBound ?: 10000f))).coerceIn(0f, 1f) * 0.5f
+    } else 0f
+
+    val isSidebarVisible = sidebarOffsetAnim.value < (sidebarOffsetAnim.upperBound ?: 10000f) - 1f
+
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(theme.bg)
-            .pointerInput(showSidebar) {
-                // Only intercept gesture AFTER it's confirmed a drag (slop exceeded)
-                // This allows child taps (clock, apps) to register normally
-                if (showSidebar) {
-                    // Sidebar open: only detect rightward swipe to close
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        var totalX = 0f
-                        var totalY = 0f
-                        var drag = true
-                        while (drag) {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull() ?: break
-                            if (change.pressed) {
-                                val delta = change.position - change.previousPosition
+    ) {
+        val screenWidthPx = with(density) { maxWidth.toPx() }
+        val sidebarWidthPx = screenWidthPx * SIDEBAR_WIDTH_FRACTION
+        val openThresholdPx = sidebarWidthPx * (1f - OPEN_THRESHOLD_FRACTION)  // offset BELOW this = snap open
+
+        // Initialize bounds once screen width is known
+        LaunchedEffect(sidebarWidthPx) {
+            val wasOpen = showSidebar
+            sidebarOffsetAnim.updateBounds(lowerBound = 0f, upperBound = sidebarWidthPx)
+            if (!wasOpen) sidebarOffsetAnim.snapTo(sidebarWidthPx)
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    coroutineScope {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            var totalX = 0f
+                            var totalY = 0f
+                            var horizontalDragMode = false   // confirmed horizontal drag
+                            var verticalDragMode = false     // confirmed vertical drag
+                            var dragDecided = false          // direction decided
+
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull() ?: break
+                                if (!change.pressed) {
+                                    // Finger lifted — snap to open or closed
+                                    if (horizontalDragMode) {
+                                        val currentOffset = sidebarOffsetAnim.value
+                                        val targetOffset = if (currentOffset < openThresholdPx) 0f else sidebarWidthPx
+                                        val willOpen = targetOffset == 0f
+                                        launch {
+                                            sidebarOffsetAnim.animateTo(
+                                                targetOffset,
+                                                animationSpec = spring(
+                                                    dampingRatio = Spring.DampingRatioLowBouncy,
+                                                    stiffness    = Spring.StiffnessMediumLow
+                                                )
+                                            )
+                                        }
+                                        if (willOpen && !showSidebar) {
+                                            showSidebar = true
+                                        } else if (!willOpen && showSidebar) {
+                                            showSidebar = false
+                                            query = ""
+                                        }
+                                    }
+                                    break
+                                }
+
+                                val delta = change.positionChange()
                                 totalX += delta.x
                                 totalY += delta.y
-                                // Only consume if clearly horizontal rightward drag
-                                val absX = abs(totalX); val absY = abs(totalY)
-                                if (absX > 20f && absX > absY && totalX > 0f) {
+
+                                if (!dragDecided) {
+                                    val absX = abs(totalX)
+                                    val absY = abs(totalY)
+                                    if (absX > SWIPE_SLOP_PX || absY > SWIPE_SLOP_PX) {
+                                        dragDecided = true
+                                        if (absX >= absY) {
+                                            // Is this a valid swipe direction?
+                                            val isOpeningSwipe = !showSidebar && totalX < 0f
+                                            val isClosingSwipe = showSidebar && totalX > 0f
+                                            if (isOpeningSwipe || isClosingSwipe) {
+                                                horizontalDragMode = true
+                                            } else {
+                                                break // wrong direction, give up
+                                            }
+                                        } else {
+                                            verticalDragMode = true
+                                        }
+                                    }
+                                }
+
+                                if (horizontalDragMode) {
                                     change.consume()
-                                }
-                            } else {
-                                drag = false
-                                if (totalX > 80f && abs(totalX) > abs(totalY)) {
-                                    showSidebar = false
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    // Home: detect leftward swipe to open sidebar, up for apps, down for notifs
-                    // Uses awaitEachGesture so child clicks pass through untouched
-                    awaitEachGesture {
-                        awaitFirstDown(requireUnconsumed = false)
-                        var totalX = 0f
-                        var totalY = 0f
-                        var consumed = false
-                        var drag = true
-                        while (drag) {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull() ?: break
-                            if (change.pressed) {
-                                val delta = change.position - change.previousPosition
-                                val dx = delta.x
-                                val dy = delta.y
-                                totalX += dx; totalY += dy
-                                val absX = abs(totalX); val absY = abs(totalY)
-                                // Only start consuming after clear directional intent (slop = 20px)
-                                if (!consumed && absX > 20f && absX > absY && totalX < 0f) {
-                                    consumed = true
-                                }
-                                if (consumed) change.consume()
-                            } else {
-                                drag = false
-                                val absX = abs(totalX); val absY = abs(totalY)
-                                if (absX > absY) {
-                                    // Horizontal swipe: left → open sidebar
-                                    if (totalX < -80f) showSidebar = true
-                                } else {
-                                    // Vertical swipe: only swipe down → notifications
-                                    // (swipe up no longer opens sidebar)
+                                    // Move sidebar in real time with finger
+                                    val newOffset = (sidebarOffsetAnim.value - delta.x)
+                                        .coerceIn(0f, sidebarWidthPx)
+                                    launch { sidebarOffsetAnim.snapTo(newOffset) }
+                                } else if (verticalDragMode && !showSidebar) {
+                                    // Swipe down → notification panel
                                     if (totalY > 80f) {
+                                        dragDecided = false
+                                        verticalDragMode = false
                                         try {
                                             val sb = context.getSystemService("statusbar")
                                             sb?.javaClass?.getMethod("expandNotificationsPanel")?.invoke(sb)
@@ -249,8 +303,7 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                         }
                     }
                 }
-            }
-    ) {
+        ) {
         // ═══════════════════════════════════════════════════════
         // HOME SCREEN
         // ═══════════════════════════════════════════════════════
@@ -276,7 +329,6 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
             onReorder = { reorderedApps ->
                 val newOrder = reorderedApps.map { it.packageName }.toMutableList()
                 pinnedPkgs = newOrder
-                // Save order in a comma-separated string to preserve sequence (Set loses order)
                 prefs.edit()
                     .putStringSet(KEY_PINNED, newOrder.toSet())
                     .putString("pinned_order", newOrder.joinToString(","))
@@ -285,25 +337,34 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
         )
 
         // ═══════════════════════════════════════════════════════
-        // SIDEBAR OVERLAY — animated from right
+        // SIDEBAR OVERLAY — live drag follows finger exactly
         // ═══════════════════════════════════════════════════════
-        if (showSidebar || sidebarAlpha > 0f) {
-            // dim background
+        if (isSidebarVisible) {
+            // Dim background — alpha follows drag progress in real time
             Box(
                 Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.45f * sidebarAlpha))
-                    .clickable(enabled = showSidebar) { showSidebar = false }
+                    .background(Color.Black.copy(alpha = dimAlpha))
+                    .clickable(enabled = showSidebar) {
+                        scope.launch {
+                            showSidebar = false
+                            query = ""
+                            sidebarOffsetAnim.animateTo(
+                                sidebarWidthPx,
+                                animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium)
+                            )
+                        }
+                    }
             )
-            // sidebar panel slides in from right
+            // Sidebar panel — offset follows finger
             Box(
                 Modifier
                     .fillMaxHeight()
-                    .fillMaxWidth(0.78f)
+                    .fillMaxWidth(SIDEBAR_WIDTH_FRACTION)
                     .align(Alignment.CenterEnd)
-                    .offset(x = sidebarOffsetX)
+                    .offset { IntOffset(sidebarOffsetAnim.value.roundToInt(), 0) }
                     .background(Color(0xFF0D0D0D))
-                    .clickable(enabled = false) {}  // consume clicks so background doesn't close
+                    .clickable(enabled = false) {}
             ) {
                 SidebarContent(
                     allApps    = allApps,
@@ -315,7 +376,11 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                     showIcons  = showIcons,
                     query      = query,
                     onQueryChange = { query = it },
-                    onLaunch   = { app -> if (!app.isBlocked) { launchApp(context, app.packageName); showSidebar = false } },
+                    onLaunch   = { app -> if (!app.isBlocked) {
+                        launchApp(context, app.packageName)
+                        showSidebar = false
+                        query = ""
+                    }},
                     onPin      = { pkg ->
                         val u = pinnedPkgs.toMutableList()
                         if (pkg in u) u.remove(pkg) else u.add(pkg)
@@ -421,7 +486,8 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                 onDismiss = { showSettings = false }
             )
         }
-    }
+        }   // end inner Box (gesture layer)
+    }       // end BoxWithConstraints
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
