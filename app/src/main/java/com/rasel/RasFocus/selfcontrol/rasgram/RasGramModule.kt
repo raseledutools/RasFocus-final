@@ -2627,7 +2627,10 @@ fun ChatArea(
                     try {
                         val file = File(context.cacheDir, "voice_${System.currentTimeMillis()}.m4a")
                         recordingFile = file
-                        val recorder = MediaRecorder()
+                        val recorder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S)
+                            MediaRecorder(context)
+                        else
+                            @Suppress("DEPRECATION") MediaRecorder()
                         recorder.setAudioSource(MediaRecorder.AudioSource.MIC)
                         recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
                         recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
@@ -4508,25 +4511,32 @@ fun CallingScreen(
     var showEndedSummary by remember { mutableStateOf(false) }
     var finalCallSeconds by remember { mutableIntStateOf(0) }
 
-    val eglBase = remember { EglBase.create() }
-    // FIX: PeerConnectionFactory.initialize() is idempotent but can throw if
-    // native libs fail to load (e.g. missing ABI, or double-init race on
-    // recomposition). Wrapping in try-catch prevents "apps keeps stopping"
-    // crash when CallingScreen is launched from a cold lock-screen path.
-    val peerConnectionFactory = remember {
-        try {
-            PeerConnectionFactory.initialize(
-                PeerConnectionFactory.InitializationOptions
-                    .builder(context)
-                    .createInitializationOptions()
-            )
-            PeerConnectionFactory.builder()
-                .setVideoDecoderFactory(DefaultVideoDecoderFactory(eglBase.eglBaseContext))
-                .setVideoEncoderFactory(DefaultVideoEncoderFactory(eglBase.eglBaseContext, true, true))
-                .createPeerConnectionFactory()
-        } catch (e: Exception) {
-            android.util.Log.e("RasGram", "PeerConnectionFactory init failed: ${e.message}", e)
-            null
+    // FIX: EglBase.create() and PeerConnectionFactory.initialize() are heavy
+    // native calls. Running them inside remember {} executes on the Compose
+    // main thread → blocks the UI → ANR / "app keeps stopping" on cold start
+    // (app was closed). Moved to a LaunchedEffect on Dispatchers.IO so the
+    // main thread is never blocked.
+    val eglBase = remember { mutableStateOf<EglBase?>(null) }
+    val peerConnectionFactory = remember { mutableStateOf<PeerConnectionFactory?>(null) }
+
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val base = EglBase.create()
+                PeerConnectionFactory.initialize(
+                    PeerConnectionFactory.InitializationOptions
+                        .builder(context)
+                        .createInitializationOptions()
+                )
+                val factory = PeerConnectionFactory.builder()
+                    .setVideoDecoderFactory(DefaultVideoDecoderFactory(base.eglBaseContext))
+                    .setVideoEncoderFactory(DefaultVideoEncoderFactory(base.eglBaseContext, true, true))
+                    .createPeerConnectionFactory()
+                eglBase.value = base
+                peerConnectionFactory.value = factory
+            } catch (e: Exception) {
+                android.util.Log.e("RasGram", "PeerConnectionFactory init failed: \${e.message}", e)
+            }
         }
     }
     // STUN: NAT traversal for same/different WiFi
@@ -4572,13 +4582,16 @@ fun CallingScreen(
         val hasMicPerm = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         if (!hasMicPerm) { Toast.makeText(context, "Microphone permission needed", Toast.LENGTH_SHORT).show(); onEndCall(); return@LaunchedEffect }
 
-        // FIX: peerConnectionFactory is nullable now (init wrapped in try-catch).
-        // Guard here prevents NullPointerException crash if WebRTC libs fail to load.
-        if (peerConnectionFactory == null) {
+        // FIX: peerConnectionFactory is nullable — wait until IO init completes.
+        // If it's still null after the IO LaunchedEffect runs, WebRTC libs failed to load.
+        if (peerConnectionFactory.value == null) {
             Toast.makeText(context, "Call setup failed. Please restart the app.", Toast.LENGTH_LONG).show()
             onEndCall()
             return@LaunchedEffect
         }
+
+        val factory = peerConnectionFactory.value!!
+        val egl    = eglBase.value!!
 
         try {
             audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
@@ -4591,19 +4604,19 @@ fun CallingScreen(
             }
             // isReceiver=true হলে callId ইতিমধ্যে existingCallId দিয়ে initialized
 
-            val stream = peerConnectionFactory.createLocalMediaStream("localStream")
-            val audioSource = peerConnectionFactory.createAudioSource(MediaConstraints())
-            stream.addTrack(peerConnectionFactory.createAudioTrack("audioTrack", audioSource))
+            val stream = factory.createLocalMediaStream("localStream")
+            val audioSource = factory.createAudioSource(MediaConstraints())
+            stream.addTrack(factory.createAudioTrack("audioTrack", audioSource))
 
             if (callType == "video") {
                 val hasCamPerm = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
                 if (hasCamPerm) {
                     getVideoCapturer(context)?.let { capturer ->
-                        val helper = SurfaceTextureHelper.create("CaptureThread", eglBase.eglBaseContext)
-                        val videoSource = peerConnectionFactory.createVideoSource(capturer.isScreencast)
+                        val helper = SurfaceTextureHelper.create("CaptureThread", egl.eglBaseContext)
+                        val videoSource = factory.createVideoSource(capturer.isScreencast)
                         capturer.initialize(helper, context, videoSource.capturerObserver)
                         capturer.startCapture(1280, 720, 30)
-                        val vTrack = peerConnectionFactory.createVideoTrack("videoTrack", videoSource)
+                        val vTrack = factory.createVideoTrack("videoTrack", videoSource)
                         stream.addTrack(vTrack)
                         localVideoTrack = vTrack
                     }
@@ -4664,7 +4677,7 @@ fun CallingScreen(
                 }
             }
 
-            val pc = peerConnectionFactory.createPeerConnection(rtcConfig, observer)
+            val pc = factory.createPeerConnection(rtcConfig, observer)
             stream.audioTracks.forEach { pc?.addTrack(it, listOf("localStream")) }
             if (callType == "video") stream.videoTracks.forEach { pc?.addTrack(it, listOf("localStream")) }
             peerConnection = pc
@@ -4842,7 +4855,7 @@ fun CallingScreen(
             localStream?.dispose()
             audioManager.mode = AudioManager.MODE_NORMAL
             audioManager.isSpeakerphoneOn = false
-            try { eglBase.release() } catch (_: Exception) {}
+            try { eglBase.value?.release() } catch (_: Exception) {}
         }
     }
 
@@ -4864,7 +4877,7 @@ fun CallingScreen(
                 AndroidView(
                     factory = { ctx ->
                         SurfaceViewRenderer(ctx).also { renderer ->
-                            renderer.init(eglBase.eglBaseContext, null)
+                            renderer.init(eglBase.value?.eglBaseContext ?: return@also, null)
                             renderer.setMirror(false)
                             remoteSurfaceView = renderer
                             // Track এখনই আছে? তাহলে এখনই attach করো
@@ -4876,7 +4889,7 @@ fun CallingScreen(
                 AndroidView(
                     factory = { ctx ->
                         SurfaceViewRenderer(ctx).also { renderer ->
-                            renderer.init(eglBase.eglBaseContext, null)
+                            renderer.init(eglBase.value?.eglBaseContext ?: return@also, null)
                             renderer.setMirror(true)
                             localSurfaceView = renderer
                             localVideoTrack?.addSink(renderer)
@@ -6566,7 +6579,10 @@ fun GroupChatArea(
                     try {
                         val file = File(context.cacheDir, "voice_${System.currentTimeMillis()}.m4a")
                         recordingFile = file
-                        val recorder = MediaRecorder()
+                        val recorder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S)
+                            MediaRecorder(context)
+                        else
+                            @Suppress("DEPRECATION") MediaRecorder()
                         recorder.setAudioSource(MediaRecorder.AudioSource.MIC)
                         recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
                         recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
