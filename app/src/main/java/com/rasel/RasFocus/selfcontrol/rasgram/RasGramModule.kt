@@ -388,7 +388,8 @@ fun RasGramApp(
     var isDarkMode by remember { mutableStateOf(true) }
     // Logged-in users: splash max 2s তারপর force-dismiss — Firebase slow হলেও আটকে থাকবে না।
     // Logged-out users: splash দেখাবে না — সরাসরি login screen।
-    var showSplash by remember { mutableStateOf(initialUser != null) }
+    // Notification tap (openChatWithMobile != null): splash skip — সরাসরি chat।
+    var showSplash by remember { mutableStateOf(initialUser != null && openChatWithMobile == null) }
 
     // Safety timeout: Firebase 1.5s এর মধ্যে না আসলে splash জোর করে সরাও
     LaunchedEffect(showSplash) {
