@@ -33,6 +33,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -425,19 +427,17 @@ class IncomingCallOverlayService : Service(),
         else
             @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
 
+        // WhatsApp style: full screen overlay — MATCH_PARENT x MATCH_PARENT
+        // FLAG_NOT_FOCUSABLE সরানো হয়েছে — না হলে Compose button touch পায় না।
+        // FLAG_LAYOUT_IN_SCREEN: status/nav bar এর নিচে না, পুরো screen cover করবে।
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
             layoutFlag,
-            // FLAG_NOT_TOUCH_MODAL: overlay এর বাইরে touch pass-through হবে
-            // FLAG_NOT_FOCUSABLE: overlay keyboard focus নেবে না — Compose button কাজ করবে
-            // FLAG_WATCH_OUTSIDE_TOUCH: outside touch detect করতে পারবে (optional)
-            // FLAG_SHOW_WHEN_LOCKED: lock screen এর উপরেও দেখাবে
-            // FLAG_TURN_SCREEN_ON + FLAG_KEEP_SCREEN_ON: screen জ্বলবে ও জ্বলে থাকবে
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON  or
             WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON,
+            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON  or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         )
         params.gravity = Gravity.TOP or Gravity.START
@@ -521,6 +521,10 @@ class IncomingCallOverlayService : Service(),
 
 // ── Compose UI: overlay card ──────────────────────────────────────────────────
 @Composable
+// ── Full-screen WhatsApp-style incoming call overlay ──────────────────────────
+// Screen unlocked থাকলে এই Composable পুরো screen cover করে।
+// IncomingCallScreen (Activity path) এর সাথে exact same layout।
+@Composable
 private fun CallOverlayCard(
     callerName: String,
     callerMobile: String,
@@ -531,108 +535,145 @@ private fun CallOverlayCard(
     val infiniteTransition = rememberInfiniteTransition(label = "ring")
     val ringScale by infiniteTransition.animateFloat(
         initialValue = 1f,
-        targetValue  = 1.15f,
+        targetValue  = 1.18f,
         animationSpec = infiniteRepeatable(
             animation  = tween(700, easing = EaseInOut),
             repeatMode = RepeatMode.Reverse
         ),
         label = "ringScale"
     )
+    val ringAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.5f,
+        targetValue  = 0f,
+        animationSpec = infiniteRepeatable(
+            animation  = tween(1000),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "ringAlpha"
+    )
 
+    // Full screen — same as IncomingCallScreen in RasGramModule
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color.Transparent)
-            .systemBarsPadding()
-            .padding(12.dp)
+            .fillMaxHeight()
+            .background(
+                Brush.verticalGradient(listOf(Color(0xFF0B3D2E), Color(0xFF071A14)))
+            )
     ) {
-        Box(
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .wrapContentHeight()
-                .clip(RoundedCornerShape(20.dp))
-                .background(
-                    Brush.verticalGradient(listOf(Color(0xFF0B3D2E), Color(0xFF0D1F1A)))
-                )
-                .border(1.dp, Color(0xFF25D366).copy(alpha = 0.4f), RoundedCornerShape(20.dp))
-                .padding(horizontal = 20.dp, vertical = 18.dp)
+                .fillMaxSize()
+                .systemBarsPadding()
+                .padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = "RasGram  •  ${if (callType == "video") "Video Call" else "Voice Call"}",
-                    color = Color(0xFF25D366).copy(alpha = 0.8f),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium
+            Spacer(Modifier.height(60.dp))
+
+            // Call type label
+            Text(
+                text = if (callType == "video") "📹  Video Call আসছে..." else "📞  Voice Call আসছে...",
+                color = Color(0xFF25D366).copy(alpha = 0.85f),
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium
+            )
+
+            Spacer(Modifier.height(32.dp))
+
+            // Avatar with ripple ring
+            Box(contentAlignment = Alignment.Center) {
+                // Outer ripple ring
+                Box(
+                    modifier = Modifier
+                        .size((120 * ringScale).dp)
+                        .background(Color(0xFF25D366).copy(alpha = ringAlpha * 0.3f), CircleShape)
                 )
-                Spacer(Modifier.height(14.dp))
-                Box(contentAlignment = Alignment.Center) {
-                    Box(
-                        modifier = Modifier
-                            .size((80 * ringScale).dp)
-                            .background(Color(0xFF25D366).copy(alpha = 0.12f), CircleShape)
-                    )
-                    Box(
-                        modifier = Modifier
-                            .size(72.dp)
-                            .background(Color(0xFF128C7E).copy(alpha = 0.5f), CircleShape),
-                        contentAlignment = Alignment.Center
+                // Inner ring
+                Box(
+                    modifier = Modifier
+                        .size(130.dp)
+                        .background(Color(0xFF25D366).copy(alpha = 0.15f), CircleShape)
+                )
+                // Avatar
+                AsyncImage(
+                    model = "https://ui-avatars.com/api/?name=${callerName.replace(" ", "+")}&size=200&background=128C7E&color=fff",
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(110.dp)
+                        .clip(CircleShape)
+                        .border(3.dp, Color(0xFF25D366), CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            Text(
+                text = callerName,
+                color = Color.White,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 28.sp
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = callerMobile,
+                color = Color.White.copy(alpha = 0.6f),
+                fontSize = 15.sp
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = "RasGram",
+                color = Color(0xFF25D366).copy(alpha = 0.7f),
+                fontSize = 13.sp
+            )
+
+            Spacer(Modifier.weight(1f))
+
+            // Accept / Decline row — pinned to bottom like WhatsApp
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 60.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Decline
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    FloatingActionButton(
+                        onClick = onDecline,
+                        containerColor = Color(0xFFE53935),
+                        modifier = Modifier.size(68.dp),
+                        shape = CircleShape
                     ) {
-                        Text(
-                            text  = callerName.take(1).uppercase(),
-                            color = Color.White,
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.Bold
+                        Icon(
+                            Icons.Default.CallEnd,
+                            contentDescription = "Decline",
+                            tint = Color.White,
+                            modifier = Modifier.size(30.dp)
                         )
                     }
-                    AsyncImage(
-                        model = "https://ui-avatars.com/api/?name=${callerName.replace(" ", "+")}&size=200&background=128C7E&color=fff",
-                        contentDescription = null,
-                        modifier = Modifier
-                            .size(72.dp)
-                            .clip(CircleShape)
-                            .border(2.dp, Color(0xFF25D366), CircleShape),
-                        contentScale = ContentScale.Crop
-                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text("Decline", color = Color.White.copy(0.7f), fontSize = 13.sp)
                 }
-                Spacer(Modifier.height(12.dp))
-                Text(callerName, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(3.dp))
-                Text(callerMobile, color = Color.White.copy(alpha = 0.55f), fontSize = 13.sp)
-                Spacer(Modifier.height(22.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        FloatingActionButton(
-                            onClick = onDecline,
-                            containerColor = Color(0xFFE53935),
-                            modifier = Modifier.size(62.dp),
-                            shape = CircleShape
-                        ) {
-                            Icon(Icons.Default.CallEnd, "Decline", tint = Color.White, modifier = Modifier.size(28.dp))
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        Text("Decline", color = Color.White.copy(0.65f), fontSize = 12.sp)
+
+                // Accept
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    FloatingActionButton(
+                        onClick = onAccept,
+                        containerColor = Color(0xFF25D366),
+                        modifier = Modifier.size(68.dp),
+                        shape = CircleShape
+                    ) {
+                        Icon(
+                            if (callType == "video") Icons.Default.Videocam else Icons.Default.Call,
+                            contentDescription = "Accept",
+                            tint = Color.White,
+                            modifier = Modifier.size(30.dp)
+                        )
                     }
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        FloatingActionButton(
-                            onClick = onAccept,
-                            containerColor = Color(0xFF25D366),
-                            modifier = Modifier.size(62.dp),
-                            shape = CircleShape
-                        ) {
-                            Icon(
-                                if (callType == "video") Icons.Default.Videocam else Icons.Default.Call,
-                                "Accept", tint = Color.White, modifier = Modifier.size(28.dp)
-                            )
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        Text("Accept", color = Color.White.copy(0.65f), fontSize = 12.sp)
-                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text("Accept", color = Color.White.copy(0.7f), fontSize = 13.sp)
                 }
-                Spacer(Modifier.height(6.dp))
             }
         }
     }
