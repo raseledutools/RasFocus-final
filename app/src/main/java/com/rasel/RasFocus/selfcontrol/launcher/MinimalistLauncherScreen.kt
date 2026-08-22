@@ -220,85 +220,71 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(Unit) {
-                    coroutineScope {
-                        awaitEachGesture {
-                            val down = awaitFirstDown(requireUnconsumed = false)
-                            var totalX = 0f
-                            var totalY = 0f
-                            var horizontalDragMode = false   // confirmed horizontal drag
-                            var verticalDragMode = false     // confirmed vertical drag
-                            var dragDecided = false          // direction decided
+                .pointerInput(showSidebar) {
+                    // Simple, reliable approach:
+                    // Track drag manually. No early break — just ignore non-target events.
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        var totalX = 0f
+                        var totalY = 0f
+                        var directionLocked = false
+                        var isHorizontal = false
+                        var gestureConsuming = false
 
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                val change = event.changes.firstOrNull() ?: break
-                                if (!change.pressed) {
-                                    // Finger lifted — snap to open or closed
-                                    if (horizontalDragMode) {
-                                        val currentOffset = sidebarOffsetAnim.value
-                                        val targetOffset = if (currentOffset < openThresholdPx) 0f else sidebarWidthPx
-                                        val willOpen = targetOffset == 0f
-                                        launch {
-                                            sidebarOffsetAnim.animateTo(
-                                                targetOffset,
-                                                animationSpec = spring(
-                                                    dampingRatio = Spring.DampingRatioLowBouncy,
-                                                    stiffness    = Spring.StiffnessMediumLow
-                                                )
-                                            )
-                                        }
-                                        if (willOpen && !showSidebar) {
-                                            showSidebar = true
-                                        } else if (!willOpen && showSidebar) {
-                                            showSidebar = false
-                                            query = ""
-                                        }
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull() ?: break
+                            if (!change.pressed) {
+                                // Finger up — decide snap
+                                if (gestureConsuming && isHorizontal) {
+                                    val cur = sidebarOffsetAnim.value
+                                    val willOpen = cur < openThresholdPx
+                                    launch {
+                                        sidebarOffsetAnim.animateTo(
+                                            if (willOpen) 0f else sidebarWidthPx,
+                                            spring(Spring.DampingRatioLowBouncy, Spring.StiffnessMediumLow)
+                                        )
                                     }
-                                    break
+                                    if (willOpen && !showSidebar) showSidebar = true
+                                    else if (!willOpen && showSidebar) { showSidebar = false; query = "" }
+                                } else if (!gestureConsuming && !showSidebar && totalY > 80f) {
+                                    // Swipe down → notifications (only when sidebar closed)
+                                    try {
+                                        val sb = context.getSystemService("statusbar")
+                                        sb?.javaClass?.getMethod("expandNotificationsPanel")?.invoke(sb)
+                                    } catch (_: Exception) {}
                                 }
+                                break
+                            }
 
-                                val delta = change.positionChange()
-                                totalX += delta.x
-                                totalY += delta.y
+                            val dx = change.position.x - change.previousPosition.x
+                            val dy = change.position.y - change.previousPosition.y
+                            totalX += dx
+                            totalY += dy
 
-                                if (!dragDecided) {
-                                    val absX = abs(totalX)
-                                    val absY = abs(totalY)
-                                    if (absX > SWIPE_SLOP_PX || absY > SWIPE_SLOP_PX) {
-                                        dragDecided = true
-                                        if (absX >= absY) {
-                                            // Is this a valid swipe direction?
-                                            val isOpeningSwipe = !showSidebar && totalX < 0f
-                                            val isClosingSwipe = showSidebar && totalX > 0f
-                                            if (isOpeningSwipe || isClosingSwipe) {
-                                                horizontalDragMode = true
-                                            } else {
-                                                break // wrong direction, give up
-                                            }
-                                        } else {
-                                            verticalDragMode = true
-                                        }
+                            // Lock direction after slop
+                            if (!directionLocked) {
+                                val absX = abs(totalX); val absY = abs(totalY)
+                                if (absX > SWIPE_SLOP_PX || absY > SWIPE_SLOP_PX) {
+                                    directionLocked = true
+                                    isHorizontal = absX >= absY
+                                    if (isHorizontal) {
+                                        // Only consume if valid direction
+                                        val validOpen  = !showSidebar && totalX < 0f
+                                        val validClose =  showSidebar && totalX > 0f
+                                        gestureConsuming = validOpen || validClose
                                     }
                                 }
+                            }
 
-                                if (horizontalDragMode) {
-                                    change.consume()
-                                    // Move sidebar in real time with finger
-                                    val newOffset = (sidebarOffsetAnim.value - delta.x)
-                                        .coerceIn(0f, sidebarWidthPx)
-                                    launch { sidebarOffsetAnim.snapTo(newOffset) }
-                                } else if (verticalDragMode && !showSidebar) {
-                                    // Swipe down → notification panel
-                                    if (totalY > 80f) {
-                                        dragDecided = false
-                                        verticalDragMode = false
-                                        try {
-                                            val sb = context.getSystemService("statusbar")
-                                            sb?.javaClass?.getMethod("expandNotificationsPanel")?.invoke(sb)
-                                        } catch (_: Exception) {}
-                                    }
-                                }
+                            if (gestureConsuming && isHorizontal) {
+                                change.consume()
+                                // sidebar offset: 0 = open (flush right), sidebarWidthPx = hidden
+                                // swipe LEFT (dx < 0) from home → offset decreases → sidebar appears
+                                // swipe RIGHT (dx > 0) from open → offset increases → sidebar hides
+                                val newOffset = (sidebarOffsetAnim.value + dx)
+                                    .coerceIn(0f, sidebarWidthPx)
+                                launch { sidebarOffsetAnim.snapTo(newOffset) }
                             }
                         }
                     }
@@ -528,14 +514,12 @@ fun HomeScreen(
             .background(BG)
             .navigationBarsPadding()
     ) {
-        // ── Main scrollable content ──────────────────────────────────────
-        val scrollState = rememberScrollState()
+        // ── Fixed top section: clock ─────────────────────────────────────
         Column(
             Modifier
-                .fillMaxSize()
-                .verticalScroll(scrollState)
+                .fillMaxWidth()
                 .padding(horizontal = 24.dp)
-                .padding(bottom = 96.dp)   // leave room for bottom buttons
+                .align(Alignment.TopCenter)
         ) {
             Spacer(Modifier.height(48.dp))
 
@@ -555,20 +539,33 @@ fun HomeScreen(
                 }
             )
 
-            Spacer(Modifier.height(44.dp))
+            Spacer(Modifier.height(32.dp))
+        }
 
-            // ── Pinned apps list — scrollable + drag reorder ──────────────
+        // ── Scrollable apps list — sits below clock, above bottom bar ────
+        // top offset = 48 + 180(clock) + 32 = ~280dp approximately
+        val clockSectionHeight = 48.dp + 180.dp + 32.dp
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopStart)
+                .padding(top = clockSectionHeight, bottom = 96.dp)
+                .padding(horizontal = 24.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 4.dp)
+        ) {
             if (localOrder.isEmpty()) {
-                Text(
-                    "Long press the ring or buttons below to assign apps",
-                    color    = TXT.copy(alpha = 0.2f),
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp,
-                    modifier = Modifier.padding(vertical = 12.dp)
-                )
+                item {
+                    Text(
+                        "Long press the ring or buttons below to assign apps",
+                        color    = TXT.copy(alpha = 0.2f),
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp,
+                        modifier = Modifier.padding(vertical = 12.dp)
+                    )
+                }
             } else {
-                localOrder.forEachIndexed { index, app ->
-                    val isDragging = draggingIndex == index
+                itemsIndexed(localOrder, key = { _, app -> app.packageName }) { index, app ->
+                    val isDragging   = draggingIndex == index
                     val isDragTarget = dragTargetIndex == index && draggingIndex != null && draggingIndex != index
 
                     Row(
@@ -576,32 +573,19 @@ fun HomeScreen(
                             .fillMaxWidth()
                             .then(
                                 if (isDragTarget)
-                                    Modifier.drawBehind {
-                                        drawRect(
-                                            color = ACCENT.copy(alpha = 0.12f),
-                                            size  = size
-                                        )
-                                    }
+                                    Modifier.drawBehind { drawRect(ACCENT.copy(alpha = 0.12f)) }
                                 else Modifier
                             )
                             .combinedClickable(
-                                onClick = {
-                                    if (draggingIndex == null) onLaunch(app)
-                                },
-                                onLongClick = {
-                                    // Long press: start drag mode
-                                    draggingIndex = index
-                                    dragTargetIndex = index
-                                }
+                                onClick = { if (draggingIndex == null) onLaunch(app) },
+                                onLongClick = { draggingIndex = index; dragTargetIndex = index }
                             )
                             .padding(vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Drag handle — only visible in drag mode
                         if (draggingIndex != null) {
                             Icon(
-                                Icons.Default.DragHandle,
-                                null,
+                                Icons.Default.DragHandle, null,
                                 tint = if (isDragging) ACCENT else TXT.copy(alpha = 0.3f),
                                 modifier = Modifier
                                     .size(20.dp)
@@ -609,39 +593,26 @@ fun HomeScreen(
                                         detectDragGestures(
                                             onDragStart = { draggingIndex = index; dragTargetIndex = index },
                                             onDragEnd = {
-                                                val from = draggingIndex
-                                                val to   = dragTargetIndex
+                                                val from = draggingIndex; val to = dragTargetIndex
                                                 if (from != null && to != null && from != to) {
-                                                    val newList = localOrder.toMutableList()
-                                                    val item = newList.removeAt(from)
-                                                    newList.add(to, item)
-                                                    localOrder = newList
-                                                    onReorder(newList)
+                                                    val nl = localOrder.toMutableList()
+                                                    nl.add(to, nl.removeAt(from))
+                                                    localOrder = nl; onReorder(nl)
                                                 }
-                                                draggingIndex  = null
-                                                dragTargetIndex = null
+                                                draggingIndex = null; dragTargetIndex = null
                                             },
-                                            onDragCancel = {
-                                                draggingIndex  = null
-                                                dragTargetIndex = null
-                                            },
+                                            onDragCancel = { draggingIndex = null; dragTargetIndex = null },
                                             onDrag = { change, dragAmount ->
                                                 change.consume()
-                                                // Each ~52dp row = 52 * density px
-                                                val rowHeightPx = 52.dp.toPx()
-                                                val currentFrom = draggingIndex ?: return@detectDragGestures
-                                                val currentTarget = dragTargetIndex ?: currentFrom
-                                                // How many rows did we move?
-                                                val steps = (dragAmount.y / rowHeightPx).let {
-                                                    when {
-                                                        it > 0.5f  ->  1
-                                                        it < -0.5f -> -1
-                                                        else       ->  0
-                                                    }
+                                                val rowPx = 52.dp.toPx()
+                                                val steps = when {
+                                                    dragAmount.y > rowPx * 0.5f ->  1
+                                                    dragAmount.y < -rowPx * 0.5f -> -1
+                                                    else -> 0
                                                 }
                                                 if (steps != 0) {
-                                                    val next = (currentTarget + steps).coerceIn(0, localOrder.size - 1)
-                                                    dragTargetIndex = next
+                                                    val cur = dragTargetIndex ?: (draggingIndex ?: 0)
+                                                    dragTargetIndex = (cur + steps).coerceIn(0, localOrder.size - 1)
                                                 }
                                             }
                                         )
@@ -653,71 +624,47 @@ fun HomeScreen(
                         Text(
                             text       = renamedMap[app.packageName] ?: app.label,
                             color      = when {
-                                isDragging -> ACCENT
+                                isDragging    -> ACCENT
                                 app.isBlocked -> RED.copy(alpha = 0.7f)
-                                else -> TXT
+                                else          -> TXT
                             },
                             fontSize   = appFontSize,
                             fontWeight = FontWeight.Light,
                             modifier   = Modifier.weight(1f)
                         )
 
-                        // Context menu button in drag mode (exit drag mode)
-                        if (draggingIndex != null) {
-                            if (isDragging) {
-                                Icon(
-                                    Icons.Default.Check, null,
-                                    tint = ACCENT,
-                                    modifier = Modifier
-                                        .size(18.dp)
-                                        .clickable {
-                                            val from = draggingIndex
-                                            val to   = dragTargetIndex
-                                            if (from != null && to != null && from != to) {
-                                                val newList = localOrder.toMutableList()
-                                                val item = newList.removeAt(from)
-                                                newList.add(to, item)
-                                                localOrder = newList
-                                                onReorder(newList)
-                                            }
-                                            draggingIndex  = null
-                                            dragTargetIndex = null
-                                        }
-                                )
-                            }
+                        if (isDragging && draggingIndex != null) {
+                            Icon(Icons.Default.Check, null, tint = ACCENT,
+                                modifier = Modifier.size(18.dp).clickable {
+                                    draggingIndex = null; dragTargetIndex = null
+                                })
                         }
                     }
 
-                    // Thin divider between items when dragging
                     if (draggingIndex != null && index < localOrder.size - 1) {
-                        HorizontalDivider(color = DIVIDER.copy(alpha = 0.5f), thickness = 0.5.dp)
+                        HorizontalDivider(color = DIVIDER.copy(alpha = 0.4f), thickness = 0.5.dp)
                     }
                 }
 
-                // Done button to exit drag mode
                 if (draggingIndex != null) {
-                    Spacer(Modifier.height(16.dp))
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(ACCENT.copy(alpha = 0.15f))
-                            .clickable {
-                                draggingIndex  = null
-                                dragTargetIndex = null
-                            }
-                            .padding(vertical = 12.dp),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment     = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.Check, null, tint = ACCENT, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Done Reordering", color = ACCENT, fontSize = 14.sp)
+                    item {
+                        Spacer(Modifier.height(12.dp))
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(ACCENT.copy(alpha = 0.15f))
+                                .clickable { draggingIndex = null; dragTargetIndex = null }
+                                .padding(vertical = 12.dp),
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(Icons.Default.Check, null, tint = ACCENT, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Done Reordering", color = ACCENT, fontSize = 14.sp)
+                        }
                     }
                 }
             }
-
-            Spacer(Modifier.height(16.dp))
         }
 
         // ── Bottom two buttons ───────────────────────────────────────────
