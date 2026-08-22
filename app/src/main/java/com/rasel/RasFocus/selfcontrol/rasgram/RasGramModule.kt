@@ -2179,8 +2179,8 @@ fun ChatArea(
     // ── WhatsApp-style: Room DB থেকে instant load, Firestore background sync ──
     val rasGramRepo = remember { RasGramRepository.getInstance(context) }
 
-    // messagesLoaded: Firebase প্রথম snapshot আসার আগে LazyColumn লুকানো থাকবে — flicker নেই
-    var messagesLoaded by remember { mutableStateOf(false) }
+
+
     var inputText by remember { mutableStateOf("") }
     var liveContact by remember { mutableStateOf(contact) }
     var isUploading by remember { mutableStateOf(false) }
@@ -2259,18 +2259,7 @@ fun ChatArea(
         }
     }
 
-    // ── STEP 2: Room cache আছে কিনা দেখো → থাকলে সাথে সাথে ready ─────────────
-    LaunchedEffect(chatId) {
-        // Room এ যদি আগের message থাকে → সাথে সাথে messagesLoaded = true
-        // এতে blank screen দেখা যাবে না — WhatsApp exact behavior
-        val hasCachedData = cachedMessages.isNotEmpty()
-        if (hasCachedData) messagesLoaded = true
-    }
 
-    // cachedMessages update হলে messagesLoaded ensure করো
-    LaunchedEffect(cachedMessages.size) {
-        if (cachedMessages.isNotEmpty()) messagesLoaded = true
-    }
 
     // ── STEP 3: Firestore real-time sync → Room এ save → UI auto-update ───────
     // UI directly Firestore থেকে পড়ে না — Room Flow থেকে পড়ে (above)
@@ -2340,8 +2329,7 @@ fun ChatArea(
                         }
                     }
 
-                    // First Firestore snapshot এলে messagesLoaded confirm
-                    messagesLoaded = true
+
 
                     // Mark unread as read in Firestore
                     qs.documents.filter { doc ->
@@ -2376,8 +2364,8 @@ fun ChatArea(
     // প্রথমবার load হলে instant jump (কোনো animation নেই, flicker নেই)
     // নতুন message আসলে smooth animate
     var prevMessagesSize by remember { mutableIntStateOf(0) }
-    LaunchedEffect(messagesLoaded, messages.size) {
-        if (!messagesLoaded || messages.isEmpty()) return@LaunchedEffect
+    LaunchedEffect(messages.size) {
+        if (messages.isEmpty()) return@LaunchedEffect
         if (prevMessagesSize == 0) {
             // প্রথম load: instant, no animation — WhatsApp এর মতো সরাসরি নিচে
             listState.scrollToItem(messages.size - 1)
@@ -2490,11 +2478,8 @@ fun ChatArea(
                     }
             )
 
-            // Firebase এর প্রথম snapshot আসার আগে blank রাখো — flash/jolok নেই
-            if (!messagesLoaded) {
-                // শুধু background দেখা যাবে, কোনো content নেই — WhatsApp এর মতো
-                Box(modifier = Modifier.fillMaxSize())
-            } else {
+            // Room Flow থেকে messages instant আসে — gate ছাড়াই সরাসরি দেখাও।
+            // Empty list হলে LazyColumn blank দেখাবে, Room emit হওয়ার সাথে সাথে fill হবে।
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 state = listState,
@@ -2557,7 +2542,7 @@ fun ChatArea(
                     }
                 }
             }
-            } // end if (messagesLoaded)
+
 
             // Scroll-to-bottom FAB - inside Box(weight(1f)) BoxScope, using wrapContentSize
             val showScrollFab by remember { derivedStateOf { listState.firstVisibleItemIndex < messages.size - 5 && messages.size > 10 } }
