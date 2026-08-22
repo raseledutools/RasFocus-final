@@ -4,123 +4,55 @@
 ╚══════════════════════════════════════════╝
 
 === KOTLIN ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4513:13 Conflicting declarations: val factory: PeerConnectionFactory, val factory: PeerConnectionFactory
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4542:13 Conflicting declarations: val hasMicPerm: Boolean, val hasMicPerm: Boolean
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4546:13 Conflicting declarations: val hasMicPerm: Boolean, val hasMicPerm: Boolean
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4557:13 Conflicting declarations: val factory: PeerConnectionFactory, val factory: PeerConnectionFactory
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4561:13 Unresolved reference: audioManager
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4561:26 Variable expected
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4562:13 Unresolved reference: audioManager
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4562:26 Variable expected
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4585:25 Unresolved reference: localVideoTrack
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4589:13 Unresolved reference: localStream
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4591:61 Unresolved reference: iceServers
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4627:25 Unresolved reference: remoteVideoTrack
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4628:25 Unresolved reference: remoteSurfaceView
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4628:64 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4637:29 Unresolved reference: remoteVideoTrack
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4638:29 Unresolved reference: remoteSurfaceView
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4638:68 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4647:13 Unresolved reference: peerConnection
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4818:13 Unresolved reference: peerConnection
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4819:13 Unresolved reference: localStream
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4820:13 Unresolved reference: audioManager
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4820:26 Variable expected
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4821:13 Unresolved reference: audioManager
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4821:26 Variable expected
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4846:29 Unresolved reference: remoteSurfaceView
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4848:29 Unresolved reference: remoteVideoTrack
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4858:29 Unresolved reference: localSurfaceView
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4859:29 Unresolved reference: localVideoTrack
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4870:32 Unresolved reference: remoteVideoTrack
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4871:33 Unresolved reference: remoteVideoTrack
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4872:36 Unresolved reference: remoteSurfaceView
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4875:32 Unresolved reference: localVideoTrack
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4876:33 Unresolved reference: localVideoTrack
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4877:36 Unresolved reference: localSurfaceView
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4930:33 Unresolved reference: localStream
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4976:33 Unresolved reference: audioManager
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4976:46 Variable expected
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4977:33 Unresolved reference: audioManager
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4977:46 Variable expected
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4985:37 Unresolved reference: localStream
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4535:13 Conflicting declarations: val factory: PeerConnectionFactory, val factory: PeerConnectionFactory
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4577:13 Conflicting declarations: val factory: PeerConnectionFactory, val factory: PeerConnectionFactory
 
 === UNRESOLVED / TYPE ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4561:13 Unresolved reference: audioManager
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4562:13 Unresolved reference: audioManager
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4585:25 Unresolved reference: localVideoTrack
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4589:13 Unresolved reference: localStream
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4591:61 Unresolved reference: iceServers
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4627:25 Unresolved reference: remoteVideoTrack
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4628:25 Unresolved reference: remoteSurfaceView
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4628:64 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4637:29 Unresolved reference: remoteVideoTrack
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4638:29 Unresolved reference: remoteSurfaceView
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4638:68 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4647:13 Unresolved reference: peerConnection
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4818:13 Unresolved reference: peerConnection
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4819:13 Unresolved reference: localStream
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4820:13 Unresolved reference: audioManager
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4821:13 Unresolved reference: audioManager
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4846:29 Unresolved reference: remoteSurfaceView
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4848:29 Unresolved reference: remoteVideoTrack
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4858:29 Unresolved reference: localSurfaceView
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4859:29 Unresolved reference: localVideoTrack
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4870:32 Unresolved reference: remoteVideoTrack
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4871:33 Unresolved reference: remoteVideoTrack
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4872:36 Unresolved reference: remoteSurfaceView
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4875:32 Unresolved reference: localVideoTrack
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4876:33 Unresolved reference: localVideoTrack
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4877:36 Unresolved reference: localSurfaceView
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4930:33 Unresolved reference: localStream
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4976:33 Unresolved reference: audioManager
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4977:33 Unresolved reference: audioManager
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4985:37 Unresolved reference: localStream
 
 === BUILD FAILURE ===
 > Task :app:compileFullReleaseKotlin FAILED
 * What went wrong:
 Execution failed for task ':app:compileFullReleaseKotlin'.
-BUILD FAILED in 3m 55s
+BUILD FAILED in 3m 28s
 
 === LAST 60 LINES ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4562:13 Unresolved reference: audioManager
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4562:26 Variable expected
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4585:25 Unresolved reference: localVideoTrack
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4589:13 Unresolved reference: localStream
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4591:61 Unresolved reference: iceServers
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4627:25 Unresolved reference: remoteVideoTrack
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4628:25 Unresolved reference: remoteSurfaceView
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4628:64 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4637:29 Unresolved reference: remoteVideoTrack
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4638:29 Unresolved reference: remoteSurfaceView
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4638:68 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4647:13 Unresolved reference: peerConnection
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4818:13 Unresolved reference: peerConnection
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4819:13 Unresolved reference: localStream
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4820:13 Unresolved reference: audioManager
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4820:26 Variable expected
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4821:13 Unresolved reference: audioManager
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4821:26 Variable expected
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4846:29 Unresolved reference: remoteSurfaceView
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4848:29 Unresolved reference: remoteVideoTrack
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4858:29 Unresolved reference: localSurfaceView
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4859:29 Unresolved reference: localVideoTrack
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4870:32 Unresolved reference: remoteVideoTrack
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4871:33 Unresolved reference: remoteVideoTrack
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4872:36 Unresolved reference: remoteSurfaceView
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4875:32 Unresolved reference: localVideoTrack
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4876:33 Unresolved reference: localVideoTrack
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4877:36 Unresolved reference: localSurfaceView
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4930:33 Unresolved reference: localStream
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4976:33 Unresolved reference: audioManager
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4976:46 Variable expected
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4977:33 Unresolved reference: audioManager
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4977:46 Variable expected
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4985:37 Unresolved reference: localStream
+> Task :app:generateFullReleaseBuildConfig
+> Task :app:packageFullReleaseResources FROM-CACHE
+> Task :app:parseFullReleaseLocalResources FROM-CACHE
+> Task :app:mapFullReleaseSourceSetPaths
+> Task :app:mergeFullReleaseArtProfile
+> Task :app:validateSigningFullRelease
+> Task :app:writeFullReleaseAppMetadata
+> Task :app:writeFullReleaseSigningConfigVersions
+> Task :app:checkFullReleaseDuplicateClasses
+> Task :app:mergeFullReleaseAssets FROM-CACHE
+> Task :app:checkFullReleaseAarMetadata
+> Task :app:compressFullReleaseAssets FROM-CACHE
+> Task :app:mergeFullReleaseNativeLibs
+> Task :app:collectFullReleaseDependencies
+
+> Task :app:stripFullReleaseDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libbarhopper_v3.so, libimage_processing_util_jni.so, libjingle_peerconnection_so.so, libpdfium.so, libpdfiumandroid.so.
+
+> Task :app:extractFullReleaseNativeSymbolTables FROM-CACHE
+> Task :app:mergeFullReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:sdkFullReleaseDependencyData
+> Task :app:mergeFullReleaseResources FROM-CACHE
+> Task :app:processFullReleaseMainManifest
+> Task :app:processFullReleaseManifest
+> Task :app:processFullReleaseManifestForPackage
+note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
+
+note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
+
+> Task :app:processFullReleaseResources
+> Task :app:kspFullReleaseKotlin
+> Task :app:compileFullReleaseKotlin
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4535:13 Conflicting declarations: val factory: PeerConnectionFactory, val factory: PeerConnectionFactory
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:4577:13 Conflicting declarations: val factory: PeerConnectionFactory, val factory: PeerConnectionFactory
 
 > Task :app:compileFullReleaseKotlin FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1787380937967.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1787383441466.json
 
 FAILURE: Build failed with an exception.
 
@@ -141,6 +73,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 3m 55s
+BUILD FAILED in 3m 28s
 32 actionable tasks: 22 executed, 10 from cache
 Configuration cache entry stored.
