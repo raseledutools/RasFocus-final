@@ -1513,6 +1513,31 @@ fun SidebarContent(
     }
 }
 
+// WhatsApp-style shimmer skeleton — chat list load হওয়ার আগে দেখায়
+@Composable
+private fun ChatSkeletonItem() {
+    val infiniteTransition = rememberInfiniteTransition(label = "shimmer")
+    val shimmerAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.15f, targetValue = 0.35f,
+        animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
+        label = "shimmerAlpha"
+    )
+    val shimmerColor = Color.White.copy(alpha = shimmerAlpha)
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(Modifier.size(52.dp).background(shimmerColor, CircleShape))
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Box(Modifier.fillMaxWidth(0.45f).height(14.dp).background(shimmerColor, RoundedCornerShape(4.dp)))
+            Spacer(Modifier.height(6.dp))
+            Box(Modifier.fillMaxWidth(0.7f).height(12.dp).background(shimmerColor, RoundedCornerShape(4.dp)))
+        }
+        Box(Modifier.width(36.dp).height(11.dp).background(shimmerColor, RoundedCornerShape(4.dp)))
+    }
+}
+
 // ==================== CHATS TAB ====================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1697,11 +1722,22 @@ fun ChatsTab(
 
     // WhatsApp style: শুধু phonebook contacts যারা RasGram-এ আছে।
     // contactsLoaded না হওয়া পর্যন্ত phonebook filter skip — সরাসরি chat list দেখাও।
-    val filteredUsers = users.filter { user ->
+    // ── WhatsApp exact: Room cache থেকে instant chat list ────────────────────
+    // Firestore users না আসা পর্যন্ত cachedPreviews থেকে User বানাও।
+    // Firestore এলে automatically replace হবে — কোনো flicker নেই।
+    val displayUsers = if (users.isEmpty() && cachedPreviews.isNotEmpty()) {
+        cachedPreviews
+            .filter { it.contactMobile != currentUser.mobile }
+            .map { preview ->
+                User(mobile = preview.contactMobile, name = preview.contactName, avatarUrl = preview.contactAvatarUrl)
+            }
+    } else users
+
+    val filteredUsers = displayUsers.filter { user ->
         val isInPhonebook = when {
-            !contactsLoaded -> true                              // এখনও load হয়নি → সব দেখাও
-            deviceContactNumbers.isEmpty() -> true               // permission deny → fallback সব দেখাও
-            else -> deviceContactNumbers.contains(user.mobile)   // normal phonebook filter
+            !contactsLoaded -> true
+            deviceContactNumbers.isEmpty() -> true
+            else -> deviceContactNumbers.contains(user.mobile)
         }
         isInPhonebook && (
             user.name.contains(searchQuery, ignoreCase = true) ||
@@ -1732,9 +1768,10 @@ fun ChatsTab(
         HorizontalDivider(color = RasGramTheme.DividerColor, thickness = 0.5.dp)
 
         LazyColumn(modifier = Modifier.fillMaxSize()) {
-            // usersLoaded না হওয়া পর্যন্ত empty state দেখাবে না — blank list থাকবে
-            // Firebase cache থেকে দ্রুত load হলে এই flash কখনোই দেখা যাবে না
-            if (usersLoaded && filteredUsers.isEmpty()) {
+            // Shimmer skeleton: Room ও নেই, Firestore ও আসেনি → skeleton
+            if (!usersLoaded && cachedPreviews.isEmpty()) {
+                items(6) { ChatSkeletonItem() }
+            } else if (usersLoaded && filteredUsers.isEmpty()) {
                 item {
                     Column(
                         modifier = Modifier.fillMaxWidth().padding(48.dp),
