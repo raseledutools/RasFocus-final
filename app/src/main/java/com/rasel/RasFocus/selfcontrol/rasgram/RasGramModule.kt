@@ -4504,6 +4504,28 @@ fun CallingScreen(
     val eglBase = remember { mutableStateOf<EglBase?>(null) }
     val peerConnectionFactory = remember { mutableStateOf<PeerConnectionFactory?>(null) }
 
+    // WebRTC session state — kept outside LaunchedEffect so DisposableEffect and UI can access them
+    val audioManager = remember {
+        context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+    }
+    var peerConnection by remember { mutableStateOf<PeerConnection?>(null) }
+    var localStream by remember { mutableStateOf<MediaStream?>(null) }
+    var localVideoTrack by remember { mutableStateOf<VideoTrack?>(null) }
+    var remoteVideoTrack by remember { mutableStateOf<VideoTrack?>(null) }
+    var remoteSurfaceView by remember { mutableStateOf<SurfaceViewRenderer?>(null) }
+    var localSurfaceView by remember { mutableStateOf<SurfaceViewRenderer?>(null) }
+    val iceServers = remember {
+        listOf(
+            PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
+            PeerConnection.IceServer.builder("turn:openrelay.metered.ca:80")
+                .setUsername("openrelayproject").setPassword("openrelayproject").createIceServer(),
+            PeerConnection.IceServer.builder("turn:openrelay.metered.ca:443")
+                .setUsername("openrelayproject").setPassword("openrelayproject").createIceServer(),
+            PeerConnection.IceServer.builder("turn:openrelay.metered.ca:443?transport=tcp")
+                .setUsername("openrelayproject").setPassword("openrelayproject").createIceServer()
+        )
+    }
+
     LaunchedEffect(Unit) {
         // ── Step 1: IO thread — init WebRTC native libs ──────────────────────
         // MUST complete before WebRTC session starts. Running EglBase.create()
@@ -4543,8 +4565,6 @@ fun CallingScreen(
         if (!hasMicPerm) { Toast.makeText(context, "Microphone permission needed", Toast.LENGTH_SHORT).show(); onEndCall(); return@LaunchedEffect }
 
         // ── Step 3: WebRTC session ───────────────────────────────────────────
-        val hasMicPerm = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-        if (!hasMicPerm) { Toast.makeText(context, "Microphone permission needed", Toast.LENGTH_SHORT).show(); onEndCall(); return@LaunchedEffect }
 
         // FIX: peerConnectionFactory is nullable — wait until IO init completes.
         // If it's still null after the IO LaunchedEffect runs, WebRTC libs failed to load.
