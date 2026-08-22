@@ -1205,6 +1205,8 @@ fun MainScreen(
     // Incoming call state — lock screen বা app-open দুটো path থেকেই আসতে পারে
     // Must be declared before any LaunchedEffect that references these variables
     var showIncomingCall by remember { mutableStateOf(incomingCallId != null) }
+    // showCallUI must be declared before any LaunchedEffect that references it
+    var showCallUI by remember { mutableStateOf(false) }
     // Overlay permission — ask once on first launch inside RasGram
     var showOverlayPermissionDialog by remember { mutableStateOf(false) }
     var activeIncomingCallId by remember { mutableStateOf(incomingCallId ?: "") }
@@ -1294,7 +1296,6 @@ fun MainScreen(
             }
         } catch (_: Exception) { }
     }
-    var showCallUI by remember { mutableStateOf(false) }
     var isReceiverCall by remember { mutableStateOf(false) }
     var acceptedCallId by remember { mutableStateOf("") }
     var selectedStatusUser by remember { mutableStateOf<List<Status>?>(null) }
@@ -1631,6 +1632,30 @@ private fun ChatSkeletonItem() {
             Box(Modifier.fillMaxWidth(0.7f).height(12.dp).background(shimmerColor, RoundedCornerShape(4.dp)))
         }
         Box(Modifier.width(36.dp).height(11.dp).background(shimmerColor, RoundedCornerShape(4.dp)))
+    }
+}
+
+// WhatsApp-style message bubble skeleton — chat খোলার সাথে সাথে দেখায়, flicker নেই
+@Composable
+private fun MessageSkeletonItem(isMe: Boolean) {
+    val infiniteTransition = rememberInfiniteTransition(label = "msgShimmer")
+    val shimmerAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.10f, targetValue = 0.28f,
+        animationSpec = infiniteRepeatable(tween(800), RepeatMode.Reverse),
+        label = "msgShimmerAlpha"
+    )
+    val shimmerColor = Color.White.copy(alpha = shimmerAlpha)
+    val width = if (isMe) 0.55f else 0.65f
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 3.dp),
+        horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(width)
+                .height(42.dp)
+                .background(shimmerColor, RoundedCornerShape(12.dp))
+        )
     }
 }
 
@@ -2211,15 +2236,25 @@ fun ChatArea(
     }
 
     // ── STEP 1: Room DB থেকে instant local load (offline ও কাজ করে) ──────────
-    // collectAsStateWithLifecycle → Flow থেকে auto UI update, lifecycle-safe
-    val cachedMessages by rasGramRepo.messageDao
-        .getMessages(chatId)
-        .collectAsStateWithLifecycle(initialValue = emptyList())
+    // produceState: null = "Room এখনো emit করেনি" → skeleton দেখাও
+    //               non-null = actual data (empty list হলেও) → messages দেখাও
+    // এটাই flicker-free loading এর চাবিকাঠি — initialValue=emptyList() দিলে
+    // blank → full jump হয়, কিন্তু null দিলে skeleton → full (কোনো flicker নেই)
+    val cachedMessagesState by produceState<List<CachedMessage>?>(
+        initialValue = null,
+        key1 = chatId
+    ) {
+        rasGramRepo.messageDao.getMessages(chatId).collect { msgs ->
+            value = msgs
+        }
+    }
+
+    val messagesLoaded = cachedMessagesState != null
 
     // CachedMessage → Message conversion for UI
-    val messages = remember(cachedMessages) {
+    val messages = remember(cachedMessagesState) {
         with(rasGramRepo) {
-            cachedMessages.map { it.toMessage() }
+            cachedMessagesState?.map { it.toMessage() } ?: emptyList()
         }
     }
 
@@ -2489,8 +2524,21 @@ fun ChatArea(
                     }
             )
 
-            // Room Flow থেকে messages instant আসে — gate ছাড়াই সরাসরি দেখাও।
-            // Empty list হলে LazyColumn blank দেখাবে, Room emit হওয়ার সাথে সাথে fill হবে।
+            // messagesLoaded = false হলে skeleton দেখাও (Room এখনো emit করেনি)
+            // messagesLoaded = true হলে সরাসরি messages দেখাও (page + messages একসাথে)
+            // এতে blank→full flicker সম্পূর্ণ দূর হয়
+            if (!messagesLoaded) {
+                // Skeleton: page আর messages একসাথে render হচ্ছে এমন দেখায়
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(8) { index ->
+                        MessageSkeletonItem(isMe = index % 3 != 0)
+                    }
+                }
+            } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 state = listState,
@@ -2553,6 +2601,7 @@ fun ChatArea(
                     }
                 }
             }
+            } // end else (messagesLoaded)
 
 
             // Scroll-to-bottom FAB - inside Box(weight(1f)) BoxScope, using wrapContentSize
@@ -6397,6 +6446,7 @@ fun GroupChatArea(
     val scope = rememberCoroutineScope()
     val isCompact = isCompactScreen()
     var messages by remember { mutableStateOf<List<Message>>(emptyList()) }
+    var groupMessagesLoaded by remember { mutableStateOf(false) }
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val haptic = LocalHapticFeedback.current
@@ -6458,7 +6508,10 @@ fun GroupChatArea(
                             duration = (d["duration"] as? Long)?.toInt() ?: 0
                         )
                     }
-                }?.also { msgs -> messages = msgs }
+                }?.also { msgs ->
+                    messages = msgs
+                    groupMessagesLoaded = true
+                }
             }
     }
 
@@ -6508,6 +6561,15 @@ fun GroupChatArea(
         }
 
         Box(modifier = Modifier.weight(1f)) {
+            if (!groupMessagesLoaded) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(8) { index -> MessageSkeletonItem(isMe = index % 3 != 0) }
+                }
+            } else {
             LazyColumn(modifier = Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 item { EncryptionNotice() }
                 messages.forEach { msg ->
@@ -6530,6 +6592,7 @@ fun GroupChatArea(
                     }
                 }
             }
+            } // end else (groupMessagesLoaded)
         }
 
         if (isUploading) {
