@@ -1259,97 +1259,117 @@ fun MainScreen(
         }
     }
 
-    if (isCompact && inChat) {
-        // Full screen chat on mobile
-        if (selectedContact != null) {
-            ChatArea(
-                currentUser = liveCurrentUser,
-                contact = selectedContact!!,
-                onBack = { selectedContact = null },
-                onCallClick = { type ->
-                    callType = type
-                    callContact = selectedContact
-                    showCallUI = true
-                }
-            )
-        } else if (selectedGroup != null) {
-            GroupChatArea(
-                currentUser = liveCurrentUser,
-                group = selectedGroup!!,
-                onBack = { selectedGroup = null }
-            )
-        }
-    } else {
-        Scaffold(
-            containerColor = RasGramTheme.DarkBackground,
-            bottomBar = {
-                if (isCompact) {
-                    BottomNavBar(
-                        selectedTab = selectedTab,
-                        onTabChange = { selectedTab = it }
-                    )
-                }
-            }
-        ) { padding ->
+    // ── WhatsApp-style: chat list + chat window SAME Box, always composed ──
+    // Tablet: side-by-side। Mobile: chat list সবসময় render, chat window
+    // তার উপরে AnimatedVisibility দিয়ে slide করে আসে।
+    // এতে chat list কখনো re-compose হয় না → কোনো lag নেই।
+    if (!isCompact) {
+        // ── Tablet layout: side-by-side ─────────────────────────────────────
+        Scaffold(containerColor = RasGramTheme.DarkBackground) { padding ->
             Row(modifier = Modifier.fillMaxSize().padding(padding)) {
-                // Left sidebar on tablet
-                if (!isCompact) {
-                    Column(modifier = Modifier.width(360.dp).fillMaxHeight()) {
-                        TabLayout(selectedTab = selectedTab, onTabChange = { selectedTab = it })
-                        SidebarContent(
-                            tab = selectedTab,
-                            currentUser = liveCurrentUser,
-                            selectedContact = selectedContact,
-                            onContactSelect = { selectedContact = it; selectedGroup = null },
-                            onGroupSelect = { selectedGroup = it; selectedContact = null },
-                            isDarkMode = isDarkMode,
-                            onToggleTheme = onToggleTheme,
-                            onLogout = onLogout,
-                            onUserUpdate = onUserUpdate,
-                            onStatusClick = { selectedStatusUser = it },
-                            onSplashDone = onSplashDone
-                        )
-                    }
-                } else {
+                Column(modifier = Modifier.width(360.dp).fillMaxHeight()) {
+                    TabLayout(selectedTab = selectedTab, onTabChange = { selectedTab = it })
                     SidebarContent(
                         tab = selectedTab,
                         currentUser = liveCurrentUser,
                         selectedContact = selectedContact,
-                        onContactSelect = { selectedContact = it },
-                        onGroupSelect = { selectedGroup = it },
+                        onContactSelect = { selectedContact = it; selectedGroup = null },
+                        onGroupSelect = { selectedGroup = it; selectedContact = null },
                         isDarkMode = isDarkMode,
                         onToggleTheme = onToggleTheme,
                         onLogout = onLogout,
                         onUserUpdate = onUserUpdate,
                         onStatusClick = { selectedStatusUser = it },
-                        onSplashDone = onSplashDone,
-                        modifier = Modifier.fillMaxSize()
+                        onSplashDone = onSplashDone
                     )
                 }
+                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                    when {
+                        selectedContact != null -> ChatArea(
+                            currentUser = liveCurrentUser,
+                            contact = selectedContact!!,
+                            onBack = { selectedContact = null },
+                            onCallClick = { type ->
+                                callType = type
+                                callContact = selectedContact
+                                showCallUI = true
+                            }
+                        )
+                        selectedGroup != null -> GroupChatArea(
+                            currentUser = liveCurrentUser,
+                            group = selectedGroup!!,
+                            onBack = { selectedGroup = null }
+                        )
+                        else -> EmptyChatState()
+                    }
+                }
+            }
+        }
+    } else {
+        // ── Mobile layout: WhatsApp exact binding ────────────────────────────
+        // Chat list + bottom nav সবসময় composed। Chat window তার উপরে
+        // Box এ overlay — slide করে আসে, chat list কখনো unmount হয় না।
+        Box(modifier = Modifier.fillMaxSize()) {
 
-                // Chat pane on tablet
-                if (!isCompact) {
-                    Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                        if (selectedContact != null) {
-                            ChatArea(
-                                currentUser = liveCurrentUser,
-                                contact = selectedContact!!,
-                                onBack = { selectedContact = null },
-                                onCallClick = { type ->
-                                    callType = type
-                                    callContact = selectedContact
-                                    showCallUI = true
-                                }
-                            )
-                        } else if (selectedGroup != null) {
-                            GroupChatArea(
-                                currentUser = liveCurrentUser,
-                                group = selectedGroup!!,
-                                onBack = { selectedGroup = null }
-                            )
-                        } else {
-                            EmptyChatState()
-                        }
+            // Layer 1: Chat list (সবসময় composed, কখনো destroy হয় না)
+            Scaffold(
+                containerColor = RasGramTheme.DarkBackground,
+                bottomBar = {
+                    BottomNavBar(
+                        selectedTab = selectedTab,
+                        onTabChange = { selectedTab = it }
+                    )
+                }
+            ) { padding ->
+                SidebarContent(
+                    tab = selectedTab,
+                    currentUser = liveCurrentUser,
+                    selectedContact = selectedContact,
+                    onContactSelect = { selectedContact = it; selectedGroup = null },
+                    onGroupSelect = { selectedGroup = it; selectedContact = null },
+                    isDarkMode = isDarkMode,
+                    onToggleTheme = onToggleTheme,
+                    onLogout = onLogout,
+                    onUserUpdate = onUserUpdate,
+                    onStatusClick = { selectedStatusUser = it },
+                    onSplashDone = onSplashDone,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding)
+                )
+            }
+
+            // Layer 2: Chat window — slide from right, exactly like WhatsApp
+            // AnimatedVisibility keeps ChatArea composed during exit animation
+            // so back-swipe feels instant, no blank frame.
+            AnimatedVisibility(
+                visible = inChat,
+                enter = slideInHorizontally(
+                    initialOffsetX = { fullWidth -> fullWidth },
+                    animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing)
+                ),
+                exit = slideOutHorizontally(
+                    targetOffsetX = { fullWidth -> fullWidth },
+                    animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+                )
+            ) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    when {
+                        selectedContact != null -> ChatArea(
+                            currentUser = liveCurrentUser,
+                            contact = selectedContact!!,
+                            onBack = { selectedContact = null },
+                            onCallClick = { type ->
+                                callType = type
+                                callContact = selectedContact
+                                showCallUI = true
+                            }
+                        )
+                        selectedGroup != null -> GroupChatArea(
+                            currentUser = liveCurrentUser,
+                            group = selectedGroup!!,
+                            onBack = { selectedGroup = null }
+                        )
                     }
                 }
             }
