@@ -348,12 +348,19 @@ class IncomingCallOverlayService : Service(),
         )
 
         val title = if (callType == "video") "📹 Incoming Video Call" else "📞 Incoming Voice Call"
+
+        // FIX: setFullScreenIntent() — Android 10+ এ lock screen থেকে background
+        // Activity launch করা blocked। একমাত্র approved উপায় হলো notification এ
+        // setFullScreenIntent() দেওয়া। এটা না থাকায় screen জ্বলে উঠত (WakeLock কাজ
+        // করছিল) কিন্তু full page call UI আসছিল না।
+        // highPriority=true → OS সরাসরি Activity খুলবে (lock screen bypass করে)।
         val notif = NotificationCompat.Builder(this, OVERLAY_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_menu_call)
             .setContentTitle(title)
             .setContentText("$callerName · $callerMobile")
             .setSubText("RasGram")
             .setContentIntent(answerPending)
+            .setFullScreenIntent(answerPending, true)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
