@@ -18,8 +18,24 @@ class RasgramMessagingService : FirebaseMessagingService() {
 
     override fun onNewToken(token: String) {
         super.onNewToken(token)
-        val prefs = getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        val mobile = prefs.getString(PREF_MOBILE, null) ?: return
+        // Direct Boot aware: device encrypted storage থেকে mobile পড়ো।
+        // Lock screen unlock এর আগেও token save করা যাবে।
+        // credential encrypted (MODE_PRIVATE) বা device encrypted — দুটোই try করো।
+        val mobile = try {
+            // Normal path: credential encrypted storage (app unlocked)
+            getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+                .getString(PREF_MOBILE, null)
+        } catch (_: Exception) { null }
+            ?: try {
+                // Direct Boot path: device encrypted storage (before unlock)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                    createDeviceProtectedStorageContext()
+                        .getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+                        .getString(PREF_MOBILE, null)
+                } else null
+            } catch (_: Exception) { null }
+            ?: return
+
         FirebaseFirestore.getInstance()
             .collection("chat_users")
             .document(mobile)
@@ -95,15 +111,29 @@ class RasgramMessagingService : FirebaseMessagingService() {
     }
 
     // ── App foreground check ──────────────────────────────────────────────────
-    // runningAppProcesses Android 11+ এ broken — FCM নিজেই process জ্বালায়,
-    // তাই IMPORTANCE_FOREGROUND_SERVICE দেখায়, কিন্তু UI visible না।
-    // এই bug এর কারণে app killed থাকলেও isAppForeground() → true হতো,
-    // ফলে call notification / ring কিছুই আসত না।
-    //
-    // Fix: RasGramActivity.isVisible static flag ব্যবহার করো।
-    //   onResume → true, onStop → false।
-    //   App killed বা background হলে এটা সবসময় false থাকবে।
+    // RasGramActivity.isVisible static flag — onResume → true, onStop → false।
+    // App killed/background/Direct Boot path → সবসময় false।
+    // FCM process spawn (new process) এ Activity কখনো create হয় না → false।
+    // এটাই WhatsApp এর behavior: FCM process এ UI নেই, তাই overlay/notification পাঠাও।
     private fun isAppForeground(): Boolean = RasGramActivity.isVisible
+
+    // ── Direct Boot-aware SharedPreferences ────────────────────────────────
+    // Lock screen unlock এর আগে credential encrypted storage accessible নয়।
+    // Device encrypted storage সবসময় available — reboot থেকেই।
+    // mobile number device encrypted storage এ save করা হলে lock screen এও কাজ করবে।
+    private fun getMobileFromStorage(): String? {
+        return try {
+            getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+                .getString(PREF_MOBILE, null)
+        } catch (_: Exception) { null }
+            ?: try {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                    createDeviceProtectedStorageContext()
+                        .getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+                        .getString(PREF_MOBILE, null)
+                } else null
+            } catch (_: Exception) { null }
+    }
 
     // ── Full-screen notification: overlay নেই path ───────────────────────────
     // Lock screen এ full page দেখাবে + Answer/Decline button।

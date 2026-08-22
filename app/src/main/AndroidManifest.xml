@@ -932,7 +932,10 @@
     </activity>
 
 
-    <!-- ✅ RasGram — WhatsApp-style messaging module -->
+    <!-- ✅ RasGram — WhatsApp-style messaging module
+         directBootAware="true": lock screen এ Activity launch হয় — phone reboot
+         এর পরেও PIN/pattern enter করার আগেই incoming call screen দেখা যাবে।
+         showWhenLocked + turnScreenOn: screen off থাকলেও Activity screen এর উপরে আসে। -->
     <activity
         android:name=".selfcontrol.rasgram.RasGramActivity"
         android:exported="true"
@@ -941,38 +944,36 @@
         android:windowSoftInputMode="adjustResize"
         android:showWhenLocked="true"
         android:turnScreenOn="true"
+        android:directBootAware="true"
         android:configChanges="orientation|screenSize|keyboardHidden" />
 
-    <!-- RasGram — Decline incoming call broadcast -->
+    <!-- RasGram — Decline incoming call broadcast
+         directBootAware="true": lock screen থেকে Decline button কাজ করে। -->
     <receiver
         android:name=".selfcontrol.rasgram.DeclineCallReceiver"
-        android:exported="false" />
+        android:exported="false"
+        android:directBootAware="true" />
 
-    <!-- RasGram FCM messaging service — exported=true required for FCM delivery
-         FIX: was exported="false" which prevented Firebase from binding to this
-         service when the app was in background or killed. FCM system runs in a
-         separate process and needs exported=true to dispatch onMessageReceived().
-         Result: incoming call FCM was silently dropped whenever the user left
-         the RasGram screen — only the in-app Firestore listener was alive. -->
+    <!-- RasGram FCM messaging service — exported=true required for FCM delivery.
+         directBootAware="true": phone reboot এর পর lock screen unlock করার আগেও
+         FCM message receive হবে — WhatsApp এর exact behavior।
+         Firebase SDK নিজেও directBootAware, তাই এটা match করা দরকার। -->
     <service
         android:name=".selfcontrol.rasgram.RasgramMessagingService"
-        android:exported="true">
+        android:exported="true"
+        android:directBootAware="true">
         <intent-filter>
             <action android:name="com.google.firebase.MESSAGING_EVENT" />
         </intent-filter>
     </service>
 
-
     <!-- RasGram — WhatsApp-style incoming call overlay service
-         Starts a foreground service that renders a ComposeView via WindowManager.
-         TYPE_APPLICATION_OVERLAY lets the card float over any app or lock screen.
-         foregroundServiceType="phoneCall" required on Android 14+ (API 34+) for
-         any foreground service that handles VoIP / call UI. Without this the OS
-         throws ForegroundServiceStartNotAllowedException on API 34+ devices and
-         the app crashes the moment a call arrives. -->
+         directBootAware="true": reboot এর পর lock screen এ overlay দেখাতে পারবে।
+         foregroundServiceType="phoneCall" required on Android 14+ (API 34+). -->
     <service
         android:name=".selfcontrol.rasgram.IncomingCallOverlayService"
         android:exported="false"
+        android:directBootAware="true"
         android:foregroundServiceType="phoneCall" />
 
     </application>

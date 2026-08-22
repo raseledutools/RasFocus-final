@@ -370,12 +370,26 @@ fun RasGramApp(
                 // Login screen — splash নেই
                 OtpLoginScreen(
                     onLogin = { user ->
+                        // Credential encrypted storage (normal path)
                         prefs.edit()
                             .putString(PREF_MOBILE, user.mobile)
                             .putString(PREF_NAME_KEY, user.name)
                             .putString(PREF_UID, user.uid)
                             .putString(PREF_AVATAR, user.avatarUrl)
                             .apply()
+                        // Device encrypted storage mirror — Direct Boot path এর জন্য।
+                        // Phone reboot এর পর lock screen unlock এর আগেও incoming call
+                        // overlay service mobile number পড়তে পারবে।
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                            try {
+                                context.createDeviceProtectedStorageContext()
+                                    .getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+                                    .edit()
+                                    .putString(PREF_MOBILE, user.mobile)
+                                    .putString(PREF_NAME_KEY, user.name)
+                                    .apply()
+                            } catch (_: Exception) {}
+                        }
                         currentUser = user
                         isLoggedIn = true
                     }
@@ -5797,7 +5811,11 @@ suspend fun sendFcmCallNotification(
         val accessToken = org.json.JSONObject(tokenResp.body?.string() ?: "").optString("access_token")
         if (accessToken.isEmpty()) return@withContext
 
-        // Send FCM data message (high priority - works even when app is killed)
+        // Send FCM data message — WhatsApp-style: HIGH priority + short TTL
+        // ttl "60s": call 1 মিনিট পুরনো হলে FCM deliver করবে না (Doze থেকে বের হলে
+        //             পুরনো missed call ring করবে না — exact WhatsApp behavior)
+        // direct_boot_ok: reboot এর পর lock screen unlock এর আগেও deliver হবে
+        // priority HIGH: Doze mode ভেঙে সাথে সাথে process জাগাবে
         val fcmPayload = org.json.JSONObject().apply {
             put("message", org.json.JSONObject().apply {
                 put("token", fcmToken)
@@ -5807,9 +5825,12 @@ suspend fun sendFcmCallNotification(
                     put("callerMobile", callerMobile)
                     put("callType", callType)
                     put("callId", callId)
+                    put("direct_boot_ok", "true")
                 })
                 put("android", org.json.JSONObject().apply {
                     put("priority", "HIGH")
+                    put("ttl", "60s")
+                    put("direct_boot_ok", true)
                 })
             })
         }.toString()

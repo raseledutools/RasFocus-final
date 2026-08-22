@@ -174,6 +174,34 @@ class IncomingCallOverlayService : Service(),
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
+
+        // Direct Boot: mobile number device encrypted storage এ mirror করো।
+        // Reboot এর পর lock screen এ call আসলে credential storage accessible নয়।
+        // এই mirror এর ফলে overlay service টা সঠিক user identify করতে পারবে।
+        mirrorPrefsToDeviceStorage()
+    }
+
+    // Credential encrypted prefs → device encrypted prefs এ copy করো।
+    // শুধু mobile number দরকার — sensitive data (password etc) নয়।
+    private fun mirrorPrefsToDeviceStorage() {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.N) return
+        try {
+            val credPrefs = getSharedPreferences(PREF_NAME_CONST, Context.MODE_PRIVATE)
+            val mobile = credPrefs.getString(PREF_MOBILE_CONST, null) ?: return
+            val name   = credPrefs.getString(PREF_NAME_KEY_CONST, "") ?: ""
+            createDeviceProtectedStorageContext()
+                .getSharedPreferences(PREF_NAME_CONST, Context.MODE_PRIVATE)
+                .edit()
+                .putString(PREF_MOBILE_CONST, mobile)
+                .putString(PREF_NAME_KEY_CONST, name)
+                .apply()
+        } catch (_: Exception) {}
+    }
+
+    companion object {
+        private const val PREF_NAME_CONST    = "rasgram_prefs"
+        private const val PREF_MOBILE_CONST  = "saved_mobile"
+        private const val PREF_NAME_KEY_CONST = "saved_name"
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
