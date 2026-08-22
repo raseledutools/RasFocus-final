@@ -38,6 +38,8 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.imePadding
@@ -243,6 +245,54 @@ object RasGramTheme {
     val Gradient1 = Color(0xFF00A884)
     val Gradient2 = Color(0xFF025144)
     val StarColor = Color(0xFFFFD700)
+}
+
+// ==================== COLORFUL AVATAR UTILITIES ====================
+
+private val avatarPalette = listOf(
+    Color(0xFF25D366), Color(0xFF128C7E), Color(0xFF00BCD4), Color(0xFF2196F3),
+    Color(0xFF9C27B0), Color(0xFFE91E63), Color(0xFFFF5722), Color(0xFFFF9800),
+    Color(0xFF4CAF50), Color(0xFF607D8B), Color(0xFF009688), Color(0xFF673AB7),
+    Color(0xFF3F51B5), Color(0xFF795548), Color(0xFF00ACC1), Color(0xFFF44336)
+)
+
+private fun avatarColorFor(key: String): Color =
+    avatarPalette[Math.abs(key.hashCode()) % avatarPalette.size]
+
+private fun nameInitials(name: String, mobile: String): String {
+    val trimmed = name.trim()
+    if (trimmed.isNotEmpty()) {
+        val parts = trimmed.split(" ").filter { it.isNotEmpty() }
+        return if (parts.size >= 2) "${parts[0][0]}${parts[1][0]}" else "${parts[0][0]}"
+    }
+    return if (mobile.length >= 2) mobile.takeLast(2) else "?"
+}
+
+/** Local avatar — colored circle with initials; falls back to AsyncImage if avatarUrl present */
+@Composable
+fun UserAvatar(user: User, size: androidx.compose.ui.unit.Dp = 52.dp) {
+    if (user.avatarUrl.isNotEmpty()) {
+        AsyncImage(
+            model = user.avatarUrl,
+            contentDescription = "Avatar",
+            modifier = Modifier.size(size).clip(CircleShape),
+            contentScale = ContentScale.Crop
+        )
+    } else {
+        val bg = remember(user.mobile) { avatarColorFor(user.mobile) }
+        val initials = remember(user.name, user.mobile) { nameInitials(user.name, user.mobile).uppercase() }
+        Box(
+            modifier = Modifier.size(size).clip(CircleShape).background(bg),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = initials,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = (size.value * 0.34f).sp
+            )
+        }
+    }
 }
 
 // ==================== MAIN ACTIVITY ====================
@@ -1867,18 +1917,30 @@ fun ChatsHeader(
     var showMenu by remember { mutableStateOf(false) }
 
     Row(
-        modifier = Modifier.fillMaxWidth().background(RasGramTheme.DarkPanel)
-            .padding(horizontal = 16.dp).height(60.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                Brush.horizontalGradient(
+                    listOf(Color(0xFF0D1B22), Color(0xFF0B2027), Color(0xFF0D1B22))
+                )
+            )
+            .padding(horizontal = 16.dp)
+            .height(62.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
             Text("Ras", style = MaterialTheme.typography.titleLarge,
                 color = RasGramTheme.TextPrimary, fontWeight = FontWeight.ExtraBold)
-            Text("Gram", style = MaterialTheme.typography.titleLarge,
-                color = RasGramTheme.Green, fontWeight = FontWeight.ExtraBold)
+            Text(
+                "Gram",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.ExtraBold,
+                // Colorful gradient text effect via shimmer fallback
+                color = RasGramTheme.GreenLight
+            )
         }
         IconButton(onClick = onSearchClick) {
-            Icon(Icons.Default.Search, null, tint = RasGramTheme.TextMuted)
+            Icon(Icons.Default.Search, null, tint = RasGramTheme.Green)
         }
         Box {
             IconButton(onClick = { showMenu = true }) {
@@ -1973,6 +2035,11 @@ fun ContactItem(
     val isOnline = user.lastActive > System.currentTimeMillis() - ONLINE_THRESHOLD_MS
     val isTyping = user.typingTo != null
 
+    // Missed call detection — incoming call that wasn't answered
+    val isMissedCall = latestMessage?.isCallLog == true &&
+        latestMessage.callStatus == "missed" &&
+        latestMessage.senderMobile != currentUserMobile
+
     Surface(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         color = when {
@@ -1980,15 +2047,13 @@ fun ContactItem(
             else -> Color.Transparent
         }
     ) {
-        Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            // Avatar + online dot
-            Box(modifier = Modifier.size(52.dp)) {
-                AsyncImage(
-                    model = user.avatarUrl.ifEmpty { "https://ui-avatars.com/api/?name=${user.name.replace(" ", "+")}&background=008069&color=fff&bold=true&size=128" },
-                    contentDescription = "Avatar",
-                    modifier = Modifier.fillMaxSize().clip(CircleShape),
-                    contentScale = ContentScale.Crop
-                )
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Avatar + online dot — UserAvatar handles empty names locally
+            Box(modifier = Modifier.size(54.dp)) {
+                UserAvatar(user = user, size = 54.dp)
                 if (isOnline) {
                     Box(
                         modifier = Modifier
@@ -2005,7 +2070,7 @@ fun ContactItem(
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        user.name,
+                        user.name.ifEmpty { user.mobile },
                         style = MaterialTheme.typography.bodyLarge,
                         color = RasGramTheme.TextPrimary,
                         fontWeight = FontWeight.SemiBold,
@@ -2013,10 +2078,15 @@ fun ContactItem(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
+                    // Time — red for missed call, green for unread, muted otherwise
                     Text(
                         latestMessage?.timeString ?: "",
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (unreadCount > 0) RasGramTheme.Green else RasGramTheme.TextMuted,
+                        color = when {
+                            isMissedCall -> RasGramTheme.Red
+                            unreadCount > 0 -> RasGramTheme.Green
+                            else -> RasGramTheme.TextMuted
+                        },
                         fontSize = 11.sp
                     )
                 }
@@ -2025,8 +2095,8 @@ fun ContactItem(
                     if (isTyping) {
                         Text("typing...", style = MaterialTheme.typography.bodySmall, color = RasGramTheme.Green, fontWeight = FontWeight.Medium)
                     } else {
-                        // Tick icon for sent messages
-                        if (latestMessage?.senderMobile == currentUserMobile && latestMessage != null) {
+                        // Tick icon for sent messages (not for missed calls)
+                        if (!isMissedCall && latestMessage?.senderMobile == currentUserMobile && latestMessage != null) {
                             Icon(
                                 imageVector = when {
                                     latestMessage.isPending -> Icons.Default.AccessTime
@@ -2043,8 +2113,19 @@ fun ContactItem(
                                 }
                             )
                         }
+                        // Missed call icon
+                        if (isMissedCall) {
+                            Icon(
+                                Icons.Default.CallMissed,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp).padding(end = 3.dp),
+                                tint = RasGramTheme.Red
+                            )
+                        }
                         val previewText = when {
+                            isMissedCall -> "Missed ${if (latestMessage?.callType == "video") "video" else "voice"} call"
                             latestMessage?.isDeleted == true -> "🚫 This message was deleted"
+                            latestMessage?.isCallLog == true -> "${if (latestMessage.callType == "video") "📹" else "📞"} ${latestMessage.text.ifEmpty { "Voice call" }}"
                             latestMessage?.text?.isNotEmpty() == true -> latestMessage.text
                             latestMessage != null -> getFileTypePreview(latestMessage)
                             else -> "Tap to start chatting"
@@ -2052,19 +2133,23 @@ fun ContactItem(
                         Text(
                             previewText,
                             style = MaterialTheme.typography.bodySmall,
-                            color = if (unreadCount > 0 && latestMessage?.senderMobile != currentUserMobile) RasGramTheme.TextPrimary else RasGramTheme.TextMuted,
+                            color = when {
+                                isMissedCall -> RasGramTheme.Red
+                                unreadCount > 0 && latestMessage?.senderMobile != currentUserMobile -> RasGramTheme.TextPrimary
+                                else -> RasGramTheme.TextMuted
+                            },
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f)
                         )
                         if (unreadCount > 0 && latestMessage?.senderMobile != currentUserMobile) {
                             Spacer(modifier = Modifier.width(8.dp))
-                            Surface(shape = CircleShape, color = RasGramTheme.Green) {
+                            Surface(shape = CircleShape, color = if (isMissedCall) RasGramTheme.Red else RasGramTheme.Green) {
                                 Text(
                                     if (unreadCount > 99) "99+" else unreadCount.toString(),
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = Color.Black,
+                                    color = Color.White,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -2653,12 +2738,7 @@ fun ChatHeader(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(modifier = Modifier.size(40.dp)) {
-                        AsyncImage(
-                            model = contact.avatarUrl.ifEmpty { "https://ui-avatars.com/api/?name=${contact.name.replace(" ", "+")}&background=008069&color=fff&bold=true&size=80" },
-                            contentDescription = "Avatar",
-                            modifier = Modifier.fillMaxSize().clip(CircleShape),
-                            contentScale = ContentScale.Crop
-                        )
+                        UserAvatar(user = contact, size = 40.dp)
                         if (isOnline) {
                             Box(modifier = Modifier.size(10.dp).align(Alignment.BottomEnd).border(2.dp, RasGramTheme.DarkPanel, CircleShape).background(RasGramTheme.OnlineGreen, CircleShape))
                         }
@@ -2996,8 +3076,50 @@ fun MessageBubble(
 
     val selectionBg = if (isSelected) RasGramTheme.Green.copy(alpha = 0.15f) else Color.Transparent
 
+    // ── Swipe-to-reply ───────────────────────────────────────────────────────
+    var swipeOffset by remember { mutableFloatStateOf(0f) }
+    val swipeThreshold = 90f
+    val replyIconAlpha = (swipeOffset / swipeThreshold).coerceIn(0f, 1f)
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(selectionBg)
+    ) {
+        // Reply hint icon (revealed as you swipe)
+        if (swipeOffset > 12f && !message.isCallLog) {
+            Icon(
+                imageVector = Icons.Default.Reply,
+                contentDescription = "Reply",
+                tint = RasGramTheme.Green.copy(alpha = replyIconAlpha),
+                modifier = Modifier
+                    .align(if (isMe) Alignment.CenterEnd else Alignment.CenterStart)
+                    .padding(horizontal = 10.dp)
+                    .size(26.dp)
+            )
+        }
+
     Column(
-        modifier = Modifier.fillMaxWidth().background(selectionBg).padding(horizontal = 4.dp, vertical = 2.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .offset { IntOffset(
+                x = if (isMe) -swipeOffset.toInt() else swipeOffset.toInt(),
+                y = 0
+            ) }
+            .pointerInput(message.id) {
+                detectHorizontalDragGestures(
+                    onDragEnd = {
+                        if (swipeOffset >= swipeThreshold && !message.isCallLog) onReply()
+                        swipeOffset = 0f
+                    },
+                    onDragCancel = { swipeOffset = 0f }
+                ) { _, dragAmount ->
+                    val delta = if (isMe) -dragAmount else dragAmount
+                    if (delta > 0) swipeOffset = (swipeOffset + delta).coerceAtMost(swipeThreshold * 1.4f)
+                    else swipeOffset = (swipeOffset + delta).coerceAtLeast(0f)
+                }
+            }
+            .padding(horizontal = 4.dp, vertical = 2.dp),
         horizontalAlignment = alignment
     ) {
         if (message.isCallLog) {
@@ -3148,7 +3270,8 @@ fun MessageBubble(
             onStar = { onStar(); showContextMenu = false },
             onForward = { showContextMenu = false }
         )
-    }
+    } // end Column (swipe content)
+    } // end Box (swipe container)
 }
 
 @Composable
@@ -3174,10 +3297,20 @@ fun DeletedMessageBubble(isMe: Boolean, timeString: String) {
 
 @Composable
 fun CallLogBubble(message: Message) {
-    val isMe = message.callStatus != "missed" // missed call = received by me, so not "isMe" in display
+    val isMe = message.callStatus != "missed"
     val isMissed = message.callStatus == "missed"
     val isVideo = message.callType == "video"
     val bubbleColor = if (isMe) RasGramTheme.BubbleOut else RasGramTheme.BubbleIn
+    val iconTint = when {
+        isMissed -> RasGramTheme.Red
+        isMe -> RasGramTheme.Green
+        else -> RasGramTheme.CallGreen
+    }
+    val statusText = when {
+        isMissed -> "No answer"
+        message.duration > 0 -> formatTime(message.duration)
+        else -> message.text.ifEmpty { "Ended" }
+    }
 
     Row(
         modifier = Modifier
@@ -3187,59 +3320,62 @@ fun CallLogBubble(message: Message) {
     ) {
         Surface(
             shape = RoundedCornerShape(
-                topStart = 16.dp, topEnd = 16.dp,
-                bottomStart = if (isMe) 16.dp else 4.dp,
-                bottomEnd = if (isMe) 4.dp else 16.dp
+                topStart = 18.dp, topEnd = 18.dp,
+                bottomStart = if (isMe) 18.dp else 6.dp,
+                bottomEnd = if (isMe) 6.dp else 18.dp
             ),
             color = bubbleColor,
-            shadowElevation = 1.dp,
-            modifier = Modifier.widthIn(min = 200.dp, max = 280.dp)
+            shadowElevation = 2.dp,
+            modifier = Modifier.widthIn(min = 180.dp, max = 260.dp)
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Circle icon background
-                Surface(
-                    shape = CircleShape,
-                    color = Color.White.copy(alpha = 0.15f),
-                    modifier = Modifier.size(42.dp)
+                // Compact call icon — small circle badge
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(iconTint.copy(alpha = 0.18f)),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            if (isVideo) Icons.Default.Videocam else Icons.Default.PhoneCallback,
-                            contentDescription = null,
-                            modifier = Modifier.size(22.dp),
-                            tint = if (isMissed) RasGramTheme.Red else Color.White
-                        )
-                    }
+                    Icon(
+                        imageVector = when {
+                            isVideo -> Icons.Default.Videocam
+                            isMissed -> Icons.Default.PhoneMissed
+                            isMe -> Icons.Default.CallMade
+                            else -> Icons.Default.CallReceived
+                        },
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = iconTint
+                    )
                 }
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(10.dp))
+                // Call info
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         if (isVideo) "Video call" else "Voice call",
                         color = RasGramTheme.TextPrimary,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp
                     )
                     Text(
-                        if (isMissed) "No answer" else message.text.ifEmpty { "Ended" },
+                        statusText,
                         color = if (isMissed) RasGramTheme.Red else RasGramTheme.TextMuted,
-                        fontSize = 12.sp
+                        fontSize = 11.sp
                     )
                 }
+                // Time + tick
                 Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        message.timeString,
-                        color = RasGramTheme.TextMuted,
-                        fontSize = 10.sp
-                    )
+                    Text(message.timeString, color = RasGramTheme.TextMuted, fontSize = 10.sp)
                     if (isMe) {
                         Spacer(modifier = Modifier.height(2.dp))
                         Icon(
                             if (message.read) Icons.Default.DoneAll else Icons.Default.Check,
                             null,
-                            modifier = Modifier.size(14.dp),
+                            modifier = Modifier.size(13.dp),
                             tint = if (message.read) RasGramTheme.BlueTick else RasGramTheme.TextMuted
                         )
                     }
@@ -4150,15 +4286,15 @@ fun CallLogItem(log: Message, currentUserMobile: String) {
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Avatar circle
+        // Avatar circle with colorful initials
+        val avatarBg = remember(otherMobile) { avatarColorFor(otherMobile) }
         Box(
-            modifier = Modifier.size(52.dp).clip(CircleShape)
-                .background(RasGramTheme.DarkPanel),
+            modifier = Modifier.size(52.dp).clip(CircleShape).background(avatarBg),
             contentAlignment = Alignment.Center
         ) {
             Text(
-                otherMobile.takeLast(2),
-                color = RasGramTheme.Green,
+                nameInitials("", otherMobile).uppercase(),
+                color = Color.White,
                 fontWeight = FontWeight.Bold,
                 fontSize = 17.sp
             )
@@ -5440,12 +5576,7 @@ fun NewGroupDialog(onDismiss: () -> Unit, currentUser: User) {
                                     colors = CheckboxDefaults.colors(checkedColor = RasGramTheme.Green)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                AsyncImage(
-                                    model = user.avatarUrl.ifEmpty { "https://ui-avatars.com/api/?name=${user.name.replace(" ", "+")}&background=008069&color=fff" },
-                                    contentDescription = null,
-                                    modifier = Modifier.size(40.dp).clip(CircleShape),
-                                    contentScale = ContentScale.Crop
-                                )
+                                UserAvatar(user = user, size = 40.dp)
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column {
                                     Text(user.name, color = RasGramTheme.TextPrimary, fontWeight = FontWeight.Medium)
