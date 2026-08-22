@@ -680,6 +680,9 @@ fun OtpLoginScreen(onLogin: (User) -> Unit) {
                 val mobile = fullPhone.replace("+", "").replace(" ", "")
                 val docRef = db.collection("chat_users").document(mobile)
                 val snap = docRef.get().await()
+                // BUG FIX: একই নম্বর দিয়ে ভিন্ন নামে re-login block করা হচ্ছে।
+                // নম্বর একবার register হলে সেই নম্বরের নাম/profile locked।
+                // নতুন নাম শুধু Settings > Profile থেকে পরিবর্তন করা যাবে।
                 if (!snap.exists()) {
                     docRef.set(hashMapOf(
                         "uid" to uid, "name" to userName, "mobile" to mobile,
@@ -688,9 +691,14 @@ fun OtpLoginScreen(onLogin: (User) -> Unit) {
                         "about" to "Hey there! I am using RasGram."
                     )).await()
                 } else {
+                    // Existing user — name পরিবর্তন করা যাবে না login flow থেকে।
+                    // শুধু lastActive এবং uid refresh করা হচ্ছে।
                     docRef.update("lastActive", System.currentTimeMillis(), "uid", uid).await()
                 }
-                val savedName = snap.getString("name") ?: userName
+                // BUG FIX: snap ছিল login এর আগের state।
+                // নতুন user হলে snap.getString("name") → null, তাই re-fetch করো।
+                val freshSnap = docRef.get().await()
+                val savedName = freshSnap.getString("name") ?: userName
                 
                 // Save FCM token after login
                 try {
@@ -699,7 +707,7 @@ fun OtpLoginScreen(onLogin: (User) -> Unit) {
                     }
                 } catch (_: Exception) { }
                 
-                onLogin(User(uid = uid, name = savedName, mobile = mobile, avatarUrl = snap.getString("avatarUrl") ?: ""))
+                onLogin(User(uid = uid, name = savedName, mobile = mobile, avatarUrl = freshSnap.getString("avatarUrl") ?: ""))
             } catch (e: Exception) {
                 errorMsg = "Login failed: ${e.message}"
                 isLoading = false
@@ -5943,6 +5951,7 @@ suspend fun sendFcmCallNotification(
                     put("type", "incoming_call")
                     put("callerName", callerName)
                     put("callerMobile", callerMobile)
+                    put("calleeMobile", calleeMobile)  // BUG FIX: receiver validation এর জন্য
                     put("callType", callType)
                     put("callId", callId)
                     put("direct_boot_ok", "true")

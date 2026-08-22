@@ -48,10 +48,11 @@ class RasgramMessagingService : FirebaseMessagingService() {
         val data = remoteMessage.data
         when (data["type"]) {
             "incoming_call" -> handleIncomingCall(
-                callerName   = data["callerName"]   ?: "Unknown",
-                callerMobile = data["callerMobile"] ?: "",
-                callType     = data["callType"]     ?: "audio",
-                callId       = data["callId"]       ?: ""
+                callerName    = data["callerName"]    ?: "Unknown",
+                callerMobile  = data["callerMobile"]  ?: "",
+                callType      = data["callType"]      ?: "audio",
+                callId        = data["callId"]        ?: "",
+                calleeMobile  = data["calleeMobile"]  ?: ""
             )
             "message" -> showMessageNotification(
                 senderName   = data["senderName"]   ?: "RasGram",
@@ -65,8 +66,26 @@ class RasgramMessagingService : FirebaseMessagingService() {
     // INCOMING CALL
     // ─────────────────────────────────────────────────────────────────────────
     private fun handleIncomingCall(
-        callerName: String, callerMobile: String, callType: String, callId: String
+        callerName: String, callerMobile: String, callType: String, callId: String,
+        calleeMobile: String = ""
     ) {
+        // BUG FIX: callee validation — এই device এ যে logged in আছে সে-ই callee কিনা check।
+        // FCM token কখনো একাধিক device এ বা ভুল user এর কাছে যেতে পারে।
+        // এই check না থাকলে একজনকে call দিলে অন্যজনের কাছেও ring হয়।
+        val myMobile = getMobileFromStorage()
+        if (myMobile == null || myMobile.isEmpty()) {
+            // Not logged in — ignore call
+            return
+        }
+        // calleeMobile FCM data এ আছে → strict match।
+        // না থাকলে (পুরনো FCM format) → accept করো (backward compatibility)।
+        if (calleeMobile.isNotEmpty() && calleeMobile != myMobile) {
+            // এই call আমার জন্য না — ignore করো।
+            // এটা ঘটে যখন FCM token ভুল user এর কাছে route হয়
+            // বা একই device এ account switch হয়েছে।
+            return
+        }
+
         // foreground চেক নেই — app open থাকলেও, screen off থাকলেও, যেকোনো অবস্থায়
         // WhatsApp style: সবসময় full page overlay দেখাতে হবে।
 
