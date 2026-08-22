@@ -1248,6 +1248,9 @@ fun MainScreen(
                         val newCallId = change.document.id
                         // Already showing this exact call? skip।
                         if (showIncomingCall && activeIncomingCallId == newCallId) return@forEach
+                        // FIX: CallingScreen চলছে মানে আগের call already accepted।
+                        // নতুন incoming trigger করলে double call UI দেখাবে — block করো।
+                        if (showCallUI) return@forEach
                         val data = change.document.data
                         activeIncomingCallId       = newCallId
                         activeIncomingCallerMobile = data["caller"] as? String ?: ""
@@ -5121,22 +5124,25 @@ fun IncomingCallScreen(
     val ringtoneRef = remember { mutableStateOf<android.media.Ringtone?>(null) }
 
     // Ring start + cleanup
+    // FIX: isRunning check সরানো হয়েছে।
+    // আগে: service চলছে মানে ring বাজাতাম না → service stop হলে gap তৈরি হত।
+    // এখন: IncomingCallScreen সবসময় নিজেই ring বাজায়।
+    //   - Service path: service ring + screen ring একসাথে চলে (overlap) → gap নেই
+    //   - Service stop হলে: service এর ring বন্ধ, screen এর ring চলতে থাকে
+    //   - Foreground path: service নেই, screen একাই ring করে (আগের মতোই)
     DisposableEffect(callId) {
-        if (!IncomingCallOverlayService.isRunning) {
-            // Foreground path: নিজেই ring বাজাও
-            try {
-                val am = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
-                am.mode = android.media.AudioManager.MODE_RINGTONE
-                val vol = am.getStreamMaxVolume(android.media.AudioManager.STREAM_RING)
-                if (vol > 0) am.setStreamVolume(android.media.AudioManager.STREAM_RING, vol, 0)
+        try {
+            val am = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+            am.mode = android.media.AudioManager.MODE_RINGTONE
+            val vol = am.getStreamMaxVolume(android.media.AudioManager.STREAM_RING)
+            if (vol > 0) am.setStreamVolume(android.media.AudioManager.STREAM_RING, vol, 0)
 
-                val uri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_RINGTONE)
-                val rt = android.media.RingtoneManager.getRingtone(context, uri)
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) rt?.isLooping = true
-                rt?.play()
-                ringtoneRef.value = rt
-            } catch (_: Exception) {}
-        }
+            val uri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_RINGTONE)
+            val rt = android.media.RingtoneManager.getRingtone(context, uri)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) rt?.isLooping = true
+            rt?.play()
+            ringtoneRef.value = rt
+        } catch (_: Exception) {}
         onDispose {
             try {
                 ringtoneRef.value?.stop()
