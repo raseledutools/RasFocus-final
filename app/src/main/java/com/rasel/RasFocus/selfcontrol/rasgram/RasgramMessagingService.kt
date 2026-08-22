@@ -67,21 +67,26 @@ class RasgramMessagingService : FirebaseMessagingService() {
     private fun handleIncomingCall(
         callerName: String, callerMobile: String, callType: String, callId: String
     ) {
-        if (isAppForeground()) return
+        // foreground চেক নেই — app open থাকলেও, screen off থাকলেও, যেকোনো অবস্থায়
+        // WhatsApp style: সবসময় full page overlay দেখাতে হবে।
 
-        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val hasOverlay = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
                          Settings.canDrawOverlays(this)
 
         if (hasOverlay) {
+            // IncomingCallOverlayService নিজেই:
+            // → startForeground notification দেয় (Answer/Decline সহ)
+            // → screen off/locked হলে RasGramActivity launch করে (full page)
+            // → screen on+unlocked হলে floating overlay card দেখায়
             IncomingCallOverlayService.start(this, callId, callerName, callerMobile, callType)
         } else {
+            // Overlay permission নেই — fullScreenIntent notification fallback
+            // Android নিজেই notification থেকে Activity খুলবে (HUD বা full screen)
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             createChannels(nm)
             postFullScreenCallNotification(nm, callerName, callerMobile, callType, callId)
         }
     }
-
-    private fun isAppForeground(): Boolean = RasGramActivity.isVisible
 
     private fun getMobileFromStorage(): String? =
         try { getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).getString(PREF_MOBILE, null) }

@@ -237,15 +237,17 @@ class IncomingCallOverlayService : Service(),
 
             val screenOff  = !pm.isInteractive
             val keyguardUp = km.isKeyguardLocked
+            val appForeground = RasGramActivity.isVisible
 
-            if (screenOff || keyguardUp) {
+            if (appForeground) {
+                // App খোলা আছে — Activity তে সরাসরি onNewIntent পাঠাও।
+                // এতে IncomingCallScreen তাৎক্ষণিক দেখাবে, overlay card লাগবে না।
+                launchFullScreenCallActivity(callId, callerName, callerMobile, callType)
+            } else if (screenOff || keyguardUp) {
                 // Lock screen / screen off: full page Activity খোলো।
-                // Activity খোলার পর ring চলতে থাকে — IncomingCallScreen এ
-                // নিজের ring আছে কিন্তু service এর ring বন্ধ করতে হবে।
-                // RasGramActivity → stopOverlayService() → onDestroy() → stopRinging()
                 launchFullScreenCallActivity(callId, callerName, callerMobile, callType)
             } else {
-                // Unlocked + screen on: floating overlay card দেখাও
+                // Unlocked + screen on + app background: floating overlay card দেখাও
                 showOverlay(callId, callerName, callerMobile, callType)
             }
         }
