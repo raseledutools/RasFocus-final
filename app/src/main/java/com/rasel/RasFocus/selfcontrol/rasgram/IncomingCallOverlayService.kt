@@ -246,6 +246,9 @@ class IncomingCallOverlayService : Service(),
     }
 
     // ── Full page Activity (lock screen / screen off) ─────────────────────────
+    // FLAG_ACTIVITY_NO_USER_ACTION: prevents Keyguard from intercepting the
+    // intent and blocking Activity launch when screen is locked.
+    // FLAG_ACTIVITY_NO_ANIMATION: avoids transition flicker on lock screen.
     private fun launchFullScreenCallActivity(
         callId: String, callerName: String, callerMobile: String, callType: String
     ) {
@@ -256,9 +259,11 @@ class IncomingCallOverlayService : Service(),
             putExtra("callerName",   callerName)
             putExtra("callType",     callType)
             addFlags(
-                Intent.FLAG_ACTIVITY_NEW_TASK      or
-                Intent.FLAG_ACTIVITY_CLEAR_TOP     or
-                Intent.FLAG_ACTIVITY_SINGLE_TOP
+                Intent.FLAG_ACTIVITY_NEW_TASK          or
+                Intent.FLAG_ACTIVITY_CLEAR_TOP         or
+                Intent.FLAG_ACTIVITY_SINGLE_TOP        or
+                Intent.FLAG_ACTIVITY_NO_USER_ACTION    or
+                Intent.FLAG_ACTIVITY_NO_ANIMATION
             )
         }
         startActivity(i)
@@ -327,8 +332,11 @@ class IncomingCallOverlayService : Service(),
             .setShowWhen(true)
             .setAutoCancel(false)
             .build()
-        if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(OVERLAY_NOTIF_ID, notif, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        // API 34+ (Android 14+): foregroundServiceType must match manifest declaration.
+        // Manifest now declares phoneCall → use FOREGROUND_SERVICE_TYPE_PHONE_CALL.
+        // Older APIs: plain startForeground (no type needed).
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(OVERLAY_NOTIF_ID, notif, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL)
         } else {
             startForeground(OVERLAY_NOTIF_ID, notif)
         }

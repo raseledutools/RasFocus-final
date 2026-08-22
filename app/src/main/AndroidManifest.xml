@@ -935,7 +935,7 @@
     <!-- ✅ RasGram — WhatsApp-style messaging module -->
     <activity
         android:name=".selfcontrol.rasgram.RasGramActivity"
-        android:exported="false"
+        android:exported="true"
         android:launchMode="singleTop"
         android:theme="@style/Theme.RasFocus"
         android:windowSoftInputMode="adjustResize"
@@ -966,16 +966,14 @@
     <!-- RasGram — WhatsApp-style incoming call overlay service
          Starts a foreground service that renders a ComposeView via WindowManager.
          TYPE_APPLICATION_OVERLAY lets the card float over any app or lock screen.
-         foregroundServiceType="phoneCall" required on Android 14+ for overlay
-         services that handle calls. -->
+         foregroundServiceType="phoneCall" required on Android 14+ (API 34+) for
+         any foreground service that handles VoIP / call UI. Without this the OS
+         throws ForegroundServiceStartNotAllowedException on API 34+ devices and
+         the app crashes the moment a call arrives. -->
     <service
         android:name=".selfcontrol.rasgram.IncomingCallOverlayService"
         android:exported="false"
-        android:foregroundServiceType="specialUse">
-        <property
-            android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-            android:value="Handle incoming VoIP calls by showing an overlay." />
-    </service>
+        android:foregroundServiceType="phoneCall" />
 
     </application>
 

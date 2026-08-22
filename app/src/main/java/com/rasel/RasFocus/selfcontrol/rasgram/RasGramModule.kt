@@ -4301,12 +4301,25 @@ fun CallingScreen(
     var finalCallSeconds by remember { mutableIntStateOf(0) }
 
     val eglBase = remember { EglBase.create() }
+    // FIX: PeerConnectionFactory.initialize() is idempotent but can throw if
+    // native libs fail to load (e.g. missing ABI, or double-init race on
+    // recomposition). Wrapping in try-catch prevents "apps keeps stopping"
+    // crash when CallingScreen is launched from a cold lock-screen path.
     val peerConnectionFactory = remember {
-        PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(context).createInitializationOptions())
-        PeerConnectionFactory.builder()
-            .setVideoDecoderFactory(DefaultVideoDecoderFactory(eglBase.eglBaseContext))
-            .setVideoEncoderFactory(DefaultVideoEncoderFactory(eglBase.eglBaseContext, true, true))
-            .createPeerConnectionFactory()
+        try {
+            PeerConnectionFactory.initialize(
+                PeerConnectionFactory.InitializationOptions
+                    .builder(context)
+                    .createInitializationOptions()
+            )
+            PeerConnectionFactory.builder()
+                .setVideoDecoderFactory(DefaultVideoDecoderFactory(eglBase.eglBaseContext))
+                .setVideoEncoderFactory(DefaultVideoEncoderFactory(eglBase.eglBaseContext, true, true))
+                .createPeerConnectionFactory()
+        } catch (e: Exception) {
+            android.util.Log.e("RasGram", "PeerConnectionFactory init failed: ${e.message}", e)
+            null
+        }
     }
     // STUN: NAT traversal for same/different WiFi
     // TURN: relay fallback for Mobile data ↔ WiFi, Symmetric NAT, corporate networks
@@ -4350,6 +4363,14 @@ fun CallingScreen(
     LaunchedEffect(Unit) {
         val hasMicPerm = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         if (!hasMicPerm) { Toast.makeText(context, "Microphone permission needed", Toast.LENGTH_SHORT).show(); onEndCall(); return@LaunchedEffect }
+
+        // FIX: peerConnectionFactory is nullable now (init wrapped in try-catch).
+        // Guard here prevents NullPointerException crash if WebRTC libs fail to load.
+        if (peerConnectionFactory == null) {
+            Toast.makeText(context, "Call setup failed. Please restart the app.", Toast.LENGTH_LONG).show()
+            onEndCall()
+            return@LaunchedEffect
+        }
 
         try {
             audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
