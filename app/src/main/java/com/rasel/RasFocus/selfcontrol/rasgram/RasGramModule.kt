@@ -4566,16 +4566,7 @@ fun CallingScreen(
 
         // ── Step 3: WebRTC session ───────────────────────────────────────────
 
-        // FIX: peerConnectionFactory is nullable — wait until IO init completes.
-        // If it's still null after the IO LaunchedEffect runs, WebRTC libs failed to load.
-        if (peerConnectionFactory.value == null) {
-            Toast.makeText(context, "Call setup failed. Please restart the app.", Toast.LENGTH_LONG).show()
-            onEndCall()
-            return@LaunchedEffect
-        }
-
-        val factory = peerConnectionFactory.value!!
-        val egl    = eglBase.value!!
+        val egl = eglBase.value!!
 
         try {
             audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
