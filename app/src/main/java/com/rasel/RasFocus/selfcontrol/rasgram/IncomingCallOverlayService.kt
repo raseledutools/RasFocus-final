@@ -394,6 +394,9 @@ class IncomingCallOverlayService : Service(),
             mode = AudioManager.MODE_RINGTONE
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 requestAudioFocus(
+                    // FIX: setWillPauseWhenDucked(true) requires a non-null OnAudioFocusChangeListener.
+                    // Passing no listener caused IllegalStateException → service crash → "keeps stopping".
+                    // Fix: removed setWillPauseWhenDucked, added a no-op listener.
                     android.media.AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
                         .setAudioAttributes(
                             android.media.AudioAttributes.Builder()
@@ -401,7 +404,7 @@ class IncomingCallOverlayService : Service(),
                                 .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
                                 .build()
                         )
-                        .setWillPauseWhenDucked(true)
+                        .setOnAudioFocusChangeListener { }
                         .build()
                 )
             } else {
