@@ -4778,9 +4778,16 @@ fun CallingScreen(
                 override fun onIceCandidatesRemoved(c: Array<out IceCandidate>?) {}
                 override fun onSignalingChange(s: PeerConnection.SignalingState?) {}
                 override fun onIceConnectionChange(state: PeerConnection.IceConnectionState?) {
+                    // WebRTC internal thread থেকে আসে — Compose state Main thread এ সেট করতে হবে।
+                    // scope.launch {} ছাড়া isConnected = true করলে LaunchedEffect(isConnected)
+                    // recompose trigger নাও হতে পারে → timer শুরু হয় না।
                     when (state) {
-                        PeerConnection.IceConnectionState.CONNECTED -> { callStatus = "Connected"; isConnected = true }
-                        PeerConnection.IceConnectionState.DISCONNECTED, PeerConnection.IceConnectionState.FAILED -> scope.launch { onEndCall() }
+                        PeerConnection.IceConnectionState.CONNECTED -> scope.launch {
+                            callStatus = "Connected"
+                            isConnected = true
+                        }
+                        PeerConnection.IceConnectionState.DISCONNECTED,
+                        PeerConnection.IceConnectionState.FAILED -> scope.launch { onEndCall() }
                         else -> {}
                     }
                 }
@@ -4943,7 +4950,13 @@ fun CallingScreen(
                                 pc?.setRemoteDescription(object : SdpObserver {
                                     override fun onCreateSuccess(s: SessionDescription?) {}
                                     override fun onSetSuccess() {
-                                        callStatus = "Connected"; isConnected = true
+                                        // WebRTC callback thread → Main thread এ dispatch করো।
+                                        // scope.launch ছাড়া Compose state update trigger হবে না
+                                        // → LaunchedEffect(isConnected) চলবে না → timer শুরু হবে না।
+                                        scope.launch {
+                                            callStatus = "Connected"
+                                            isConnected = true
+                                        }
                                         // Caller side ও snapshot listener — same fix as receiver
                                         scope.launch {
                                             db.collection("calls").document(callId)
@@ -4980,7 +4993,9 @@ fun CallingScreen(
     }
 
     LaunchedEffect(isConnected) {
-        if (isConnected) while (true) { delay(1000); callSeconds++ }
+        // isConnected=true হলেই কাউন্ট শুরু।
+        // delay শেষে increment → connected হওয়ার ১ সেকেন্ড পর "0:01" দেখায়।
+        if (isConnected) while (true) { delay(1000L); callSeconds++ }
     }
 
     // Call চলাকালীন screen যেন না নেভে (WhatsApp এর মতো)
