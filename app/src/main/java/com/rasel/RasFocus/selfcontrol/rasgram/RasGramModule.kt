@@ -4862,7 +4862,13 @@ fun CallingScreen(
                                                             }
                                                         }
                                                     }
-                                                callStatus = "Connected"; isConnected = true
+                                                // NOTE: isConnected = true এখানে সেট করা হচ্ছে না।
+                                                // ICE negotiation এখনো চলছে — audio এখনো flow করছে না।
+                                                // isConnected সেট হবে শুধু onIceConnectionChange(CONNECTED)
+                                                // callback এ — তখনই actual audio পথ খোলে।
+                                                // এখানে সেট করলে caller দেখায় "Connected" কিন্তু কোনো
+                                                // audio আসে না (ICE not yet done)।
+                                                callStatus = "Connecting..."
                                             }
                                         }
                                         override fun onCreateFailure(e: String?) {}
@@ -5293,8 +5299,12 @@ fun IncomingCallScreen(
             try {
                 ringtoneRef.value?.stop()
                 ringtoneRef.value = null
-                val am = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
-                am.mode = android.media.AudioManager.MODE_NORMAL
+                // NOTE: AudioManager.MODE_NORMAL এ reset করা হচ্ছে না।
+                // কারণ: accept করলে সাথে সাথে CallingScreen compose হয় এবং
+                // audioManager.mode = MODE_IN_COMMUNICATION সেট করে।
+                // এখানে MODE_NORMAL সেট করলে CallingScreen এর audio বন্ধ হয়ে যায়
+                // (race condition: onDispose কখনো CallingScreen init এর পরে চলে)।
+                // CallingScreen এর নিজের DisposableEffect.onDispose MODE_NORMAL সেট করবে।
             } catch (_: Exception) {}
         }
     }
@@ -5446,9 +5456,13 @@ fun IncomingCallScreen(
                     FloatingActionButton(
                         onClick = {
                             stopRingAndCall {
-                                scope.launch {
-                                    db.collection("calls").document(callId).update("status", "answered")
-                                }
+                                // NOTE: status="answered" এখানে লেখা হচ্ছে না।
+                                // CallingScreen receiver path এ setLocalDescription.onSetSuccess এ
+                                // status + answer SDP একসাথে atomically লেখা হয়।
+                                // এখানে আগে status="answered" লিখলে:
+                                //   1) Caller SDP ছাড়াই "answered" দেখে → setRemoteDescription fail
+                                //   2) এই Firestore write RasGramApp snapshot listener re-trigger করে
+                                //      → double incoming call UI দেখায়
                                 onAccept()
                             }
                         },

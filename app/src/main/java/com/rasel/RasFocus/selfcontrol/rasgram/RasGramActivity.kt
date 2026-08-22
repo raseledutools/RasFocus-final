@@ -15,12 +15,14 @@ import com.rasel.RasFocus.ui.theme.RasFocusAppTheme
 
 class RasGramActivity : ComponentActivity() {
 
-    private var incomingCallId: String?     = null
+    private var incomingCallId: String?       = null
     private var incomingCallerMobile: String? = null
-    private var incomingCallerName: String? = null
-    private var incomingCallType: String?   = null
-    private var isIncomingCall: Boolean     = false
-    private var openChatWith: String?       = null
+    private var incomingCallerName: String?   = null
+    private var incomingCallType: String?     = null
+    private var isIncomingCall: Boolean       = false
+    // ACTION_ANSWER_CALL = overlay থেকে ইউজার accept করেছে → IncomingCallScreen skip, সরাসরি CallingScreen
+    private var isAlreadyAnswered: Boolean    = false
+    private var openChatWith: String?         = null
 
     companion object {
         // RasgramMessagingService foreground check এর জন্য।
@@ -48,12 +50,14 @@ class RasGramActivity : ComponentActivity() {
                     // Splash নেই, MainScreen নেই।
                     // SharedPreferences থেকে current user তুলে সরাসরি
                     // IncomingCallScreen দেখাও, তারপর accept হলে CallingScreen।
+                    // ACTION_ANSWER_CALL এ alreadyAnswered=true → IncomingCallScreen skip।
                     DirectCallUI(
-                        callId       = incomingCallId       ?: "",
-                        callerName   = incomingCallerName   ?: "Unknown",
-                        callerMobile = incomingCallerMobile ?: "",
-                        callType     = incomingCallType     ?: "audio",
-                        onCallEnded  = { finish() }
+                        callId          = incomingCallId       ?: "",
+                        callerName      = incomingCallerName   ?: "Unknown",
+                        callerMobile    = incomingCallerMobile ?: "",
+                        callType        = incomingCallType     ?: "audio",
+                        alreadyAnswered = isAlreadyAnswered,
+                        onCallEnded     = { finish() }
                     )
                 } else {
                     // ── Normal app open / message notification tap ───────────
@@ -75,16 +79,31 @@ class RasGramActivity : ComponentActivity() {
 
     private fun parseIntent(i: Intent?) {
         val action = i?.action
-        if (action == "ACTION_INCOMING_CALL" || action == "ACTION_ANSWER_CALL") {
-            isIncomingCall       = true
-            incomingCallId       = i.getStringExtra("callId")
-            incomingCallerMobile = i.getStringExtra("callerMobile")
-            incomingCallerName   = i.getStringExtra("callerName")
-            incomingCallType     = i.getStringExtra("callType") ?: "audio"
-            openChatWith         = null
-        } else {
-            isIncomingCall = false
-            openChatWith   = i?.getStringExtra("openChatWith")
+        when (action) {
+            "ACTION_INCOMING_CALL" -> {
+                isIncomingCall       = true
+                isAlreadyAnswered    = false
+                incomingCallId       = i.getStringExtra("callId")
+                incomingCallerMobile = i.getStringExtra("callerMobile")
+                incomingCallerName   = i.getStringExtra("callerName")
+                incomingCallType     = i.getStringExtra("callType") ?: "audio"
+                openChatWith         = null
+            }
+            "ACTION_ANSWER_CALL" -> {
+                // Overlay থেকে accept করা হয়েছে — IncomingCallScreen দেখানো দরকার নেই
+                isIncomingCall       = true
+                isAlreadyAnswered    = true
+                incomingCallId       = i.getStringExtra("callId")
+                incomingCallerMobile = i.getStringExtra("callerMobile")
+                incomingCallerName   = i.getStringExtra("callerName")
+                incomingCallType     = i.getStringExtra("callType") ?: "audio"
+                openChatWith         = null
+            }
+            else -> {
+                isIncomingCall    = false
+                isAlreadyAnswered = false
+                openChatWith      = i?.getStringExtra("openChatWith")
+            }
         }
     }
 
@@ -110,12 +129,14 @@ class RasGramActivity : ComponentActivity() {
 // ── DirectCallUI ──────────────────────────────────────────────────────────────
 // App open / splash ছাড়াই সরাসরি IncomingCallScreen → CallingScreen।
 // SharedPreferences থেকে logged-in user তুলে নেয়।
+// alreadyAnswered=true হলে IncomingCallScreen skip করে সরাসরি CallingScreen।
 @Composable
 private fun DirectCallUI(
     callId: String,
     callerName: String,
     callerMobile: String,
     callType: String,
+    alreadyAnswered: Boolean = false,
     onCallEnded: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -131,7 +152,14 @@ private fun DirectCallUI(
     }
 
     // State machine: incoming → calling → ended
-    var phase by remember { mutableStateOf(if (callId.isNotEmpty()) "incoming" else "ended") }
+    // alreadyAnswered=true (ACTION_ANSWER_CALL) → overlay এ ইউজার accept করেছে,
+    // IncomingCallScreen দেখানো দরকার নেই, সরাসরি "calling" phase।
+    val initialPhase = when {
+        callId.isEmpty()   -> "ended"
+        alreadyAnswered    -> "calling"
+        else               -> "incoming"
+    }
+    var phase by remember { mutableStateOf(initialPhase) }
     var acceptedCallId by remember { mutableStateOf(callId) }
 
     when (phase) {
@@ -143,9 +171,10 @@ private fun DirectCallUI(
             callId       = acceptedCallId,
             onAccept     = {
                 IncomingCallOverlayService.stop(context)
-                FirebaseFirestore.getInstance()
-                    .collection("calls").document(acceptedCallId)
-                    .update("status", "answered")
+                // NOTE: status="answered" এখানে লেখা হচ্ছে না।
+                // CallingScreen receiver path এ setLocalDescription.onSetSuccess এ
+                // status + answer SDP একসাথে atomically লেখা হয়।
+                // এখানে আগে লিখলে caller SDP ছাড়াই "answered" দেখে → audio fail।
                 phase = "calling"
             },
             onDecline    = {

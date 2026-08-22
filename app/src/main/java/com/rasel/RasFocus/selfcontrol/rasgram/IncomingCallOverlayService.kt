@@ -422,8 +422,10 @@ class IncomingCallOverlayService : Service(),
 
     // ── Actions ───────────────────────────────────────────────────────────────
     private fun answerCall(callId: String, callerName: String, callerMobile: String, callType: String) {
-        FirebaseFirestore.getInstance().collection("calls").document(callId)
-            .update("status", "answered")
+        // NOTE: status="answered" এখানে লেখা হচ্ছে না।
+        // CallingScreen receiver path এ setLocalDescription.onSetSuccess এ
+        // status + answer SDP একসাথে atomically লেখা হয়।
+        // এখানে আগে লিখলে caller SDP ছাড়াই "answered" দেখে → setRemoteDescription fail → audio নেই।
         val i = Intent(this, RasGramActivity::class.java).apply {
             action = "ACTION_ANSWER_CALL"
             putExtra("callId",       callId)
