@@ -97,6 +97,8 @@ import com.google.firebase.auth.PhoneAuthOptions
 import com.google.firebase.auth.PhoneAuthProvider
 import com.google.firebase.firestore.*
 import com.google.firebase.firestore.ktx.snapshots
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ServerValue
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.tasks.await
@@ -1304,8 +1306,21 @@ fun MainScreen(
     var liveCurrentUser by remember { mutableStateOf(currentUser) }
     val isCompact = isCompactScreen()
 
-    // Keep user online + sync profile
+    // ── Presence system ────────────────────────────────────────────────────────
+    // Firebase RTDB onDisconnect: network drop হওয়ার সাথে সাথে offline mark হয়।
+    // Firestore polling (30s delay) এর চেয়ে accurate — phone বন্ধ/network গেলেই offline।
+    //
+    // Flow:
+    //   App খোলে → RTDB presence node: {online:true, lastActive:now}
+    //             → Firestore: {lastActive:now} (contact list দেখানোর জন্য)
+    //   App বন্ধ/network গেলে → RTDB onDisconnect fires:
+    //             → RTDB presence node: {online:false, lastActive:now}
+    //             → Firestore: {lastActive:serverTimestamp} (via RTDB listener)
+    //
+    // Contact list এর isOnline check: Firestore lastActive > now - ONLINE_THRESHOLD_MS
+    // এটাই ঠিক থাকবে — RTDB disconnect হলে Firestore lastActive update হয়।
     LaunchedEffect(currentUser.mobile) {
+        // ── Profile sync (unchanged) ──────────────────────────────────────────
         db.collection("chat_users").document(currentUser.mobile).addSnapshotListener { snap, _ ->
             snap?.data?.let { d ->
                 liveCurrentUser = liveCurrentUser.copy(
@@ -1316,9 +1331,59 @@ fun MainScreen(
                 onUserUpdate(liveCurrentUser)
             }
         }
-        while (true) {
-            db.collection("chat_users").document(currentUser.mobile).update("lastActive", System.currentTimeMillis())
-            delay(30_000)
+
+        // ── RTDB presence setup ───────────────────────────────────────────────
+        try {
+            val rtdb = FirebaseDatabase.getInstance()
+            val presenceRef = rtdb.getReference("presence").child(currentUser.mobile)
+            val connectedRef = rtdb.getReference(".info/connected")
+
+            // .info/connected: Firebase RTDB connection state।
+            // true = connected, false = disconnected (network গেলে, app killed হলে)।
+            connectedRef.addValueEventListener(object : com.google.firebase.database.ValueEventListener {
+                override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
+                    val connected = snapshot.getValue(Boolean::class.java) ?: false
+                    if (connected) {
+                        // ── Online ────────────────────────────────────────────
+                        // onDisconnect: connection drop হলে RTDB নিজেই এই write করবে।
+                        // App crash / phone off / network cut — সবক্ষেত্রে কাজ করে।
+                        presenceRef.onDisconnect().setValue(
+                            mapOf("online" to false, "lastActive" to ServerValue.TIMESTAMP)
+                        )
+                        // এখন online mark করো
+                        presenceRef.setValue(
+                            mapOf("online" to true, "lastActive" to ServerValue.TIMESTAMP)
+                        )
+                        // Firestore ও update করো — contact list এর lastActive এখানে
+                        db.collection("chat_users").document(currentUser.mobile)
+                            .update("lastActive", System.currentTimeMillis())
+                    }
+                }
+                override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
+            })
+
+            // ── RTDB presence → Firestore sync ───────────────────────────────
+            // RTDB এ offline হলে Firestore lastActive ও update করো।
+            // এতে contact list এর "last seen" সঠিক দেখাবে।
+            presenceRef.addValueEventListener(object : com.google.firebase.database.ValueEventListener {
+                override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
+                    val isOnlineRtdb = snapshot.child("online").getValue(Boolean::class.java) ?: false
+                    val lastActiveRtdb = snapshot.child("lastActive").getValue(Long::class.java) ?: 0L
+                    if (!isOnlineRtdb && lastActiveRtdb > 0) {
+                        // Offline হয়ে গেছে → Firestore lastActive update করো
+                        db.collection("chat_users").document(currentUser.mobile)
+                            .update("lastActive", lastActiveRtdb)
+                    }
+                }
+                override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
+            })
+        } catch (_: Exception) {
+            // RTDB fail হলে পুরনো Firestore polling fallback
+            while (true) {
+                db.collection("chat_users").document(currentUser.mobile)
+                    .update("lastActive", System.currentTimeMillis())
+                delay(30_000)
+            }
         }
     }
 
