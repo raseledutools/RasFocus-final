@@ -4520,65 +4520,44 @@ fun CallingScreen(
     val peerConnectionFactory = remember { mutableStateOf<PeerConnectionFactory?>(null) }
 
     LaunchedEffect(Unit) {
-        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                val base = EglBase.create()
+        // ── Step 1: IO thread — init WebRTC native libs ──────────────────────
+        // MUST complete before WebRTC session starts. Running EglBase.create()
+        // or PeerConnectionFactory.initialize() on the Compose main thread
+        // blocks the UI and causes ANR / "app keeps stopping" on cold start.
+        val base: EglBase
+        val factory: PeerConnectionFactory
+        try {
+            val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val b = EglBase.create()
                 PeerConnectionFactory.initialize(
                     PeerConnectionFactory.InitializationOptions
                         .builder(context)
                         .createInitializationOptions()
                 )
-                val factory = PeerConnectionFactory.builder()
-                    .setVideoDecoderFactory(DefaultVideoDecoderFactory(base.eglBaseContext))
-                    .setVideoEncoderFactory(DefaultVideoEncoderFactory(base.eglBaseContext, true, true))
+                val f = PeerConnectionFactory.builder()
+                    .setVideoDecoderFactory(DefaultVideoDecoderFactory(b.eglBaseContext))
+                    .setVideoEncoderFactory(DefaultVideoEncoderFactory(b.eglBaseContext, true, true))
                     .createPeerConnectionFactory()
-                eglBase.value = base
-                peerConnectionFactory.value = factory
-            } catch (e: Exception) {
-                android.util.Log.e("RasGram", "PeerConnectionFactory init failed: \${e.message}", e)
+                Pair(b, f)
             }
+            base    = result.first
+            factory = result.second
+            eglBase.value             = base
+            peerConnectionFactory.value = factory
+        } catch (e: Exception) {
+            android.util.Log.e("RasGram", "WebRTC init failed: ${e.message}", e)
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                Toast.makeText(context, "Call setup failed. Please restart the app.", Toast.LENGTH_LONG).show()
+            }
+            onEndCall()
+            return@LaunchedEffect
         }
-    }
-    // STUN: NAT traversal for same/different WiFi
-    // TURN: relay fallback for Mobile data ↔ WiFi, Symmetric NAT, corporate networks
-    // Using multiple TURN endpoints (TCP+UDP, port 80+443) for maximum compatibility
-    val iceServers = listOf(
-        // Google STUN — free, reliable
-        PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
-        PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer(),
-        PeerConnection.IceServer.builder("stun:stun2.l.google.com:19302").createIceServer(),
-        // Metered.ca TURN — UDP (fastest)
-        PeerConnection.IceServer.builder("turn:relay.metered.ca:80")
-            .setUsername("83eebabf8b4cce9d5dbcb649")
-            .setPassword("2D7JvfkOQtBdYW3R")
-            .createIceServer(),
-        // Metered.ca TURN — TCP port 80 (firewall bypass)
-        PeerConnection.IceServer.builder("turn:relay.metered.ca:80?transport=tcp")
-            .setUsername("83eebabf8b4cce9d5dbcb649")
-            .setPassword("2D7JvfkOQtBdYW3R")
-            .createIceServer(),
-        // Metered.ca TURN — TLS port 443 (strictest firewall bypass)
-        PeerConnection.IceServer.builder("turns:relay.metered.ca:443")
-            .setUsername("83eebabf8b4cce9d5dbcb649")
-            .setPassword("2D7JvfkOQtBdYW3R")
-            .createIceServer(),
-        // Metered.ca TURN — TCP 443
-        PeerConnection.IceServer.builder("turns:relay.metered.ca:443?transport=tcp")
-            .setUsername("83eebabf8b4cce9d5dbcb649")
-            .setPassword("2D7JvfkOQtBdYW3R")
-            .createIceServer()
-    )
 
-    var peerConnection by remember { mutableStateOf<PeerConnection?>(null) }
-    var localStream by remember { mutableStateOf<MediaStream?>(null) }
-    var localVideoTrack by remember { mutableStateOf<VideoTrack?>(null) }
-    var remoteVideoTrack by remember { mutableStateOf<VideoTrack?>(null) }
-    var localSurfaceView by remember { mutableStateOf<SurfaceViewRenderer?>(null) }
-    var remoteSurfaceView by remember { mutableStateOf<SurfaceViewRenderer?>(null) }
+        // ── Step 2: Permission check ─────────────────────────────────────────
+        val hasMicPerm = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        if (!hasMicPerm) { Toast.makeText(context, "Microphone permission needed", Toast.LENGTH_SHORT).show(); onEndCall(); return@LaunchedEffect }
 
-    val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
-
-    LaunchedEffect(Unit) {
+        // ── Step 3: WebRTC session ───────────────────────────────────────────
         val hasMicPerm = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         if (!hasMicPerm) { Toast.makeText(context, "Microphone permission needed", Toast.LENGTH_SHORT).show(); onEndCall(); return@LaunchedEffect }
 
