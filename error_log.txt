@@ -13,34 +13,34 @@ e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/
 > Task :app:compileFullReleaseKotlin FAILED
 * What went wrong:
 Execution failed for task ':app:compileFullReleaseKotlin'.
-BUILD FAILED in 2m 54s
+BUILD FAILED in 4m 11s
 
 === LAST 60 LINES ===
-> Task :app:packageFullReleaseResources FROM-CACHE
-> Task :app:generateFullReleaseBuildConfig
-> Task :app:parseFullReleaseLocalResources FROM-CACHE
-> Task :app:mergeFullReleaseArtProfile
+> Task :app:packageFullReleaseResources
 > Task :app:mapFullReleaseSourceSetPaths
+> Task :app:mergeFullReleaseArtProfile
+> Task :app:extractDeepLinksFullRelease FROM-CACHE
+> Task :app:parseFullReleaseLocalResources
+> Task :app:mergeFullReleaseAssets FROM-CACHE
 > Task :app:validateSigningFullRelease
 > Task :app:writeFullReleaseAppMetadata
 > Task :app:writeFullReleaseSigningConfigVersions
-> Task :app:mergeFullReleaseAssets FROM-CACHE
-> Task :app:checkFullReleaseAarMetadata
 > Task :app:checkFullReleaseDuplicateClasses
+> Task :app:checkFullReleaseAarMetadata
 > Task :app:compressFullReleaseAssets FROM-CACHE
 > Task :app:collectFullReleaseDependencies
 > Task :app:mergeFullReleaseNativeLibs
+> Task :app:sdkFullReleaseDependencyData
 
 > Task :app:stripFullReleaseDebugSymbols
 Unable to strip the following libraries, packaging them as they are: libbarhopper_v3.so, libimage_processing_util_jni.so, libjingle_peerconnection_so.so, libpdfium.so, libpdfiumandroid.so.
 
 > Task :app:extractFullReleaseNativeSymbolTables FROM-CACHE
 > Task :app:mergeFullReleaseNativeDebugMetadata NO-SOURCE
-> Task :app:mergeFullReleaseResources FROM-CACHE
-> Task :app:sdkFullReleaseDependencyData
 > Task :app:processFullReleaseMainManifest
 > Task :app:processFullReleaseManifest
 > Task :app:processFullReleaseManifestForPackage
+> Task :app:mergeFullReleaseResources
 note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
 
 note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
@@ -52,7 +52,7 @@ e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/launcher/MinimalistLauncherScreen.kt:289:33 Restricted suspending functions can only invoke member or extension suspending functions on their restricted coroutine scope
 
 > Task :app:compileFullReleaseKotlin FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1787364265874.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1787364710499.json
 
 FAILURE: Build failed with an exception.
 
@@ -73,6 +73,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 2m 54s
-32 actionable tasks: 22 executed, 10 from cache
+BUILD FAILED in 4m 11s
+32 actionable tasks: 25 executed, 7 from cache
 Configuration cache entry stored.
