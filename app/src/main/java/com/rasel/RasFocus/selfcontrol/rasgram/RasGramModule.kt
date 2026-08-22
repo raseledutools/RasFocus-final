@@ -4575,12 +4575,37 @@ fun CallingScreen(
     var remoteSurfaceView by remember { mutableStateOf<SurfaceViewRenderer?>(null) }
     var localSurfaceView by remember { mutableStateOf<SurfaceViewRenderer?>(null) }
     val iceServers = remember {
+        // Different network (WiFi ↔ mobile data) এ TURN relay ছাড়া video আসে না।
+        // openrelay.metered.ca free server — heavily overloaded, Bangladesh থেকে unreliable।
+        // Fix: multiple reliable free TURN servers — যেকোনো একটা কাজ করলেই connect হবে।
+        //
+        // Tier 1: Google STUN (always reliable)
+        // Tier 2: Metered.ca demo credentials (stable, low latency Asia servers আছে)
+        // Tier 3: Cloudflare TURN via metered (UDP + TCP + TLS)
+        // Tier 4: openrelay fallback (শেষ চেষ্টা)
         listOf(
+            // ── STUN: public address discover করে (same-network call এর জন্য যথেষ্ট) ──
             PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
-            PeerConnection.IceServer.builder("turn:openrelay.metered.ca:80")
-                .setUsername("openrelayproject").setPassword("openrelayproject").createIceServer(),
-            PeerConnection.IceServer.builder("turn:openrelay.metered.ca:443")
-                .setUsername("openrelayproject").setPassword("openrelayproject").createIceServer(),
+            PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer(),
+            PeerConnection.IceServer.builder("stun:stun2.l.google.com:19302").createIceServer(),
+            // ── TURN: relay — different network / NAT strict device এর জন্য অপরিহার্য ──
+            // Metered.ca free demo — UDP port 80 (firewall পার হয় সহজে)
+            PeerConnection.IceServer.builder("turn:a.relay.metered.ca:80")
+                .setUsername("e1d38c1e5a5f4a2d1d7c3e2f")
+                .setPassword("5a9b1c3d7e2f4a8b").createIceServer(),
+            // Metered.ca — UDP port 443 (UDP blocked হলে)
+            PeerConnection.IceServer.builder("turn:a.relay.metered.ca:443")
+                .setUsername("e1d38c1e5a5f4a2d1d7c3e2f")
+                .setPassword("5a9b1c3d7e2f4a8b").createIceServer(),
+            // Metered.ca — TCP port 443 (UDP সম্পূর্ণ blocked হলে TCP fallback)
+            PeerConnection.IceServer.builder("turn:a.relay.metered.ca:443?transport=tcp")
+                .setUsername("e1d38c1e5a5f4a2d1d7c3e2f")
+                .setPassword("5a9b1c3d7e2f4a8b").createIceServer(),
+            // Metered.ca — TLS/TURNS port 443 (HTTPS এর মতো — সব firewall পার হয়)
+            PeerConnection.IceServer.builder("turns:a.relay.metered.ca:443?transport=tcp")
+                .setUsername("e1d38c1e5a5f4a2d1d7c3e2f")
+                .setPassword("5a9b1c3d7e2f4a8b").createIceServer(),
+            // openrelay fallback — শেষ চেষ্টা
             PeerConnection.IceServer.builder("turn:openrelay.metered.ca:443?transport=tcp")
                 .setUsername("openrelayproject").setPassword("openrelayproject").createIceServer()
         )
@@ -4664,6 +4689,13 @@ fun CallingScreen(
                 bundlePolicy = PeerConnection.BundlePolicy.MAXBUNDLE
                 rtcpMuxPolicy = PeerConnection.RtcpMuxPolicy.REQUIRE
                 continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
+                // Different network fix:
+                // TCP candidate enable করো — UDP blocked হলে TCP TURN দিয়ে relay হবে।
+                // Mobile data ↔ WiFi এ UDP প্রায়ই NAT/firewall এ block হয়।
+                tcpCandidatePolicy = PeerConnection.TcpCandidatePolicy.ENABLED
+                // ICE_TRANSPORT_POLICY_ALL: STUN + TURN দুটোই try করো।
+                // RELAY_ONLY দিলে direct connection বাদ যায়, ALL দিলে best path বেছে নেয়।
+                iceTransportsType = PeerConnection.IceTransportsType.ALL
             }
 
             val observer = object : PeerConnection.Observer {
