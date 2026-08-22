@@ -239,7 +239,7 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                                 if (gestureConsuming && isHorizontal) {
                                     val cur = sidebarOffsetAnim.value
                                     val willOpen = cur < openThresholdPx
-                                    launch {
+                                    scope.launch {
                                         sidebarOffsetAnim.animateTo(
                                             if (willOpen) 0f else sidebarWidthPx,
                                             spring(Spring.DampingRatioLowBouncy, Spring.StiffnessMediumLow)
@@ -284,7 +284,7 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                                 // swipe RIGHT (dx > 0) from open → offset increases → sidebar hides
                                 val newOffset = (sidebarOffsetAnim.value + dx)
                                     .coerceIn(0f, sidebarWidthPx)
-                                launch { sidebarOffsetAnim.snapTo(newOffset) }
+                                scope.launch { sidebarOffsetAnim.snapTo(newOffset) }
                             }
                         }
                     }

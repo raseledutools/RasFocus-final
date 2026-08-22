@@ -88,6 +88,8 @@ class RasgramMessagingService : FirebaseMessagingService() {
         }
     }
 
+    private fun isAppForeground(): Boolean = RasGramActivity.isVisible
+
     private fun getMobileFromStorage(): String? =
         try { getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).getString(PREF_MOBILE, null) }
         catch (_: Exception) { null }
