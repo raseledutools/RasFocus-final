@@ -964,6 +964,13 @@
         android:exported="false"
         android:directBootAware="true" />
 
+    <!-- RasGram — Inline Reply receiver
+         Handles the "Reply" RemoteInput action from the notification shade.
+         exported="false": only our own PendingIntent can trigger this. -->
+    <receiver
+        android:name=".selfcontrol.rasgram.RasgramReplyReceiver"
+        android:exported="false" />
+
     <!-- RasGram FCM messaging service — exported=true required for FCM delivery.
          directBootAware="true": phone reboot এর পর lock screen unlock করার আগেও
          FCM message receive হবে — WhatsApp এর exact behavior।

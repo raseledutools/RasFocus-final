@@ -5,34 +5,35 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
 import android.media.AudioAttributes
 import android.media.RingtoneManager
 import android.os.Build
 import android.provider.Settings
 import androidx.core.app.NotificationCompat
+import androidx.core.app.Person
+import androidx.core.app.RemoteInput
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
+import com.rasel.RasFocus.R
 
 class RasgramMessagingService : FirebaseMessagingService() {
 
+    // WhatsApp green
+    private val RASGRAM_GREEN = Color.parseColor("#25D366")
+
     override fun onNewToken(token: String) {
         super.onNewToken(token)
-        // Direct Boot aware: device encrypted storage থেকে mobile পড়ো।
-        // Lock screen unlock এর আগেও token save করা যাবে।
-        // credential encrypted (MODE_PRIVATE) বা device encrypted — দুটোই try করো।
         val mobile = try {
-            // Normal path: credential encrypted storage (app unlocked)
-            getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-                .getString(PREF_MOBILE, null)
+            getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).getString(PREF_MOBILE, null)
         } catch (_: Exception) { null }
             ?: try {
-                // Direct Boot path: device encrypted storage (before unlock)
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N)
                     createDeviceProtectedStorageContext()
                         .getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
                         .getString(PREF_MOBILE, null)
-                } else null
+                else null
             } catch (_: Exception) { null }
             ?: return
 
@@ -61,29 +62,11 @@ class RasgramMessagingService : FirebaseMessagingService() {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // INCOMING CALL — একটাই flow, duplicate বন্ধ
-    //
-    // App FOREGROUND (screen on + app visible):
-    //   → FCM skip করো। Firestore realtime listener IncomingCallScreen দেখাবে।
-    //     সেখানে ring আছে।
-    //
-    // App BACKGROUND / KILLED:
-    //   Overlay permission আছে?
-    //     → IncomingCallOverlayService চালু করো
-    //       (startForeground করে, ring বাজায়, overlay/activity দেখায়)
-    //       এখানে আর কোনো notification post করা যাবে না।
-    //   Overlay permission নেই?
-    //     → WhatsApp-style fullScreenIntent notification post করো + ringtone channel
+    // INCOMING CALL
     // ─────────────────────────────────────────────────────────────────────────
     private fun handleIncomingCall(
-        callerName: String,
-        callerMobile: String,
-        callType: String,
-        callId: String
+        callerName: String, callerMobile: String, callType: String, callId: String
     ) {
-        // ── App foreground হলে FCM এর কাজ নেই ──────────────────────────────
-        // "Foreground" = app এর process UI-foreground importance তে আছে
-        // এবং screen interactive।
         if (isAppForeground()) return
 
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -91,77 +74,43 @@ class RasgramMessagingService : FirebaseMessagingService() {
                          Settings.canDrawOverlays(this)
 
         if (hasOverlay) {
-            // ── Overlay path: Service শুরু করো, notification পোস্ট করবে না ──
-            // IncomingCallOverlayService.onStartCommand() → startForeground()
-            // একটাই IMPORTANCE_MIN foreground notification তৈরি হবে।
-            IncomingCallOverlayService.start(
-                context      = this,
-                callId       = callId,
-                callerName   = callerName,
-                callerMobile = callerMobile,
-                callType     = callType
-            )
+            IncomingCallOverlayService.start(this, callId, callerName, callerMobile, callType)
         } else {
-            // ── Fallback path: full-screen notification ───────────────────────
-            // Overlay permission নেই তাই notification দিয়ে কাজ চালাতে হবে।
-            // Channel এ ringtone সেট আছে — notification নিজেই ring করবে।
             createChannels(nm)
             postFullScreenCallNotification(nm, callerName, callerMobile, callType, callId)
         }
     }
 
-    // ── App foreground check ──────────────────────────────────────────────────
-    // RasGramActivity.isVisible static flag — onResume → true, onStop → false।
-    // App killed/background/Direct Boot path → সবসময় false।
-    // FCM process spawn (new process) এ Activity কখনো create হয় না → false।
-    // এটাই WhatsApp এর behavior: FCM process এ UI নেই, তাই overlay/notification পাঠাও।
     private fun isAppForeground(): Boolean = RasGramActivity.isVisible
 
-    // ── Direct Boot-aware SharedPreferences ────────────────────────────────
-    // Lock screen unlock এর আগে credential encrypted storage accessible নয়।
-    // Device encrypted storage সবসময় available — reboot থেকেই।
-    // mobile number device encrypted storage এ save করা হলে lock screen এও কাজ করবে।
-    private fun getMobileFromStorage(): String? {
-        return try {
-            getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-                .getString(PREF_MOBILE, null)
+    private fun getMobileFromStorage(): String? =
+        try { getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).getString(PREF_MOBILE, null) }
+        catch (_: Exception) { null }
+        ?: try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N)
+                createDeviceProtectedStorageContext()
+                    .getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+                    .getString(PREF_MOBILE, null)
+            else null
         } catch (_: Exception) { null }
-            ?: try {
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-                    createDeviceProtectedStorageContext()
-                        .getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-                        .getString(PREF_MOBILE, null)
-                } else null
-            } catch (_: Exception) { null }
-    }
 
-    // ── Full-screen notification: overlay নেই path ───────────────────────────
-    // Lock screen এ full page দেখাবে + Answer/Decline button।
-    // Ring: channel IMPORTANCE_MAX + ringtone আছে।
     private fun postFullScreenCallNotification(
         nm: NotificationManager,
-        callerName: String,
-        callerMobile: String,
-        callType: String,
-        callId: String
+        callerName: String, callerMobile: String, callType: String, callId: String
     ) {
-        // ── Answer intent ────────────────────────────────────────────────────
         val answerIntent = Intent(this, RasGramActivity::class.java).apply {
             action = "ACTION_INCOMING_CALL"
-            putExtra("callId",       callId)
+            putExtra("callId", callId)
             putExtra("callerMobile", callerMobile)
-            putExtra("callerName",   callerName)
-            putExtra("callType",     callType)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK      or
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP     or
+            putExtra("callerName", callerName)
+            putExtra("callType", callType)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or
                     Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
         val answerPending = PendingIntent.getActivity(
             this, 1, answerIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-
-        // ── Decline intent ───────────────────────────────────────────────────
         val declineIntent = Intent(this, DeclineCallReceiver::class.java).apply {
             putExtra("callId", callId)
         }
@@ -172,7 +121,9 @@ class RasgramMessagingService : FirebaseMessagingService() {
 
         val callTitle = if (callType == "video") "📹 Incoming Video Call" else "📞 Incoming Voice Call"
         val notif = NotificationCompat.Builder(this, CALL_CHANNEL)
-            .setSmallIcon(android.R.drawable.ic_menu_call)
+            .setSmallIcon(R.drawable.ic_rasgram_notif)
+            .setColor(RASGRAM_GREEN)
+            .setColorized(true)
             .setContentTitle(callTitle)
             .setContentText("$callerName ($callerMobile)")
             .setSubText("RasGram")
@@ -180,11 +131,9 @@ class RasgramMessagingService : FirebaseMessagingService() {
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            // fullScreenIntent: lock screen এ full page দেখাবে + ring বাজবে
             .setFullScreenIntent(answerPending, true)
-            // Answer / Decline action buttons
-            .addAction(android.R.drawable.ic_menu_call, "Answer",  answerPending)
-            .addAction(android.R.drawable.ic_delete,    "Decline", declinePending)
+            .addAction(android.R.drawable.ic_menu_call, "✅  Answer",  answerPending)
+            .addAction(android.R.drawable.ic_delete,    "❌  Decline", declinePending)
             .setAutoCancel(false)
             .setOngoing(true)
             .setTimeoutAfter(60_000L)
@@ -193,86 +142,155 @@ class RasgramMessagingService : FirebaseMessagingService() {
         nm.notify(CALL_NOTIFICATION_ID, notif)
     }
 
-    // ── Message notification ─────────────────────────────────────────────────
-    // App open থাকলে Firestore realtime listener এ message দেখায়।
-    // App বন্ধ থাকলে FCM trigger করে এখানে আসে।
-    // App foreground থাকলে notification দরকার নেই — skip।
+    // ─────────────────────────────────────────────────────────────────────────
+    // MESSAGE NOTIFICATION — WhatsApp-style design + inline Reply
+    // ─────────────────────────────────────────────────────────────────────────
     private fun showMessageNotification(
         senderName: String,
         message: String,
         senderMobile: String
     ) {
-        // App foreground হলে Firestore listener নিজেই message দেখাবে — notification দরকার নেই।
         if (isAppForeground()) return
 
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         createChannels(nm)
 
-        // সঠিক sender name নিশ্চিত করো — empty হলে "RasGram" fallback
         val displayName = senderName.ifBlank { "RasGram" }
+        val notifId     = senderMobile.hashCode()
 
-        val intent = Intent(this, RasGramActivity::class.java).apply {
+        // ── Tap → open RasGram on the correct chat ──────────────────────────
+        val openIntent = Intent(this, RasGramActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("openChatWith", senderMobile)
         }
-        val pending = PendingIntent.getActivity(
-            this, senderMobile.hashCode(), intent,
+        val openPending = PendingIntent.getActivity(
+            this, notifId, openIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val notif = NotificationCompat.Builder(this, MSG_CHANNEL)
-            .setSmallIcon(android.R.drawable.ic_dialog_email)
-            // contentTitle = sender এর নাম — notification এ দেখাবে
-            .setContentTitle(displayName)
-            .setContentText(message)
-            .setStyle(
-                NotificationCompat.BigTextStyle()
-                    .bigText(message)
-                    .setBigContentTitle(displayName)
-                    .setSummaryText("RasGram")
-            )
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setContentIntent(pending)
-            .setAutoCancel(true)
-            .setShowWhen(true)
+        // ── Inline Reply action ─────────────────────────────────────────────
+        val remoteInput = RemoteInput.Builder(RasgramReplyReceiver.KEY_REPLY_TEXT)
+            .setLabel("Reply to $displayName…")
             .build()
 
-        // প্রতি sender এর জন্য আলাদা notification ID — ফলে একজনের message
-        // আরেকজনেরটা replace করবে না।
-        nm.notify(senderMobile.hashCode(), notif)
+        val replyIntent = Intent(this, RasgramReplyReceiver::class.java).apply {
+            putExtra(RasgramReplyReceiver.EXTRA_SENDER_MOBILE, senderMobile)
+            putExtra(RasgramReplyReceiver.EXTRA_SENDER_NAME,   displayName)
+            putExtra(RasgramReplyReceiver.EXTRA_NOTIF_ID,      notifId)
+        }
+        val replyPending = PendingIntent.getBroadcast(
+            this,
+            notifId + 1,     // unique request code per conversation
+            replyIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+        )
+        val replyAction = NotificationCompat.Action.Builder(
+            R.drawable.ic_rasgram_notif,
+            "Reply",
+            replyPending
+        )
+            .addRemoteInput(remoteInput)
+            .setAllowGeneratedReplies(true)
+            .build()
+
+        // ── "Mark as read" action ───────────────────────────────────────────
+        val markReadPending = PendingIntent.getActivity(
+            this, notifId + 2, openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val markReadAction = NotificationCompat.Action.Builder(
+            android.R.drawable.ic_menu_view,
+            "Mark as read",
+            markReadPending
+        ).build()
+
+        // ── MessagingStyle — WhatsApp conversation bubbles ──────────────────
+        val mePerson = Person.Builder()
+            .setName("You")
+            .setImportant(false)
+            .build()
+        val senderPerson = Person.Builder()
+            .setName(displayName)
+            .setImportant(true)
+            .build()
+
+        val msgStyle = NotificationCompat.MessagingStyle(mePerson)
+            .setConversationTitle(null)   // 1-to-1 chat: no group title
+            .addMessage(
+                NotificationCompat.MessagingStyle.Message(
+                    message,
+                    System.currentTimeMillis(),
+                    senderPerson
+                )
+            )
+
+        // ── Build the notification ──────────────────────────────────────────
+        val notif = NotificationCompat.Builder(this, MSG_CHANNEL)
+            // ── Icon & color ──────────────────────────────────────────
+            .setSmallIcon(R.drawable.ic_rasgram_notif)
+            .setColor(RASGRAM_GREEN)
+            .setColorized(true)
+            // ── Content ───────────────────────────────────────────────
+            .setStyle(msgStyle)
+            .setContentTitle(displayName)
+            .setContentText(message)
+            .setSubText("RasGram")
+            // ── Behaviour ─────────────────────────────────────────────
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setContentIntent(openPending)
+            .setAutoCancel(true)
+            .setShowWhen(true)
+            .setWhen(System.currentTimeMillis())
+            // ── Vibration & light ─────────────────────────────────────
+            .setDefaults(NotificationCompat.DEFAULT_VIBRATE)
+            .setLights(RASGRAM_GREEN, 500, 1000)
+            // ── Actions ───────────────────────────────────────────────
+            .addAction(replyAction)
+            .addAction(markReadAction)
+            .build()
+
+        nm.notify(notifId, notif)
     }
 
-    // ── Notification channels ─────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // Notification Channels
+    // ─────────────────────────────────────────────────────────────────────────
     private fun createChannels(nm: NotificationManager) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
-            val audioAttr = AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build()
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
 
-            // Call channel — fullScreenIntent + ringtone, IMPORTANCE_MAX
-            nm.createNotificationChannel(
-                NotificationChannel(CALL_CHANNEL, "Incoming Calls", NotificationManager.IMPORTANCE_MAX).apply {
-                    description          = "Incoming RasGram calls"
-                    setSound(ringtoneUri, audioAttr)
-                    enableVibration(true)
-                    vibrationPattern     = longArrayOf(0, 500, 500, 500)
-                    lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
-                }
-            )
+        val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+        val audioAttr = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
 
-            // Message channel
-            nm.createNotificationChannel(
-                NotificationChannel(MSG_CHANNEL, "Messages", NotificationManager.IMPORTANCE_HIGH).apply {
-                    description          = "New RasGram messages"
-                    enableVibration(true)
-                    setShowBadge(true)
-                    lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
-                }
-            )
-        }
+        // ── Call channel ──────────────────────────────────────────────────────
+        nm.createNotificationChannel(
+            NotificationChannel(CALL_CHANNEL, "Incoming Calls", NotificationManager.IMPORTANCE_MAX).apply {
+                description          = "Incoming RasGram calls"
+                setSound(ringtoneUri, audioAttr)
+                enableVibration(true)
+                vibrationPattern     = longArrayOf(0, 500, 500, 500)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+                enableLights(true)
+                lightColor           = Color.parseColor("#25D366")
+            }
+        )
+
+        // ── Message channel ───────────────────────────────────────────────────
+        nm.createNotificationChannel(
+            NotificationChannel(MSG_CHANNEL, "RasGram Messages", NotificationManager.IMPORTANCE_HIGH).apply {
+                description          = "New RasGram messages"
+                enableVibration(true)
+                vibrationPattern     = longArrayOf(0, 200, 100, 200)
+                setShowBadge(true)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+                enableLights(true)
+                lightColor           = Color.parseColor("#25D366")
+            }
+        )
     }
 
     companion object {
