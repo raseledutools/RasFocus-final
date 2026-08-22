@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  RasGram launcher icon — foreground layer
+  Design: rounded speech-bubble (WhatsApp style) in #25D366 green,
+          with bold white "RG" letters centred inside.
+  Safe zone: 108×108dp, content kept inside the 72dp inner circle.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- ── Speech bubble body ────────────────────────────────────── -->
+    <!-- Main rounded rectangle: 26,20 → 82,76 (56×56dp), r=14 -->
+    <path
+        android:fillColor="#25D366"
+        android:pathData="
+            M40,22
+            L68,22
+            Q86,22 86,40
+            L86,62
+            Q86,78 70,78
+            L46,78
+            L34,90
+            L36,78
+            L34,78
+            Q22,78 22,62
+            L22,40
+            Q22,22 40,22 Z" />
+
+    <!-- ── "R" letter ─────────────────────────────────────────────
+         Left half of the "RG" text, bold white, centred at ~x=42 y=50 -->
+    <!-- R stem -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,42 L36,68 L40,68 L40,58 L46,58 L51,68 L56,68 L50,57
+                          Q55,55 55,49 Q55,42 47,42 Z
+                          M40,46 L47,46 Q51,46 51,49 Q51,53 47,53 L40,53 Z" />
+
+    <!-- ── "G" letter ─────────────────────────────────────────────
+         Right half, bold white, centred at ~x=64 y=50 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M72,46 Q68,42 62,42 Q55,42 55,55 Q55,68 63,68
+                          Q70,68 73,63 L73,54 L63,54 L63,58 L69,58 L69,62
+                          Q67,64 63,64 Q59,64 59,55 Q59,46 63,46
+                          Q66,46 68,49 Z" />
+
+</vector>

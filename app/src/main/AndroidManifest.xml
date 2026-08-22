@@ -935,17 +935,27 @@
     <!-- ✅ RasGram — WhatsApp-style messaging module
          directBootAware="true": lock screen এ Activity launch হয় — phone reboot
          এর পরেও PIN/pattern enter করার আগেই incoming call screen দেখা যাবে।
-         showWhenLocked + turnScreenOn: screen off থাকলেও Activity screen এর উপরে আসে। -->
+         showWhenLocked + turnScreenOn: screen off থাকলেও Activity screen এর উপরে আসে।
+         LAUNCHER category: Home screen এ আলাদা app icon হিসেবে দেখায়। -->
     <activity
         android:name=".selfcontrol.rasgram.RasGramActivity"
         android:exported="true"
         android:launchMode="singleTop"
+        android:label="RasGram"
+        android:icon="@mipmap/ic_rasgram_launcher"
+        android:roundIcon="@mipmap/ic_rasgram_launcher"
         android:theme="@style/Theme.RasFocus"
         android:windowSoftInputMode="adjustResize"
         android:showWhenLocked="true"
         android:turnScreenOn="true"
         android:directBootAware="true"
-        android:configChanges="orientation|screenSize|keyboardHidden" />
+        android:configChanges="orientation|screenSize|keyboardHidden">
+        <!-- Home screen shortcut — RasGram appears as a standalone app -->
+        <intent-filter>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent-filter>
+    </activity>
 
     <!-- RasGram — Decline incoming call broadcast
          directBootAware="true": lock screen থেকে Decline button কাজ করে। -->
