@@ -142,6 +142,11 @@ class IncomingCallOverlayService : Service(),
         @Volatile var isRunning: Boolean = false
         @Volatile var activeCallId: String = ""
 
+        // SharedPreferences constants
+        const val PREF_NAME_CONST     = "rasgram_prefs"
+        const val PREF_MOBILE_CONST   = "saved_mobile"
+        const val PREF_NAME_KEY_CONST = "saved_name"
+
         fun start(
             context: Context,
             callId: String,
@@ -196,12 +201,6 @@ class IncomingCallOverlayService : Service(),
                 .putString(PREF_NAME_KEY_CONST, name)
                 .apply()
         } catch (_: Exception) {}
-    }
-
-    companion object {
-        private const val PREF_NAME_CONST    = "rasgram_prefs"
-        private const val PREF_MOBILE_CONST  = "saved_mobile"
-        private const val PREF_NAME_KEY_CONST = "saved_name"
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -548,7 +547,6 @@ class IncomingCallOverlayService : Service(),
 }
 
 // ── Compose UI: overlay card ──────────────────────────────────────────────────
-@Composable
 // ── Full-screen WhatsApp-style incoming call overlay ──────────────────────────
 // Screen unlocked থাকলে এই Composable পুরো screen cover করে।
 // IncomingCallScreen (Activity path) এর সাথে exact same layout।
