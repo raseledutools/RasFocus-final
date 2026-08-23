@@ -5824,19 +5824,13 @@ fun SettingsDialog(
                                     if (isDriveConnected && !isArchiving) {
                                         isArchiving = true
                                         archiveResult = null
-                                        scope.launch(Dispatchers.IO) {
-                                            val result = RasGramDriveArchive.checkAndArchive(context)
-                                            withContext(Dispatchers.Main) {
-                                                isArchiving = false
-                                                archiveResult = if (result.success) {
-                                                    if (result.archivedMessages > 0)
-                                                        "✅ ${result.archivedChats}টি chat থেকে ${result.archivedMessages}টি পুরানো message Drive এ সরানো হয়েছে।"
-                                                    else
-                                                        "✅ সব message fresh (৭ দিনের কম পুরানো)। কিছু archive করার দরকার নেই।"
-                                                } else {
-                                                    "❌ ${result.errorMessage ?: "Archive ব্যর্থ হয়েছে"}"
-                                                }
-                                            }
+                                        // WorkManager দিয়ে background এ run করো — UI block হবে না
+                                        RasGramArchiveScheduler.runNow(context)
+                                        // ২ সেকেন্ড পর "queued" message দেখাও
+                                        scope.launch {
+                                            kotlinx.coroutines.delay(500)
+                                            isArchiving = false
+                                            archiveResult = "✅ Archive শুরু হয়েছে background এ। শেষ হলে notification আসবে।"
                                         }
                                     }
                                 },
