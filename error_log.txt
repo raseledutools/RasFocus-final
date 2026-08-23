@@ -5,7 +5,7 @@
 
 === KOTLIN ERRORS ===
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:2266:55 Unresolved reference: Send
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramDriveSyncManager.kt:62:47 Unresolved reference: GoogleSignInAccount
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramDriveSyncManager.kt:316:48 Returns are not allowed for functions with expression body. Use block body in '{...}'
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramDriveSyncUI.kt:591:58 Unresolved reference: items
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramDriveSyncUI.kt:591:76 Cannot infer a type for this parameter. Please specify it explicitly.
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramDriveSyncUI.kt:593:29 @Composable invocations can only happen from the context of a @Composable function
@@ -13,27 +13,25 @@ e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/
 
 === UNRESOLVED / TYPE ERRORS ===
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:2266:55 Unresolved reference: Send
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramDriveSyncManager.kt:62:47 Unresolved reference: GoogleSignInAccount
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramDriveSyncUI.kt:591:58 Unresolved reference: items
 
 === BUILD FAILURE ===
 > Task :app:compileFullReleaseKotlin FAILED
 * What went wrong:
 Execution failed for task ':app:compileFullReleaseKotlin'.
-BUILD FAILED in 3m 22s
+BUILD FAILED in 3m 52s
 
 === LAST 60 LINES ===
-> Task :app:mapFullReleaseSourceSetPaths
+> Task :app:mergeFullReleaseArtProfile
 > Task :app:validateSigningFullRelease
+> Task :app:checkFullReleaseAarMetadata
 > Task :app:writeFullReleaseAppMetadata
 > Task :app:writeFullReleaseSigningConfigVersions
-> Task :app:checkFullReleaseAarMetadata
 > Task :app:checkFullReleaseDuplicateClasses
-> Task :app:mergeFullReleaseAssets FROM-CACHE
-> Task :app:compressFullReleaseAssets FROM-CACHE
 > Task :app:collectFullReleaseDependencies
+> Task :app:mergeFullReleaseAssets FROM-CACHE
 > Task :app:mergeFullReleaseNativeLibs
-> Task :app:mergeFullReleaseResources FROM-CACHE
+> Task :app:compressFullReleaseAssets FROM-CACHE
 > Task :app:sdkFullReleaseDependencyData
 
 > Task :app:stripFullReleaseDebugSymbols
@@ -41,6 +39,7 @@ Unable to strip the following libraries, packaging them as they are: libbarhoppe
 
 > Task :app:extractFullReleaseNativeSymbolTables FROM-CACHE
 > Task :app:mergeFullReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:mergeFullReleaseResources FROM-CACHE
 > Task :app:processFullReleaseMainManifest
 > Task :app:processFullReleaseManifest
 > Task :app:processFullReleaseManifestForPackage
@@ -52,14 +51,14 @@ note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round ico
 > Task :app:kspFullReleaseKotlin
 > Task :app:compileFullReleaseKotlin
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/filemanager/FileManagerUI.kt:2266:55 Unresolved reference: Send
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramDriveSyncManager.kt:62:47 Unresolved reference: GoogleSignInAccount
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramDriveSyncManager.kt:316:48 Returns are not allowed for functions with expression body. Use block body in '{...}'
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramDriveSyncUI.kt:591:58 Unresolved reference: items
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramDriveSyncUI.kt:591:76 Cannot infer a type for this parameter. Please specify it explicitly.
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramDriveSyncUI.kt:593:29 @Composable invocations can only happen from the context of a @Composable function
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramDriveSyncUI.kt:648:29 @Composable invocations can only happen from the context of a @Composable function
 
 > Task :app:compileFullReleaseKotlin FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1787479455601.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1787480772682.json
 
 FAILURE: Build failed with an exception.
 
@@ -80,6 +79,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 3m 22s
+BUILD FAILED in 3m 52s
 32 actionable tasks: 22 executed, 10 from cache
 Configuration cache entry stored.
