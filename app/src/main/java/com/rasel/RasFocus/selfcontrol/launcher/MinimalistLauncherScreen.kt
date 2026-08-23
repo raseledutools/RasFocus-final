@@ -142,11 +142,21 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
     val theme       = LauncherTheme.entries[themeIdx.coerceIn(0, 2)]
     val appFontSize = when (fontSize) { 0 -> 16.sp; 2 -> 26.sp; else -> 21.sp }
 
+    val usageMap: Map<String, Long> = remember { getUsageMap(context) }
     val allApps: List<AppInfo> = remember(hiddenPkgs, renamedMap) {
-        getInstalledApps(context, hiddenPkgs, renamedMap, getBlockedApps(context), getUsageMap(context))
+        getInstalledApps(context, hiddenPkgs, renamedMap, getBlockedApps(context), usageMap)
     }
     val pinnedApps = remember(pinnedPkgs, allApps) {
         pinnedPkgs.mapNotNull { pkg -> allApps.find { it.packageName == pkg } }
+    }
+    // আজকের total screen time (minutes) — usage ring এ ব্যবহার হবে
+    val totalScreenMinutes: Long = remember(usageMap) { usageMap.values.sum() }
+    // Sidebar এ suggest করার জন্য top-used apps (pinned ছাড়া, top 4)
+    val frequentApps: List<AppInfo> = remember(usageMap, allApps, pinnedPkgs) {
+        allApps
+            .filter { it.packageName !in pinnedPkgs && usageMap.getOrDefault(it.packageName, 0L) > 0L }
+            .sortedByDescending { usageMap.getOrDefault(it.packageName, 0L) }
+            .take(4)
     }
 
     var timeState by remember { mutableStateOf(getCurrentTime()) }
@@ -298,18 +308,19 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
         // HOME SCREEN
         // ═══════════════════════════════════════════════════════
         HomeScreen(
-            timeState   = timeState,
-            battery     = battery,
-            isCharging  = isCharging,
-            pinnedApps  = pinnedApps,
-            theme       = theme,
-            appFontSize = appFontSize,
-            showIcons   = showIcons,
-            renamedMap  = renamedMap,
-            btnLeftPkg  = btnLeftPkg,
-            btnRightPkg = btnRightPkg,
-            clockPkg    = clockPkg,
-            context     = context,
+            timeState          = timeState,
+            battery            = battery,
+            isCharging         = isCharging,
+            pinnedApps         = pinnedApps,
+            theme              = theme,
+            appFontSize        = appFontSize,
+            showIcons          = showIcons,
+            renamedMap         = renamedMap,
+            btnLeftPkg         = btnLeftPkg,
+            btnRightPkg        = btnRightPkg,
+            clockPkg           = clockPkg,
+            context            = context,
+            totalScreenMinutes = totalScreenMinutes,
             onLaunch       = { app -> if (!app.isBlocked) launchApp(context, app.packageName) },
             onLongPress    = { app -> longPressedApp = app },
             onSettings     = { showSettings = true },
@@ -357,14 +368,15 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                     .clickable(enabled = false) {}
             ) {
                 SidebarContent(
-                    allApps    = allApps,
-                    pinnedPkgs = pinnedPkgs,
-                    hiddenPkgs = hiddenPkgs,
-                    renamedMap = renamedMap,
-                    theme      = theme,
-                    fontSize   = appFontSize,
-                    showIcons  = showIcons,
-                    query      = query,
+                    allApps      = allApps,
+                    frequentApps = frequentApps,
+                    pinnedPkgs   = pinnedPkgs,
+                    hiddenPkgs   = hiddenPkgs,
+                    renamedMap   = renamedMap,
+                    theme        = theme,
+                    fontSize     = appFontSize,
+                    showIcons    = showIcons,
+                    query        = query,
                     onQueryChange = { query = it },
                     onLaunch   = { app -> if (!app.isBlocked) {
                         launchApp(context, app.packageName)
@@ -485,18 +497,19 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 fun HomeScreen(
-    timeState:   Pair<String, String>,
-    battery:     Int,
-    isCharging:  Boolean,
-    pinnedApps:  List<AppInfo>,
-    theme:       LauncherTheme,
-    appFontSize: androidx.compose.ui.unit.TextUnit,
-    showIcons:   Boolean,
-    renamedMap:  Map<String, String>,
-    btnLeftPkg:  String,
-    btnRightPkg: String,
-    clockPkg:    String,
-    context:     Context,
+    timeState:          Pair<String, String>,
+    battery:            Int,
+    isCharging:         Boolean,
+    pinnedApps:         List<AppInfo>,
+    theme:              LauncherTheme,
+    appFontSize:        androidx.compose.ui.unit.TextUnit,
+    showIcons:          Boolean,
+    renamedMap:         Map<String, String>,
+    btnLeftPkg:         String,
+    btnRightPkg:        String,
+    clockPkg:           String,
+    context:            Context,
+    totalScreenMinutes: Long = 0L,
     onLaunch:             (AppInfo) -> Unit,
     onLongPress:          (AppInfo) -> Unit,
     onSettings:           () -> Unit,
@@ -537,10 +550,11 @@ fun HomeScreen(
 
             // ── Battery ring clock ────────────────────────────────────────
             ClockWithBatteryRing(
-                time       = timeState.first,
-                date       = timeState.second,
-                battery    = battery,
-                isCharging = isCharging,
+                time               = timeState.first,
+                date               = timeState.second,
+                battery            = battery,
+                isCharging         = isCharging,
+                totalScreenMinutes = totalScreenMinutes,
                 onLongPress = onLongPressClockRing,
                 onTap = {
                     if (clockPkg.isNotBlank()) {
@@ -551,12 +565,17 @@ fun HomeScreen(
                 }
             )
 
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(16.dp))
+
+            // ── Greeting + daily quote ────────────────────────────────────
+            GreetingQuoteSection(context = context)
+
+            Spacer(Modifier.height(16.dp))
         }
 
         // ── Scrollable apps list — sits below clock, above bottom bar ────
-        // top offset = 48 + 180(clock) + 32 = ~280dp approximately
-        val clockSectionHeight = 48.dp + 180.dp + 32.dp
+        // greeting section: ~16+48+16 = 80dp extra below clock
+        val clockSectionHeight = 48.dp + 180.dp + 16.dp + 56.dp + 16.dp
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
@@ -721,12 +740,13 @@ fun HomeScreen(
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 fun ClockWithBatteryRing(
-    time:        String,
-    date:        String,
-    battery:     Int,
-    isCharging:  Boolean,
-    onLongPress: () -> Unit,
-    onTap:       () -> Unit
+    time:               String,
+    date:               String,
+    battery:            Int,
+    isCharging:         Boolean,
+    totalScreenMinutes: Long = 0L,
+    onLongPress:        () -> Unit,
+    onTap:              () -> Unit
 ) {
     val chargingColor by animateColorAsState(
         targetValue   = if (isCharging) Color(0xFF00FFB2) else TXT,
@@ -755,13 +775,77 @@ fun ClockWithBatteryRing(
         label         = "batterySweep"
     )
 
+    // ── Ambient breathing — clock slowly scales 1.0 → 1.018 → 1.0 every ~4s ──
+    val breathAnim = rememberInfiniteTransition(label = "breath")
+    val breathScale by breathAnim.animateFloat(
+        initialValue  = 1.000f,
+        targetValue   = 1.018f,
+        animationSpec = infiniteRepeatable(
+            animation  = tween(3800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "breathScale"
+    )
+
+    // Usage arc — max = 6 hours (360 min) daily goal
+    val usageGoalMin   = 360L   // 6 hours
+    val usageFrac      = (totalScreenMinutes / usageGoalMin.toFloat()).coerceIn(0f, 1f)
+    val usageArcColor  = when {
+        usageFrac < 0.5f -> Color(0xFF00C896)   // green — under 3h
+        usageFrac < 0.8f -> Color(0xFFFFC947)   // amber — 3-5h
+        else             -> Color(0xFFFF5252)   // red   — 5h+
+    }
+    val animatedUsageSweep by animateFloatAsState(
+        targetValue   = 360f * usageFrac,
+        animationSpec = tween(1000, easing = FastOutSlowInEasing),
+        label         = "usageSweep"
+    )
+    // Screen time human-readable label
+    val screenTimeLabel = if (totalScreenMinutes <= 0L) "" else {
+        val h = totalScreenMinutes / 60
+        val m = totalScreenMinutes % 60
+        if (h > 0) "${h}h ${m}m" else "${m}m"
+    }
+
     Box(
         Modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center
     ) {
+        // ── Outer usage ring (larger box, draws behind) ───────────────────
+        Box(
+            Modifier
+                .size(200.dp)
+                .drawBehind {
+                    val outerStroke = 2.dp.toPx()
+                    val r2       = size.width / 2f - outerStroke
+                    val cx2      = size.width / 2f
+                    val cy2      = size.height / 2f
+                    val tl2      = Offset(cx2 - r2, cy2 - r2)
+                    val as2      = Size(r2 * 2, r2 * 2)
+                    // dim track
+                    drawArc(
+                        color = Color.White.copy(alpha = 0.04f),
+                        startAngle = -90f, sweepAngle = 360f, useCenter = false,
+                        topLeft = tl2, size = as2,
+                        style = Stroke(width = outerStroke, cap = StrokeCap.Round)
+                    )
+                    // usage progress
+                    if (animatedUsageSweep > 0f) {
+                        drawArc(
+                            color = usageArcColor.copy(alpha = 0.75f),
+                            startAngle = -90f, sweepAngle = animatedUsageSweep, useCenter = false,
+                            topLeft = tl2, size = as2,
+                            style = Stroke(width = outerStroke, cap = StrokeCap.Round)
+                        )
+                    }
+                }
+        )
+
+        // ── Inner battery ring + clock ────────────────────────────────────
         Box(
             Modifier
                 .size(180.dp)
+                .graphicsLayer { scaleX = breathScale; scaleY = breathScale }
                 .combinedClickable(
                     onClick     = { onTap() },
                     onLongClick = { onLongPress() }
@@ -777,7 +861,7 @@ fun ClockWithBatteryRing(
                     // Background ring — full circle, very dim
                     drawArc(
                         color      = Color.White.copy(alpha = 0.07f),
-                        startAngle = -90f,      // start at 12 o'clock
+                        startAngle = -90f,
                         sweepAngle = 360f,
                         useCenter  = false,
                         topLeft    = topLeft,
@@ -816,12 +900,20 @@ fun ClockWithBatteryRing(
                     fontSize = 13.sp
                 )
                 Spacer(Modifier.height(2.dp))
-                // Small battery % inside ring
+                // Battery % + screen time
                 Text(
                     text     = "$battery%",
                     color    = (if (isCharging) chargingColor else DIM).copy(alpha = 0.7f),
                     fontSize = 11.sp
                 )
+                if (screenTimeLabel.isNotBlank()) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text     = screenTimeLabel,
+                        color    = usageArcColor.copy(alpha = 0.8f),
+                        fontSize = 10.sp
+                    )
+                }
             }
         }
     }
@@ -963,6 +1055,7 @@ fun BottomIconButton(
 @Composable
 fun SidebarContent(
     allApps:       List<AppInfo>,
+    frequentApps:  List<AppInfo> = emptyList(),
     pinnedPkgs:    List<String>,
     hiddenPkgs:    Set<String>,
     renamedMap:    Map<String, String>,
@@ -1007,10 +1100,37 @@ fun SidebarContent(
         filtered.map { (renamedMap[it.packageName] ?: it.label).first().uppercaseChar() }.distinct().sorted()
     }
 
+    // Glassmorphism sidebar — dark base + subtle gradient border on left edge
+    Box(Modifier.fillMaxSize()) {
+        // Left-edge gradient border
+        Box(
+            Modifier
+                .fillMaxHeight()
+                .width(1.dp)
+                .background(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color(0xFF14C3B2).copy(alpha = 0.25f),
+                            Color(0xFF14C3B2).copy(alpha = 0.10f),
+                            Color.Transparent
+                        )
+                    )
+                )
+        )
+    }
+
     Column(
         Modifier
             .fillMaxSize()
-            .background(Color(0xFF0D0D0D))
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF0F0F0F),
+                        Color(0xFF0A0A0A)
+                    )
+                )
+            )
             .navigationBarsPadding()
             .statusBarsPadding()
     ) {
@@ -1032,7 +1152,7 @@ fun SidebarContent(
             }
         }
 
-        // ── Search bar — clearly visible, correct position ────────────────
+        // ── Search bar ────────────────────────────────────────────────────
         val searchInteraction = remember { MutableInteractionSource() }
         Row(
             Modifier
@@ -1071,6 +1191,64 @@ fun SidebarContent(
                 Icon(Icons.Default.Clear, null, tint = DIM,
                     modifier = Modifier.size(16.dp).clickable { onQueryChange("") })
             }
+        }
+
+        // ── Frequent / suggested apps — search নেই এবং usage data আছে তখন ─
+        if (query.isBlank() && frequentApps.isNotEmpty()) {
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "  Frequent",
+                color    = DIM,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+            Spacer(Modifier.height(6.dp))
+            LazyRow(
+                contentPadding      = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(frequentApps, key = { it.packageName }) { app ->
+                    var chipPressed by remember { mutableStateOf(false) }
+                    val chipScale by animateFloatAsState(
+                        targetValue   = if (chipPressed) 0.90f else 1f,
+                        animationSpec = tween(100),
+                        label         = "chipScale"
+                    )
+                    val chipLabel = renamedMap[app.packageName] ?: app.label
+                    Box(
+                        Modifier
+                            .graphicsLayer { scaleX = chipScale; scaleY = chipScale }
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(Color(0xFF1C1C1C))
+                            .border(
+                                width = 0.5.dp,
+                                color = Color(0xFF14C3B2).copy(alpha = 0.18f),
+                                shape = RoundedCornerShape(20.dp)
+                            )
+                            .pointerInput(Unit) {
+                                detectTapGestures(
+                                    onPress = {
+                                        chipPressed = true
+                                        tryAwaitRelease()
+                                        chipPressed = false
+                                    },
+                                    onTap = { onLaunch(app) }
+                                )
+                            }
+                            .padding(horizontal = 14.dp, vertical = 7.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text     = chipLabel,
+                            color    = TXT.copy(alpha = 0.85f),
+                            fontSize = 13.sp,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            HorizontalDivider(color = Color.White.copy(alpha = 0.05f), thickness = 0.5.dp)
         }
 
         Spacer(Modifier.height(8.dp))
@@ -1697,4 +1875,97 @@ private fun loadRenamedMap(prefs: SharedPreferences): Map<String, String> {
 
 private fun saveRenamedMap(prefs: SharedPreferences, map: Map<String, String>) {
     prefs.edit().putString(KEY_RENAMED, map.entries.joinToString(";;") { "${it.key}=:=${it.value}" }).apply()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GREETING + DAILY QUOTE — সময় অনুযায়ী greeting, প্রতিদিন নতুন quote
+// ─────────────────────────────────────────────────────────────────────────────
+private val QUOTES = listOf(
+    "ছোট ছোট পদক্ষেপই বড় পথ তৈরি করে।",
+    "Focus on the step in front of you, not the whole staircase.",
+    "আজকের মনোযোগই আগামীর সাফল্য।",
+    "Do less. Do it better. Do it now.",
+    "একটু একটু করে এগিয়ে যাও — থেমে যেও না।",
+    "Your only limit is your mind.",
+    "গভীর মনোযোগই সত্যিকারের শক্তি।",
+    "Small progress is still progress.",
+    "শান্ত মাথায় বড় কাজ হয়।",
+    "Discipline is choosing what you want most over what you want now.",
+    "প্রতিটি নতুন দিন একটি নতুন সুযোগ।",
+    "Work hard in silence. Let success make the noise.",
+    "সময় নষ্ট করা মানে জীবন নষ্ট করা।",
+    "You don't have to be great to start, but you have to start to be great.",
+    "মনকে নিয়ন্ত্রণ করতে পারলে সবকিছু নিয়ন্ত্রণে আসে।",
+    "One focused hour beats ten distracted hours.",
+    "আজকের পরিশ্রম আগামীর আরামের বীজ।",
+    "Be present. Be focused. Be unstoppable.",
+    "বিজয়ীরা ভিন্ন কাজ করে না — তারা একই কাজ ভিন্নভাবে করে।",
+    "Clarity of mind brings clarity of action.",
+    "সফলতা কোনো দুর্ঘটনা নয় — এটা পছন্দের ফলাফল।",
+    "The secret of getting ahead is getting started.",
+    "ধৈর্য এবং পরিশ্রম — এই দুটোই যথেষ্ট।",
+    "Focus is the new IQ.",
+    "তোমার সময় তোমার সম্পদ — সঠিকভাবে ব্যয় করো।",
+    "Less distraction. More intention.",
+    "প্রতিটি মুহূর্তকে সার্থক করো।",
+    "Consistency beats perfection every time.",
+    "নিজেকে বিশ্বাস করো — বাকিটা এমনিতেই হবে।",
+    "Your future self is watching. Make them proud."
+)
+
+@Composable
+fun GreetingQuoteSection(context: Context) {
+    val hour = remember {
+        java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+    }
+    val greeting = when (hour) {
+        in 5..11  -> "শুভ সকাল"
+        in 12..16 -> "শুভ বিকেল"
+        in 17..20 -> "শুভ সন্ধ্যা"
+        else      -> "শুভ রাত্রি"
+    }
+    val greetingEmoji = when (hour) {
+        in 5..11  -> "🌤"
+        in 12..16 -> "☀️"
+        in 17..20 -> "🌆"
+        else      -> "🌙"
+    }
+
+    // প্রতিদিন একটা নির্দিষ্ট quote — day of year দিয়ে index বের করি
+    val quote = remember {
+        val dayOfYear = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_YEAR)
+        QUOTES[dayOfYear % QUOTES.size]
+    }
+
+    // Fade-in animation
+    var visible by remember { mutableStateOf(false) }
+    val alpha by animateFloatAsState(
+        targetValue   = if (visible) 1f else 0f,
+        animationSpec = tween(800),
+        label         = "greetAlpha"
+    )
+    LaunchedEffect(Unit) { delay(200); visible = true }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .graphicsLayer { this.alpha = alpha }
+            .padding(horizontal = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text       = "$greeting $greetingEmoji",
+            color      = TXT.copy(alpha = 0.75f),
+            fontSize   = 16.sp,
+            fontWeight = FontWeight.Light
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text      = "\"$quote\"",
+            color     = TXT.copy(alpha = 0.35f),
+            fontSize  = 12.sp,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            lineHeight = 17.sp
+        )
+    }
 }
