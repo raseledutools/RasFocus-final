@@ -38,6 +38,10 @@ class RasGramActivity : ComponentActivity() {
         enableEdgeToEdge()
         parseIntent(intent)
 
+        // ── Daily archive scheduler — প্রতি app open এ check করে।
+        // WorkManager KEEP policy: already scheduled থাকলে নতুন schedule হয় না।
+        RasGramArchiveScheduler.schedule(this)
+
         if (isIncomingCall) {
             enableLockScreenDisplay()
             IncomingCallOverlayService.stop(this)
