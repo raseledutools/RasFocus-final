@@ -25,13 +25,17 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
@@ -567,19 +571,38 @@ fun HomeScreen(
                 itemsIndexed(localOrder, key = { _, app -> app.packageName }) { index, app ->
                     val isDragging   = draggingIndex == index
                     val isDragTarget = dragTargetIndex == index && draggingIndex != null && draggingIndex != index
+                    var homeAppPressed by remember { mutableStateOf(false) }
+                    val homeAppScale by animateFloatAsState(
+                        targetValue = if (homeAppPressed) 0.92f else 1f,
+                        animationSpec = tween(110),
+                        label = "homeAppScale"
+                    )
 
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .graphicsLayer { scaleX = homeAppScale; scaleY = homeAppScale }
                             .then(
                                 if (isDragTarget)
                                     Modifier.drawBehind { drawRect(ACCENT.copy(alpha = 0.12f)) }
                                 else Modifier
                             )
                             .combinedClickable(
-                                onClick = { if (draggingIndex == null) onLaunch(app) },
+                                onClick = {
+                                    if (draggingIndex == null) onLaunch(app)
+                                },
                                 onLongClick = { draggingIndex = index; dragTargetIndex = index }
                             )
+                            .pointerInput(draggingIndex) {
+                                if (draggingIndex == null) {
+                                    awaitEachGesture {
+                                        awaitFirstDown(requireUnconsumed = false)
+                                        homeAppPressed = true
+                                        val up = waitForUpOrCancellation()
+                                        homeAppPressed = false
+                                    }
+                                }
+                            }
                             .padding(vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -860,6 +883,13 @@ fun BottomIconButton(
         }
     }
 
+    var btnPressed by remember { mutableStateOf(false) }
+    val btnScale by animateFloatAsState(
+        targetValue = if (btnPressed) 0.80f else 1f,
+        animationSpec = tween(120),
+        label = "btnScale"
+    )
+
     // Show icon if it's a system action, otherwise try to show app icon
     if (pkg != "PHONE" && pkg != "CAMERA" && pkg.isNotBlank()) {
         // custom app assigned — show small label
@@ -870,12 +900,20 @@ fun BottomIconButton(
         }
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.pointerInput(Unit) {
-                detectTapGestures(
-                    onTap       = { onTap() },
-                    onLongPress = { onLongPress() }
-                )
-            }.padding(8.dp)
+            modifier = Modifier
+                .graphicsLayer { scaleX = btnScale; scaleY = btnScale }
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onPress = {
+                            btnPressed = true
+                            tryAwaitRelease()
+                            btnPressed = false
+                        },
+                        onTap       = { onTap() },
+                        onLongPress = { onLongPress() }
+                    )
+                }
+                .padding(8.dp)
         ) {
             Icon(icon, contentDesc, tint = TXT, modifier = Modifier.size(26.dp))
             Spacer(Modifier.height(3.dp))
@@ -886,13 +924,20 @@ fun BottomIconButton(
             icon, contentDesc,
             tint     = TXT,
             modifier = Modifier
-                .size(26.dp)
+                .size(36.dp)
+                .graphicsLayer { scaleX = btnScale; scaleY = btnScale }
                 .pointerInput(Unit) {
                     detectTapGestures(
+                        onPress = {
+                            btnPressed = true
+                            tryAwaitRelease()
+                            btnPressed = false
+                        },
                         onTap       = { onTap() },
                         onLongPress = { onLongPress() }
                     )
                 }
+                .padding(5.dp)
         )
     }
 }
@@ -974,12 +1019,17 @@ fun SidebarContent(
         }
 
         // ── Search bar — clearly visible, correct position ────────────────
+        val searchInteraction = remember { MutableInteractionSource() }
         Row(
             Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
                 .clip(RoundedCornerShape(10.dp))
                 .background(Color(0xFF1A1A1A))
+                .clickable(interactionSource = searchInteraction, indication = null) {
+                    // Row ক্লিক করলে সরাসরি focus দাও + keyboard দেখাও
+                    try { searchFocus.requestFocus(); keyboard?.show() } catch (_: Exception) {}
+                }
                 .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -990,6 +1040,7 @@ fun SidebarContent(
                 onValueChange = onQueryChange,
                 singleLine    = true,
                 textStyle     = TextStyle(color = TXT, fontSize = 16.sp),
+                interactionSource = searchInteraction,
                 decorationBox = { inner ->
                     Box(Modifier.weight(1f)) {
                         if (query.isBlank()) Text("Search apps…", color = TXT.copy(alpha = 0.3f), fontSize = 16.sp)
@@ -999,6 +1050,7 @@ fun SidebarContent(
                 modifier = Modifier
                     .weight(1f)
                     .focusRequester(searchFocus)
+                    .onFocusChanged { if (it.isFocused) keyboard?.show() }
             )
             if (query.isNotBlank()) {
                 Spacer(Modifier.width(8.dp))
@@ -1018,13 +1070,31 @@ fun SidebarContent(
             ) {
                 items(filtered, key = { it.packageName }) { app ->
                     val displayName = renamedMap[app.packageName] ?: app.label
+                    var appPressed by remember { mutableStateOf(false) }
+                    val appScale by animateFloatAsState(
+                        targetValue = if (appPressed) 0.93f else 1f,
+                        animationSpec = tween(120),
+                        label = "appScale"
+                    )
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .graphicsLayer { scaleX = appScale; scaleY = appScale }
                             .combinedClickable(
-                                onClick     = { onLaunch(app) },
+                                onClick = {
+                                    appPressed = true
+                                    onLaunch(app)
+                                },
                                 onLongClick = { contextApp = app }
                             )
+                            .pointerInput(Unit) {
+                                awaitEachGesture {
+                                    awaitFirstDown(requireUnconsumed = false)
+                                    appPressed = true
+                                    val up = waitForUpOrCancellation()
+                                    appPressed = false
+                                }
+                            }
                             .padding(horizontal = 16.dp, vertical = 13.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -1334,18 +1404,23 @@ fun LauncherSettingsSheet(
 
                 SettingsExpandableSection("Home screen", expandHome, { expandHome = !expandHome }) {
                     SettingsToggleRow("Show app icons", checked = showIcons, onToggle = onIconToggle)
-                    if (hiddenApps.isNotEmpty()) {
-                        SettingsSectionLabel("Hidden apps (${hiddenApps.size})")
-                        hiddenApps.forEach { app ->
-                            Row(
-                                Modifier.fillMaxWidth().clickable { onUnhide(app.packageName) }
-                                    .padding(horizontal = 24.dp, vertical = 14.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment     = Alignment.CenterVertically
-                            ) {
-                                Text(app.label, color = Color.White, fontSize = 17.sp)
-                                Text("Unhide", color = Color(0xFF14C3B2), fontSize = 13.sp)
-                            }
+                }
+
+                // ── Hidden apps — সবসময় দেখা যাবে, expand ছাড়াই ─────────────
+                if (hiddenApps.isNotEmpty()) {
+                    SettingsDivider()
+                    SettingsSectionLabel("Hidden apps (${hiddenApps.size})  •  tap to unhide")
+                    hiddenApps.forEach { app ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { onUnhide(app.packageName) }
+                                .padding(horizontal = 24.dp, vertical = 16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment     = Alignment.CenterVertically
+                        ) {
+                            Text(app.label, color = Color.White, fontSize = 17.sp)
+                            Text("Unhide", color = Color(0xFF14C3B2), fontSize = 14.sp)
                         }
                     }
                 }
