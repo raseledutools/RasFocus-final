@@ -5629,7 +5629,7 @@ fun SettingsDialog(
                 Column(modifier = Modifier.padding(20.dp)) {
                     // Tabs
                     Row(modifier = Modifier.fillMaxWidth().background(RasGramTheme.DarkBackground, RoundedCornerShape(10.dp)).padding(4.dp)) {
-                        listOf("Profile", "Privacy", "Notifs", "Calls").forEachIndexed { i, label ->
+                        listOf("Profile", "Privacy", "Notifs", "Calls", "Storage").forEachIndexed { i, label ->
                             Surface(
                                 modifier = Modifier.weight(1f).clickable { selectedTab = i },
                                 shape = RoundedCornerShape(8.dp),
@@ -5711,6 +5711,163 @@ fun SettingsDialog(
                                     Text("In-App Only (Current)", color = RasGramTheme.TextPrimary)
                                     Text("App must be open on screen to receive calls.", color = RasGramTheme.TextMuted, fontSize = 11.sp)
                                 }
+                            }
+                        }
+                        4 -> {
+                            // ── Storage & Drive Archive Tab ─────────────────────
+                            val isDriveConnected = remember { RasGramDriveArchive.isDriveConnected(context) }
+                            var isArchiving by remember { mutableStateOf(false) }
+                            var archiveResult by remember { mutableStateOf<String?>(null) }
+                            var driveStorage by remember { mutableStateOf<Pair<Long, Long>?>(null) }
+
+                            LaunchedEffect(isDriveConnected) {
+                                if (isDriveConnected) {
+                                    scope.launch(Dispatchers.IO) {
+                                        driveStorage = RasGramDriveArchive.getDriveStorageInfo(context)
+                                    }
+                                }
+                            }
+
+                            Text("Message Storage", color = RasGramTheme.Green, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                "পুরানো messages (৭ দিনের বেশি) তোমার Google Drive এ archive হয়ে Firebase এর জায়গা খালি করে।",
+                                color = RasGramTheme.TextMuted, fontSize = 12.sp, lineHeight = 17.sp
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // Drive status card
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isDriveConnected) RasGramTheme.DarkBackground else RasGramTheme.DarkPanel,
+                                border = BorderStroke(1.dp, if (isDriveConnected) RasGramTheme.Green.copy(alpha = 0.4f) else RasGramTheme.Border)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        if (isDriveConnected) Icons.Default.CloudDone else Icons.Default.CloudOff,
+                                        contentDescription = null,
+                                        tint = if (isDriveConnected) RasGramTheme.Green else RasGramTheme.TextMuted,
+                                        modifier = Modifier.size(36.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(14.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            if (isDriveConnected) "Google Drive সংযুক্ত" else "Google Drive সংযুক্ত নেই",
+                                            color = if (isDriveConnected) RasGramTheme.TextPrimary else RasGramTheme.TextMuted,
+                                            fontWeight = FontWeight.SemiBold, fontSize = 14.sp
+                                        )
+                                        driveStorage?.let { (used, total) ->
+                                            val usedGB = used / (1024.0 * 1024 * 1024)
+                                            val totalGB = total / (1024.0 * 1024 * 1024)
+                                            Text(
+                                                "%.1f GB / %.0f GB ব্যবহৃত".format(usedGB, totalGB),
+                                                color = RasGramTheme.TextMuted, fontSize = 11.sp
+                                            )
+                                        } ?: if (!isDriveConnected) {
+                                            Text("RasFocus এ Google login করলে স্বয়ংক্রিয়ভাবে সংযুক্ত হবে", color = RasGramTheme.TextMuted, fontSize = 11.sp)
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // Archive info boxes
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Surface(modifier = Modifier.weight(1f), shape = RoundedCornerShape(10.dp), color = RasGramTheme.DarkBackground) {
+                                    Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("৭ দিন", color = RasGramTheme.Green, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                                        Text("পরে archive", color = RasGramTheme.TextMuted, fontSize = 11.sp)
+                                    }
+                                }
+                                Surface(modifier = Modifier.weight(1f), shape = RoundedCornerShape(10.dp), color = RasGramTheme.DarkBackground) {
+                                    Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("তোমার", color = RasGramTheme.Green, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                                        Text("Drive এ save", color = RasGramTheme.TextMuted, fontSize = 11.sp)
+                                    }
+                                }
+                                Surface(modifier = Modifier.weight(1f), shape = RoundedCornerShape(10.dp), color = RasGramTheme.DarkBackground) {
+                                    Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("Free", color = RasGramTheme.Green, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                                        Text("কোনো খরচ নেই", color = RasGramTheme.TextMuted, fontSize = 11.sp)
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // Archive result message
+                            archiveResult?.let { msg ->
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (msg.startsWith("✅")) RasGramTheme.Green.copy(alpha = 0.1f)
+                                            else Color.Red.copy(alpha = 0.1f)
+                                ) {
+                                    Text(
+                                        msg,
+                                        modifier = Modifier.padding(12.dp),
+                                        color = if (msg.startsWith("✅")) RasGramTheme.Green else Color.Red.copy(alpha = 0.8f),
+                                        fontSize = 13.sp
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(10.dp))
+                            }
+
+                            // Archive now button
+                            Button(
+                                onClick = {
+                                    if (isDriveConnected && !isArchiving) {
+                                        isArchiving = true
+                                        archiveResult = null
+                                        scope.launch(Dispatchers.IO) {
+                                            val result = RasGramDriveArchive.checkAndArchive(context)
+                                            withContext(Dispatchers.Main) {
+                                                isArchiving = false
+                                                archiveResult = if (result.success) {
+                                                    if (result.archivedMessages > 0)
+                                                        "✅ ${result.archivedChats}টি chat থেকে ${result.archivedMessages}টি পুরানো message Drive এ সরানো হয়েছে।"
+                                                    else
+                                                        "✅ সব message fresh (৭ দিনের কম পুরানো)। কিছু archive করার দরকার নেই।"
+                                                } else {
+                                                    "❌ ${result.errorMessage ?: "Archive ব্যর্থ হয়েছে"}"
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().height(48.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                enabled = isDriveConnected && !isArchiving,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = RasGramTheme.Green,
+                                    disabledContainerColor = RasGramTheme.Border
+                                )
+                            ) {
+                                if (isArchiving) {
+                                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.Black, strokeWidth = 2.dp)
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text("Archive হচ্ছে...", color = Color.Black, fontWeight = FontWeight.Bold)
+                                } else {
+                                    Icon(Icons.Default.Archive, null, tint = Color.Black, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        if (isDriveConnected) "এখনই Archive করো" else "Drive সংযুক্ত নেই",
+                                        color = Color.Black, fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
+                            if (!isDriveConnected) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    "💡 RasFocus এ Google account দিয়ে login করলে Drive স্বয়ংক্রিয়ভাবে available হবে।",
+                                    color = RasGramTheme.TextMuted, fontSize = 11.sp, lineHeight = 15.sp
+                                )
                             }
                         }
                     }
