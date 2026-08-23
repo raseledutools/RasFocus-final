@@ -5809,6 +5809,8 @@ fun SettingsDialog(
                                             )
                                         } ?: if (!isDriveConnected) {
                                             Text("RasFocus এ Google login করলে স্বয়ংক্রিয়ভাবে সংযুক্ত হবে", color = RasGramTheme.TextMuted, fontSize = 11.sp)
+                                        } else {
+                                            Unit
                                         }
                                     }
                                 }
