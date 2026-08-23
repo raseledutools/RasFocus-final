@@ -1209,6 +1209,11 @@ fun MainScreen(
     var showIncomingCall by remember { mutableStateOf(incomingCallId != null) }
     // showCallUI must be declared before any LaunchedEffect that references it
     var showCallUI by remember { mutableStateOf(false) }
+    // Guard: processed callId Set — Firestore snapshot reconnect এ same callId আবার ADDED আসলে ignore
+    // FCM + Firestore দুটো path merge করলেও duplicate IncomingCallScreen দেখাবে না
+    val processedCallIds = remember { mutableSetOf<String>().also { set ->
+        if (incomingCallId != null) set.add(incomingCallId)
+    }}
     // Overlay permission — ask once on first launch inside RasGram
     var showOverlayPermissionDialog by remember { mutableStateOf(false) }
     var activeIncomingCallId by remember { mutableStateOf(incomingCallId ?: "") }
@@ -1250,11 +1255,12 @@ fun MainScreen(
                 snapshot?.documentChanges?.forEach { change ->
                     if (change.type == com.google.firebase.firestore.DocumentChange.Type.ADDED) {
                         val newCallId = change.document.id
-                        // Already showing this exact call? skip।
-                        if (showIncomingCall && activeIncomingCallId == newCallId) return@forEach
-                        // FIX: CallingScreen চলছে মানে আগের call already accepted।
-                        // নতুন incoming trigger করলে double call UI দেখাবে — block করো।
+                        // processedCallIds guard: Firestore network reconnect বা FCM+Firestore
+                        // double-fire এ same callId দুইবার IncomingCallScreen দেখাবে না।
+                        if (processedCallIds.contains(newCallId)) return@forEach
+                        // CallingScreen চলছে মানে আগের call already accepted।
                         if (showCallUI) return@forEach
+                        processedCallIds.add(newCallId)
                         val data = change.document.data
                         activeIncomingCallId       = newCallId
                         activeIncomingCallerMobile = data["caller"] as? String ?: ""
@@ -5408,6 +5414,17 @@ fun IncomingCallScreen(
                 onDecline()
             }
         }
+    }
+
+    // 45s ring timeout — app foreground path এ caller cancel না করলেও auto-dismiss।
+    // Overlay service এ 60s আছে, কিন্তু foreground IncomingCallScreen এর নিজের timeout নেই।
+    // 45s পর status="missed" লিখে dismiss — WhatsApp behavior।
+    LaunchedEffect(callId) {
+        kotlinx.coroutines.delay(45_000L)
+        try {
+            db.collection("calls").document(callId).update("status", "missed")
+        } catch (_: Exception) {}
+        onDecline()
     }
 
     Box(
