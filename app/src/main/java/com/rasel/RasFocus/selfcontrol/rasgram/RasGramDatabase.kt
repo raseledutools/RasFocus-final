@@ -50,7 +50,10 @@ data class CachedMessage(
     val isDeleted: Boolean = false,
     val isForwarded: Boolean = false,
     val isStarred: Boolean = false,
-    val duration: Int = 0
+    val duration: Int = 0,
+    // ── Drive Archive fields ─────────────────────────────────
+    val isArchived: Boolean = false,         // Drive এ archive হয়েছে কিনা
+    val driveFileId: String? = null          // Drive এ save হওয়া JSON file এর ID
 )
 
 @Entity(
@@ -71,7 +74,10 @@ data class CachedChatPreview(
     val unreadCount: Int = 0,
     val isPinned: Boolean = false,
     val isMuted: Boolean = false,
-    val isArchived: Boolean = false
+    val isArchived: Boolean = false,
+    // ── Drive Archive fields ─────────────────────────────────
+    val driveArchiveFolderId: String? = null, // এই chat এর Drive folder ID
+    val lastArchiveTime: Long = 0             // সর্বশেষ archive করা সময়
 )
 
 // ============================================================
@@ -118,6 +124,25 @@ interface CachedMessageDao {
     @Query("DELETE FROM cached_messages WHERE chatId = :chatId")
     suspend fun deleteChatMessages(chatId: String)
 
+    // ── Archive: নির্দিষ্ট timestamp এর আগের messages delete (Drive archive এর পর) ──
+    @Query("DELETE FROM cached_messages WHERE chatId = :chatId AND timestamp < :beforeTimestamp AND isStarred = 0")
+    suspend fun deleteChatMessagesBefore(chatId: String, beforeTimestamp: Long)
+
+    // ── Archive: Drive এ পাঠানোর জন্য পুরানো messages fetch ──
+    @Query("""
+        SELECT * FROM cached_messages 
+        WHERE chatId = :chatId 
+        AND timestamp < :beforeTimestamp 
+        AND isArchived = 0
+        AND isStarred = 0
+        ORDER BY timestamp ASC
+    """)
+    suspend fun getMessagesForArchive(chatId: String, beforeTimestamp: Long): List<CachedMessage>
+
+    // ── Archive: archived flag update ──
+    @Query("UPDATE cached_messages SET isArchived = 1, driveFileId = :driveFileId WHERE chatId = :chatId AND timestamp < :beforeTimestamp")
+    suspend fun markMessagesArchived(chatId: String, beforeTimestamp: Long, driveFileId: String)
+
     // Unread count — chat list badge এর জন্য
     @Query("""
         SELECT COUNT(*) FROM cached_messages 
@@ -143,6 +168,10 @@ interface CachedMessageDao {
     // Pending message sync — আগে pending flag দিয়ে save, Firestore confirm হলে update
     @Query("UPDATE cached_messages SET isPending = :pending WHERE id = :messageId")
     suspend fun updatePending(messageId: String, pending: Boolean)
+
+    // Total message count per chat (archive check এর জন্য)
+    @Query("SELECT COUNT(*) FROM cached_messages WHERE chatId = :chatId AND isArchived = 0")
+    suspend fun getActiveMessageCount(chatId: String): Int
 }
 
 @Dao
@@ -155,6 +184,10 @@ interface CachedChatPreviewDao {
         ORDER BY isPinned DESC, lastTimestamp DESC
     """)
     fun getChatPreviews(): Flow<List<CachedChatPreview>>
+
+    // ── সব preview (archive trigger এর জন্য) ──
+    @Query("SELECT * FROM cached_chat_previews ORDER BY lastTimestamp DESC")
+    suspend fun getAllPreviews(): List<CachedChatPreview>
 
     // Single preview update
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -183,6 +216,14 @@ interface CachedChatPreviewDao {
 
     @Query("DELETE FROM cached_chat_previews WHERE contactMobile = :mobile")
     suspend fun deletePreview(mobile: String)
+
+    // ── Drive archive info update ──
+    @Query("""
+        UPDATE cached_chat_previews 
+        SET driveArchiveFolderId = :folderId, lastArchiveTime = :archiveTime 
+        WHERE contactMobile = :mobile
+    """)
+    suspend fun updateDriveInfo(mobile: String, folderId: String, archiveTime: Long)
 }
 
 // ============================================================
@@ -191,7 +232,7 @@ interface CachedChatPreviewDao {
 
 @Database(
     entities = [CachedMessage::class, CachedChatPreview::class],
-    version = 1,
+    version = 2,                             // version bump: archive fields added
     exportSchema = false
 )
 @TypeConverters(RasGramConverters::class)
