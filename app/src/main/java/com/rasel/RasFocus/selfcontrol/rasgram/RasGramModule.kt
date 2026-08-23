@@ -2427,6 +2427,25 @@ fun ChatArea(
                     scope.launch(Dispatchers.IO) {
                         rasGramRepo.messageDao.upsertMessages(newMessages)
 
+                        // ── Auto-download: নতুন received messages এর image/audio locally save ──
+                        // WhatsApp এর মতো — image ও audio automatically Rasgram folder এ নামে।
+                        // Video ও document বড় হতে পারে — manual download এ রাখা হয়েছে।
+                        newMessages.filter { msg ->
+                            msg.senderMobile == contact.mobile &&  // শুধু received (আমার পাঠানো না)
+                            !msg.fileUrl.isNullOrEmpty() &&
+                            !msg.isDeleted &&
+                            (msg.fileType?.startsWith("image/") == true ||
+                             msg.fileType?.startsWith("audio/") == true)
+                        }.forEach { msg ->
+                            val localFile = getRasgramCachedFile(context, msg.fileUrl!!, msg.fileName, msg.fileType)
+                            if (!localFile.exists()) {
+                                // Background এ quietly download — error হলে ignore (manual download আছে)
+                                try {
+                                    downloadToRasgramFolder(context, msg.fileUrl, msg.fileName, msg.fileType ?: "application/octet-stream")
+                                } catch (_: Exception) {}
+                            }
+                        }
+
                         // Update chat preview (last message + unread)
                         val lastMsg = newMessages.maxByOrNull { it.timestamp }
                         if (lastMsg != null) {
