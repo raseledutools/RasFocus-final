@@ -23,6 +23,9 @@ class RasGramActivity : ComponentActivity() {
     // ACTION_ANSWER_CALL = overlay থেকে ইউজার accept করেছে → IncomingCallScreen skip, সরাসরি CallingScreen
     private var isAlreadyAnswered: Boolean    = false
     private var openChatWith: String?         = null
+    // File shared from FileManager (ACTION_SEND) — opens contact picker then attaches file
+    private var sharedFileUri: android.net.Uri? = null
+    private var sharedFileName: String?          = null
 
     companion object {
         // RasgramMessagingService foreground check এর জন্য।
@@ -41,6 +44,8 @@ class RasGramActivity : ComponentActivity() {
         // ── Daily archive scheduler — প্রতি app open এ check করে।
         // WorkManager KEEP policy: already scheduled থাকলে নতুন schedule হয় না।
         RasGramArchiveScheduler.schedule(this)
+        // Daily Drive sync — all chats + media → user's Google Drive
+        RasGramDriveSyncScheduler.schedule(this)
 
         if (isIncomingCall) {
             enableLockScreenDisplay()
@@ -64,8 +69,12 @@ class RasGramActivity : ComponentActivity() {
                         onCallEnded     = { finish() }
                     )
                 } else {
-                    // ── Normal app open / message notification tap ───────────
-                    RasGramApp(openChatWithMobile = openChatWith)
+                    // ── Normal app open / message notification tap / file share ──
+                    RasGramApp(
+                        openChatWithMobile = openChatWith,
+                        sharedFileUri      = sharedFileUri,
+                        sharedFileName     = sharedFileName
+                    )
                 }
             }
         }
@@ -103,10 +112,21 @@ class RasGramActivity : ComponentActivity() {
                 incomingCallType     = i.getStringExtra("callType") ?: "audio"
                 openChatWith         = null
             }
+            Intent.ACTION_SEND -> {
+                // File shared from FileManager → open contact picker in RasGram
+                isIncomingCall    = false
+                isAlreadyAnswered = false
+                openChatWith      = null
+                sharedFileUri  = i.getParcelableExtra(Intent.EXTRA_STREAM)
+                sharedFileName = i.getStringExtra("fileName")
+                    ?: sharedFileUri?.lastPathSegment
+            }
             else -> {
                 isIncomingCall    = false
                 isAlreadyAnswered = false
                 openChatWith      = i?.getStringExtra("openChatWith")
+                sharedFileUri     = null
+                sharedFileName    = null
             }
         }
     }

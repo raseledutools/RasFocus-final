@@ -366,7 +366,9 @@ fun RasGramApp(
     incomingCallerMobile: String? = null,
     incomingCallerName: String? = null,
     incomingCallType: String? = null,
-    openChatWithMobile: String? = null
+    openChatWithMobile: String? = null,
+    sharedFileUri: android.net.Uri? = null,
+    sharedFileName: String? = null
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE) }
@@ -472,7 +474,9 @@ fun RasGramApp(
                     incomingCallerMobile = incomingCallerMobile,
                     incomingCallerName = incomingCallerName,
                     incomingCallType = incomingCallType,
-                    openChatWithMobile = openChatWithMobile
+                    openChatWithMobile = openChatWithMobile,
+                    sharedFileUri = sharedFileUri,
+                    sharedFileName = sharedFileName
                 )
 
                 // Splash — MainScreen এর উপরে overlay হিসেবে
@@ -1199,7 +1203,9 @@ fun MainScreen(
     incomingCallerMobile: String? = null,
     incomingCallerName: String? = null,
     incomingCallType: String? = null,
-    openChatWithMobile: String? = null
+    openChatWithMobile: String? = null,
+    sharedFileUri: android.net.Uri? = null,
+    sharedFileName: String? = null
 ) {
     val context = LocalContext.current
     val db = remember { FirebaseFirestore.getInstance() }
@@ -1395,6 +1401,13 @@ fun MainScreen(
 
     val inChat = selectedContact != null || selectedGroup != null
 
+    // ── Handle file shared from FileManager ─────────────────────────────────
+    // When a file is shared via "Send to RasGram", show a contact picker sheet.
+    // After contact is selected, open the chat with the file ready to upload.
+    var pendingSharedUri by remember { mutableStateOf(sharedFileUri) }
+    var pendingSharedName by remember { mutableStateOf(sharedFileName) }
+    var showShareContactPicker by remember { mutableStateOf(sharedFileUri != null) }
+
     // Back button handling:
     // - Chat open → close chat, go back to chat list
     // - On non-home tab → go back to tab 0 (Chats)
@@ -1568,6 +1581,29 @@ fun MainScreen(
                 IncomingCallOverlayService.stop(context)
                 showIncomingCall = false
                 activeIncomingCallId = ""
+            }
+        )
+    }
+
+    // ── File Share Contact Picker ─────────────────────────────────────────────
+    // When user taps "Send to RasGram" in FileManager, show a contact list
+    // so user picks who to send to. Then open ChatArea with the file auto-queued.
+    if (showShareContactPicker && pendingSharedUri != null) {
+        ShareFileContactPickerDialog(
+            currentUser = liveCurrentUser,
+            fileUri = pendingSharedUri!!,
+            fileName = pendingSharedName ?: "file",
+            onContactSelected = { contact ->
+                showShareContactPicker = false
+                selectedContact = contact
+                selectedGroup = null
+                selectedTab = 0
+                // The ChatArea will handle upload via its own pending URI state
+            },
+            onDismiss = {
+                showShareContactPicker = false
+                pendingSharedUri = null
+                pendingSharedName = null
             }
         )
     }
@@ -2292,6 +2328,7 @@ fun ChatArea(
     var liveContact by remember { mutableStateOf(contact) }
     var isUploading by remember { mutableStateOf(false) }
     var uploadProgress by remember { mutableFloatStateOf(0f) }
+    var uploadingFileName by remember { mutableStateOf("") }
     var replyToMessage by remember { mutableStateOf<Message?>(null) }
     var selectedMessages by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showAttachMenu by remember { mutableStateOf(false) }
@@ -2333,6 +2370,7 @@ fun ChatArea(
     val imageVideoLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
             val mimeType = context.contentResolver.getType(it) ?: "application/octet-stream"
+            uploadingFileName = getFileName(context, it) ?: "media"
             isUploading = true
             scope.launch {
                 try {
@@ -2347,12 +2385,14 @@ fun ChatArea(
                 }
                 isUploading = false
                 uploadProgress = 0f
+                uploadingFileName = ""
             }
         }
     }
 
     val docLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
+            uploadingFileName = getFileName(context, it) ?: "file"
             isUploading = true
             scope.launch {
                 try {
@@ -2366,6 +2406,7 @@ fun ChatArea(
                 }
                 isUploading = false
                 uploadProgress = 0f
+                uploadingFileName = ""
             }
         }
     }
@@ -2376,7 +2417,29 @@ fun ChatArea(
         }
     }
 
-
+    // ── File-from-folder launcher (WhatsApp style — any file type) ────────────
+    // Shows uploading filename + % progress in the input bar
+    val anyFileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let {
+            val name = getFileName(context, it) ?: "file_${System.currentTimeMillis()}"
+            uploadingFileName = name
+            isUploading = true
+            scope.launch {
+                try {
+                    val (url, fileName, fileType) = uploadToCloudinary(context, it) { prog -> uploadProgress = prog }
+                    if (url != null) {
+                        sendMessage(db, chatId, currentUser.mobile, currentUser.name, contact.mobile, "", context, url, fileName, fileType)
+                        Toast.makeText(context, "📎 ফাইল পাঠানো হয়েছে", Toast.LENGTH_SHORT).show()
+                    } else Toast.makeText(context, "আপলোড ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+                isUploading = false
+                uploadProgress = 0f
+                uploadingFileName = ""
+            }
+        }
+    }
 
     // ── STEP 3: Firestore real-time sync → Room এ save → UI auto-update ───────
     // UI directly Firestore থেকে পড়ে না — Room Flow থেকে পড়ে (above)
@@ -2719,13 +2782,11 @@ fun ChatArea(
             }
         }
 
-        // Upload progress
+        // Upload progress — WhatsApp style with filename + %
         if (isUploading) {
-            LinearProgressIndicator(
-                progress = { uploadProgress },
-                modifier = Modifier.fillMaxWidth(),
-                color = RasGramTheme.Green,
-                trackColor = RasGramTheme.DarkPanel
+            FileUploadProgressIndicator(
+                fileName = uploadingFileName,
+                progress = uploadProgress
             )
         }
 
@@ -2819,11 +2880,16 @@ fun ChatArea(
 
     // Attachment menu
     if (showAttachMenu) {
-        AttachmentMenuSheet(
+        EnhancedAttachmentMenuSheet(
             onDismiss = { showAttachMenu = false },
             onImageVideo = { imageVideoLauncher.launch(arrayOf("image/*", "video/*")); showAttachMenu = false },
             onDocument = { docLauncher.launch(arrayOf("*/*")); showAttachMenu = false },
-            onAudio = { docLauncher.launch(arrayOf("audio/*")); showAttachMenu = false }
+            onAudio = { docLauncher.launch(arrayOf("audio/*")); showAttachMenu = false },
+            onFilesFromFolder = {
+                // Open file picker for any file type — shows upload progress
+                anyFileLauncher.launch(arrayOf("*/*"))
+                showAttachMenu = false
+            }
         )
     }
 }
@@ -5754,157 +5820,8 @@ fun SettingsDialog(
                             }
                         }
                         4 -> {
-                            // ── Storage & Drive Archive Tab ─────────────────────
-                            val isDriveConnected = remember { RasGramDriveArchive.isDriveConnected(context) }
-                            var isArchiving by remember { mutableStateOf(false) }
-                            var archiveResult by remember { mutableStateOf<String?>(null) }
-                            var driveStorage by remember { mutableStateOf<Pair<Long, Long>?>(null) }
-
-                            LaunchedEffect(isDriveConnected) {
-                                if (isDriveConnected) {
-                                    scope.launch(Dispatchers.IO) {
-                                        driveStorage = RasGramDriveArchive.getDriveStorageInfo(context)
-                                    }
-                                }
-                            }
-
-                            Text("Message Storage", color = RasGramTheme.Green, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                "পুরানো messages (৭ দিনের বেশি) তোমার Google Drive এ archive হয়ে Firebase এর জায়গা খালি করে।",
-                                color = RasGramTheme.TextMuted, fontSize = 12.sp, lineHeight = 17.sp
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            // Drive status card
-                            Surface(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp),
-                                color = if (isDriveConnected) RasGramTheme.DarkBackground else RasGramTheme.DarkPanel,
-                                border = BorderStroke(1.dp, if (isDriveConnected) RasGramTheme.Green.copy(alpha = 0.4f) else RasGramTheme.Border)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(16.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        if (isDriveConnected) Icons.Default.CloudDone else Icons.Default.CloudOff,
-                                        contentDescription = null,
-                                        tint = if (isDriveConnected) RasGramTheme.Green else RasGramTheme.TextMuted,
-                                        modifier = Modifier.size(36.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(14.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            if (isDriveConnected) "Google Drive সংযুক্ত" else "Google Drive সংযুক্ত নেই",
-                                            color = if (isDriveConnected) RasGramTheme.TextPrimary else RasGramTheme.TextMuted,
-                                            fontWeight = FontWeight.SemiBold, fontSize = 14.sp
-                                        )
-                                        driveStorage?.let { (used, total) ->
-                                            val usedGB = used / (1024.0 * 1024 * 1024)
-                                            val totalGB = total / (1024.0 * 1024 * 1024)
-                                            Text(
-                                                "%.1f GB / %.0f GB ব্যবহৃত".format(usedGB, totalGB),
-                                                color = RasGramTheme.TextMuted, fontSize = 11.sp
-                                            )
-                                        } ?: if (!isDriveConnected) {
-                                            Text("RasFocus এ Google login করলে স্বয়ংক্রিয়ভাবে সংযুক্ত হবে", color = RasGramTheme.TextMuted, fontSize = 11.sp)
-                                        } else {
-                                            Unit
-                                        }
-                                    }
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            // Archive info boxes
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Surface(modifier = Modifier.weight(1f), shape = RoundedCornerShape(10.dp), color = RasGramTheme.DarkBackground) {
-                                    Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text("৭ দিন", color = RasGramTheme.Green, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                                        Text("পরে archive", color = RasGramTheme.TextMuted, fontSize = 11.sp)
-                                    }
-                                }
-                                Surface(modifier = Modifier.weight(1f), shape = RoundedCornerShape(10.dp), color = RasGramTheme.DarkBackground) {
-                                    Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text("তোমার", color = RasGramTheme.Green, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                                        Text("Drive এ save", color = RasGramTheme.TextMuted, fontSize = 11.sp)
-                                    }
-                                }
-                                Surface(modifier = Modifier.weight(1f), shape = RoundedCornerShape(10.dp), color = RasGramTheme.DarkBackground) {
-                                    Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text("Free", color = RasGramTheme.Green, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                                        Text("কোনো খরচ নেই", color = RasGramTheme.TextMuted, fontSize = 11.sp)
-                                    }
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            // Archive result message
-                            archiveResult?.let { msg ->
-                                Surface(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = if (msg.startsWith("✅")) RasGramTheme.Green.copy(alpha = 0.1f)
-                                            else Color.Red.copy(alpha = 0.1f)
-                                ) {
-                                    Text(
-                                        msg,
-                                        modifier = Modifier.padding(12.dp),
-                                        color = if (msg.startsWith("✅")) RasGramTheme.Green else Color.Red.copy(alpha = 0.8f),
-                                        fontSize = 13.sp
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(10.dp))
-                            }
-
-                            // Archive now button
-                            Button(
-                                onClick = {
-                                    if (isDriveConnected && !isArchiving) {
-                                        isArchiving = true
-                                        archiveResult = null
-                                        // WorkManager দিয়ে background এ run করো — UI block হবে না
-                                        RasGramArchiveScheduler.runNow(context)
-                                        // ২ সেকেন্ড পর "queued" message দেখাও
-                                        scope.launch {
-                                            kotlinx.coroutines.delay(500)
-                                            isArchiving = false
-                                            archiveResult = "✅ Archive শুরু হয়েছে background এ। শেষ হলে notification আসবে।"
-                                        }
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth().height(48.dp),
-                                shape = RoundedCornerShape(12.dp),
-                                enabled = isDriveConnected && !isArchiving,
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = RasGramTheme.Green,
-                                    disabledContainerColor = RasGramTheme.Border
-                                )
-                            ) {
-                                if (isArchiving) {
-                                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.Black, strokeWidth = 2.dp)
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Text("Archive হচ্ছে...", color = Color.Black, fontWeight = FontWeight.Bold)
-                                } else {
-                                    Icon(Icons.Default.Archive, null, tint = Color.Black, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        if (isDriveConnected) "এখনই Archive করো" else "Drive সংযুক্ত নেই",
-                                        color = Color.Black, fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-
-                            if (!isDriveConnected) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    "💡 RasFocus এ Google account দিয়ে login করলে Drive স্বয়ংক্রিয়ভাবে available হবে।",
-                                    color = RasGramTheme.TextMuted, fontSize = 11.sp, lineHeight = 15.sp
-                                )
-                            }
+                            // ── Drive Sync Tab — multi-account + Sync Now button ──
+                            RasGramDriveSyncSettings(currentUser = currentUser)
                         }
                     }
 

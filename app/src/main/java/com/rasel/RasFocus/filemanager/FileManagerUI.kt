@@ -128,6 +128,39 @@ internal fun shareLocalFile(context: android.content.Context, file: java.io.File
     }
 }
 
+// ── Send file directly to RasGram chat (WhatsApp style) ─────────────────────
+// Opens RasGramActivity with the file as a shared URI so the user can
+// pick a contact and the file uploads with progress shown in the chat bar.
+internal fun sendFileToRasGram(context: android.content.Context, file: java.io.File) {
+    try {
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file
+        )
+        val ext = file.extension.lowercase()
+        val mimeType = android.webkit.MimeTypeMap.getSingleton()
+            .getMimeTypeFromExtension(ext) ?: "*/*"
+
+        // Launch RasGram with ACTION_SEND so it opens contact picker
+        // and attaches the file to the selected chat with upload progress.
+        val intent = android.content.Intent(
+            context,
+            com.rasel.RasFocus.selfcontrol.rasgram.RasGramActivity::class.java
+        ).apply {
+            action = android.content.Intent.ACTION_SEND
+            type = mimeType
+            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            putExtra("fileName", file.name)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        android.widget.Toast.makeText(context, "RasGram এ পাঠানো যায়নি: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+    }
+}
+
 internal fun shareLocalFiles(context: android.content.Context, files: List<java.io.File>) {
     if (files.size == 1) { shareLocalFile(context, files.first()); return }
     try {
@@ -1189,7 +1222,10 @@ fun LocalFileScreen(
                                         }
                                     },
                                     onPropertiesClick = { propertiesTarget = file },
-                                    onShareClick = { if (!file.isDirectory) shareLocalFile(context, file) }
+                                    onShareClick = { if (!file.isDirectory) shareLocalFile(context, file) },
+                                    onSendToRasGram = if (file.isDirectory) null else ({
+                                        sendFileToRasGram(context, file)
+                                    })
                                 )
                             }
                         }
@@ -1220,7 +1256,10 @@ fun LocalFileScreen(
                                         }
                                     },
                                     onPropertiesClick = { propertiesTarget = file },
-                                    onShareClick = { if (!file.isDirectory) shareLocalFile(context, file) }
+                                    onShareClick = { if (!file.isDirectory) shareLocalFile(context, file) },
+                                    onSendToRasGram = if (file.isDirectory) null else ({
+                                        sendFileToRasGram(context, file)
+                                    })
                                 )
                             }
                             // bottom padding so FAB doesn't cover last item
@@ -2090,6 +2129,7 @@ fun FileListItem(
     onLongClick: () -> Unit = {},
     onPropertiesClick: (() -> Unit)? = null,
     onShareClick: (() -> Unit)? = null,
+    onSendToRasGram: (() -> Unit)? = null,
     syncIcon: androidx.compose.ui.graphics.vector.ImageVector? = null,
     syncIconTint: androidx.compose.ui.graphics.Color = androidx.compose.ui.graphics.Color.Gray
 ) {
@@ -2204,7 +2244,7 @@ fun FileListItem(
                 )
             }
 
-            if (onPropertiesClick != null || onShareClick != null) {
+            if (onPropertiesClick != null || onShareClick != null || onSendToRasGram != null) {
                 Box {
                     IconButton(onClick = { showMenu = true }, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Default.MoreVert, contentDescription = "More options", tint = Color.Gray, modifier = Modifier.size(18.dp))
@@ -2215,6 +2255,21 @@ fun FileListItem(
                                 text = { Text("Share") },
                                 leadingIcon = { Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp)) },
                                 onClick = { showMenu = false; onShareClick() }
+                            )
+                        }
+                        // ── Send to RasGram (WhatsApp style) ─────────────────
+                        if (onSendToRasGram != null && !isDirectory) {
+                            DropdownMenuItem(
+                                text = { Text("Send to RasGram", color = androidx.compose.ui.graphics.Color(0xFF25D366)) },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.Send,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                        tint = androidx.compose.ui.graphics.Color(0xFF25D366)
+                                    )
+                                },
+                                onClick = { showMenu = false; onSendToRasGram() }
                             )
                         }
                         if (onPropertiesClick != null) {
