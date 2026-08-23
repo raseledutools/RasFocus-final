@@ -5326,19 +5326,48 @@ fun IncomingCallScreen(
         try {
             val am = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
             am.mode = android.media.AudioManager.MODE_RINGTONE
-            val vol = am.getStreamMaxVolume(android.media.AudioManager.STREAM_RING)
-            if (vol > 0) am.setStreamVolume(android.media.AudioManager.STREAM_RING, vol, 0)
-
-            val uri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_RINGTONE)
-            val rt = android.media.RingtoneManager.getRingtone(context, uri)
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) rt?.isLooping = true
-            rt?.play()
-            ringtoneRef.value = rt
+            when (am.ringerMode) {
+                android.media.AudioManager.RINGER_MODE_SILENT -> {
+                    // Silent mode — ring বাজাবো না
+                }
+                android.media.AudioManager.RINGER_MODE_VIBRATE -> {
+                    // Vibrate-only mode — শুধু vibrate
+                    val vibrator = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                        (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as android.os.VibratorManager).defaultVibrator
+                    } else {
+                        @Suppress("DEPRECATION")
+                        context.getSystemService(Context.VIBRATOR_SERVICE) as android.os.Vibrator
+                    }
+                    val pattern = longArrayOf(0, 500, 1000)
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        vibrator.vibrate(android.os.VibrationEffect.createWaveform(pattern, 0))
+                    } else {
+                        @Suppress("DEPRECATION")
+                        vibrator.vibrate(pattern, 0)
+                    }
+                }
+                else -> {
+                    // Normal mode — phone এর ring volume অনুযায়ী বাজাও (force max নয়)
+                    val uri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_RINGTONE)
+                    val rt = android.media.RingtoneManager.getRingtone(context, uri)
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) rt?.isLooping = true
+                    rt?.play()
+                    ringtoneRef.value = rt
+                }
+            }
         } catch (_: Exception) {}
         onDispose {
             try {
                 ringtoneRef.value?.stop()
                 ringtoneRef.value = null
+                // vibrate mode এ চলছিল — cancel করো
+                val vibrator = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                    (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as android.os.VibratorManager).defaultVibrator
+                } else {
+                    @Suppress("DEPRECATION")
+                    context.getSystemService(Context.VIBRATOR_SERVICE) as android.os.Vibrator
+                }
+                vibrator.cancel()
                 // NOTE: AudioManager.MODE_NORMAL এ reset করা হচ্ছে না।
                 // কারণ: accept করলে সাথে সাথে CallingScreen compose হয় এবং
                 // audioManager.mode = MODE_IN_COMMUNICATION সেট করে।
