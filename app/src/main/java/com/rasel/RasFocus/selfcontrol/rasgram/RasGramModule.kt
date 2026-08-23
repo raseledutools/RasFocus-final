@@ -2381,9 +2381,13 @@ fun ChatArea(
     // ── STEP 3: Firestore real-time sync → Room এ save → UI auto-update ───────
     // UI directly Firestore থেকে পড়ে না — Room Flow থেকে পড়ে (above)
     // এটা background sync — UI এর সাথে decouple
+    // limit(50): শুধু সর্বশেষ ৫০টা Firestore থেকে live sync।
+    // পুরানো messages Room এ আছে (archive হওয়ার আগ পর্যন্ত)।
+    // এতে Firestore read cost ~95% কমে — ১০০০ message chat এ ও শুধু ৫০টা read।
     LaunchedEffect(chatId) {
         db.collection("pvt_msg_$chatId")
-            .orderBy("timestamp", Query.Direction.ASCENDING)
+            .orderBy("timestamp", Query.Direction.DESCENDING)
+            .limit(50)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) return@addSnapshotListener
                 snapshot?.let { qs ->
