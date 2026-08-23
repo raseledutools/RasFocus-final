@@ -4620,6 +4620,8 @@ fun CallingScreen(
     // Call ended duration summary
     var showEndedSummary by remember { mutableStateOf(false) }
     var finalCallSeconds by remember { mutableIntStateOf(0) }
+    // ICE DISCONNECTED grace period job — cancel if CONNECTED comes back within 8s
+    var iceDisconnectJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
     // FIX: EglBase.create() and PeerConnectionFactory.initialize() are heavy
     // native calls. Running them inside remember {} executes on the Compose
@@ -4781,13 +4783,35 @@ fun CallingScreen(
                     // WebRTC internal thread থেকে আসে — Compose state Main thread এ সেট করতে হবে।
                     // scope.launch {} ছাড়া isConnected = true করলে LaunchedEffect(isConnected)
                     // recompose trigger নাও হতে পারে → timer শুরু হয় না।
+                    //
+                    // ICE DISCONNECTED grace period fix:
+                    // DISCONNECTED = transient state — mobile network packet loss বা brief hiccup এ আসে।
+                    // Initial negotiation: CHECKING → DISCONNECTED (brief) → CONNECTED
+                    // Reconnect:          CONNECTED → DISCONNECTED → CONNECTED
+                    // তাই DISCONNECTED এ সাথে সাথে cut না করে 8s grace দিতে হবে।
+                    // Grace period এ CONNECTED আসলে cancel, না আসলে তখন endCall।
+                    // শুধু FAILED এ immediate cut।
                     when (state) {
                         PeerConnection.IceConnectionState.CONNECTED -> scope.launch {
+                            iceDisconnectJob?.cancel()
+                            iceDisconnectJob = null
                             callStatus = "Connected"
                             isConnected = true
                         }
-                        PeerConnection.IceConnectionState.DISCONNECTED,
-                        PeerConnection.IceConnectionState.FAILED -> scope.launch { onEndCall() }
+                        PeerConnection.IceConnectionState.DISCONNECTED -> scope.launch {
+                            // Reconnect হতে পারে — 8s দাও
+                            if (iceDisconnectJob?.isActive != true) {
+                                callStatus = "Reconnecting..."
+                                iceDisconnectJob = scope.launch {
+                                    kotlinx.coroutines.delay(8_000L)
+                                    onEndCall()
+                                }
+                            }
+                        }
+                        PeerConnection.IceConnectionState.FAILED -> scope.launch {
+                            iceDisconnectJob?.cancel()
+                            onEndCall()
+                        }
                         else -> {}
                     }
                 }
@@ -4950,13 +4974,13 @@ fun CallingScreen(
                                 pc?.setRemoteDescription(object : SdpObserver {
                                     override fun onCreateSuccess(s: SessionDescription?) {}
                                     override fun onSetSuccess() {
-                                        // WebRTC callback thread → Main thread এ dispatch করো।
-                                        // scope.launch ছাড়া Compose state update trigger হবে না
-                                        // → LaunchedEffect(isConnected) চলবে না → timer শুরু হবে না।
-                                        scope.launch {
-                                            callStatus = "Connected"
-                                            isConnected = true
-                                        }
+                                        // NOTE: isConnected = true এখানে সেট করা হচ্ছে না।
+                                        // setRemoteDescription success মানে SDP exchange শেষ,
+                                        // কিন্তু ICE negotiation এখনো চলছে — audio/video flow করছে না।
+                                        // isConnected = true → onIceConnectionChange(CONNECTED) callback এ,
+                                        // তখনই actual media path খোলে। এখানে সেট করলে premature
+                                        // "Connected" দেখায় কিন্তু audio আসে না।
+                                        scope.launch { callStatus = "Connecting..." }
                                         // Caller side ও snapshot listener — same fix as receiver
                                         scope.launch {
                                             db.collection("calls").document(callId)
@@ -5004,6 +5028,7 @@ fun CallingScreen(
         currentView.keepScreenOn = true
         onDispose {
             currentView.keepScreenOn = false
+            iceDisconnectJob?.cancel()
             peerConnection?.close()
             localStream?.dispose()
             audioManager.mode = AudioManager.MODE_NORMAL
