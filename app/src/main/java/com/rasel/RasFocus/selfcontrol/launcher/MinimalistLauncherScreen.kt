@@ -505,12 +505,20 @@ fun HomeScreen(
     onLongPressBtnRight:  () -> Unit,
     onReorder:            (List<AppInfo>) -> Unit = {}
 ) {
-    // Drag-reorder state
-    var draggingIndex by remember { mutableStateOf<Int?>(null) }
-    var dragTargetIndex by remember { mutableStateOf<Int?>(null) }
-    // Local mutable copy for live drag preview
+    // Reorder state — long press একটা app → reorder mode চালু,
+    // তারপর যেকোনো app এ tap → সেই position এ move, Done tap → save
+    var reorderMode       by remember { mutableStateOf(false) }
+    var selectedIndex     by remember { mutableStateOf<Int?>(null) }   // যে app টা move করতে চাই
     var localOrder by remember(pinnedApps) { mutableStateOf(pinnedApps.toMutableList()) }
-    LaunchedEffect(pinnedApps) { localOrder = pinnedApps.toMutableList() }
+    LaunchedEffect(pinnedApps) {
+        if (!reorderMode) localOrder = pinnedApps.toMutableList()
+    }
+
+    // Back press → reorder mode cancel
+    BackHandler(enabled = reorderMode) {
+        reorderMode   = false
+        selectedIndex = null
+    }
 
     Box(
         Modifier
@@ -569,13 +577,14 @@ fun HomeScreen(
                 }
             } else {
                 itemsIndexed(localOrder, key = { _, app -> app.packageName }) { index, app ->
-                    val isDragging   = draggingIndex == index
-                    val isDragTarget = dragTargetIndex == index && draggingIndex != null && draggingIndex != index
+                    val isSelected   = reorderMode && selectedIndex == index
+                    val isTargetSlot = reorderMode && selectedIndex != null && selectedIndex != index
+
                     var homeAppPressed by remember { mutableStateOf(false) }
                     val homeAppScale by animateFloatAsState(
-                        targetValue = if (homeAppPressed) 0.92f else 1f,
+                        targetValue   = if (homeAppPressed || isSelected) 0.92f else 1f,
                         animationSpec = tween(110),
-                        label = "homeAppScale"
+                        label         = "homeAppScale"
                     )
 
                     Row(
@@ -583,22 +592,48 @@ fun HomeScreen(
                             .fillMaxWidth()
                             .graphicsLayer { scaleX = homeAppScale; scaleY = homeAppScale }
                             .then(
-                                if (isDragTarget)
-                                    Modifier.drawBehind { drawRect(ACCENT.copy(alpha = 0.12f)) }
-                                else Modifier
+                                when {
+                                    isSelected   -> Modifier.drawBehind { drawRect(ACCENT.copy(alpha = 0.18f)) }
+                                    isTargetSlot -> Modifier.drawBehind { drawRect(Color.White.copy(alpha = 0.05f)) }
+                                    else         -> Modifier
+                                }
                             )
                             .combinedClickable(
                                 onClick = {
-                                    if (draggingIndex == null) onLaunch(app)
+                                    when {
+                                        // reorder mode — selected app আছে → move করো
+                                        reorderMode && selectedIndex != null && selectedIndex != index -> {
+                                            val nl   = localOrder.toMutableList()
+                                            val from = selectedIndex!!
+                                            nl.add(index, nl.removeAt(from))
+                                            localOrder = nl
+                                            onReorder(nl)
+                                            selectedIndex = null          // deselect — আরেকটা move করা যাবে
+                                        }
+                                        // reorder mode — এই app ই selected → deselect
+                                        reorderMode && selectedIndex == index -> {
+                                            selectedIndex = null
+                                        }
+                                        // reorder mode — কোনো selection নেই → এটা select করো
+                                        reorderMode -> {
+                                            selectedIndex = index
+                                        }
+                                        // normal mode — launch
+                                        else -> onLaunch(app)
+                                    }
                                 },
-                                onLongClick = { draggingIndex = index; dragTargetIndex = index }
+                                onLongClick = {
+                                    // long press → reorder mode চালু + এই app selected
+                                    reorderMode   = true
+                                    selectedIndex = index
+                                }
                             )
-                            .pointerInput(draggingIndex) {
-                                if (draggingIndex == null) {
+                            .pointerInput(reorderMode) {
+                                if (!reorderMode) {
                                     awaitEachGesture {
                                         awaitFirstDown(requireUnconsumed = false)
                                         homeAppPressed = true
-                                        val up = waitForUpOrCancellation()
+                                        waitForUpOrCancellation()
                                         homeAppPressed = false
                                     }
                                 }
@@ -606,40 +641,13 @@ fun HomeScreen(
                             .padding(vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (draggingIndex != null) {
+                        // reorder mode এ left side indicator
+                        if (reorderMode) {
                             Icon(
-                                Icons.Default.DragHandle, null,
-                                tint = if (isDragging) ACCENT else TXT.copy(alpha = 0.3f),
-                                modifier = Modifier
-                                    .size(20.dp)
-                                    .pointerInput(index) {
-                                        detectDragGestures(
-                                            onDragStart = { draggingIndex = index; dragTargetIndex = index },
-                                            onDragEnd = {
-                                                val from = draggingIndex; val to = dragTargetIndex
-                                                if (from != null && to != null && from != to) {
-                                                    val nl = localOrder.toMutableList()
-                                                    nl.add(to, nl.removeAt(from))
-                                                    localOrder = nl; onReorder(nl)
-                                                }
-                                                draggingIndex = null; dragTargetIndex = null
-                                            },
-                                            onDragCancel = { draggingIndex = null; dragTargetIndex = null },
-                                            onDrag = { change, dragAmount ->
-                                                change.consume()
-                                                val rowPx = 52.dp.toPx()
-                                                val steps = when {
-                                                    dragAmount.y > rowPx * 0.5f ->  1
-                                                    dragAmount.y < -rowPx * 0.5f -> -1
-                                                    else -> 0
-                                                }
-                                                if (steps != 0) {
-                                                    val cur = dragTargetIndex ?: (draggingIndex ?: 0)
-                                                    dragTargetIndex = (cur + steps).coerceIn(0, localOrder.size - 1)
-                                                }
-                                            }
-                                        )
-                                    }
+                                if (isSelected) Icons.Default.DragHandle else Icons.Default.UnfoldMore,
+                                null,
+                                tint     = if (isSelected) ACCENT else TXT.copy(alpha = 0.25f),
+                                modifier = Modifier.size(18.dp)
                             )
                             Spacer(Modifier.width(10.dp))
                         }
@@ -647,29 +655,32 @@ fun HomeScreen(
                         Text(
                             text       = renamedMap[app.packageName] ?: app.label,
                             color      = when {
-                                isDragging    -> ACCENT
+                                isSelected    -> ACCENT
                                 app.isBlocked -> RED.copy(alpha = 0.7f)
                                 else          -> TXT
                             },
                             fontSize   = appFontSize,
-                            fontWeight = FontWeight.Light,
+                            fontWeight = if (isSelected) FontWeight.Normal else FontWeight.Light,
                             modifier   = Modifier.weight(1f)
                         )
 
-                        if (isDragging && draggingIndex != null) {
-                            Icon(Icons.Default.Check, null, tint = ACCENT,
-                                modifier = Modifier.size(18.dp).clickable {
-                                    draggingIndex = null; dragTargetIndex = null
-                                })
+                        // selected app এ ডান দিকে arrow hints
+                        if (reorderMode && selectedIndex == null) {
+                            Text("tap to move here", color = TXT.copy(alpha = 0.2f), fontSize = 11.sp)
+                        }
+                        if (isSelected) {
+                            Spacer(Modifier.width(8.dp))
+                            Text("tap a slot →", color = ACCENT.copy(alpha = 0.7f), fontSize = 11.sp)
                         }
                     }
 
-                    if (draggingIndex != null && index < localOrder.size - 1) {
-                        HorizontalDivider(color = DIVIDER.copy(alpha = 0.4f), thickness = 0.5.dp)
+                    if (reorderMode && index < localOrder.size - 1) {
+                        HorizontalDivider(color = DIVIDER.copy(alpha = 0.3f), thickness = 0.5.dp)
                     }
                 }
 
-                if (draggingIndex != null) {
+                // Done button — reorder mode এ দেখা যাবে
+                if (reorderMode) {
                     item {
                         Spacer(Modifier.height(12.dp))
                         Row(
@@ -677,13 +688,16 @@ fun HomeScreen(
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(ACCENT.copy(alpha = 0.15f))
-                                .clickable { draggingIndex = null; dragTargetIndex = null }
-                                .padding(vertical = 12.dp),
+                                .clickable {
+                                    reorderMode   = false
+                                    selectedIndex = null
+                                }
+                                .padding(vertical = 14.dp),
                             horizontalArrangement = Arrangement.Center
                         ) {
                             Icon(Icons.Default.Check, null, tint = ACCENT, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Done Reordering", color = ACCENT, fontSize = 14.sp)
+                            Text("Done", color = ACCENT, fontSize = 14.sp)
                         }
                     }
                 }
