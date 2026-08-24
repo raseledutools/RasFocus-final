@@ -179,14 +179,6 @@ private fun extractCloudinaryPublicId(url: String): String? = try {
     }
 } catch (_: Exception) { null }
 
-private fun cloudinaryResourceType(mimeType: String?): String = when {
-    mimeType == null                -> "raw"
-    mimeType.startsWith("image/")  -> "image"
-    mimeType.startsWith("video/")  -> "video"
-    mimeType.startsWith("audio/")  -> "video"   // Cloudinary: audio = video resource type
-    else                           -> "raw"
-}
-
 private fun sha1Hex(input: String): String {
     val md = MessageDigest.getInstance("SHA-1")
     return md.digest(input.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
@@ -311,7 +303,8 @@ private fun messagesToJson(messages: List<CachedMessage>): String {
     }.toString(2)
 }
 
-private fun jsonToMessages(json: String, chatId: String): List<CachedMessage> = try {
+private fun jsonToMessages(json: String, chatId: String): List<CachedMessage> {
+    return try {
     val obj  = JSONObject(json)
     val arr  = obj.optJSONArray("messages") ?: return emptyList()
     (0 until arr.length()).map { i ->
@@ -346,6 +339,7 @@ private fun jsonToMessages(json: String, chatId: String): List<CachedMessage> = 
         )
     }
 } catch (e: Exception) { Log.e(TAG, "jsonToMessages failed: ${e.message}"); emptyList() }
+}
 
 // ============================================================
 // MAIN SYNC ENGINE

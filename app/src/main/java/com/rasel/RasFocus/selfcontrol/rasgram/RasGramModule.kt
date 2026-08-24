@@ -2745,7 +2745,7 @@ fun ChatArea(
                                         .update("isDeleted", true, "text", "", "fileUrl", null, "fileName", null)
                                     // ২. Room এ সাথে সাথে update (UI instant refresh)
                                     withContext(Dispatchers.IO) {
-                                        repo.messageDao.softDelete(message.id)
+                                        rasGramRepo.messageDao.softDelete(message.id)
                                     }
                                     // ৩. Cloudinary থেকে media delete (background)
                                     if (!message.fileUrl.isNullOrEmpty()) {
@@ -3442,7 +3442,7 @@ fun MessageBubble(
                                 LinkPreviewCard(
                                     url      = urls.first(),
                                     context  = context,
-                                    modifier = Modifier.padding(horizontal = 8.dp, bottom = 6.dp)
+                                    modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 6.dp)
                                 )
                             }
                         }
@@ -6904,7 +6904,7 @@ fun GroupChatArea(
                             onDelete = { scope.launch {
                                 db.collection("groups").document(group.id).collection("messages").document(msg.id)
                                     .update("isDeleted", true, "text", "", "fileUrl", null, "fileName", null)
-                                withContext(Dispatchers.IO) { repo.messageDao.softDelete(msg.id) }
+                                withContext(Dispatchers.IO) { RasGramRepository.getInstance(context).messageDao.softDelete(msg.id) }
                                 if (!msg.fileUrl.isNullOrEmpty()) {
                                     withContext(Dispatchers.IO) {
                                         try {
