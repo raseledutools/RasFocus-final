@@ -77,7 +77,7 @@ fun RasGramDriveSyncSettings(currentUser: User) {
     }
 
     Column(
-        modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+        modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         // Header
