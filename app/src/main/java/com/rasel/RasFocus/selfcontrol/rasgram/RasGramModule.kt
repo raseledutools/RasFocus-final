@@ -2739,8 +2739,26 @@ fun ChatArea(
                             onReply = { replyToMessage = message },
                             onDelete = {
                                 scope.launch {
+                                    // ── Telegram-style delete for everyone ────────────────────
+                                    // ১. Firestore এ isDeleted=true, text="" (উভয় phone এ দেখা যাবে)
                                     db.collection("pvt_msg_$chatId").document(message.id)
-                                        .update("isDeleted", true, "text", "")
+                                        .update("isDeleted", true, "text", "", "fileUrl", null, "fileName", null)
+                                    // ২. Room এ সাথে সাথে update (UI instant refresh)
+                                    withContext(Dispatchers.IO) {
+                                        repo.messageDao.softDelete(message.id)
+                                    }
+                                    // ৩. Cloudinary থেকে media delete (background)
+                                    if (!message.fileUrl.isNullOrEmpty()) {
+                                        withContext(Dispatchers.IO) {
+                                            try {
+                                                val pubId = extractCloudinaryPublicId(message.fileUrl)
+                                                if (pubId != null) {
+                                                    val resType = cloudinaryResourceType(message.fileType)
+                                                    deleteFromCloudinaryDirect(pubId, resType)
+                                                }
+                                            } catch (_: Exception) {}
+                                        }
+                                    }
                                 }
                             },
                             onStar = {
@@ -3417,6 +3435,17 @@ fun MessageBubble(
                             color = RasGramTheme.TextPrimary,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = if (message.fileUrl != null) 4.dp else 8.dp)
                         )
+                        // Link preview — URL থাকলে নিচে preview card
+                        if (message.fileUrl == null) {
+                            val urls = remember(message.text) { extractUrls(message.text) }
+                            if (urls.isNotEmpty()) {
+                                LinkPreviewCard(
+                                    url      = urls.first(),
+                                    context  = context,
+                                    modifier = Modifier.padding(horizontal = 8.dp, bottom = 6.dp)
+                                )
+                            }
+                        }
                     }
 
                     // Time + ticks row
@@ -6872,7 +6901,19 @@ fun GroupChatArea(
                             onClick = { if (selectedMessages.isNotEmpty()) selectedMessages = if (msg.id in selectedMessages) selectedMessages - msg.id else selectedMessages + msg.id },
                             onReact = { rx -> scope.launch { db.collection("groups").document(group.id).collection("messages").document(msg.id).update("reaction", if (msg.reaction == rx) null else rx) } },
                             onReply = { replyToMessage = msg },
-                            onDelete = { scope.launch { db.collection("groups").document(group.id).collection("messages").document(msg.id).update("isDeleted", true, "text", "") } },
+                            onDelete = { scope.launch {
+                                db.collection("groups").document(group.id).collection("messages").document(msg.id)
+                                    .update("isDeleted", true, "text", "", "fileUrl", null, "fileName", null)
+                                withContext(Dispatchers.IO) { repo.messageDao.softDelete(msg.id) }
+                                if (!msg.fileUrl.isNullOrEmpty()) {
+                                    withContext(Dispatchers.IO) {
+                                        try {
+                                            val pubId = extractCloudinaryPublicId(msg.fileUrl)
+                                            if (pubId != null) deleteFromCloudinaryDirect(pubId, cloudinaryResourceType(msg.fileType))
+                                        } catch (_: Exception) {}
+                                    }
+                                }
+                            }},
                             onStar = { }, onCopy = {
                                 val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                 cm.setPrimaryClip(ClipData.newPlainText("message", msg.text))
@@ -7053,3 +7094,173 @@ suspend fun sendFcmMessageNotification(
     } catch (_: Exception) { }
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLOUDINARY HELPERS — delete for everyone এর জন্য
+// ─────────────────────────────────────────────────────────────────────────────
+
+private const val CLD_CLOUD_MOD   = "de2w78yxh"
+private const val CLD_API_KEY_MOD = "292749814534824"
+private const val CLD_SECRET_MOD  = "EEYmph3nZLR8Modypt0J7eH--58"
+
+fun extractCloudinaryPublicId(url: String?): String? {
+    if (url.isNullOrEmpty()) return null
+    return try {
+        val parts = url.split("/upload/")
+        if (parts.size < 2) return null
+        val after = parts[1]
+        val noVer = if (after.startsWith("v") && after.contains("/")) after.substringAfter("/") else after
+        noVer.substringBeforeLast(".")
+    } catch (_: Exception) { null }
+}
+
+fun cloudinaryResourceType(mimeType: String?): String = when {
+    mimeType == null               -> "raw"
+    mimeType.startsWith("image/") -> "image"
+    mimeType.startsWith("video/") -> "video"
+    mimeType.startsWith("audio/") -> "video"
+    else                          -> "raw"
+}
+
+fun deleteFromCloudinaryDirect(publicId: String, resourceType: String): Boolean = try {
+    val ts  = (System.currentTimeMillis() / 1000).toString()
+    val sigStr = "public_id=${publicId}&timestamp=${ts}${CLD_SECRET_MOD}"
+    val md  = java.security.MessageDigest.getInstance("SHA-1")
+    val sig = md.digest(sigStr.toByteArray()).joinToString("") { "%02x".format(it) }
+    val body = okhttp3.FormBody.Builder()
+        .add("public_id", publicId).add("timestamp", ts)
+        .add("api_key", CLD_API_KEY_MOD).add("signature", sig).build()
+    val resp = okhttp3.OkHttpClient().newCall(
+        okhttp3.Request.Builder()
+            .url("https://api.cloudinary.com/v1_1/$CLD_CLOUD_MOD/$resourceType/destroy")
+            .post(body).build()
+    ).execute()
+    val result = org.json.JSONObject(resp.body?.string() ?: "{}").optString("result")
+    result == "ok" || result == "not found"
+} catch (_: Exception) { false }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LINK DETECTION
+// ─────────────────────────────────────────────────────────────────────────────
+
+private val URL_REGEX = Regex("""https?://[^\s<>"']+""")
+
+fun extractUrls(text: String): List<String> = URL_REGEX.findAll(text).map { it.value }.toList()
+
+fun isVideoUrl(url: String): Boolean {
+    val lower = url.lowercase()
+    return lower.contains("youtu.be") || lower.contains("youtube.com/watch") ||
+           lower.contains("youtube.com/shorts") ||
+           lower.endsWith(".mp4") || lower.endsWith(".webm") || lower.endsWith(".mkv") ||
+           (lower.contains("cloudinary.com") && lower.contains("/video/"))
+}
+
+data class LinkMeta(
+    val url: String,
+    val title: String = "",
+    val description: String = "",
+    val imageUrl: String = "",
+    val isVideo: Boolean = false
+)
+
+suspend fun fetchLinkMeta(url: String): LinkMeta = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    try {
+        val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+        conn.connectTimeout = 5000; conn.readTimeout = 5000
+        conn.setRequestProperty("User-Agent", "Mozilla/5.0")
+        if (conn.responseCode != 200) return@withContext LinkMeta(url, isVideo = isVideoUrl(url))
+        val buf = StringBuilder(); val arr = CharArray(1024); var total = 0
+        conn.inputStream.bufferedReader().use { br ->
+            while (total < 8000) {
+                val r = br.read(arr, 0, minOf(1024, 8000 - total)); if (r == -1) break
+                buf.append(arr, 0, r); total += r
+            }
+        }
+        val html = buf.toString()
+        val title = Regex("<meta[^>]*property=[\"']og:title[\"'][^>]*content=[\"']([^\"']*)[\"']", RegexOption.IGNORE_CASE)
+            .find(html)?.groupValues?.get(1)
+            ?: Regex("<title[^>]*>([^<]*)</title>", RegexOption.IGNORE_CASE).find(html)?.groupValues?.get(1) ?: ""
+        val img = Regex("<meta[^>]*property=[\"']og:image[\"'][^>]*content=[\"']([^\"']*)[\"']", RegexOption.IGNORE_CASE)
+            .find(html)?.groupValues?.get(1) ?: ""
+        LinkMeta(url, title.trim(), "", img.trim(), isVideoUrl(url))
+    } catch (_: Exception) { LinkMeta(url, isVideo = isVideoUrl(url)) }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LINK PREVIEW CARD
+// ─────────────────────────────────────────────────────────────────────────────
+
+@androidx.compose.runtime.Composable
+fun LinkPreviewCard(url: String, context: android.content.Context, modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier) {
+    var meta    by androidx.compose.runtime.remember(url) { androidx.compose.runtime.mutableStateOf<LinkMeta?>(null) }
+    var loading by androidx.compose.runtime.remember(url) { androidx.compose.runtime.mutableStateOf(true) }
+    val scope   = androidx.compose.runtime.rememberCoroutineScope()
+
+    androidx.compose.runtime.LaunchedEffect(url) { meta = fetchLinkMeta(url); loading = false }
+
+    if (loading) {
+        androidx.compose.foundation.layout.Box(
+            modifier.fillMaxWidth().height(44.dp)
+                .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                .background(androidx.compose.ui.graphics.Color(0xFF1A2C35))
+        ); return
+    }
+    val m = meta ?: return
+
+    androidx.compose.material3.Surface(
+        modifier  = modifier.fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+            .clickable { openLinkSmart(context, url) },
+        color     = androidx.compose.ui.graphics.Color(0xFF1A2C35),
+        shape     = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+    ) {
+        Column {
+            if (m.imageUrl.isNotEmpty()) {
+                coil.compose.AsyncImage(
+                    model = m.imageUrl, contentDescription = null,
+                    modifier = Modifier.fillMaxWidth().height(110.dp),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                )
+            }
+            Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (m.isVideo) Icon(Icons.Default.PlayCircleFilled, null, tint = RasGramTheme.Green, modifier = Modifier.size(20.dp))
+                else           Icon(Icons.Default.Link, null, tint = RasGramTheme.TextMuted, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(6.dp))
+                Column(Modifier.weight(1f)) {
+                    if (m.title.isNotEmpty()) Text(m.title, color = RasGramTheme.TextPrimary, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Medium)
+                    Text(url.take(42) + if (url.length > 42) "…" else "", color = RasGramTheme.Green, fontSize = 11.sp, maxLines = 1)
+                }
+                // Family Browser open button
+                IconButton(onClick = { openInFamilyBrowser(context, url) }, modifier = Modifier.size(30.dp)) {
+                    Icon(Icons.Default.OpenInBrowser, null, tint = RasGramTheme.TextMuted, modifier = Modifier.size(15.dp))
+                }
+            }
+        }
+    }
+}
+
+fun openLinkSmart(context: android.content.Context, url: String) {
+    if (isVideoUrl(url)) {
+        try {
+            val i = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                setDataAndType(android.net.Uri.parse(url), "video/*")
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(i)
+        } catch (_: Exception) { openInFamilyBrowser(context, url) }
+    } else openInFamilyBrowser(context, url)
+}
+
+fun openInFamilyBrowser(context: android.content.Context, url: String) {
+    try {
+        context.startActivity(android.content.Intent().apply {
+            setClassName(context.packageName, "com.rasel.RasFocus.familybrowser.FamilyBrowserActivity")
+            putExtra("url", url)
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        })
+    } catch (_: Exception) {
+        try {
+            context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,
+                android.net.Uri.parse(url)).apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) })
+        } catch (_: Exception) {}
+    }
+}

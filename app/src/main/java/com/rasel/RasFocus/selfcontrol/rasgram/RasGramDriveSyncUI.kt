@@ -588,7 +588,9 @@ fun ShareFileContactPickerDialog(
                     }
                 } else {
                     androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        androidx.compose.foundation.lazy.items(contacts) { contact ->
+                        val contactList = contacts
+                        contactList.forEach { contact ->
+                            item(key = contact.mobile) {
                             val isSendingTo = uploadingTo == contact.mobile
                             Row(
                                 modifier = Modifier
@@ -611,7 +613,6 @@ fun ShareFileContactPickerDialog(
                                                             url, fn ?: fileName, ft
                                                         )
                                                         Toast.makeText(context, "📎 ${contact.name} কে পাঠানো হয়েছে", Toast.LENGTH_SHORT).show()
-                                                        // Open the chat
                                                         onContactSelected(contact)
                                                     } else {
                                                         Toast.makeText(context, "আপলোড ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
@@ -642,10 +643,11 @@ fun ShareFileContactPickerDialog(
                                         strokeWidth = 2.dp
                                     )
                                 } else {
-                                    Icon(Icons.Default.Send, null, tint = RasGramTheme.TextMuted.copy(0.4f), modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Default.Forward, null, tint = RasGramTheme.TextMuted.copy(0.4f), modifier = Modifier.size(18.dp))
                                 }
                             }
                             HorizontalDivider(color = RasGramTheme.Border.copy(0.5f), thickness = 0.3.dp, modifier = Modifier.padding(start = 72.dp))
+                            } // item
                         }
                     }
                 }

@@ -2263,7 +2263,7 @@ fun FileListItem(
                                 text = { Text("Send to RasGram", color = androidx.compose.ui.graphics.Color(0xFF25D366)) },
                                 leadingIcon = {
                                     Icon(
-                                        Icons.Default.Send,
+                                        Icons.Default.Forward,
                                         contentDescription = null,
                                         modifier = Modifier.size(18.dp),
                                         tint = androidx.compose.ui.graphics.Color(0xFF25D366)
