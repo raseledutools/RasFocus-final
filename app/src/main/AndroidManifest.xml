@@ -990,11 +990,14 @@
 
     <!-- RasGram — WhatsApp-style incoming call overlay service
          directBootAware="true": reboot এর পর lock screen এ overlay দেখাতে পারবে।
-         foregroundServiceType="phoneCall" required on Android 14+ (API 34+). -->
+         foregroundServiceType="phoneCall" required on Android 14+ (API 34+).
+         FIX Android 15: showOnLockScreen + turnScreenOn এখন manifest এও declare করা হয়েছে
+         যাতে overlay service lock screen এর উপরে সঠিকভাবে দেখায়। -->
     <service
         android:name=".selfcontrol.rasgram.IncomingCallOverlayService"
         android:exported="false"
         android:directBootAware="true"
+        android:showOnLockScreen="true"
         android:foregroundServiceType="phoneCall" />
 
     <!-- RasGram — Online Presence Service

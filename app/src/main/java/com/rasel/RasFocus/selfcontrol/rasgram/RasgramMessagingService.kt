@@ -347,11 +347,21 @@ class RasgramMessagingService : FirebaseMessagingService() {
         )
 
         // ── Message channel ───────────────────────────────────────────────────
+        // FIX Android 15: Channel ID "MSG_CHANNEL_V2" — পুরনো channel settings
+        // একবার OS এ save হলে আর update হয় না। নতুন ID দিয়ে fresh channel তৈরি করলে
+        // sound + vibration সঠিকভাবে কাজ করে।
+        val msgSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        val msgAudioAttr = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
         nm.createNotificationChannel(
             NotificationChannel(MSG_CHANNEL, "RasGram Messages", NotificationManager.IMPORTANCE_HIGH).apply {
                 description          = "New RasGram messages"
+                // Sound: default notification sound
+                setSound(msgSoundUri, msgAudioAttr)
                 enableVibration(true)
-                // Message pattern: double pulse — সবসময় vibrate
+                // Message pattern: double pulse
                 vibrationPattern     = longArrayOf(0, 400, 200, 400)
                 setShowBadge(true)
                 lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
@@ -364,7 +374,10 @@ class RasgramMessagingService : FirebaseMessagingService() {
     companion object {
         const val CALL_NOTIFICATION_ID = 9999
         const val CALL_CHANNEL         = "CALL_CHANNEL"
-        const val MSG_CHANNEL          = "MSG_CHANNEL"
+        // FIX Android 15: "MSG_CHANNEL_V2" — পুরনো "MSG_CHANNEL" এর settings
+        // device এ cache হয়ে আছে (no sound, no vibrate)। নতুন ID দিয়ে
+        // fresh channel তৈরি করলে sound + vibration ঠিকভাবে কাজ করবে।
+        const val MSG_CHANNEL          = "MSG_CHANNEL_V2"
         const val PREF_NAME            = "rasgram_prefs"
         const val PREF_MOBILE          = "saved_mobile"
     }

@@ -1,6 +1,5 @@
 package com.rasel.RasFocus.selfcontrol.rasgram
 
-import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -131,22 +130,30 @@ class RasGramActivity : ComponentActivity() {
         }
     }
 
-    // Lock screen উপরে Activity দেখানো
+    // Lock screen উপরে Activity দেখানো — unlock না করেই
+    // Android 14/15 FIX: requestDismissKeyguard() বাদ দেওয়া হয়েছে।
+    // requestDismissKeyguard() = device কে unlock করতে বলা → user কে PIN/pattern দিতে হত।
+    // WhatsApp style: lock screen এর উপরে call UI দেখায়, unlock করতে বলে না।
+    // setShowWhenLocked(true) + setTurnScreenOn(true) = screen জ্বলে + call UI lockscreen এর উপরে।
     private fun enableLockScreenDisplay() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            // Android 8.1+ API — lockscreen এর উপরে Activity দেখাও, dismiss করো না
             setShowWhenLocked(true)
             setTurnScreenOn(true)
-            getSystemService(KeyguardManager::class.java)
-                ?.requestDismissKeyguard(this, null)
+            // NOTE: requestDismissKeyguard() intentionally removed.
+            // এটা unlock prompt দেখাত — WhatsApp এর মতো behavior না।
+            // Call screen লক স্ক্রিনের উপরে দেখাবে, lock সরাবে না।
         } else {
             @Suppress("DEPRECATION")
             window.addFlags(
                 WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
                 WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON   or
-                WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
+                // FLAG_DISMISS_KEYGUARD removed — unlock prompt দেখাত
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
             )
         }
+        // Android 15 extra: keep screen bright during call
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 }
 
