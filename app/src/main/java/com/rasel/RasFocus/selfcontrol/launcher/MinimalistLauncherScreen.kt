@@ -1367,7 +1367,7 @@ fun SidebarContent(
             val sidebarListState = rememberLazyListState()
             LazyColumn(
                 state = sidebarListState,
-                Modifier
+                modifier = Modifier
                     .fillMaxSize()
                     .padding(end = 20.dp)
             ) {
