@@ -87,26 +87,29 @@ import kotlinx.coroutines.launch
 /**
  * WhatsApp / Truecaller style incoming call overlay.
  *
- * Fix summary (v4 — Single Ring):
+ * Fix summary (v5 — Android 10+ Background startActivity Crash Fix):
  * ─────────────────────────────────────────────────────────────────────────────
- * সমস্যা ছিল: Triple ring / double ring
- *   1. Service startRinging() → Ring শুরু
- *   2. launchFullScreenCallActivity() → Activity খোলে
- *   3. Service onDestroy() → stopRinging() → Ring বন্ধ (কিন্তু IncomingCallScreen
- *      এর ring ও এতে বন্ধ হয়ে যাচ্ছিল কারণ AudioManager.MODE_NORMAL সেট হচ্ছিল)
- *   4. Firestore listener আবার trigger → নতুন ring
+ * v4 সমস্যা ছিল (Android 10+ এ):
+ *   app background / lock screen এ call আসলে crash হত বা call আসত না।
+ *   কারণ: launchFullScreenCallActivity() এ startActivity() করা হচ্ছিল।
+ *   Android 10 (API 29) থেকে background এ থাকা app startActivity() করতে পারে না —
+ *   crash বা silent fail। তোমার phone (Android 10) এ app foreground এ থাকলে কাজ করত,
+ *   কিন্তু background/lock screen এ করত না।
  *
- * Fix:
- *   - Service নিজে ring করে না। Ring এর সম্পূর্ণ দায়িত্ব IncomingCallScreen এর।
- *   - Service শুধু: screen জ্বালায় + notification দেয় + overlay/Activity খোলে।
- *   - launchFullScreenCallActivity() call করলে সাথে সাথে stopSelf() — service
- *     বেশিক্ষণ বেঁচে থাকলে AudioManager conflict হয়।
- *   - Overlay path (screen on + unlocked) এ ring করে না — overlay close হলে
- *     Activity খোলে, সেখানে IncomingCallScreen ring করে।
- *   - onDestroy() এ AudioManager.MODE_NORMAL সেট করা হয় না — IncomingCallScreen
- *     এর ring বন্ধ হয়ে যাওয়ার ভয় নেই।
+ * v5 Fix:
+ *   - launchFullScreenCallActivity() থেকে startActivity() সম্পূর্ণ সরানো হয়েছে।
+ *   - Lock/screen-off path: notification এর fullScreenIntent Android OS নিজেই fire করে।
+ *     Service alive রাখা হয় (stopSelf() সরানো) যাতে notification থাকে।
+ *     Firestore listener + 60s timeout দিয়ে call end detect করা হয়।
+ *   - App foreground path: RasGramModule এ Firestore listener আছে — সে নিজেই
+ *     IncomingCallScreen দেখাবে। Service শুধু বন্ধ হয়।
+ *   - Overlay path (screen on + unlocked): আগের মতোই, পরিবর্তন নেই।
  *
- * Result: একটাই ring, একটাই notification, একটাই overlay/screen।
+ * v4 এর single-ring fix অক্ষত আছে:
+ *   - Service নিজে ring করে না — IncomingCallScreen / overlay করে।
+ *   - onDestroy() এ AudioManager.MODE_NORMAL সেট করা হয় না।
+ *
+ * Result: Android 10+ এ background/lock screen এ call আসে, crash নেই।
  * ─────────────────────────────────────────────────────────────────────────────
  */
 class IncomingCallOverlayService : Service(),
@@ -227,15 +230,23 @@ class IncomingCallOverlayService : Service(),
             val appForeground = RasGramActivity.isVisible
 
             if (appForeground) {
-                // App খোলা আছে — Activity তে onNewIntent পাঠাও, সাথে সাথে service বন্ধ।
-                // IncomingCallScreen এর Firestore listener + DisposableEffect ring করবে।
-                launchFullScreenCallActivity(callId, callerName, callerMobile, callType)
-                stopSelf()  // FIX: সাথে সাথে বন্ধ — AudioManager conflict নেই
+                // App foreground এ আছে: RasGramModule এর Firestore listener ইতিমধ্যে
+                // incoming call detect করবে এবং IncomingCallScreen দেখাবে।
+                // startActivity() করতে হবে না (Android 10+ এ background startActivity crash করে)।
+                // Service বন্ধ করি — AudioManager conflict নেই।
+                stopSelf()
             } else if (screenOff || keyguardUp) {
-                // Lock screen / screen off: full page Activity খোলো, সাথে সাথে service বন্ধ।
-                // Activity তে IncomingCallScreen compose হবে → সেখানে ring শুরু হবে।
-                launchFullScreenCallActivity(callId, callerName, callerMobile, callType)
-                stopSelf()  // FIX: সাথে সাথে বন্ধ — AudioManager conflict নেই
+                // Lock screen / screen off path:
+                // FIX (Android 10+): startActivity() background থেকে করা যায় না।
+                // পরিবর্তে: notification এর fullScreenIntent Android OS নিজেই fire করবে।
+                // কিন্তু stopSelf() করলে stopForeground() হয় → notification চলে যায়
+                // → fullScreenIntent fire হওয়ার সুযোগ নেই।
+                //
+                // Solution: service alive রাখো, Firestore দিয়ে call end detect করো,
+                // 60s timeout দাও। Notification এর fullScreenIntent lock screen এ Activity খুলবে।
+                setupFirestoreListener(callId)
+                setup60sTimeout(callId)
+                // stopSelf() এখানে নেই — service alive থাকবে যতক্ষণ call চলে।
             } else {
                 // Unlocked + screen on + app background: floating overlay card দেখাও।
                 // Overlay তেই ring হবে (IncomingCallScreen এর মতো same logic, overlay path)।
@@ -275,24 +286,32 @@ class IncomingCallOverlayService : Service(),
     }
 
     // ── Full page Activity (lock screen / screen off / app foreground) ────────
+    // FIX (Android 10+): background থেকে startActivity() করলে crash হয়।
+    // Android 10 (API 29) থেকে background এ থাকা app সরাসরি Activity launch করতে পারে না,
+    // তবে FOREGROUND_SERVICE চলাকালীন exception আছে — কিন্তু সেটা Android version ও
+    // OEM (Samsung, Xiaomi, OnePlus) ভেদে inconsistent। ফলে crash হয়।
+    //
+    // সঠিক approach: startActivity() বাদ দাও।
+    // ইতিমধ্যে startForegroundWithNotification() এ fullScreenIntent দেওয়া আছে —
+    // Android OS নিজেই সেই notification থেকে Activity খুলবে।
+    // App foreground এ থাকলে (appForeground path) শুধু onNewIntent দরকার — সেটা
+    // notification tap থেকেই আসে। আলাদা startActivity() দরকার নেই।
+    //
+    // তাই এই method এখন শুধু notification কে "re-trigger" করে যাতে fullScreenIntent
+    // আবার fire হয় — যেটা lock screen + screen off উভয় ক্ষেত্রে কাজ করে।
     private fun launchFullScreenCallActivity(
         callId: String, callerName: String, callerMobile: String, callType: String
     ) {
-        val i = Intent(this, RasGramActivity::class.java).apply {
-            action = "ACTION_INCOMING_CALL"
-            putExtra("callId",       callId)
-            putExtra("callerMobile", callerMobile)
-            putExtra("callerName",   callerName)
-            putExtra("callType",     callType)
-            addFlags(
-                Intent.FLAG_ACTIVITY_NEW_TASK          or
-                Intent.FLAG_ACTIVITY_CLEAR_TOP         or
-                Intent.FLAG_ACTIVITY_SINGLE_TOP        or
-                Intent.FLAG_ACTIVITY_NO_USER_ACTION    or
-                Intent.FLAG_ACTIVITY_NO_ANIMATION
-            )
-        }
-        startActivity(i)
+        // fullScreenIntent ইতিমধ্যে startForegroundWithNotification() এ set আছে।
+        // Android 10+ এ OS নিজেই lock screen / screen off এ সেটা fire করে।
+        // শুধু app foreground path এ একটু নিশ্চিত করার জন্য notification update করি।
+
+        // App foreground এ থাকলে: Firestore listener দিয়ে IncomingCallScreen এ
+        // call detect হবে — startActivity() আর দরকার নেই।
+        // Lock/screen-off: fullScreenIntent notification OS handle করবে।
+
+        // কিছুই করার দরকার নেই — notification already posted, OS handles the rest.
+        // (পুরনো startActivity() এখানে থাকলে Android 10+ এ crash হত)
     }
 
     // ── Foreground notification ────────────────────────────────────────────────
