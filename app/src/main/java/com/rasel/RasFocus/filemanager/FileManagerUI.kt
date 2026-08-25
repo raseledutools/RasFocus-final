@@ -161,6 +161,59 @@ internal fun sendFileToRasGram(context: android.content.Context, file: java.io.F
     }
 }
 
+// ── Folder → RasGram: background zip → send as folder-typed attachment ────────
+// Receiver এ ফোল্ডার নামে দেখাবে।  Download করলে unzip হয়ে ফোল্ডার restore হবে।
+// Zip file নাম = "__RASGRAM_FOLDER__FolderName.zip" — receiver এই prefix detect করে।
+internal fun sendFolderToRasGram(
+    context: android.content.Context,
+    folder: java.io.File,
+    scope: kotlinx.coroutines.CoroutineScope
+) {
+    if (!folder.isDirectory) { sendFileToRasGram(context, folder); return }
+    android.widget.Toast.makeText(context, "📦 ফোল্ডার প্রস্তুত হচ্ছে…", android.widget.Toast.LENGTH_SHORT).show()
+    scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        try {
+            val zipName = "__RASGRAM_FOLDER__${folder.name}.zip"
+            val zipFile = java.io.File(context.cacheDir, zipName)
+            zipFile.delete()
+
+            val success = ZipHelper.zipFiles(listOf(folder), zipFile)
+            if (!success || !zipFile.exists()) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    android.widget.Toast.makeText(context, "ফোল্ডার zip করা যায়নি", android.widget.Toast.LENGTH_SHORT).show()
+                }
+                return@launch
+            }
+
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                try {
+                    val uri = androidx.core.content.FileProvider.getUriForFile(
+                        context, "${context.packageName}.fileprovider", zipFile
+                    )
+                    val intent = android.content.Intent(
+                        context,
+                        com.rasel.RasFocus.selfcontrol.rasgram.RasGramActivity::class.java
+                    ).apply {
+                        action = android.content.Intent.ACTION_SEND
+                        type = "application/zip"
+                        putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                        putExtra("fileName", zipName)   // __RASGRAM_FOLDER__ prefix সহ
+                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                } catch (e: Exception) {
+                    android.widget.Toast.makeText(context, "RasGram এ পাঠানো যায়নি: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+        } catch (e: Exception) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                android.widget.Toast.makeText(context, "Error: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+}
+
 internal fun shareLocalFiles(context: android.content.Context, files: List<java.io.File>) {
     if (files.size == 1) { shareLocalFile(context, files.first()); return }
     try {
@@ -1223,9 +1276,10 @@ fun LocalFileScreen(
                                     },
                                     onPropertiesClick = { propertiesTarget = file },
                                     onShareClick = { if (!file.isDirectory) shareLocalFile(context, file) },
-                                    onSendToRasGram = if (file.isDirectory) null else ({
-                                        sendFileToRasGram(context, file)
-                                    })
+                                    onSendToRasGram = {
+                                        if (file.isDirectory) sendFolderToRasGram(context, file, scope)
+                                        else sendFileToRasGram(context, file)
+                                    }
                                 )
                             }
                         }
@@ -1257,9 +1311,10 @@ fun LocalFileScreen(
                                     },
                                     onPropertiesClick = { propertiesTarget = file },
                                     onShareClick = { if (!file.isDirectory) shareLocalFile(context, file) },
-                                    onSendToRasGram = if (file.isDirectory) null else ({
-                                        sendFileToRasGram(context, file)
-                                    })
+                                    onSendToRasGram = {
+                                        if (file.isDirectory) sendFolderToRasGram(context, file, scope)
+                                        else sendFileToRasGram(context, file)
+                                    }
                                 )
                             }
                             // bottom padding so FAB doesn't cover last item
@@ -2257,13 +2312,18 @@ fun FileListItem(
                                 onClick = { showMenu = false; onShareClick() }
                             )
                         }
-                        // ── Send to RasGram (WhatsApp style) ─────────────────
-                        if (onSendToRasGram != null && !isDirectory) {
+                        // ── Send to RasGram (file বা folder — folder auto-zip হয়) ──
+                        if (onSendToRasGram != null) {
                             DropdownMenuItem(
-                                text = { Text("Send to RasGram", color = androidx.compose.ui.graphics.Color(0xFF25D366)) },
+                                text = {
+                                    Text(
+                                        if (isDirectory) "Send Folder to RasGram" else "Send to RasGram",
+                                        color = androidx.compose.ui.graphics.Color(0xFF25D366)
+                                    )
+                                },
                                 leadingIcon = {
                                     Icon(
-                                        Icons.Default.Share,
+                                        if (isDirectory) Icons.Default.FolderZip else Icons.Default.Share,
                                         contentDescription = null,
                                         modifier = Modifier.size(18.dp),
                                         tint = androidx.compose.ui.graphics.Color(0xFF25D366)

@@ -3875,16 +3875,32 @@ fun AudioMessageContent(url: String, fileName: String?, duration: Int) {
     }
 }
 
+// ── Folder message marker (FileManager থেকে পাঠানো folder) ────────────────────
+private const val RASGRAM_FOLDER_PREFIX = "__RASGRAM_FOLDER__"
+
 @Composable
 fun DocumentMessageContent(url: String, fileName: String?, fileType: String?, fileSize: Long, context: Context) {
     val scope = rememberCoroutineScope()
-    val isPdf = fileType?.contains("pdf") == true
-    val isWord = fileType?.contains("word") == true || fileType?.contains("document") == true
-    val isExcel = fileType?.contains("sheet") == true || fileType?.contains("excel") == true
-    val isPpt = fileType?.contains("presentation") == true || fileType?.contains("powerpoint") == true
-    val isZip = fileType?.contains("zip") == true || fileType?.contains("archive") == true
+
+    // ── Folder detection: FileManager zip করে এই prefix দিয়ে পাঠায় ────────
+    val isRasgramFolder = fileName?.startsWith(RASGRAM_FOLDER_PREFIX) == true
+    // Display name: prefix ও .zip extension বাদ দিয়ে আসল folder নাম
+    val displayName: String = if (isRasgramFolder) {
+        fileName!!
+            .removePrefix(RASGRAM_FOLDER_PREFIX)
+            .removeSuffix(".zip")
+    } else {
+        fileName ?: "Document"
+    }
+
+    val isPdf   = !isRasgramFolder && fileType?.contains("pdf") == true
+    val isWord  = !isRasgramFolder && (fileType?.contains("word") == true || fileType?.contains("document") == true)
+    val isExcel = !isRasgramFolder && (fileType?.contains("sheet") == true || fileType?.contains("excel") == true)
+    val isPpt   = !isRasgramFolder && (fileType?.contains("presentation") == true || fileType?.contains("powerpoint") == true)
+    val isZip   = !isRasgramFolder && (fileType?.contains("zip") == true || fileType?.contains("archive") == true)
 
     val iconBgColor = when {
+        isRasgramFolder -> Color(0xFFEF8C00)   // amber-orange — folder রঙ
         isPdf   -> Color(0xFFE53935)
         isWord  -> Color(0xFF1565C0)
         isExcel -> Color(0xFF2E7D32)
@@ -3893,6 +3909,7 @@ fun DocumentMessageContent(url: String, fileName: String?, fileType: String?, fi
         else    -> Color(0xFF37474F)
     }
     val iconLabel = when {
+        isRasgramFolder -> "FOLDER"
         isPdf   -> "PDF"
         isWord  -> "DOC"
         isExcel -> "XLS"
@@ -3901,6 +3918,7 @@ fun DocumentMessageContent(url: String, fileName: String?, fileType: String?, fi
         else    -> fileName?.substringAfterLast(".")?.uppercase()?.take(3) ?: "FILE"
     }
     val icon = when {
+        isRasgramFolder -> Icons.Default.Folder
         isPdf   -> Icons.Default.PictureAsPdf
         isWord  -> Icons.Default.Description
         isExcel -> Icons.Default.TableChart
@@ -3909,9 +3927,25 @@ fun DocumentMessageContent(url: String, fileName: String?, fileType: String?, fi
         else    -> Icons.Default.InsertDriveFile
     }
 
-    // Check if file already exists locally in Rasgram folder
+    // Check if already downloaded
     val localFile = remember(url) { getRasgramCachedFile(context, url, fileName, fileType ?: "application/octet-stream") }
-    var isLocal by remember(localFile) { mutableStateOf(localFile?.exists() == true) }
+    // Folder: extracted folder path = Downloads/<folderName>
+    val extractedFolder = remember(isRasgramFolder, displayName) {
+        if (isRasgramFolder) {
+            java.io.File(
+                android.os.Environment.getExternalStoragePublicDirectory(
+                    android.os.Environment.DIRECTORY_DOWNLOADS
+                ),
+                displayName
+            )
+        } else null
+    }
+    var isLocal by remember(localFile, extractedFolder) {
+        mutableStateOf(
+            if (isRasgramFolder) extractedFolder?.exists() == true
+            else localFile?.exists() == true
+        )
+    }
     var isDownloading by remember { mutableStateOf(false) }
     var downloadProgress by remember { mutableFloatStateOf(0f) }
 
@@ -3919,24 +3953,103 @@ fun DocumentMessageContent(url: String, fileName: String?, fileType: String?, fi
         modifier = Modifier
             .fillMaxWidth()
             .clickable {
-                if (isLocal && localFile != null) {
-                    // File is local — open directly (no browser!)
-                    openLocalFileWithProvider(context, localFile, fileType ?: "application/octet-stream")
-                } else {
-                    // Not downloaded yet — start download
-                    scope.launch {
-                        isDownloading = true
-                        val saved = downloadToRasgramFolder(context, url, fileName ?: "document_${System.currentTimeMillis()}", fileType ?: "application/octet-stream") { prog ->
-                            downloadProgress = prog
+                if (isRasgramFolder) {
+                    if (isLocal && extractedFolder != null) {
+                        // Folder already extracted — open it in file manager
+                        try {
+                            val intent = Intent(Intent.ACTION_VIEW).apply {
+                                setDataAndType(
+                                    androidx.core.content.FileProvider.getUriForFile(
+                                        context, "${context.packageName}.fileprovider", extractedFolder
+                                    ),
+                                    "resource/folder"
+                                )
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            if (intent.resolveActivity(context.packageManager) != null) {
+                                context.startActivity(intent)
+                            } else {
+                                Toast.makeText(context, "📁 '$displayName' ফোল্ডার Downloads এ আছে", Toast.LENGTH_LONG).show()
+                            }
+                        } catch (_: Exception) {
+                            Toast.makeText(context, "📁 '$displayName' ফোল্ডার Downloads এ আছে", Toast.LENGTH_LONG).show()
                         }
-                        isDownloading = false
-                        if (saved != null) {
-                            isLocal = true
-                            Toast.makeText(context, "Rasgram ফোল্ডারে ডাউনলোড হয়েছে", Toast.LENGTH_SHORT).show()
-                            // Auto-open after download
-                            openLocalFileWithProvider(context, saved, fileType ?: "application/octet-stream")
-                        } else {
-                            Toast.makeText(context, "ডাউনলোড ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
+                    } else {
+                        // Download zip → unzip → delete zip (user জানে না zip হচ্ছে)
+                        scope.launch {
+                            isDownloading = true
+                            val saved = downloadToRasgramFolder(
+                                context, url, fileName ?: "folder.zip",
+                                fileType ?: "application/zip"
+                            ) { prog -> downloadProgress = prog }
+                            if (saved != null) {
+                                // Background এ unzip করো
+                                val destDir = java.io.File(
+                                    android.os.Environment.getExternalStoragePublicDirectory(
+                                        android.os.Environment.DIRECTORY_DOWNLOADS
+                                    ),
+                                    displayName
+                                )
+                                val unzipOk = try {
+                                    withContext(Dispatchers.IO) {
+                                        destDir.mkdirs()
+                                        var ok = true
+                                        java.util.zip.ZipInputStream(java.io.BufferedInputStream(java.io.FileInputStream(saved))).use { zis ->
+                                            var entry = zis.nextEntry
+                                            while (entry != null) {
+                                                // Zip Slip protection
+                                                val outFile = java.io.File(destDir, entry.name)
+                                                if (!outFile.canonicalPath.startsWith(destDir.canonicalPath + java.io.File.separator) &&
+                                                    outFile.canonicalPath != destDir.canonicalPath) {
+                                                    ok = false; break
+                                                }
+                                                if (entry.isDirectory) {
+                                                    outFile.mkdirs()
+                                                } else {
+                                                    outFile.parentFile?.mkdirs()
+                                                    java.io.FileOutputStream(outFile).use { fos -> zis.copyTo(fos) }
+                                                }
+                                                entry = zis.nextEntry
+                                            }
+                                        }
+                                        // Zip file মুছে দাও — user দেখবে না
+                                        saved.delete()
+                                        ok
+                                    }
+                                } catch (_: Exception) { false }
+
+                                isDownloading = false
+                                if (unzipOk) {
+                                    isLocal = true
+                                    Toast.makeText(context, "📁 '$displayName' ফোল্ডার Downloads এ সেভ হয়েছে", Toast.LENGTH_LONG).show()
+                                } else {
+                                    Toast.makeText(context, "ফোল্ডার সেভ করা যায়নি", Toast.LENGTH_SHORT).show()
+                                }
+                            } else {
+                                isDownloading = false
+                                Toast.makeText(context, "ডাউনলোড ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                } else {
+                    // Normal file (non-folder)
+                    if (isLocal && localFile != null) {
+                        openLocalFileWithProvider(context, localFile, fileType ?: "application/octet-stream")
+                    } else {
+                        scope.launch {
+                            isDownloading = true
+                            val saved = downloadToRasgramFolder(context, url, fileName ?: "document_${System.currentTimeMillis()}", fileType ?: "application/octet-stream") { prog ->
+                                downloadProgress = prog
+                            }
+                            isDownloading = false
+                            if (saved != null) {
+                                isLocal = true
+                                Toast.makeText(context, "Rasgram ফোল্ডারে ডাউনলোড হয়েছে", Toast.LENGTH_SHORT).show()
+                                openLocalFileWithProvider(context, saved, fileType ?: "application/octet-stream")
+                            } else {
+                                Toast.makeText(context, "ডাউনলোড ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }
                 }
@@ -3970,39 +4083,43 @@ fun DocumentMessageContent(url: String, fileName: String?, fileType: String?, fi
                             strokeWidth = 3.dp
                         )
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text("${(downloadProgress * 100).toInt()}%", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                        Text(
+                            if (isRasgramFolder) "ডাউনলোড হচ্ছে…" else "${(downloadProgress * 100).toInt()}%",
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelSmall
+                        )
                     }
                 }
             }
         }
 
-        // File info row
+        // File / folder info row
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    fileName ?: "Document",
+                    displayName,   // folder নাম দেখায় — zip prefix/ext ছাড়া
                     style = MaterialTheme.typography.bodyMedium,
                     color = RasGramTheme.TextPrimary,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (fileSize > 0) {
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        "${formatFileSize(fileSize)} • ${iconLabel}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = RasGramTheme.TextMuted
-                    )
-                }
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    buildString {
+                        if (fileSize > 0) append("${formatFileSize(fileSize)} • ")
+                        append(if (isRasgramFolder) "Folder" else iconLabel)
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = RasGramTheme.TextMuted
+                )
             }
             Spacer(modifier = Modifier.width(8.dp))
-            // Icon: check if local (open icon) or not (download icon)
             if (isLocal) {
-                Icon(Icons.Default.OpenInNew, contentDescription = "Open", tint = RasGramTheme.Green, modifier = Modifier.size(22.dp))
+                Icon(Icons.Default.CheckCircle, contentDescription = "Saved", tint = RasGramTheme.Green, modifier = Modifier.size(22.dp))
             } else {
                 Icon(Icons.Default.Download, contentDescription = "Download", tint = RasGramTheme.TextMuted, modifier = Modifier.size(22.dp))
             }
