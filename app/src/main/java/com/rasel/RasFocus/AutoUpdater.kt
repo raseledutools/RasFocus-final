@@ -73,6 +73,7 @@ object AutoUpdater {
             val conn = (URL(apiUrl).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 setRequestProperty("Accept", "application/vnd.github.v3+json")
+                setRequestProperty("User-Agent", "RasFocus-Android-App") // Required by GitHub API
                 connectTimeout = 8000
                 readTimeout = 8000
             }
@@ -223,7 +224,7 @@ object AutoUpdater {
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
             .setContentTitle("RasFocus Update Available — ${info.tagName}")
             .setContentText("নতুন আপডেট ডাউনলোড হয়ে আছে। ট্যাপ করে অ্যাপে গিয়ে Install করুন।")
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setPriority(NotificationCompat.PRIORITY_HIGH) // Changed to HIGH for heads-up popup
             .setAutoCancel(true)
             .apply { if (pendingIntent != null) setContentIntent(pendingIntent) }
             .build()
@@ -263,7 +264,7 @@ object AutoUpdater {
 
     private fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val ch = NotificationChannel(CHANNEL_ID, "App Updates", NotificationManager.IMPORTANCE_DEFAULT).apply {
+            val ch = NotificationChannel(CHANNEL_ID, "App Updates", NotificationManager.IMPORTANCE_HIGH).apply { // Changed to HIGH for popup
                 description = "RasFocus update notifications"
             }
             (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)

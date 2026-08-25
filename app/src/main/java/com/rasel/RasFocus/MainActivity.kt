@@ -910,8 +910,8 @@ class MainActivity : ComponentActivity() {
         // Initialize DataManager so all features have access to persisted state
         com.rasel.RasFocus.DataManager.init(this)
         
-        // Auto-update disabled — user initiates updates manually from the app
-        // AutoUpdater.checkForUpdates(this)
+        // Auto-update check on app launch
+        AutoUpdater.checkForUpdates(this)
         // AutoUpdater.setupBackgroundAutoUpdate(this)
         
         // Ensure Notification Service is running if terms are accepted
