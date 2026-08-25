@@ -309,7 +309,8 @@ class RasgramMessagingService : FirebaseMessagingService() {
             .setShowWhen(true)
             .setWhen(System.currentTimeMillis())
             // ── Vibration & light ─────────────────────────────────────
-            .setDefaults(NotificationCompat.DEFAULT_VIBRATE)
+            // Force vibrate — ringer mode যাই হোক (silent/vibrate/normal)
+            .setVibrate(longArrayOf(0, 400, 200, 400))
             .setLights(RASGRAM_GREEN, 500, 1000)
             // ── Actions ───────────────────────────────────────────────
             .addAction(replyAction)
@@ -337,7 +338,8 @@ class RasgramMessagingService : FirebaseMessagingService() {
                 description          = "Incoming RasGram calls"
                 setSound(ringtoneUri, audioAttr)
                 enableVibration(true)
-                vibrationPattern     = longArrayOf(0, 500, 500, 500)
+                // Strong call pattern: 800ms on, 600ms off — সবসময় vibrate (ringer mode নির্বিশেষে)
+                vibrationPattern     = longArrayOf(0, 800, 600)
                 lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
                 enableLights(true)
                 lightColor           = Color.parseColor("#25D366")
@@ -349,7 +351,8 @@ class RasgramMessagingService : FirebaseMessagingService() {
             NotificationChannel(MSG_CHANNEL, "RasGram Messages", NotificationManager.IMPORTANCE_HIGH).apply {
                 description          = "New RasGram messages"
                 enableVibration(true)
-                vibrationPattern     = longArrayOf(0, 200, 100, 200)
+                // Message pattern: double pulse — সবসময় vibrate
+                vibrationPattern     = longArrayOf(0, 400, 200, 400)
                 setShowBadge(true)
                 lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
                 enableLights(true)

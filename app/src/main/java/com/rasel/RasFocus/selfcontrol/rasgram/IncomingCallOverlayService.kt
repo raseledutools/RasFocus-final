@@ -553,34 +553,29 @@ private fun CallOverlayCard(
         try {
             val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             am.mode = AudioManager.MODE_RINGTONE
-            when (am.ringerMode) {
-                AudioManager.RINGER_MODE_SILENT -> {
-                    // Silent mode — ring বাজাবো না, vibrate ও না
-                }
-                AudioManager.RINGER_MODE_VIBRATE -> {
-                    // Vibrate-only mode — শুধু vibrate
-                    val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as android.os.VibratorManager).defaultVibrator
-                    } else {
-                        @Suppress("DEPRECATION")
-                        context.getSystemService(Context.VIBRATOR_SERVICE) as android.os.Vibrator
-                    }
-                    val pattern = longArrayOf(0, 500, 1000)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        vibrator.vibrate(android.os.VibrationEffect.createWaveform(pattern, 0))
-                    } else {
-                        @Suppress("DEPRECATION")
-                        vibrator.vibrate(pattern, 0)
-                    }
-                }
-                else -> {
-                    // Normal mode — phone এর ring volume অনুযায়ী বাজাও (force max নয়)
-                    val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
-                    val rt  = RingtoneManager.getRingtone(context, uri)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) rt?.isLooping = true
-                    rt?.play()
-                    ringtoneRef.value = rt
-                }
+
+            // ── Force vibrate সবসময় — ringer mode যাই হোক ──────────────────
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as android.os.VibratorManager).defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                context.getSystemService(Context.VIBRATOR_SERVICE) as android.os.Vibrator
+            }
+            val callPattern = longArrayOf(0, 800, 600)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createWaveform(callPattern, 0))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(callPattern, 0)
+            }
+
+            // ── Ring: Normal mode এ ring ও বাজাও (vibrate এর সাথে) ──────────
+            if (am.ringerMode == AudioManager.RINGER_MODE_NORMAL) {
+                val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+                val rt  = RingtoneManager.getRingtone(context, uri)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) rt?.isLooping = true
+                rt?.play()
+                ringtoneRef.value = rt
             }
         } catch (_: Exception) {}
         onDispose {
@@ -589,7 +584,6 @@ private fun CallOverlayCard(
                 ringtoneRef.value = null
                 val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
                 am.mode = AudioManager.MODE_NORMAL
-                // vibrate mode এ চলছিল — cancel করো
                 val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as android.os.VibratorManager).defaultVibrator
                 } else {
