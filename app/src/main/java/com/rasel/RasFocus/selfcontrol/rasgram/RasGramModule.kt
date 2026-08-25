@@ -2990,7 +2990,7 @@ fun ChatArea(
                             scope.launch {
                                 if (isLanAvailable && lanPeer != null) {
                                     // ── LAN: Cloudinary নয়, সরাসরি TCP দিয়ে ────────
-                                    lanManager.sendVoice(lanPeer, file, recordingSeconds, chatId)
+                                    lanManager.sendVoice(lanPeer, file, recordingSeconds.toLong(), chatId)
                                     Toast.makeText(context, "📶 LAN দিয়ে voice পাঠানো হয়েছে", Toast.LENGTH_SHORT).show()
                                 } else {
                                     val (url, fileName, _) = uploadToCloudinary(context, file.toUri()) { prog -> uploadProgress = prog }

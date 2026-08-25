@@ -259,6 +259,9 @@ class LanChatManager private constructor(private val context: Context) {
                         if (type == "voice") durationSecs else null
                     )
                 }
+                else -> {
+                    // Unknown type — ignore
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "handleTcpClient: ${e.message}")
