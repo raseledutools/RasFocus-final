@@ -393,6 +393,10 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                         val u = hiddenPkgs.toMutableSet(); u.add(pkg); hiddenPkgs = u
                         prefs.edit().putStringSet(KEY_HIDDEN, u).apply()
                     },
+                    onUnhide   = { pkg ->
+                        val u = hiddenPkgs.toMutableSet(); u.remove(pkg); hiddenPkgs = u
+                        prefs.edit().putStringSet(KEY_HIDDEN, u).apply()
+                    },
                     onRename   = { pkg, name ->
                         val u = renamedMap.toMutableMap()
                         if (name.isBlank()) u.remove(pkg) else u[pkg] = name
@@ -600,20 +604,20 @@ fun HomeScreen(
                     val isTargetSlot = reorderMode && selectedIndex != null && selectedIndex != index
 
                     var homeAppPressed by remember { mutableStateOf(false) }
-                    val homeAppScale by animateFloatAsState(
-                        targetValue   = if (homeAppPressed || isSelected) 0.92f else 1f,
-                        animationSpec = tween(110),
-                        label         = "homeAppScale"
+                    val homeAppBgAlpha by animateFloatAsState(
+                        targetValue   = if (homeAppPressed) 0.13f else 0f,
+                        animationSpec = tween(80),
+                        label         = "homeAppBg"
                     )
 
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .graphicsLayer { scaleX = homeAppScale; scaleY = homeAppScale }
                             .then(
                                 when {
                                     isSelected   -> Modifier.drawBehind { drawRect(ACCENT.copy(alpha = 0.18f)) }
                                     isTargetSlot -> Modifier.drawBehind { drawRect(Color.White.copy(alpha = 0.05f)) }
+                                    homeAppPressed -> Modifier.drawBehind { drawRect(Color.White.copy(alpha = homeAppBgAlpha)) }
                                     else         -> Modifier
                                 }
                             )
@@ -1067,6 +1071,7 @@ fun SidebarContent(
     onLaunch:      (AppInfo) -> Unit,
     onPin:         (String) -> Unit,
     onHide:        (String) -> Unit,
+    onUnhide:      (String) -> Unit = {},
     onRename:      (String, String) -> Unit,
     onSettings:    () -> Unit,
     onClose:       () -> Unit
@@ -1075,6 +1080,21 @@ fun SidebarContent(
     var contextApp by remember { mutableStateOf<AppInfo?>(null) }
     val searchFocus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
+    var showHidden by remember { mutableStateOf(false) }
+
+    // Hidden apps list for inline panel
+    val hiddenAppsList = remember(hiddenPkgs, allApps) {
+        hiddenPkgs.mapNotNull { pkg -> allApps.find { it.packageName == pkg }
+            ?: run {
+                // app might not be in allApps (already filtered out); create minimal entry
+                try {
+                    val pm = context.packageManager
+                    val ai = pm.getApplicationInfo(pkg, 0)
+                    AppInfo(label = pm.getApplicationLabel(ai).toString(), packageName = pkg)
+                } catch (_: Exception) { null }
+            }
+        }
+    }
 
     // Auto-focus search bar when sidebar opens
     LaunchedEffect(Unit) {
@@ -1143,13 +1163,102 @@ fun SidebarContent(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text("Apps", color = TXT, fontSize = 18.sp, fontWeight = FontWeight.Light)
-            Row {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Hidden apps toggle button
+                if (hiddenPkgs.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (showHidden) ACCENT.copy(alpha = 0.18f) else Color.Transparent)
+                            .clickable { showHidden = !showHidden }
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                if (showHidden) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                contentDescription = "Hidden apps",
+                                tint = if (showHidden) ACCENT else DIM,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                "${hiddenPkgs.size}",
+                                color = if (showHidden) ACCENT else DIM,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(12.dp))
+                }
                 Icon(Icons.Default.Settings, null, tint = DIM,
                     modifier = Modifier.size(20.dp).clickable { onSettings() })
                 Spacer(Modifier.width(16.dp))
                 Icon(Icons.Default.Close, null, tint = DIM,
                     modifier = Modifier.size(20.dp).clickable { onClose() })
             }
+        }
+
+        // ── Hidden apps panel — slides in when toggle is on ───────────────
+        AnimatedVisibility(
+            visible = showHidden && hiddenAppsList.isNotEmpty(),
+            enter   = expandVertically(animationSpec = tween(220)) + fadeIn(tween(180)),
+            exit    = shrinkVertically(animationSpec = tween(180)) + fadeOut(tween(140))
+        ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF141414))
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+            ) {
+                Text(
+                    "Hidden Apps",
+                    color = ACCENT.copy(alpha = 0.7f),
+                    fontSize = 11.sp,
+                    letterSpacing = 0.8.sp,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                hiddenAppsList.forEach { app ->
+                    var hiddenRowPressed by remember { mutableStateOf(false) }
+                    val hiddenBgAlpha by animateFloatAsState(
+                        targetValue = if (hiddenRowPressed) 0.10f else 0f,
+                        animationSpec = tween(80),
+                        label = "hiddenBg"
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .drawBehind { drawRect(Color.White.copy(alpha = hiddenBgAlpha)) }
+                            .pointerInput(Unit) {
+                                awaitEachGesture {
+                                    awaitFirstDown(requireUnconsumed = false)
+                                    hiddenRowPressed = true
+                                    waitForUpOrCancellation()
+                                    hiddenRowPressed = false
+                                }
+                            }
+                            .clickable { onUnhide(app.packageName) }
+                            .padding(vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = app.customName.ifBlank { app.label },
+                            color = TXT.copy(alpha = 0.75f),
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Light,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            "Unhide",
+                            color = ACCENT.copy(alpha = 0.8f),
+                            fontSize = 12.sp
+                        )
+                    }
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.04f), thickness = 0.5.dp)
+                }
+            }
+            HorizontalDivider(color = Color(0xFF1E1E1E), thickness = 0.5.dp)
         }
 
         // ── Search bar ────────────────────────────────────────────────────
@@ -1255,7 +1364,9 @@ fun SidebarContent(
 
         // ── App list + letter index ───────────────────────────────────────
         Box(Modifier.weight(1f)) {
+            val sidebarListState = rememberLazyListState()
             LazyColumn(
+                state = sidebarListState,
                 Modifier
                     .fillMaxSize()
                     .padding(end = 20.dp)
@@ -1263,27 +1374,24 @@ fun SidebarContent(
                 items(filtered, key = { it.packageName }) { app ->
                     val displayName = renamedMap[app.packageName] ?: app.label
                     var appPressed by remember { mutableStateOf(false) }
-                    val appScale by animateFloatAsState(
-                        targetValue = if (appPressed) 0.93f else 1f,
-                        animationSpec = tween(120),
-                        label = "appScale"
+                    val appBgAlpha by animateFloatAsState(
+                        targetValue = if (appPressed) 0.10f else 0f,
+                        animationSpec = tween(80),
+                        label = "appBg"
                     )
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .graphicsLayer { scaleX = appScale; scaleY = appScale }
+                            .drawBehind { if (appPressed) drawRect(Color.White.copy(alpha = appBgAlpha)) }
                             .combinedClickable(
-                                onClick = {
-                                    appPressed = true
-                                    onLaunch(app)
-                                },
+                                onClick = { onLaunch(app) },
                                 onLongClick = { contextApp = app }
                             )
                             .pointerInput(Unit) {
                                 awaitEachGesture {
                                     awaitFirstDown(requireUnconsumed = false)
                                     appPressed = true
-                                    val up = waitForUpOrCancellation()
+                                    waitForUpOrCancellation()
                                     appPressed = false
                                 }
                             }
