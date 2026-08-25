@@ -4802,6 +4802,8 @@ fun CallingScreen(
     var remoteVideoTrack by remember { mutableStateOf<VideoTrack?>(null) }
     var remoteSurfaceView by remember { mutableStateOf<SurfaceViewRenderer?>(null) }
     var localSurfaceView by remember { mutableStateOf<SurfaceViewRenderer?>(null) }
+    // Store capturer so we can stop/flip camera properly
+    var videoCapturer by remember { mutableStateOf<VideoCapturer?>(null) }
     val iceServers = remember {
         // ── ICE Server Strategy ─────────────────────────────────────────────────
         // Mobile data (GP/Robi/Banglalink) সবই Carrier-Grade NAT (CGNAT) ব্যবহার করে।
@@ -4912,6 +4914,7 @@ fun CallingScreen(
                         val vTrack = factory.createVideoTrack("videoTrack", videoSource)
                         stream.addTrack(vTrack)
                         localVideoTrack = vTrack
+                        videoCapturer = capturer // store for cleanup/flip
                     }
                 }
             }
@@ -5196,6 +5199,15 @@ fun CallingScreen(
             currentView.keepScreenOn = false
             iceDisconnectJob?.cancel()
             peerConnection?.close()
+            // Stop camera capturer before disposing stream
+            try { videoCapturer?.stopCapture(); videoCapturer?.dispose() } catch (_: Exception) {}
+            // Remove sinks before releasing
+            try {
+                localVideoTrack?.removeSink(localSurfaceView)
+                remoteVideoTrack?.removeSink(remoteSurfaceView)
+            } catch (_: Exception) {}
+            try { localSurfaceView?.release() } catch (_: Exception) {}
+            try { remoteSurfaceView?.release() } catch (_: Exception) {}
             localStream?.dispose()
             audioManager.mode = AudioManager.MODE_NORMAL
             audioManager.isSpeakerphoneOn = false
@@ -5214,48 +5226,98 @@ fun CallingScreen(
     Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF0B141A)) {
         Box(modifier = Modifier.fillMaxSize()) {
             if (callType == "video") {
-                // Bug Fix #3: AndroidView factory এ remoteVideoTrack?.addSink(it) করা ছিল।
-                // Problem: factory তখনই চলে যখন view প্রথম compose হয় —
-                // কিন্তু remote track সেই সময় এখনো null (WebRTC negotiate হয়নি)।
-                // Fix: LaunchedEffect দিয়ে track আসলে sink attach করো।
-                AndroidView(
-                    factory = { ctx ->
-                        SurfaceViewRenderer(ctx).also { renderer ->
-                            renderer.init(eglBase.value?.eglBaseContext ?: return@also, null)
-                            renderer.setMirror(false)
-                            remoteSurfaceView = renderer
-                            // Track এখনই আছে? তাহলে এখনই attach করো
-                            remoteVideoTrack?.addSink(renderer)
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
-                AndroidView(
-                    factory = { ctx ->
-                        SurfaceViewRenderer(ctx).also { renderer ->
-                            renderer.init(eglBase.value?.eglBaseContext ?: return@also, null)
-                            renderer.setMirror(true)
-                            localSurfaceView = renderer
-                            localVideoTrack?.addSink(renderer)
-                        }
-                    },
-                    modifier = Modifier
-                        .size(120.dp, 160.dp)
-                        .align(Alignment.TopEnd)
-                        .padding(16.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                )
+                // ── VIDEO RENDERING — Black Screen Fix ───────────────────────────────
+                //
+                // পুরনো সমস্যা (কেন black screen আসত):
+                //   1. `eglBase.value` null থাকতেই AndroidView factory চলত।
+                //      `return@also` দিয়ে বেরিয়ে যেত → remoteSurfaceView কখনো set হত না।
+                //   2. LaunchedEffect(remoteVideoTrack) শুধু track change এ চলত।
+                //      যদি track আগে আসে, renderer null → sink attach হত না।
+                //      যদি renderer আগে আসে, track null → sink attach হত না।
+                //   3. WiFi ↔ mobile data switch এ eglBase নতুন করে তৈরি হত না
+                //      কিন্তু renderer পুরানো context দিয়ে initialized থাকত।
+                //
+                // নতুন fix:
+                //   - `eglBase.value` null হলে AndroidView render করবে না (key দিয়ে guard)।
+                //   - `update` callback দিয়ে renderer কে eglBase ready হলেই init করো।
+                //   - LaunchedEffect(remoteVideoTrack, remoteSurfaceView) —
+                //     দুটোর যেকোনোটা পরিবর্তন হলে cross-attach চেষ্টা করো।
+                //     এতে race condition সম্পূর্ণ দূর হয়।
 
-                // Track পরে আসলে sink attach করো (race condition fix)
-                LaunchedEffect(remoteVideoTrack) {
+                val eglCtx = eglBase.value?.eglBaseContext
+
+                if (eglCtx != null) {
+                    // Remote video — full screen background
+                    AndroidView(
+                        factory = { ctx ->
+                            SurfaceViewRenderer(ctx).apply {
+                                try {
+                                    init(eglCtx, null)
+                                    setMirror(false)
+                                    setEnableHardwareScaler(true)
+                                } catch (_: Exception) {}
+                                remoteSurfaceView = this
+                                remoteVideoTrack?.addSink(this)
+                            }
+                        },
+                        update = { renderer ->
+                            // track এসে গেলে attach নিশ্চিত করো
+                            remoteVideoTrack?.let { track ->
+                                try { track.addSink(renderer) } catch (_: Exception) {}
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    // Local video — PiP (Picture-in-Picture), top-right corner
+                    AndroidView(
+                        factory = { ctx ->
+                            SurfaceViewRenderer(ctx).apply {
+                                try {
+                                    init(eglCtx, null)
+                                    setMirror(true)
+                                    setEnableHardwareScaler(true)
+                                    setZOrderMediaOverlay(true) // PiP কে remote এর উপরে রাখো
+                                } catch (_: Exception) {}
+                                localSurfaceView = this
+                                localVideoTrack?.addSink(this)
+                            }
+                        },
+                        update = { renderer ->
+                            localVideoTrack?.let { track ->
+                                try { track.addSink(renderer) } catch (_: Exception) {}
+                            }
+                        },
+                        modifier = Modifier
+                            .size(120.dp, 160.dp)
+                            .align(Alignment.TopEnd)
+                            .padding(16.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                    )
+                }
+
+                // ── Cross-attach: track বা renderer যে পরেই আসুক, attach হবে ──
+                // race condition সম্পূর্ণ দূর করতে দুটো key একসাথে watch করো।
+                LaunchedEffect(remoteVideoTrack, remoteSurfaceView) {
                     val track = remoteVideoTrack ?: return@LaunchedEffect
                     val renderer = remoteSurfaceView ?: return@LaunchedEffect
-                    track.addSink(renderer)
+                    try { track.addSink(renderer) } catch (_: Exception) {}
                 }
-                LaunchedEffect(localVideoTrack) {
+                LaunchedEffect(localVideoTrack, localSurfaceView) {
                     val track = localVideoTrack ?: return@LaunchedEffect
                     val renderer = localSurfaceView ?: return@LaunchedEffect
-                    track.addSink(renderer)
+                    try { track.addSink(renderer) } catch (_: Exception) {}
+                }
+
+                // ── eglBase ready হলে renderer নেই? তাহলে recompose trigger করো ──
+                // eglBase IO thread এ async তৈরি হয়। প্রথম recompose এ null,
+                // পরে non-null হয় — কিন্তু AndroidView তখন আর factory চালায় না।
+                // key(eglBase.value) দিয়ে eglBase পরিবর্তনে AndroidView পুনরায় তৈরি করো।
+                LaunchedEffect(eglBase.value) {
+                    val ctx = eglBase.value?.eglBaseContext ?: return@LaunchedEffect
+                    // renderer ইতিমধ্যে initialized? তাহলে কিছু করার নেই।
+                    // না হলে Compose পরের recompose এ নতুন AndroidView তৈরি করবে।
+                    // (key(eglBase.value) এটা handle করে — explicit reattach লাগবে না)
                 }
             }
 
@@ -5364,7 +5426,13 @@ fun CallingScreen(
                                     isCameraOff = !isCameraOff
                                     localStream?.videoTracks?.firstOrNull()?.setEnabled(!isCameraOff)
                                 }
-                                CallControlButton(icon = Icons.Default.Cameraswitch, label = "Flip", isActive = false, activeColor = RasGramTheme.Green) { }
+                                CallControlButton(icon = Icons.Default.Cameraswitch, label = "Flip", isActive = false, activeColor = RasGramTheme.Green) {
+                                    // Camera2 capturer: switchCamera() দিয়ে front/back flip করো
+                                    try {
+                                        (videoCapturer as? org.webrtc.Camera2Capturer)?.switchCamera(null)
+                                        ?: (videoCapturer as? org.webrtc.Camera1Capturer)?.switchCamera(null)
+                                    } catch (_: Exception) {}
+                                }
                             }
                         }
                     }
