@@ -134,23 +134,25 @@ class RasGramPresenceService : Service() {
             }
         }
 
-        val openIntent = PendingIntent.getActivity(
-            this, 0,
-            packageManager.getLaunchIntentForPackage(packageName),
-            PendingIntent.FLAG_IMMUTABLE
-        )
-
-        return NotificationCompat.Builder(this, PRESENCE_CHANNEL)
+        val builder = NotificationCompat.Builder(this, PRESENCE_CHANNEL)
             .setSmallIcon(R.drawable.ic_rasgram_notif)
-            .setContentTitle("RasGram")
-            .setContentText("Online")
+            .setContentTitle("")
+            .setContentText("")
             .setPriority(NotificationCompat.PRIORITY_MIN)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setSilent(true)
             .setOngoing(true)
             .setShowWhen(false)
-            .setContentIntent(openIntent)
-            .build()
+            .setVisibility(NotificationCompat.VISIBILITY_SECRET)
+
+        // Android 12+ (S): defer the notification so it never appears in the shade
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            builder.setForegroundServiceBehavior(
+                NotificationCompat.FOREGROUND_SERVICE_DEFERRED
+            )
+        }
+
+        return builder.build()
     }
 
     companion object {
