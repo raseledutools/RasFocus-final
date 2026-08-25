@@ -251,7 +251,9 @@ class LanChatManager private constructor(private val context: Context) {
                     fos.close()
 
                     // Save to Firebase with local file path as URL placeholder
-                    val localUrl = "lan://${outFile.absolutePath}"
+                    // FIX: Changed from "lan://" to "file://" so that standard Android
+                    // components like Coil (AsyncImage) and MediaPlayer can read it
+                    val localUrl = "file://${outFile.absolutePath}"
                     saveMessageToFirestore(
                         chatId, senderMobile, senderName,
                         if (type == "voice") "" else "",
@@ -302,6 +304,9 @@ class LanChatManager private constructor(private val context: Context) {
                     put("fileName", file.name)
                 }
                 sendTcpPacket(peer, header, file)
+                // FIX: Also persist locally (sender side) so the UI updates
+                val localUrl = "file://${file.absolutePath}"
+                saveMessageToFirestore(chatId, myMobile, myName, "", localUrl, file.name, mimeType, null)
             } catch (e: Exception) {
                 Log.e(TAG, "sendFile: ${e.message}")
             }
@@ -322,6 +327,9 @@ class LanChatManager private constructor(private val context: Context) {
                     put("durationSecs", durationSecs)
                 }
                 sendTcpPacket(peer, header, file)
+                // FIX: Also persist locally (sender side) so the UI updates
+                val localUrl = "file://${file.absolutePath}"
+                saveMessageToFirestore(chatId, myMobile, myName, "", localUrl, file.name, "audio/mp4", durationSecs)
             } catch (e: Exception) {
                 Log.e(TAG, "sendVoice: ${e.message}")
             }
@@ -364,7 +372,8 @@ class LanChatManager private constructor(private val context: Context) {
     ) {
         try {
             val db = FirebaseFirestore.getInstance()
-            val msgId = db.collection("chats").document(chatId).collection("messages").document().id
+            // FIX: Incorrect Firestore path. RasGram uses pvt_msg_$chatId for private chats.
+            val msgId = db.collection("pvt_msg_$chatId").document().id
             val timestamp = System.currentTimeMillis()
             val dateStr = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(timestamp))
 
@@ -383,8 +392,10 @@ class LanChatManager private constructor(private val context: Context) {
             if (mimeType != null) data["fileType"] = mimeType
             if (durationSecs != null && durationSecs > 0) data["durationSecs"] = durationSecs
 
-            db.collection("chats").document(chatId)
-                .collection("messages").document(msgId)
+            // Because Firestore has local caching enabled by default in Android,
+            // this set() call works instantly offline, and the UI's SnapshotListener
+            // will pick it up and show it in the chat screen immediately!
+            db.collection("pvt_msg_$chatId").document(msgId)
                 .set(data)
                 .addOnFailureListener { e ->
                     Log.w(TAG, "Firestore save failed (LAN msg): ${e.message}")
