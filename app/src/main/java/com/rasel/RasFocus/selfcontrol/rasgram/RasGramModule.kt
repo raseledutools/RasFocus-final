@@ -1845,6 +1845,41 @@ fun ChatsTab(
         }
     }
 
+    // ── RTDB presence: contact list এ real-time online status ─────────────────
+    // সমস্যা: Firestore lastActive শুধু আপডেট হয় যখন contact এর app চালু থাকে।
+    // Data বন্ধ হলে contact এর client side listener মরে যায় → Firestore stale থাকে
+    // → contact list এ সবসময় "online" দেখায় (ONLINE_THRESHOLD_MS পার না হওয়া পর্যন্ত)।
+    // Fix: RTDB presence node সরাসরি read করো — Firebase server onDisconnect handle করে,
+    // data/WiFi বন্ধ হলেই server নিজে online:false লিখে দেয়। Real-time, accurate।
+    var rtdbLastActive by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
+
+    LaunchedEffect(users) {
+        if (users.isEmpty()) return@LaunchedEffect
+        val rtdb = com.google.firebase.database.FirebaseDatabase.getInstance()
+        users.forEach { user ->
+            val presenceRef = rtdb.getReference("presence").child(user.mobile)
+            presenceRef.addValueEventListener(object : com.google.firebase.database.ValueEventListener {
+                override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
+                    val isOnlineRtdb = snapshot.child("online").getValue(Boolean::class.java) ?: false
+                    val lastActiveRtdb = snapshot.child("lastActive").getValue(Long::class.java) ?: 0L
+                    val effectiveLastActive = when {
+                        isOnlineRtdb -> System.currentTimeMillis()   // সত্যিই online → now
+                        lastActiveRtdb > 0 -> lastActiveRtdb          // offline → disconnect timestamp
+                        else -> return                                  // কোনো data নেই → skip
+                    }
+                    rtdbLastActive = rtdbLastActive + (user.mobile to effectiveLastActive)
+                }
+                override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
+            })
+        }
+    }
+
+    // RTDB data দিয়ে users এর lastActive override করো — Firestore এর চেয়ে accurate
+    val usersWithLivePresence = users.map { user ->
+        val rtdbTs = rtdbLastActive[user.mobile]
+        if (rtdbTs != null) user.copy(lastActive = rtdbTs) else user
+    }
+
     // ── Firestore latest message sync → Room + UI update ──────────────────────
     // এটা background sync — chat list এ last message দেখানোর জন্য
     // Room থেকে instant load হয়েছে already — এটা শুধু update করে
@@ -1919,7 +1954,7 @@ fun ChatsTab(
             .map { preview ->
                 User(mobile = preview.contactMobile, name = preview.contactName, avatarUrl = preview.contactAvatarUrl)
             }
-    } else users
+    } else usersWithLivePresence  // RTDB presence দিয়ে lastActive override করা
 
     val filteredUsers = displayUsers.filter { user ->
         val isInPhonebook = when {
