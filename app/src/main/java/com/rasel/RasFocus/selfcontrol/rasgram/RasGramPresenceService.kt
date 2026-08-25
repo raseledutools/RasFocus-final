@@ -37,7 +37,11 @@ class RasGramPresenceService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        startForeground(PRESENCE_NOTIF_ID, buildNotification())
+        // FIX: user requested to completely remove the persistent notification.
+        // The service will now run as a normal background service.
+        // Android will kill it shortly after the app goes to the background,
+        // which will trigger the RTDB onDisconnect() hook to mark the user as offline.
+        // This gives accurate WhatsApp-style "Online" status (only online while using the app).
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -116,46 +120,7 @@ class RasGramPresenceService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private fun buildNotification(): Notification {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-            if (nm.getNotificationChannel(PRESENCE_CHANNEL) == null) {
-                NotificationChannel(
-                    PRESENCE_CHANNEL,
-                    "RasGram Online Status",
-                    NotificationManager.IMPORTANCE_MIN
-                ).apply {
-                    description          = "Keeps your online status active"
-                    setShowBadge(false)
-                    setSound(null, null)
-                    enableVibration(false)
-                    enableLights(false)
-                }.also { nm.createNotificationChannel(it) }
-            }
-        }
-
-        val openIntent = PendingIntent.getActivity(
-            this, 0,
-            packageManager.getLaunchIntentForPackage(packageName),
-            PendingIntent.FLAG_IMMUTABLE
-        )
-
-        return NotificationCompat.Builder(this, PRESENCE_CHANNEL)
-            .setSmallIcon(R.drawable.ic_rasgram_notif)
-            .setContentTitle("RasGram")
-            .setContentText("Online")
-            .setPriority(NotificationCompat.PRIORITY_MIN)
-            .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .setSilent(true)
-            .setOngoing(true)
-            .setShowWhen(false)
-            .setContentIntent(openIntent)
-            .build()
-    }
-
     companion object {
-        const val PRESENCE_NOTIF_ID = 7776
-        const val PRESENCE_CHANNEL  = "RASGRAM_PRESENCE"
         const val EXTRA_MOBILE      = "mobile"
         const val PREF_NAME         = "rasgram_prefs"
         const val PREF_MOBILE       = "saved_mobile"

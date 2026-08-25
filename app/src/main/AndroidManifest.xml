@@ -1001,13 +1001,12 @@
         android:foregroundServiceType="phoneCall" />
 
     <!-- RasGram — Online Presence Service
-         Data/WiFi চালু থাকলেই online দেখাবে, background এও।
-         foregroundServiceType="dataSync" — network-bound background work।
-         IMPORTANCE_MIN notification: কোনো sound/vibration নেই, সবার নিচে। -->
+         Data/WiFi চালু থাকলেই online দেখাবে (Foreground Service নয়, Normal Service)।
+         Background এ app চলে গেলে কিছুক্ষন পর Android Service টি kill করে দেবে,
+         তখন Firebase onDisconnect() নিজে থেকেই online: false করে দেবে। -->
     <service
         android:name=".selfcontrol.rasgram.RasGramPresenceService"
-        android:exported="false"
-        android:foregroundServiceType="dataSync" />
+        android:exported="false" />
 
     <!-- RasGram — Daily archive Worker (WorkManager)
          Automatically archives old messages to Google Drive every 24 hours.
