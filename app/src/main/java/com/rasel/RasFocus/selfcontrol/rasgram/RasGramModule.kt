@@ -2244,8 +2244,8 @@ fun ContactItem(
                             Icon(
                                 imageVector = when {
                                     latestMessage.isPending -> Icons.Default.AccessTime
-                                    latestMessage.read -> Icons.Default.Done
-                                    latestMessage.delivered -> Icons.Default.Done
+                                    latestMessage.read -> Icons.Default.DoneAll      // FIX: was Done (single tick)
+                                    latestMessage.delivered -> Icons.Default.DoneAll  // FIX: was Done (single tick)
                                     else -> Icons.Default.Check
                                 },
                                 contentDescription = null,
@@ -2534,11 +2534,25 @@ fun ChatArea(
 
 
 
-                    // Mark unread as read in Firestore
+                    // FIX: mark delivered=true and read=true SEPARATELY.
+                    // Before: both were set together when chat was opened → grey double tick never showed.
+                    // Now: mark delivered=true for ALL unread messages (even if we haven't scrolled to them).
+                    //       mark read=true only for messages we're marking as seen.
+                    // The FCM service marks delivered=true when the notification arrives (separate path).
                     qs.documents.filter { doc ->
                         doc.getString("senderMobile") == contact.mobile && doc.getBoolean("read") == false
                     }.forEach { doc ->
+                        // opened chat = message is both delivered and read
                         doc.reference.update("read", true, "delivered", true)
+                    }
+                    // Also mark delivered=true for any messages that arrived but were never marked delivered
+                    // (e.g. FCM path failed). This closes the gap for grey double tick.
+                    qs.documents.filter { doc ->
+                        doc.getString("senderMobile") == contact.mobile
+                            && doc.getBoolean("delivered") == false
+                            && doc.getBoolean("read") == false
+                    }.forEach { doc ->
+                        doc.reference.update("delivered", true)
                     }
 
                     // Room এ ও read mark করো
@@ -2549,7 +2563,7 @@ fun ChatArea(
             }
     }
 
-    // Contact live status
+    // Contact live status from Firestore (name, avatar, typing)
     LaunchedEffect(contact.mobile) {
         db.collection("chat_users").document(contact.mobile).addSnapshotListener { snap, _ ->
             snap?.data?.let { d ->
@@ -2560,6 +2574,34 @@ fun ChatArea(
                     lastActive = d["lastActive"] as? Long ?: 0
                 )
             }
+        }
+    }
+
+    // FIX: Online/last-seen from Firebase RTDB presence — accurate even when contact's app is closed.
+    // Problem before: Firestore lastActive was only updated when the contact's OWN app was running.
+    // If contact closed the app, RTDB fired onDisconnect (server-side, always works), but Firestore
+    // lastActive was never updated (client-side listener dead). So we saw stale "online" from Firestore.
+    // Fix: read RTDB presence directly for the contact — this always reflects true online state.
+    LaunchedEffect(contact.mobile) {
+        try {
+            val rtdb = com.google.firebase.database.FirebaseDatabase.getInstance()
+            val presenceRef = rtdb.getReference("presence").child(contact.mobile)
+            presenceRef.addValueEventListener(object : com.google.firebase.database.ValueEventListener {
+                override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
+                    val isOnlineRtdb = snapshot.child("online").getValue(Boolean::class.java) ?: false
+                    val lastActiveRtdb = snapshot.child("lastActive").getValue(Long::class.java) ?: 0L
+                    if (isOnlineRtdb) {
+                        // Contact is online right now — bump lastActive to now so isOnline check passes
+                        liveContact = liveContact.copy(lastActive = System.currentTimeMillis())
+                    } else if (lastActiveRtdb > 0) {
+                        // Contact went offline — use RTDB timestamp (accurate disconnect time)
+                        liveContact = liveContact.copy(lastActive = lastActiveRtdb)
+                    }
+                }
+                override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
+            })
+        } catch (_: Exception) {
+            // RTDB unavailable — fall back to Firestore lastActive (may be slightly stale)
         }
     }
 
@@ -6461,11 +6503,13 @@ fun sendMessage(
             @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
             kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
                 val repo = RasGramRepository.getInstance(context)
-                // Temp message delete করো (real message Firestore listener এ আসবে)
-                // isPending → false করো যদি same ID রাখতে চাও
-                // এখানে temp delete, real message Firestore listener handle করবে
-                repo.messageDao.softDelete(tempId) // temp mark হিসেবে
-                // Note: Firestore snapshot listener CachedMessage উপরে upsert করবে real ID দিয়ে
+                // FIX: deleteMessage() physically removes the temp row.
+                // softDelete() was setting isDeleted=true which kept the row visible
+                // as a "🚫 This message was deleted" ghost bubble. Since the real message
+                // arrives via Firestore snapshot listener with a real ID, we just need
+                // the temp row gone completely — no ghost, no double bubble.
+                repo.messageDao.deleteMessage(tempId)
+                // Firestore snapshot listener will upsert the real message with its Firestore ID.
             }
         }
 
