@@ -126,6 +126,7 @@ const val PREF_UID = "saved_uid"
 const val PREF_AVATAR = "saved_avatar"
 const val PREF_CALL_DELIVERY = "call_delivery_method"
 const val PREF_SA_JSON = "service_account_json"
+const val PREF_LAN_MODE = "lan_mode_enabled"   // LAN/Local mode toggle
 const val MAX_RETRY = 3
 const val TYPING_DEBOUNCE_MS = 2500L
 const val ONLINE_THRESHOLD_MS = 120_000L
@@ -407,6 +408,14 @@ fun RasGramApp(
     // (login flow এর onLogin callback এ নতুন login cover হয়)
     LaunchedEffect(initialUser) {
         initialUser?.let { RasGramPresenceService.start(context, it.mobile) }
+    }
+
+    // ── LAN Mode auto-start: settings এ চালু থাকলে app open হলেই start ──────
+    LaunchedEffect(initialUser) {
+        val lanEnabled = prefs.getBoolean(PREF_LAN_MODE, false)
+        if (lanEnabled && initialUser != null) {
+            LanChatManager.getInstance(context).start(initialUser.mobile, initialUser.name)
+        }
     }
 
     MaterialTheme(colorScheme = if (isDarkMode) darkColorScheme(
@@ -1754,6 +1763,10 @@ fun ChatsTab(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
+    // ── LAN discovered users (for badge in contact list) ──────────────────────
+    val lanManager = remember { LanChatManager.getInstance(context) }
+    val lanDiscoveredUsers by lanManager.discoveredUsers.collectAsState()
+
     // ── WhatsApp-style: Room DB থেকে cached chat previews instant load ─────────
     val rasGramRepo = remember { RasGramRepository.getInstance(context) }
     val cachedPreviews by rasGramRepo.chatPreviewDao
@@ -2023,6 +2036,7 @@ fun ChatsTab(
                     unreadCount = unreadCounts[user.mobile] ?: 0,
                     isSelected = selectedContact?.mobile == user.mobile,
                     currentUserMobile = currentUser.mobile,
+                    isLanAvailable = lanDiscoveredUsers.any { it.mobile == user.mobile },
                     onClick = { onContactSelect(user) }
                 )
                 HorizontalDivider(color = RasGramTheme.DividerColor, thickness = 0.5.dp, modifier = Modifier.padding(start = 80.dp))
@@ -2169,6 +2183,7 @@ fun ContactItem(
     unreadCount: Int,
     isSelected: Boolean,
     currentUserMobile: String,
+    isLanAvailable: Boolean = false,
     onClick: () -> Unit
 ) {
     val isOnline = user.lastActive > System.currentTimeMillis() - ONLINE_THRESHOLD_MS
@@ -2190,10 +2205,19 @@ fun ContactItem(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Avatar + online dot — UserAvatar handles empty names locally
+            // Avatar + online/LAN dot
             Box(modifier = Modifier.size(54.dp)) {
                 UserAvatar(user = user, size = 54.dp)
-                if (isOnline) {
+                if (isLanAvailable) {
+                    // LAN badge — cyan colour, slightly bigger than online dot
+                    Box(
+                        modifier = Modifier
+                            .size(16.dp)
+                            .align(Alignment.BottomEnd)
+                            .border(2.dp, RasGramTheme.DarkBackground, CircleShape)
+                            .background(Color(0xFF00BCD4), CircleShape)
+                    )
+                } else if (isOnline) {
                     Box(
                         modifier = Modifier
                             .size(14.dp)
@@ -2217,6 +2241,14 @@ fun ContactItem(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
+                    // LAN badge — internet ছাড়াই connect হওয়া বোঝাতে
+                    if (isLanAvailable) {
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            "📶",
+                            fontSize = 12.sp
+                        )
+                    }
                     // Time — red for missed call, green for unread, muted otherwise
                     Text(
                         latestMessage?.timeString ?: "",
@@ -2317,7 +2349,16 @@ fun ChatArea(
     // ── WhatsApp-style: Room DB থেকে instant load, Firestore background sync ──
     val rasGramRepo = remember { RasGramRepository.getInstance(context) }
 
-
+    // ── LAN Mode ─────────────────────────────────────────────────────────────
+    val prefs = remember { context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE) }
+    val lanModeEnabled = remember { prefs.getBoolean(PREF_LAN_MODE, false) }
+    val lanManager = remember { LanChatManager.getInstance(context) }
+    val lanDiscoveredUsers by lanManager.discoveredUsers.collectAsState()
+    // Contact টি LAN এ আছে কিনা — name match বা mobile match
+    val lanPeer = remember(lanDiscoveredUsers, contact.mobile) {
+        lanDiscoveredUsers.firstOrNull { it.mobile == contact.mobile }
+    }
+    val isLanAvailable = lanModeEnabled && lanPeer != null
 
     var inputText by remember { mutableStateOf("") }
     var liveContact by remember { mutableStateOf(contact) }
@@ -2369,12 +2410,21 @@ fun ChatArea(
             isUploading = true
             scope.launch {
                 try {
-                    val (url, fileName, fileType) = uploadToCloudinary(context, it) { prog -> uploadProgress = prog }
-                    if (url != null) {
-                        sendMessage(db, chatId, currentUser.mobile, currentUser.name, contact.mobile, "", context, url, fileName, fileType)
-                        val label = if (mimeType.startsWith("video/")) "ভিডিও" else "ছবি"
-                        Toast.makeText(context, "$label পাঠানো হয়েছে", Toast.LENGTH_SHORT).show()
-                    } else Toast.makeText(context, "আপলোড ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
+                    if (isLanAvailable && lanPeer != null) {
+                        // ── LAN: Cloudinary নয়, সরাসরি TCP দিয়ে ────────────────
+                        val tempFile = uriToTempFile(context, it, uploadingFileName)
+                        if (tempFile != null) {
+                            lanManager.sendFile(lanPeer, tempFile, mimeType, chatId)
+                            Toast.makeText(context, "📶 LAN দিয়ে পাঠানো হয়েছে", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        val (url, fileName, fileType) = uploadToCloudinary(context, it) { prog -> uploadProgress = prog }
+                        if (url != null) {
+                            sendMessage(db, chatId, currentUser.mobile, currentUser.name, contact.mobile, "", context, url, fileName, fileType)
+                            val label = if (mimeType.startsWith("video/")) "ভিডিও" else "ছবি"
+                            Toast.makeText(context, "$label পাঠানো হয়েছে", Toast.LENGTH_SHORT).show()
+                        } else Toast.makeText(context, "আপলোড ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
+                    }
                 } catch (e: Exception) {
                     Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
@@ -2391,11 +2441,20 @@ fun ChatArea(
             isUploading = true
             scope.launch {
                 try {
-                    val (url, fileName, fileType) = uploadToCloudinary(context, it) { prog -> uploadProgress = prog }
-                    if (url != null) {
-                        sendMessage(db, chatId, currentUser.mobile, currentUser.name, contact.mobile, "", context, url, fileName, fileType)
-                        Toast.makeText(context, "ফাইল পাঠানো হয়েছে", Toast.LENGTH_SHORT).show()
-                    } else Toast.makeText(context, "আপলোড ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
+                    val mimeType = context.contentResolver.getType(it) ?: "application/octet-stream"
+                    if (isLanAvailable && lanPeer != null) {
+                        val tempFile = uriToTempFile(context, it, uploadingFileName)
+                        if (tempFile != null) {
+                            lanManager.sendFile(lanPeer, tempFile, mimeType, chatId)
+                            Toast.makeText(context, "📶 LAN দিয়ে ফাইল পাঠানো হয়েছে", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        val (url, fileName, fileType) = uploadToCloudinary(context, it) { prog -> uploadProgress = prog }
+                        if (url != null) {
+                            sendMessage(db, chatId, currentUser.mobile, currentUser.name, contact.mobile, "", context, url, fileName, fileType)
+                            Toast.makeText(context, "ফাইল পাঠানো হয়েছে", Toast.LENGTH_SHORT).show()
+                        } else Toast.makeText(context, "আপলোড ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
+                    }
                 } catch (e: Exception) {
                     Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
@@ -2421,11 +2480,20 @@ fun ChatArea(
             isUploading = true
             scope.launch {
                 try {
-                    val (url, fileName, fileType) = uploadToCloudinary(context, it) { prog -> uploadProgress = prog }
-                    if (url != null) {
-                        sendMessage(db, chatId, currentUser.mobile, currentUser.name, contact.mobile, "", context, url, fileName, fileType)
-                        Toast.makeText(context, "📎 ফাইল পাঠানো হয়েছে", Toast.LENGTH_SHORT).show()
-                    } else Toast.makeText(context, "আপলোড ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
+                    val mimeType = context.contentResolver.getType(it) ?: "application/octet-stream"
+                    if (isLanAvailable && lanPeer != null) {
+                        val tempFile = uriToTempFile(context, it, name)
+                        if (tempFile != null) {
+                            lanManager.sendFile(lanPeer, tempFile, mimeType, chatId)
+                            Toast.makeText(context, "📶 LAN দিয়ে পাঠানো হয়েছে", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        val (url, fileName, fileType) = uploadToCloudinary(context, it) { prog -> uploadProgress = prog }
+                        if (url != null) {
+                            sendMessage(db, chatId, currentUser.mobile, currentUser.name, contact.mobile, "", context, url, fileName, fileType)
+                            Toast.makeText(context, "📎 ফাইল পাঠানো হয়েছে", Toast.LENGTH_SHORT).show()
+                        } else Toast.makeText(context, "আপলোড ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
+                    }
                 } catch (e: Exception) {
                     Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
@@ -2629,14 +2697,23 @@ fun ChatArea(
     fun sendText() {
         val text = inputText.trim()
         if (text.isBlank()) return
-        sendMessage(
-            db, chatId, currentUser.mobile, currentUser.name, contact.mobile, text, context, null, null, null,
-            replyToMessage?.id, replyToMessage?.text, replyToMessage?.senderMobile
-        )
+
+        if (isLanAvailable && lanPeer != null) {
+            // ── LAN Mode: Firebase ছাড়াই সরাসরি peer এ পাঠাও ────────────────
+            scope.launch {
+                lanManager.sendText(lanPeer, text, chatId)
+            }
+        } else {
+            // ── Normal Mode: Firebase Firestore ────────────────────────────────
+            sendMessage(
+                db, chatId, currentUser.mobile, currentUser.name, contact.mobile, text, context, null, null, null,
+                replyToMessage?.id, replyToMessage?.text, replyToMessage?.senderMobile
+            )
+            typingJob?.cancel()
+            scope.launch { db.collection("chat_users").document(currentUser.mobile).update("typingTo", null) }
+        }
         inputText = ""
         replyToMessage = null
-        typingJob?.cancel()
-        scope.launch { db.collection("chat_users").document(currentUser.mobile).update("typingTo", null) }
     }
 
     BackHandler(enabled = selectedMessages.isNotEmpty()) {
@@ -2680,6 +2757,7 @@ fun ChatArea(
                 isCompact = isCompact,
                 onBack = onBack,
                 onCallClick = onCallClick,
+                isLanActive = isLanAvailable,
                 onClearChat = {
                     scope.launch {
                         db.collection("pvt_msg_$chatId").get().await().documents.forEach { it.reference.delete() }
@@ -2910,9 +2988,15 @@ fun ChatArea(
                         if (file.exists() && file.length() > 0) {
                             isUploading = true
                             scope.launch {
-                                val (url, fileName, _) = uploadToCloudinary(context, file.toUri()) { prog -> uploadProgress = prog }
-                                if (url != null) {
-                                    sendMessage(db, chatId, currentUser.mobile, currentUser.name, contact.mobile, "", context, url, fileName ?: "voice.m4a", "audio/mp4", null, null, null, recordingSeconds)
+                                if (isLanAvailable && lanPeer != null) {
+                                    // ── LAN: Cloudinary নয়, সরাসরি TCP দিয়ে ────────
+                                    lanManager.sendVoice(lanPeer, file, recordingSeconds, chatId)
+                                    Toast.makeText(context, "📶 LAN দিয়ে voice পাঠানো হয়েছে", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    val (url, fileName, _) = uploadToCloudinary(context, file.toUri()) { prog -> uploadProgress = prog }
+                                    if (url != null) {
+                                        sendMessage(db, chatId, currentUser.mobile, currentUser.name, contact.mobile, "", context, url, fileName ?: "voice.m4a", "audio/mp4", null, null, null, recordingSeconds)
+                                    }
                                 }
                                 isUploading = false
                                 uploadProgress = 0f
@@ -2976,7 +3060,8 @@ fun ChatHeader(
     onBack: () -> Unit,
     onCallClick: (String) -> Unit,
     onClearChat: () -> Unit,
-    onViewContact: () -> Unit
+    onViewContact: () -> Unit,
+    isLanActive: Boolean = false    // LAN mode: Firebase ছাড়াই connected
 ) {
     val isOnline = contact.lastActive > System.currentTimeMillis() - ONLINE_THRESHOLD_MS
     var showMenu by remember { mutableStateOf(false) }
@@ -3003,27 +3088,53 @@ fun ChatHeader(
                 ) {
                     Box(modifier = Modifier.size(40.dp)) {
                         UserAvatar(user = contact, size = 40.dp)
-                        if (isOnline) {
+                        // LAN badge > online badge (priority)
+                        if (isLanActive) {
+                            Box(
+                                modifier = Modifier
+                                    .size(12.dp)
+                                    .align(Alignment.BottomEnd)
+                                    .border(2.dp, RasGramTheme.DarkPanel, CircleShape)
+                                    .background(Color(0xFF00BCD4), CircleShape),  // cyan = LAN
+                                contentAlignment = Alignment.Center
+                            ) {}
+                        } else if (isOnline) {
                             Box(modifier = Modifier.size(10.dp).align(Alignment.BottomEnd).border(2.dp, RasGramTheme.DarkPanel, CircleShape).background(RasGramTheme.OnlineGreen, CircleShape))
                         }
                     }
                     Spacer(modifier = Modifier.width(10.dp))
                     Column {
-                        Text(contact.name, style = MaterialTheme.typography.bodyLarge, color = RasGramTheme.TextPrimary, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(contact.name, style = MaterialTheme.typography.bodyLarge, color = RasGramTheme.TextPrimary, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            if (isLanActive) {
+                                Spacer(Modifier.width(6.dp))
+                                Surface(
+                                    color = Color(0xFF00BCD4).copy(alpha = 0.18f),
+                                    shape = RoundedCornerShape(4.dp)
+                                ) {
+                                    Text(
+                                        "📶 LAN",
+                                        color = Color(0xFF00BCD4),
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                    )
+                                }
+                            }
+                        }
                         Text(
                             when {
+                                isLanActive -> "LAN connected — internet ছাড়া চ্যাট হচ্ছে"
                                 contact.typingTo == currentUserMobile -> "typing..."
                                 isOnline -> "online"
                                 else -> "last seen ${formatLastSeen(System.currentTimeMillis() - contact.lastActive)}"
                             },
                             style = MaterialTheme.typography.bodySmall,
-                            color = if (contact.typingTo == currentUserMobile || isOnline) RasGramTheme.Green else RasGramTheme.TextMuted,
+                            color = if (isLanActive) Color(0xFF00BCD4) else if (contact.typingTo == currentUserMobile || isOnline) RasGramTheme.Green else RasGramTheme.TextMuted,
                             fontSize = 11.sp
                         )
                     }
                 }
-
-                // Video call icon
                 IconButton(onClick = { onCallClick("video") }) {
                     Icon(Icons.Default.Videocam, "Video Call", tint = RasGramTheme.TextPrimary, modifier = Modifier.size(24.dp))
                 }
@@ -5946,6 +6057,9 @@ fun SettingsDialog(
     val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
     var callDeliveryMethod by remember { mutableStateOf(prefs.getString(PREF_CALL_DELIVERY, "fcm") ?: "fcm") }
     var serviceAccountJson by remember { mutableStateOf(prefs.getString(PREF_SA_JSON, "") ?: "") }
+    var lanModeEnabled by remember { mutableStateOf(prefs.getBoolean(PREF_LAN_MODE, false)) }
+    val lanManager = remember { LanChatManager.getInstance(context) }
+    val lanUsers by lanManager.discoveredUsers.collectAsState()
 
     val imageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
@@ -5988,7 +6102,7 @@ fun SettingsDialog(
                 Column(modifier = Modifier.padding(20.dp)) {
                     // Tabs
                     Row(modifier = Modifier.fillMaxWidth().background(RasGramTheme.DarkBackground, RoundedCornerShape(10.dp)).padding(4.dp)) {
-                        listOf("Profile", "Privacy", "Notifs", "Calls", "Storage").forEachIndexed { i, label ->
+                        listOf("Profile", "Privacy", "Notifs", "Calls", "Storage", "LAN").forEachIndexed { i, label ->
                             Surface(
                                 modifier = Modifier.weight(1f).clickable { selectedTab = i },
                                 shape = RoundedCornerShape(8.dp),
@@ -6076,6 +6190,23 @@ fun SettingsDialog(
                             // ── Drive Sync Tab — multi-account + Sync Now button ──
                             RasGramDriveSyncSettings(currentUser = currentUser)
                         }
+                        5 -> {
+                            // ── LAN / Local Mode Tab ──────────────────────────────
+                            LanModeSettingsTab(
+                                lanModeEnabled = lanModeEnabled,
+                                lanUsers = lanUsers,
+                                localIp = LanChatManager.getLocalIp(context),
+                                onToggle = { enabled ->
+                                    lanModeEnabled = enabled
+                                    prefs.edit().putBoolean(PREF_LAN_MODE, enabled).apply()
+                                    if (enabled) {
+                                        lanManager.start(currentUser.mobile, currentUser.name)
+                                    } else {
+                                        lanManager.stop()
+                                    }
+                                }
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(20.dp))
@@ -6085,6 +6216,7 @@ fun SettingsDialog(
                             prefs.edit()
                                 .putString(PREF_CALL_DELIVERY, callDeliveryMethod)
                                 .putString(PREF_SA_JSON, serviceAccountJson)
+                                .putBoolean(PREF_LAN_MODE, lanModeEnabled)
                                 .apply()
                             scope.launch {
                                 db.collection("chat_users").document(currentUser.mobile).update("name", name, "about", about)
@@ -6108,6 +6240,194 @@ fun SettingsToggleRow(icon: ImageVector, label: String, initialValue: Boolean, o
         Spacer(modifier = Modifier.width(16.dp))
         Text(label, color = RasGramTheme.TextPrimary, modifier = Modifier.weight(1f))
         Switch(checked = checked, onCheckedChange = { checked = it; onChange(it) }, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = RasGramTheme.Green, uncheckedTrackColor = RasGramTheme.TextMuted.copy(0.3f)))
+    }
+}
+
+// ==================== LAN MODE SETTINGS TAB ====================
+
+@Composable
+fun LanModeSettingsTab(
+    lanModeEnabled: Boolean,
+    lanUsers: List<LanDiscoveredUser>,
+    localIp: String,
+    onToggle: (Boolean) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+
+        // ── Main Toggle ────────────────────────────────────────────────────
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = if (lanModeEnabled) RasGramTheme.Green.copy(alpha = 0.15f) else RasGramTheme.InputBg,
+            shape = RoundedCornerShape(14.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Wifi,
+                            null,
+                            tint = if (lanModeEnabled) RasGramTheme.Green else RasGramTheme.TextMuted,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            "LAN / Local Mode",
+                            color = RasGramTheme.TextPrimary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        if (lanModeEnabled)
+                            "✅ চালু — ইন্টারনেট ছাড়াই একই WiFi তে চ্যাট হচ্ছে"
+                        else
+                            "বন্ধ — Firebase ও Cloudinary ব্যবহার হচ্ছে (স্বাভাবিক মোড)",
+                        color = RasGramTheme.TextMuted,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp,
+                        modifier = Modifier.padding(start = 32.dp)
+                    )
+                }
+                Switch(
+                    checked = lanModeEnabled,
+                    onCheckedChange = onToggle,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = RasGramTheme.Green,
+                        uncheckedTrackColor = RasGramTheme.TextMuted.copy(0.3f)
+                    )
+                )
+            }
+        }
+
+        if (lanModeEnabled) {
+            Spacer(Modifier.height(16.dp))
+
+            // ── My IP ────────────────────────────────────────────────────
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = RasGramTheme.DarkBackground,
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Router, null, tint = RasGramTheme.Green, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Column {
+                        Text("আমার IP Address", color = RasGramTheme.TextMuted, fontSize = 11.sp)
+                        Text(localIp, color = RasGramTheme.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(14.dp))
+
+            // ── Discovered Users ─────────────────────────────────────────
+            Text(
+                "একই WiFi তে পাওয়া Users (${lanUsers.size})",
+                color = RasGramTheme.Green,
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp
+            )
+            Spacer(Modifier.height(8.dp))
+
+            if (lanUsers.isEmpty()) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = RasGramTheme.DarkBackground,
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(Icons.Default.SearchOff, null, tint = RasGramTheme.TextMuted, modifier = Modifier.size(32.dp))
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "এখনো কেউ পাওয়া যায়নি",
+                            color = RasGramTheme.TextMuted,
+                            fontSize = 13.sp,
+                            textAlign = TextAlign.Center
+                        )
+                        Text(
+                            "অন্য device এ RasGram খুলে LAN Mode চালু করুন",
+                            color = RasGramTheme.TextMuted.copy(alpha = 0.7f),
+                            fontSize = 11.sp,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            } else {
+                lanUsers.forEach { user ->
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp),
+                        color = RasGramTheme.DarkBackground,
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .background(RasGramTheme.Green.copy(alpha = 0.2f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    user.name.take(1).uppercase(),
+                                    color = RasGramTheme.Green,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp
+                                )
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(user.name, color = RasGramTheme.TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                Text(user.ip, color = RasGramTheme.TextMuted, fontSize = 11.sp)
+                            }
+                            Icon(Icons.Default.Wifi, null, tint = RasGramTheme.Green, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(14.dp))
+
+            // ── How it works note ─────────────────────────────────────────
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = RasGramTheme.GreenDark.copy(alpha = 0.2f),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("⚡ কীভাবে কাজ করে?", color = RasGramTheme.Green, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Spacer(Modifier.height(6.dp))
+                    listOf(
+                        "একই WiFi/Hotspot এ দুজন RasGram user",
+                        "দুজনেই LAN Mode ON করুন",
+                        "Chat List এ LAN user icon দেখাবে 📶",
+                        "Text, File, Voice — সব LAN দিয়ে যাবে",
+                        "Firebase ও Cloudinary ব্যবহার হবে না"
+                    ).forEach { line ->
+                        Row(modifier = Modifier.padding(vertical = 2.dp)) {
+                            Text("• ", color = RasGramTheme.Green, fontSize = 12.sp)
+                            Text(line, color = RasGramTheme.TextMuted, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -6754,6 +7074,22 @@ fun isThisYear(timestamp: Long): Boolean {
 // ==================== HELPER FUNCTIONS ====================
 fun generateChatId(mobile1: String, mobile2: String): String =
     if (mobile1 < mobile2) "${mobile1}_${mobile2}" else "${mobile2}_${mobile1}"
+
+// ── LAN helper: Uri → temp File (LAN file send এর জন্য) ─────────────────────
+// Cloudinary path এর মতোই — Uri → cache তে temp file → LAN এ send করো
+fun uriToTempFile(context: Context, uri: Uri, fileName: String): File? {
+    return try {
+        val inputStream = context.contentResolver.openInputStream(uri) ?: return null
+        val tempFile = File(context.cacheDir, "lan_send_${System.currentTimeMillis()}_$fileName")
+        tempFile.outputStream().use { output ->
+            inputStream.use { input -> input.copyTo(output) }
+        }
+        if (tempFile.exists() && tempFile.length() > 0) tempFile else null
+    } catch (e: Exception) {
+        android.util.Log.e("LanSend", "uriToTempFile: ${e.message}")
+        null
+    }
+}
 
 fun getFileTypePreview(message: Message): String = when {
     message.isDeleted -> "ðŸš« This message was deleted"
