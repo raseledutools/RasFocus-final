@@ -161,9 +161,15 @@ interface CachedMessageDao {
     @Query("UPDATE cached_messages SET isStarred = :starred WHERE id = :messageId")
     suspend fun updateStarred(messageId: String, starred: Boolean)
 
-    // Soft delete
+    // Soft delete (for "delete for me" — keeps row with isDeleted=true)
     @Query("UPDATE cached_messages SET isDeleted = 1, text = '' WHERE id = :messageId")
     suspend fun softDelete(messageId: String)
+
+    // FIX: Physical delete — used to remove optimistic pending message after Firestore confirms.
+    // softDelete() was used before: left a "ghost deleted bubble" + real message = double bubble.
+    // deleteMessage() removes the row completely so only the Firestore version shows.
+    @Query("DELETE FROM cached_messages WHERE id = :messageId")
+    suspend fun deleteMessage(messageId: String)
 
     // Pending message sync — আগে pending flag দিয়ে save, Firestore confirm হলে update
     @Query("UPDATE cached_messages SET isPending = :pending WHERE id = :messageId")
