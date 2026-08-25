@@ -36,9 +36,10 @@ object DriveFileManager {
 
     private fun buildDriveService(context: Context, accountName: String): Drive? {
         return try {
-            // Request FULL DRIVE scope for the file manager and set explicit account email
+            // DRIVE_FILE scope — matches the scope requested at sign-in (MainActivity)
+            // Using DriveScopes.DRIVE here caused silent auth failures since DRIVE was never granted.
             val credential = GoogleAccountCredential.usingOAuth2(
-                context, listOf(DriveScopes.DRIVE)
+                context, listOf(DriveScopes.DRIVE_FILE)
             ).apply { selectedAccountName = accountName }
             
             Drive.Builder(

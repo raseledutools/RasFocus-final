@@ -434,6 +434,55 @@ object RasGramDriveSyncEngine {
         Triple(messages.size, mediaUploaded, cldDeleted)
     }
 
+    /**
+     * Full sync without age cutoff — "Sync Now" button এ ব্যবহার হয়।
+     * Worker এর মতোই, কিন্তু cutoff = 0L মানে সব messages (নতুন সহ) upload হবে।
+     */
+    suspend fun performFullSync(context: Context): DriveSyncResult = withContext(Dispatchers.IO) {
+        val startTime    = System.currentTimeMillis()
+        val accountEmail = RasGramDriveAccountManager.getDefaultSyncAccount(context)
+            ?: return@withContext DriveSyncResult(false, errorMessage = "Google Drive account সংযুক্ত নেই।")
+
+        val drive = RasGramDriveAccountManager.buildDriveForAccount(context, accountEmail)
+            ?: return@withContext DriveSyncResult(false,
+                errorMessage = "Drive সংযোগ ব্যর্থ। আবার sign-in করুন।",
+                accountUsed = accountEmail)
+
+        try {
+            val repo           = RasGramRepository.getInstance(context)
+            val db             = FirebaseFirestore.getInstance()
+            val rasGramFolder  = getRasGramRootFolderId(context, drive)
+            val previews       = repo.chatPreviewDao.getAllPreviews()
+            val cutoff         = Long.MAX_VALUE  // সব messages — কোনো age filter নেই
+
+            var totalChats = 0; var totalMsgs = 0; var totalMedia = 0; var totalCld = 0
+
+            previews.forEach { preview ->
+                val latestMsg = repo.messageDao.getLatestMessage(preview.contactMobile)
+                    ?: return@forEach
+                val (msgs, media, cld) = processChat(
+                    drive, rasGramFolder, latestMsg.chatId,
+                    preview.contactMobile, repo, db, cutoff
+                )
+                if (msgs > 0) { totalChats++; totalMsgs += msgs; totalMedia += media; totalCld += cld }
+            }
+
+            RasGramDriveAccountManager.recordSyncTime(context)
+            DriveSyncResult(
+                success               = true,
+                syncedChats           = totalChats,
+                syncedMessages        = totalMsgs,
+                syncedMediaFiles      = totalMedia,
+                deletedFromCloudinary = totalCld,
+                accountUsed           = accountEmail,
+                durationMs            = System.currentTimeMillis() - startTime
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "performFullSync failed: ${e.message}", e)
+            DriveSyncResult(false, errorMessage = e.message, accountUsed = accountEmail)
+        }
+    }
+
     /** সব chats sync করে — Worker থেকে call হয় */
     suspend fun performSync(context: Context): DriveSyncResult = withContext(Dispatchers.IO) {
         val startTime    = System.currentTimeMillis()
@@ -528,10 +577,16 @@ object RasGramDriveSyncEngine {
 class RasGramDriveSyncWorker(context: Context, params: WorkerParameters) :
     CoroutineWorker(context, params) {
 
+    // inputData key — runNow এ true পাঠালে full sync (no cutoff)
+    private val isManual get() = inputData.getBoolean("is_manual", false)
+
     override suspend fun doWork(): Result {
-        Log.i(TAG, "Drive sync worker starting...")
+        Log.i(TAG, "Drive sync worker starting... manual=$isManual")
         showNotification("Drive sync শুরু হচ্ছে…")
-        val result = RasGramDriveSyncEngine.performSync(applicationContext)
+        val result = if (isManual)
+            RasGramDriveSyncEngine.performFullSync(applicationContext)
+        else
+            RasGramDriveSyncEngine.performSync(applicationContext)
         if (result.success) {
             val summary = buildString {
                 if (result.syncedMessages > 0) {
@@ -609,9 +664,10 @@ object RasGramDriveSyncScheduler {
     fun runNow(context: Context) {
         val req = OneTimeWorkRequestBuilder<RasGramDriveSyncWorker>()
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .setInputData(androidx.work.workDataOf("is_manual" to true))
             .addTag("$SYNC_WORK_NAME.manual").build()
         WorkManager.getInstance(context).enqueue(req)
-        Log.i(TAG, "Manual Drive sync triggered")
+        Log.i(TAG, "Manual Drive sync triggered (full sync, no age filter)")
     }
 
     fun cancel(context: Context) = WorkManager.getInstance(context).cancelUniqueWork(SYNC_WORK_NAME)
