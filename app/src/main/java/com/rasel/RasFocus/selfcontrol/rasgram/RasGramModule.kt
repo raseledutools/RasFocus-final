@@ -403,6 +403,12 @@ fun RasGramApp(
         }
     }
 
+    // Already logged-in user: app open হলে presence service start করো
+    // (login flow এর onLogin callback এ নতুন login cover হয়)
+    LaunchedEffect(initialUser) {
+        initialUser?.let { RasGramPresenceService.start(context, it.mobile) }
+    }
+
     MaterialTheme(colorScheme = if (isDarkMode) darkColorScheme(
         primary = RasGramTheme.Green,
         secondary = RasGramTheme.GreenDark,
@@ -447,6 +453,8 @@ fun RasGramApp(
                         }
                         currentUser = user
                         isLoggedIn = true
+                        // Presence service start — data/WiFi চালু থাকলেই online দেখাবে
+                        RasGramPresenceService.start(context, user.mobile)
                     }
                 )
             } else {
@@ -458,6 +466,7 @@ fun RasGramApp(
                     onToggleTheme = { isDarkMode = !isDarkMode },
                     onSplashDone = { showSplash = false },
                     onLogout = {
+                        RasGramPresenceService.stop(context)
                         prefs.edit().clear().apply()
                         FirebaseAuth.getInstance().signOut()
                         isLoggedIn = false
