@@ -54,11 +54,34 @@ class RasgramMessagingService : FirebaseMessagingService() {
                 callId        = data["callId"]        ?: "",
                 calleeMobile  = data["calleeMobile"]  ?: ""
             )
-            "message" -> showMessageNotification(
-                senderName   = data["senderName"]   ?: "RasGram",
-                message      = data["message"]      ?: "New message",
-                senderMobile = data["senderMobile"] ?: ""
-            )
+            "message" -> {
+                val senderMobile = data["senderMobile"] ?: ""
+                // FIX: mark all messages from this sender as delivered=true when FCM arrives.
+                // Before: delivered was only set when recipient OPENED the chat (same time as read).
+                // Now: FCM delivery = grey double tick, opening chat = blue double tick.
+                if (senderMobile.isNotEmpty()) {
+                    val myMobile = getMobileFromStorage()
+                    if (myMobile != null) {
+                        val chatId = if (myMobile < senderMobile) "${myMobile}_${senderMobile}"
+                                     else "${senderMobile}_${myMobile}"
+                        FirebaseFirestore.getInstance()
+                            .collection("pvt_msg_${'$'}chatId")
+                            .whereEqualTo("senderMobile", senderMobile)
+                            .whereEqualTo("delivered", false)
+                            .get()
+                            .addOnSuccessListener { snap ->
+                                snap.documents.forEach { doc ->
+                                    doc.reference.update("delivered", true)
+                                }
+                            }
+                    }
+                }
+                showMessageNotification(
+                    senderName   = data["senderName"]   ?: "RasGram",
+                    message      = data["message"]      ?: "New message",
+                    senderMobile = senderMobile
+                )
+            }
         }
     }
 
