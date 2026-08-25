@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- General cache root — needed for PPTX/DOCX temp files -->
+    <cache-path
+        name="cache_root"
+        path="." />
+    <cache-path
+        name="shared_pdfs"
+        path="shared_pdfs/" />
+    <cache-path
+        name="captures"
+        path="captures/" />
+    <!-- converted_pdfs: used by PptxViewerActivity, DocxViewerActivity,
+         XlsxViewerActivity, and UniversalViewerActivity (image→PDF).
+         Missing this was causing FileProvider crash on "Open with RasFocus". -->
+    <cache-path
+        name="converted_pdfs"
+        path="converted_pdfs/" />
+    <external-files-path
+        name="external_files"
+        path="Documents/" />
+    <external-files-path
+        name="external_pictures"
+        path="Pictures/" />
+    <!-- Full external storage root — needed by FileManagerPlus to open
+         any file from /storage/emulated/0/ via FileProvider URI.
+         Without this, getUriForFile() throws IllegalArgumentException
+         for files outside the specific sub-paths listed above. -->
+    <external-path
+        name="external_root"
+        path="." />
+    <external-path
+        name="external_downloads"
+        path="Download/" />
+    <external-files-path
+        name="external_files_downloads"
+        path="Download/" />
+    <files-path
+        name="internal_files"
+        path="." />
+    <root-path
+        name="root"
+        path="." />
+</paths>
+

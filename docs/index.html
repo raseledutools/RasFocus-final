@@ -1,0 +1,1236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RasFocus — Focus. Block. Grow.</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    /* ── TOKENS (mirrors RasFocusColors in MainActivity.kt) ── */
+    :root {
+      --teal:         #0096B4;
+      --teal-light:   #4FC3D6;
+      --teal-dark:    #006E85;
+      --bg:           #FFFFFF;
+      --surface:      #F5FFFE;
+      --card:         #ECFAFD;
+      --on-bg:        #0A1628;
+      --on-surface:   #1A2B3C;
+      --subtle:       #6B7F8E;
+      --divider:      #D6EEF4;
+      --error:        #E53935;
+      --success:      #43A047;
+      --amber:        #FB8C00;
+      --lock-red:     #FF3B30;
+      --purple:       #7C4DFF;
+      --orange:       #FF6D00;
+      --gold:         #FFAB00;
+      --combo-dark:   #032220;
+      --combo-mid:    #08504B;
+      --combo-accent: #14C3B2;
+      --blue-brand:   #4A6FE3;
+      --radius-card:  24px;
+      --radius-btn:   16px;
+      --shadow:       0 4px 24px rgba(0,150,180,0.12);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--on-bg);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(255,255,255,0.95);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--divider);
+      padding: 0 24px;
+      display: flex; align-items: center; justify-content: space-between;
+      height: 64px;
+    }
+
+    .nav-logo {
+      display: flex; align-items: center; gap: 10px;
+      font-weight: 800; font-size: 1.25rem; color: var(--on-bg);
+      text-decoration: none;
+    }
+
+    .nav-logo-icon {
+      width: 38px; height: 38px;
+      background: linear-gradient(135deg, var(--teal) 0%, var(--teal-dark) 100%);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    .nav-logo-icon svg { width: 22px; height: 22px; }
+
+    .nav-links {
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    .nav-links a {
+      text-decoration: none; color: var(--subtle);
+      font-size: 0.9rem; font-weight: 500;
+      padding: 8px 14px; border-radius: 10px;
+      transition: all .2s;
+    }
+
+    .nav-links a:hover { background: var(--card); color: var(--teal); }
+
+    .btn-dl {
+      background: linear-gradient(135deg, var(--teal) 0%, var(--teal-dark) 100%);
+      color: #fff; padding: 10px 22px;
+      border-radius: var(--radius-btn); font-weight: 700; font-size: 0.9rem;
+      text-decoration: none; transition: all .2s;
+      box-shadow: 0 2px 12px rgba(0,150,180,0.3);
+    }
+
+    .btn-dl:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(0,150,180,0.4); }
+
+    /* ── HERO ── */
+    .hero {
+      position: relative;
+      min-height: 92vh;
+      display: flex; align-items: center; justify-content: center;
+      text-align: center;
+      padding: 80px 24px 60px;
+      overflow: hidden;
+    }
+
+    .hero-bg {
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(0,150,180,0.10) 0%, transparent 70%),
+                  radial-gradient(ellipse 40% 40% at 90% 80%, rgba(124,77,255,0.07) 0%, transparent 60%),
+                  radial-gradient(ellipse 40% 40% at 10% 70%, rgba(255,109,0,0.06) 0%, transparent 60%);
+    }
+
+    .hero-grid {
+      position: absolute; inset: 0; opacity: 0.04;
+      background-image: linear-gradient(var(--teal) 1px, transparent 1px),
+                        linear-gradient(90deg, var(--teal) 1px, transparent 1px);
+      background-size: 48px 48px;
+    }
+
+    .hero-content { position: relative; max-width: 780px; }
+
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--card);
+      border: 1px solid var(--divider);
+      color: var(--teal-dark); font-size: 0.8rem; font-weight: 600;
+      padding: 6px 16px; border-radius: 100px;
+      margin-bottom: 28px;
+    }
+
+    .hero-badge-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--teal); animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity: 0.4; } }
+
+    h1 {
+      font-size: clamp(2.4rem, 6vw, 4rem);
+      font-weight: 900; line-height: 1.1;
+      color: var(--on-bg);
+      margin-bottom: 20px;
+    }
+
+    h1 span { color: var(--teal); }
+
+    .hero-sub {
+      font-size: 1.15rem; color: var(--subtle); max-width: 560px; margin: 0 auto 40px;
+      font-weight: 400;
+    }
+
+    .hero-ctas {
+      display: flex; flex-wrap: wrap; gap: 14px; justify-content: center;
+      margin-bottom: 60px;
+    }
+
+    .btn-primary {
+      display: inline-flex; align-items: center; gap: 10px;
+      background: linear-gradient(135deg, var(--teal) 0%, var(--teal-dark) 100%);
+      color: #fff; padding: 16px 32px;
+      border-radius: var(--radius-btn); font-weight: 700; font-size: 1rem;
+      text-decoration: none; box-shadow: 0 4px 20px rgba(0,150,180,0.35);
+      transition: all .2s;
+    }
+
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(0,150,180,0.45); }
+
+    .btn-secondary {
+      display: inline-flex; align-items: center; gap: 10px;
+      background: var(--card); color: var(--teal-dark);
+      border: 1.5px solid var(--divider);
+      padding: 15px 28px; border-radius: var(--radius-btn);
+      font-weight: 600; font-size: 1rem; text-decoration: none;
+      transition: all .2s;
+    }
+
+    .btn-secondary:hover { background: var(--surface); border-color: var(--teal-light); }
+
+    /* ── PHONE MOCKUP ── */
+    .phone-mockup {
+      position: relative; display: inline-block;
+      width: 260px;
+    }
+
+    .phone-frame {
+      background: linear-gradient(160deg, #1a2b3c 0%, #0a1628 100%);
+      border-radius: 40px;
+      padding: 14px;
+      box-shadow: 0 32px 80px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.06);
+    }
+
+    .phone-screen {
+      background: var(--bg);
+      border-radius: 28px; overflow: hidden;
+      aspect-ratio: 9/19.5;
+      display: flex; flex-direction: column;
+    }
+
+    .ps-status { height: 28px; background: #fff; display: flex; align-items: center; justify-content: flex-end; padding: 0 16px; gap: 6px; }
+    .ps-status-dot { width: 5px; height: 5px; border-radius: 50%; }
+
+    .ps-header {
+      background: linear-gradient(135deg, var(--teal) 0%, var(--teal-dark) 100%);
+      padding: 16px;
+      color: white;
+      text-align: center;
+    }
+
+    .ps-header-title { font-size: 0.75rem; font-weight: 800; letter-spacing: 0.05em; opacity: 0.85; }
+    .ps-header-name { font-size: 1rem; font-weight: 900; }
+    .ps-header-sub { font-size: 0.62rem; opacity: 0.7; margin-top: 2px; }
+
+    .ps-body { flex: 1; padding: 12px; background: var(--surface); display: flex; flex-direction: column; gap: 8px; }
+
+    .ps-card {
+      background: #fff;
+      border-radius: 14px;
+      padding: 10px 12px;
+      box-shadow: 0 1px 6px rgba(0,150,180,0.08);
+      display: flex; align-items: center; gap: 10px;
+    }
+
+    .ps-icon {
+      width: 32px; height: 32px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.9rem; flex-shrink: 0;
+    }
+
+    .ps-card-text { font-size: 0.62rem; }
+    .ps-card-title { font-weight: 700; color: var(--on-bg); }
+    .ps-card-sub { color: var(--subtle); font-size: 0.58rem; }
+
+    .ps-timer {
+      background: linear-gradient(135deg, var(--teal), #00b4d8);
+      border-radius: 14px;
+      padding: 12px;
+      text-align: center; color: white;
+    }
+
+    .ps-timer-num { font-size: 1.6rem; font-weight: 900; font-variant-numeric: tabular-nums; }
+    .ps-timer-label { font-size: 0.6rem; opacity: 0.8; margin-top: 2px; }
+
+    .ps-nav {
+      background: #fff;
+      border-top: 1px solid var(--divider);
+      display: flex; padding: 8px 0 4px;
+    }
+
+    .ps-nav-item {
+      flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
+      font-size: 0.5rem; color: var(--subtle);
+    }
+
+    .ps-nav-item.active { color: var(--teal); }
+    .ps-nav-item svg { width: 14px; height: 14px; }
+
+    /* ── SECTION ── */
+    section { padding: 80px 24px; }
+
+    .container { max-width: 1100px; margin: 0 auto; }
+
+    .section-label {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--card); color: var(--teal-dark);
+      border: 1px solid var(--divider);
+      font-size: 0.75rem; font-weight: 700;
+      padding: 5px 14px; border-radius: 100px;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      margin-bottom: 16px;
+    }
+
+    .section-title {
+      font-size: clamp(1.8rem, 4vw, 2.6rem);
+      font-weight: 900; line-height: 1.2;
+      color: var(--on-bg);
+      margin-bottom: 14px;
+    }
+
+    .section-sub {
+      font-size: 1.05rem; color: var(--subtle);
+      max-width: 600px;
+    }
+
+    /* ── MODES ── */
+    .modes-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 20px; margin-top: 48px;
+    }
+
+    .mode-card {
+      background: var(--card);
+      border: 1.5px solid var(--divider);
+      border-radius: var(--radius-card);
+      padding: 28px 24px;
+      transition: all .25s;
+      cursor: default;
+    }
+
+    .mode-card:hover {
+      transform: translateY(-4px);
+      box-shadow: var(--shadow);
+      border-color: var(--teal-light);
+    }
+
+    .mode-emoji { font-size: 2rem; margin-bottom: 14px; }
+    .mode-title { font-size: 1.05rem; font-weight: 800; color: var(--on-bg); margin-bottom: 6px; }
+    .mode-sub { font-size: 0.85rem; color: var(--subtle); }
+
+    .mode-tag {
+      display: inline-block; margin-top: 14px;
+      background: rgba(0,150,180,0.1); color: var(--teal-dark);
+      font-size: 0.7rem; font-weight: 700;
+      padding: 4px 12px; border-radius: 100px;
+    }
+
+    .mode-card.parental .mode-tag { background: rgba(0,150,180,0.1); color: var(--teal-dark); }
+    .mode-card.selfcontrol .mode-tag { background: rgba(255,109,0,0.1); color: var(--orange); }
+    .mode-card.combo .mode-tag { background: rgba(255,171,0,0.1); color: #a07000; }
+    .mode-card.student .mode-tag { background: rgba(124,77,255,0.1); color: var(--purple); }
+
+    /* ── FEATURES ── */
+    .features-bg { background: var(--surface); }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px; margin-top: 48px;
+    }
+
+    .feat-card {
+      background: var(--bg);
+      border: 1.5px solid var(--divider);
+      border-radius: var(--radius-card);
+      padding: 28px 24px;
+      transition: all .25s;
+    }
+
+    .feat-card:hover { transform: translateY(-3px); box-shadow: var(--shadow); }
+
+    .feat-icon {
+      width: 48px; height: 48px; border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.4rem; margin-bottom: 16px;
+    }
+
+    .feat-title { font-size: 1rem; font-weight: 800; color: var(--on-bg); margin-bottom: 8px; }
+    .feat-desc { font-size: 0.88rem; color: var(--subtle); line-height: 1.6; }
+
+    .feat-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+
+    .feat-tag {
+      font-size: 0.7rem; font-weight: 600;
+      padding: 3px 10px; border-radius: 100px;
+      background: var(--card); color: var(--teal-dark);
+    }
+
+    /* ── COMBO PREMIUM ── */
+    .combo-section {
+      background: linear-gradient(135deg, var(--combo-dark) 0%, var(--combo-mid) 100%);
+      color: white;
+    }
+
+    .combo-section .section-title { color: white; }
+    .combo-section .section-sub { color: rgba(255,255,255,0.6); }
+    .combo-section .section-label {
+      background: rgba(255,255,255,0.08);
+      border-color: rgba(255,255,255,0.15);
+      color: var(--combo-accent);
+    }
+
+    .combo-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px; margin-top: 48px;
+    }
+
+    .combo-card {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: var(--radius-card);
+      padding: 24px 20px;
+      transition: all .25s;
+    }
+
+    .combo-card:hover {
+      background: rgba(255,255,255,0.10);
+      border-color: var(--combo-accent);
+    }
+
+    .combo-card-icon { font-size: 1.8rem; margin-bottom: 12px; }
+    .combo-card-title { font-size: 0.95rem; font-weight: 800; margin-bottom: 6px; }
+    .combo-card-desc { font-size: 0.82rem; color: rgba(255,255,255,0.55); line-height: 1.5; }
+
+    /* ── STUDY TOOLS ── */
+    .study-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px; margin-top: 48px;
+    }
+
+    .study-card {
+      background: var(--card);
+      border: 1.5px solid var(--divider);
+      border-radius: 18px;
+      padding: 20px 18px;
+      text-align: center;
+      transition: all .2s;
+    }
+
+    .study-card:hover { transform: translateY(-3px); box-shadow: var(--shadow); }
+    .study-icon { font-size: 1.8rem; margin-bottom: 10px; }
+    .study-name { font-size: 0.85rem; font-weight: 700; color: var(--on-bg); }
+    .study-sub { font-size: 0.75rem; color: var(--subtle); margin-top: 4px; }
+
+    /* ── PARENTAL SECTION ── */
+    .parental-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 48px;
+      align-items: center; margin-top: 48px;
+    }
+
+    @media (max-width: 768px) {
+      .parental-grid { grid-template-columns: 1fr; }
+      .hero-content h1 { font-size: 2.2rem; }
+      nav .nav-links { display: none; }
+    }
+
+    .parental-list { list-style: none; display: flex; flex-direction: column; gap: 16px; }
+
+    .parental-list li {
+      display: flex; align-items: flex-start; gap: 14px;
+      background: var(--card); border: 1.5px solid var(--divider);
+      border-radius: 16px; padding: 16px 18px;
+    }
+
+    .parental-list-icon {
+      width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
+      background: linear-gradient(135deg, var(--teal), var(--teal-dark));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1rem; color: white;
+    }
+
+    .parental-list-text strong { display: block; font-size: 0.9rem; font-weight: 700; color: var(--on-bg); }
+    .parental-list-text span { font-size: 0.8rem; color: var(--subtle); }
+
+    /* ── SCREEN MOCKUP PANEL ── */
+    .panel-mockup {
+      background: var(--card);
+      border: 2px solid var(--divider);
+      border-radius: 28px; padding: 24px;
+      position: relative; overflow: hidden;
+    }
+
+    .panel-title {
+      font-size: 0.7rem; font-weight: 800; letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--teal); margin-bottom: 16px;
+    }
+
+    .panel-item {
+      background: var(--bg); border-radius: 12px;
+      padding: 12px 14px; margin-bottom: 10px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+
+    .panel-item-left { display: flex; align-items: center; gap: 10px; }
+    .panel-app-icon { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; }
+    .panel-app-name { font-size: 0.8rem; font-weight: 700; color: var(--on-bg); }
+    .panel-app-pkg { font-size: 0.68rem; color: var(--subtle); }
+
+    .toggle {
+      width: 36px; height: 20px; background: var(--teal); border-radius: 100px; position: relative;
+    }
+    .toggle::after { content: ''; position: absolute; top: 3px; right: 3px; width: 14px; height: 14px; background: white; border-radius: 50%; }
+    .toggle.off { background: var(--divider); }
+    .toggle.off::after { right: auto; left: 3px; }
+
+    /* ── STATS ── */
+    .stats-row {
+      display: flex; flex-wrap: wrap; gap: 24px;
+      justify-content: center; margin-top: 48px;
+    }
+
+    .stat-item { text-align: center; }
+    .stat-num { font-size: 2.4rem; font-weight: 900; color: var(--teal); }
+    .stat-label { font-size: 0.85rem; color: var(--subtle); }
+
+    /* ── CTA SECTION ── */
+    .cta-section {
+      background: linear-gradient(135deg, var(--teal) 0%, var(--teal-dark) 100%);
+      color: white; text-align: center;
+      padding: 80px 24px;
+    }
+
+    .cta-section h2 { font-size: clamp(1.8rem, 4vw, 2.6rem); font-weight: 900; margin-bottom: 14px; }
+    .cta-section p { font-size: 1.05rem; opacity: 0.75; margin-bottom: 40px; max-width: 520px; margin-left: auto; margin-right: auto; }
+
+    .btn-white {
+      display: inline-flex; align-items: center; gap: 10px;
+      background: white; color: var(--teal-dark);
+      padding: 16px 32px; border-radius: var(--radius-btn);
+      font-weight: 800; font-size: 1rem; text-decoration: none;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      transition: all .2s;
+    }
+
+    .btn-white:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(0,0,0,0.2); }
+
+    /* ── FOOTER ── */
+    footer {
+      background: var(--on-bg); color: rgba(255,255,255,0.6);
+      padding: 48px 24px 32px;
+    }
+
+    .footer-inner { max-width: 1100px; margin: 0 auto; }
+
+    .footer-top {
+      display: flex; flex-wrap: wrap; gap: 32px;
+      justify-content: space-between; margin-bottom: 40px;
+    }
+
+    .footer-brand { max-width: 280px; }
+    .footer-brand-name {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 1.15rem; font-weight: 800; color: white;
+      margin-bottom: 12px;
+    }
+
+    .footer-brand-icon {
+      width: 32px; height: 32px; border-radius: 8px;
+      background: linear-gradient(135deg, var(--teal), var(--teal-dark));
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    .footer-brand-icon svg { width: 18px; height: 18px; }
+
+    .footer-brand p { font-size: 0.85rem; line-height: 1.6; }
+
+    .footer-links h4 { color: white; font-size: 0.85rem; font-weight: 700; margin-bottom: 12px; }
+    .footer-links ul { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+    .footer-links li a { color: rgba(255,255,255,0.5); text-decoration: none; font-size: 0.85rem; transition: color .2s; }
+    .footer-links li a:hover { color: var(--teal-light); }
+
+    .footer-bottom {
+      border-top: 1px solid rgba(255,255,255,0.08);
+      padding-top: 24px;
+      display: flex; flex-wrap: wrap; gap: 12px;
+      justify-content: space-between; align-items: center;
+    }
+
+    .footer-bottom p { font-size: 0.8rem; }
+
+    /* ── ANDROID BADGE ── */
+    .android-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      color: rgba(255,255,255,0.7);
+      padding: 8px 16px; border-radius: 10px;
+      font-size: 0.8rem; font-weight: 600;
+    }
+
+    /* ── FLOATING ORBS DECORATION ── */
+    .orb {
+      position: absolute; border-radius: 50%;
+      filter: blur(60px); pointer-events: none; opacity: 0.5;
+    }
+    .orb-1 { width: 300px; height: 300px; background: rgba(0,150,180,0.2); top: -80px; right: 10%; }
+    .orb-2 { width: 200px; height: 200px; background: rgba(124,77,255,0.12); bottom: 10%; left: 5%; }
+
+  </style>
+</head>
+<body>
+
+<!-- ── NAV ── -->
+<nav>
+  <a href="#" class="nav-logo">
+    <div class="nav-logo-icon">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M16 2H8a2 2 0 00-2 2v16a2 2 0 002 2h8a2 2 0 002-2V4a2 2 0 00-2-2z" fill="rgba(255,255,255,0.2)" stroke="white" stroke-width="1.5"/>
+        <circle cx="10" cy="10" r="1.5" fill="white"/>
+        <circle cx="14" cy="10" r="1.5" fill="white"/>
+        <path d="M8 6h.5M15.5 6H16M9 14s1 1.5 3 1.5S15 14 15 14" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </div>
+    RasFocus
+  </a>
+
+  <div class="nav-links">
+    <a href="#modes">Modes</a>
+    <a href="#features">Features</a>
+    <a href="#parental">Parental</a>
+    <a href="#study">Study Tools</a>
+    <a href="#github">GitHub</a>
+  </div>
+
+  <a href="https://github.com/raseledutools/RasFocus-final" class="btn-dl" target="_blank">
+    ★ GitHub
+  </a>
+</nav>
+
+<!-- ── HERO ── -->
+<section class="hero">
+  <div class="hero-bg"></div>
+  <div class="hero-grid"></div>
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+
+  <div class="hero-content">
+    <div class="hero-badge">
+      <div class="hero-badge-dot"></div>
+      Android Productivity App
+    </div>
+
+    <h1>Stay <span>Focused</span>.<br>Block Distractions.<br>Grow Together.</h1>
+
+    <p class="hero-sub">
+      RasFocus হলো সবচেয়ে শক্তিশালী focus &amp; app blocker app। Self Control, Parental Control, Student Mode, এবং Pro Combo — সব এক জায়গায়।
+    </p>
+
+    <div class="hero-ctas">
+      <a href="https://github.com/raseledutools/RasFocus-final" class="btn-primary" target="_blank">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        GitHub-এ দেখুন
+      </a>
+      <a href="#features" class="btn-secondary">
+        🔍 Features দেখুন
+      </a>
+    </div>
+
+    <!-- Phone Mockup -->
+    <div class="phone-mockup" style="margin: 0 auto;">
+      <div class="phone-frame">
+        <div class="phone-screen">
+          <!-- Status bar -->
+          <div class="ps-status">
+            <div class="ps-status-dot" style="background:#43A047"></div>
+            <div class="ps-status-dot" style="background:#0096B4"></div>
+            <div class="ps-status-dot" style="background:#0096B4"></div>
+          </div>
+          <!-- Header -->
+          <div class="ps-header">
+            <div class="ps-header-title">RASFOCUS</div>
+            <div class="ps-header-name">🧘 Self Control</div>
+            <div class="ps-header-sub">Focus Mode Active</div>
+          </div>
+          <!-- Body -->
+          <div class="ps-body">
+            <!-- Timer -->
+            <div class="ps-timer">
+              <div class="ps-timer-num">24:35</div>
+              <div class="ps-timer-label">⏱ Focus Session Running</div>
+            </div>
+            <!-- Cards -->
+            <div class="ps-card">
+              <div class="ps-icon" style="background: rgba(255,59,48,0.1);">🔒</div>
+              <div class="ps-card-text">
+                <div class="ps-card-title">YouTube Blocked</div>
+                <div class="ps-card-sub">Shorts &amp; Reels off</div>
+              </div>
+            </div>
+            <div class="ps-card">
+              <div class="ps-icon" style="background: rgba(67,160,71,0.1);">📚</div>
+              <div class="ps-card-text">
+                <div class="ps-card-title">Deep Study ON</div>
+                <div class="ps-card-sub">PDF &amp; Calculator ready</div>
+              </div>
+            </div>
+            <div class="ps-card">
+              <div class="ps-icon" style="background: rgba(0,150,180,0.1);">📊</div>
+              <div class="ps-card-text">
+                <div class="ps-card-title">Today: 3h 12m</div>
+                <div class="ps-card-sub">12 distractions blocked</div>
+              </div>
+            </div>
+          </div>
+          <!-- Nav -->
+          <div class="ps-nav">
+            <div class="ps-nav-item active">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>
+              <span>My Focus</span>
+            </div>
+            <div class="ps-nav-item">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+              <span>Family</span>
+            </div>
+            <div class="ps-nav-item">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+              <span>Settings</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ── STATS ── -->
+<section style="padding: 40px 24px; background: var(--surface); border-top: 1px solid var(--divider);">
+  <div class="container">
+    <div class="stats-row">
+      <div class="stat-item">
+        <div class="stat-num">4</div>
+        <div class="stat-label">Focus Modes</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num">15+</div>
+        <div class="stat-label">Blocking Features</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num">8+</div>
+        <div class="stat-label">Study Tools</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num">100%</div>
+        <div class="stat-label">Kotlin</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num">Android</div>
+        <div class="stat-label">Platform</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── MODES ── -->
+<section id="modes">
+  <div class="container">
+    <div class="section-label">🎭 Persona System</div>
+    <h2 class="section-title">আপনার জন্য সঠিক Mode</h2>
+    <p class="section-sub">
+      RasFocus-এ চারটি আলাদা Persona Mode আছে — প্রতিটি আলাদা ব্যবহারকারীর জন্য ডিজাইন করা হয়েছে।
+    </p>
+
+    <div class="modes-grid">
+      <div class="mode-card selfcontrol">
+        <div class="mode-emoji">🧘</div>
+        <div class="mode-title">Self Control</div>
+        <div class="mode-sub">শুধু নিজেকে নিয়ন্ত্রণ করুন। Pomodoro timer, app blocking, reels blocker — সব একসাথে।</div>
+        <div class="mode-tag" style="background:rgba(255,109,0,0.1);color:var(--orange);">Self Mode</div>
+      </div>
+
+      <div class="mode-card parental">
+        <div class="mode-emoji">👨‍👧</div>
+        <div class="mode-title">Parental Control</div>
+        <div class="mode-sub">সন্তানের ফোন remotely monitor ও control করুন। Screen time, app block, screenshot সব।</div>
+        <div class="mode-tag">Parental Mode</div>
+      </div>
+
+      <div class="mode-card combo">
+        <div class="mode-emoji">⚡</div>
+        <div class="mode-title">Pro Combo</div>
+        <div class="mode-sub">Self Control + Parental Control একসাথে। পরিবারের জন্য Full Power Package।</div>
+        <div class="mode-tag" style="background:rgba(255,171,0,0.1);color:#a07000;">Pro Mode</div>
+      </div>
+
+      <div class="mode-card student">
+        <div class="mode-emoji">🎓</div>
+        <div class="mode-title">Student Mode</div>
+        <div class="mode-sub">ছাত্রদের জন্য বিশেষভাবে ডিজাইন। Focus timer, study tools, linked device monitoring।</div>
+        <div class="mode-tag" style="background:rgba(124,77,255,0.1);color:var(--purple);">Student Mode</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FEATURES ── -->
+<section id="features" class="features-bg">
+  <div class="container">
+    <div class="section-label">🔒 Core Features</div>
+    <h2 class="section-title">শক্তিশালী সব Features</h2>
+    <p class="section-sub">
+      RasFocus শুধু app block করে না — সম্পূর্ণ digital wellbeing ecosystem।
+    </p>
+
+    <div class="features-grid">
+      <div class="feat-card">
+        <div class="feat-icon" style="background:rgba(255,59,48,0.1);">🔴</div>
+        <div class="feat-title">App Blocker</div>
+        <div class="feat-desc">
+          যেকোনো app block করুন schedule অনুযায়ী। Deep Study mode-এ শুধু study apps চলবে, বাকি সব বন্ধ।
+        </div>
+        <div class="feat-tags">
+          <span class="feat-tag">Schedule</span>
+          <span class="feat-tag">Deep Study</span>
+          <span class="feat-tag">Overlay</span>
+        </div>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon" style="background:rgba(0,150,180,0.1);">🌐</div>
+        <div class="feat-title">Website & Reels Blocker</div>
+        <div class="feat-desc">
+          YouTube Shorts, Facebook Reels, Instagram Reels সহ যেকোনো website block করুন। Adult content filter built-in।
+        </div>
+        <div class="feat-tags">
+          <span class="feat-tag">Shorts</span>
+          <span class="feat-tag">Reels</span>
+          <span class="feat-tag">Adult Block</span>
+        </div>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon" style="background:rgba(67,160,71,0.1);">⏱</div>
+        <div class="feat-title">Pomodoro & Focus Timer</div>
+        <div class="feat-desc">
+          Custom focus session timer। Focus Time, Short Break, Long Break সব configure করুন। Statistics track করুন।
+        </div>
+        <div class="feat-tags">
+          <span class="feat-tag">Timer</span>
+          <span class="feat-tag">Rounds</span>
+          <span class="feat-tag">Stats</span>
+        </div>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon" style="background:rgba(124,77,255,0.1);">🛡</div>
+        <div class="feat-title">Extreme Block Mode</div>
+        <div class="feat-desc">
+          সর্বোচ্চ level-এর blocking। Uninstall protection সহ — Device Admin permission ব্যবহার করে app নিজেকে রক্ষা করে।
+        </div>
+        <div class="feat-tags">
+          <span class="feat-tag">Device Admin</span>
+          <span class="feat-tag">Uninstall Lock</span>
+          <span class="feat-tag">Extreme</span>
+        </div>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon" style="background:rgba(255,171,0,0.1);">📊</div>
+        <div class="feat-title">Usage Statistics</div>
+        <div class="feat-desc">
+          প্রতিদিনের screen time, blocked distractions, focus minutes সব track করা হয়। Bar chart দিয়ে দেখুন।
+        </div>
+        <div class="feat-tags">
+          <span class="feat-tag">Daily Stats</span>
+          <span class="feat-tag">Charts</span>
+          <span class="feat-tag">History</span>
+        </div>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon" style="background:rgba(0,150,180,0.08);">🔐</div>
+        <div class="feat-title">Master Password Lock</div>
+        <div class="feat-desc">
+          Settings বা blocking change করতে Master Password লাগবে। Parents শুধু নিজেরাই unlock করতে পারবেন।
+        </div>
+        <div class="feat-tags">
+          <span class="feat-tag">Password</span>
+          <span class="feat-tag">Parents Only</span>
+          <span class="feat-tag">Lock</span>
+        </div>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon" style="background:rgba(255,109,0,0.1);">📋</div>
+        <div class="feat-title">Focus Profile System</div>
+        <div class="feat-desc">
+          আলাদা আলাদা Focus Profile তৈরি করুন — সকাল, বিকেল, রাত — প্রতিটিতে আলাদা apps ও websites block।
+        </div>
+        <div class="feat-tags">
+          <span class="feat-tag">Profiles</span>
+          <span class="feat-tag">Schedule</span>
+          <span class="feat-tag">Custom</span>
+        </div>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon" style="background:rgba(0,150,180,0.1);">🌐</div>
+        <div class="feat-title">Family Browser</div>
+        <div class="feat-desc">
+          Built-in safe browser with ad blocker। Floating window support, tab manager, YouTube background play।
+        </div>
+        <div class="feat-tags">
+          <span class="feat-tag">Ad Block</span>
+          <span class="feat-tag">Safe Browse</span>
+          <span class="feat-tag">Floating</span>
+        </div>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon" style="background:rgba(67,160,71,0.1);">📁</div>
+        <div class="feat-title">File Manager Plus</div>
+        <div class="feat-desc">
+          Advanced file manager — SMB, FTP, Google Drive, Dropbox support। Secure vault, storage analyzer।
+        </div>
+        <div class="feat-tags">
+          <span class="feat-tag">Cloud</span>
+          <span class="feat-tag">SMB/FTP</span>
+          <span class="feat-tag">Secure Vault</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── PARENTAL ── -->
+<section id="parental">
+  <div class="container">
+    <div class="section-label">👨‍👧 Parental Control</div>
+    <h2 class="section-title">সন্তানকে সুরক্ষিত রাখুন</h2>
+    <p class="section-sub">
+      Firebase-powered real-time parental control — ঘরে বসে বা দূরে থেকেও সন্তানের ফোন monitor করুন।
+    </p>
+
+    <div class="parental-grid">
+      <ul class="parental-list">
+        <li>
+          <div class="parental-list-icon">📱</div>
+          <div class="parental-list-text">
+            <strong>Remote App Blocking</strong>
+            <span>Firebase-এর মাধ্যমে instantly যেকোনো app block করুন child device-এ।</span>
+          </div>
+        </li>
+        <li>
+          <div class="parental-list-icon">⏰</div>
+          <div class="parental-list-text">
+            <strong>Screen Time Limit</strong>
+            <span>Daily screen time limit set করুন — limit শেষে ফোন automatically lock হবে।</span>
+          </div>
+        </li>
+        <li>
+          <div class="parental-list-icon">📸</div>
+          <div class="parental-list-text">
+            <strong>Remote Screenshot</strong>
+            <span>যেকোনো সময় command দিয়ে সন্তানের screen-এর screenshot নিন।</span>
+          </div>
+        </li>
+        <li>
+          <div class="parental-list-icon">🔴</div>
+          <div class="parental-list-text">
+            <strong>Adult Content Block</strong>
+            <span>Keywords-based intelligent adult content filtering। Firebase-থেকে keyword sync।</span>
+          </div>
+        </li>
+        <li>
+          <div class="parental-list-icon">🌐</div>
+          <div class="parental-list-text">
+            <strong>Website & Reels Control</strong>
+            <span>Shorts, Reels, specific websites remotely on/off করুন।</span>
+          </div>
+        </li>
+        <li>
+          <div class="parental-list-icon">📊</div>
+          <div class="parental-list-text">
+            <strong>Real-time Monitoring</strong>
+            <span>Child device-এর stats, blocked apps, usage — সব real-time দেখুন।</span>
+          </div>
+        </li>
+      </ul>
+
+      <div class="panel-mockup">
+        <div class="panel-title">Parent Control Panel — Child Device</div>
+
+        <div class="panel-item">
+          <div class="panel-item-left">
+            <div class="panel-app-icon" style="background:rgba(255,59,48,0.1);">📺</div>
+            <div>
+              <div class="panel-app-name">YouTube</div>
+              <div class="panel-app-pkg">com.google.android.youtube</div>
+            </div>
+          </div>
+          <div class="toggle"></div>
+        </div>
+
+        <div class="panel-item">
+          <div class="panel-item-left">
+            <div class="panel-app-icon" style="background:rgba(0,150,180,0.1);">📘</div>
+            <div>
+              <div class="panel-app-name">Facebook</div>
+              <div class="panel-app-pkg">com.facebook.katana</div>
+            </div>
+          </div>
+          <div class="toggle"></div>
+        </div>
+
+        <div class="panel-item">
+          <div class="panel-item-left">
+            <div class="panel-app-icon" style="background:rgba(255,109,0,0.1);">📷</div>
+            <div>
+              <div class="panel-app-name">Instagram</div>
+              <div class="panel-app-pkg">com.instagram.android</div>
+            </div>
+          </div>
+          <div class="toggle"></div>
+        </div>
+
+        <div class="panel-item">
+          <div class="panel-item-left">
+            <div class="panel-app-icon" style="background:rgba(67,160,71,0.1);">📗</div>
+            <div>
+              <div class="panel-app-name">Quran App</div>
+              <div class="panel-app-pkg">Allowed — Education</div>
+            </div>
+          </div>
+          <div class="toggle off"></div>
+        </div>
+
+        <div style="margin-top:16px; padding: 12px 14px; background: linear-gradient(135deg, var(--teal), var(--teal-dark)); border-radius: 12px; color: white; font-size: 0.8rem; display: flex; align-items: center; gap: 8px;">
+          📊 Screen Time Today: <strong>2h 14m / 3h limit</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── COMBO PRO ── -->
+<section class="combo-section" id="combo">
+  <div class="container">
+    <div class="section-label">⚡ Pro Combo</div>
+    <h2 class="section-title">Pro Combo — Full Power</h2>
+    <p class="section-sub">
+      Self Control + Parental Control একসাথে। পরিবারের জন্য সবচেয়ে শক্তিশালী package।
+    </p>
+
+    <div class="combo-cards">
+      <div class="combo-card">
+        <div class="combo-card-icon">🧘</div>
+        <div class="combo-card-title">Self Control Built-in</div>
+        <div class="combo-card-desc">নিজের জন্য Pomodoro timer, app block, reels block সব চালু রাখুন।</div>
+      </div>
+
+      <div class="combo-card">
+        <div class="combo-card-icon">👨‍👧</div>
+        <div class="combo-card-title">Parental Full Access</div>
+        <div class="combo-card-desc">সন্তানের ফোন remotely control করুন। App block, screenshot, screen time।</div>
+      </div>
+
+      <div class="combo-card">
+        <div class="combo-card-icon">🔄</div>
+        <div class="combo-card-title">Firebase Sync</div>
+        <div class="combo-card-desc">Real-time sync — parent এ change করলে child device-এ instantly apply।</div>
+      </div>
+
+      <div class="combo-card">
+        <div class="combo-card-icon">🛡</div>
+        <div class="combo-card-title">Uninstall Protection</div>
+        <div class="combo-card-desc">Device Admin দিয়ে app uninstall থেকে রক্ষা। শুধু parent unlock করতে পারবেন।</div>
+      </div>
+
+      <div class="combo-card">
+        <div class="combo-card-icon">📊</div>
+        <div class="combo-card-title">Combined Statistics</div>
+        <div class="combo-card-desc">নিজের এবং সন্তানের — উভয়ের usage stats এক dashboard-এ।</div>
+      </div>
+
+      <div class="combo-card">
+        <div class="combo-card-icon">⚡</div>
+        <div class="combo-card-title">Extreme Mode</div>
+        <div class="combo-card-desc">সম্পূর্ণ distraction-free environment। চরম মনোযোগ দরকার হলে।</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── STUDY TOOLS ── -->
+<section id="study">
+  <div class="container">
+    <div class="section-label">📚 Study Tools</div>
+    <h2 class="section-title">Built-in Study Tools</h2>
+    <p class="section-sub">
+      RasFocus-এ আলাদা app লাগবে না — সব study tools built-in।
+    </p>
+
+    <div class="study-grid">
+      <div class="study-card">
+        <div class="study-icon">📄</div>
+        <div class="study-name">PDF Viewer</div>
+        <div class="study-sub">Read &amp; annotate PDFs</div>
+      </div>
+      <div class="study-card">
+        <div class="study-icon">🧮</div>
+        <div class="study-name">Scientific Calculator</div>
+        <div class="study-sub">Advanced math functions</div>
+      </div>
+      <div class="study-card">
+        <div class="study-icon">📈</div>
+        <div class="study-name">Graphic Calculator</div>
+        <div class="study-sub">Graph equations visually</div>
+      </div>
+      <div class="study-card">
+        <div class="study-icon">📔</div>
+        <div class="study-name">Study Diary</div>
+        <div class="study-sub">Notes with PDF export</div>
+      </div>
+      <div class="study-card">
+        <div class="study-icon">📝</div>
+        <div class="study-name">DOCX Viewer</div>
+        <div class="study-sub">Word documents</div>
+      </div>
+      <div class="study-card">
+        <div class="study-icon">📊</div>
+        <div class="study-name">XLSX Viewer</div>
+        <div class="study-sub">Excel spreadsheets</div>
+      </div>
+      <div class="study-card">
+        <div class="study-icon">📑</div>
+        <div class="study-name">PPTX Viewer</div>
+        <div class="study-sub">Presentation slides</div>
+      </div>
+      <div class="study-card">
+        <div class="study-icon">📸</div>
+        <div class="study-name">Scan to PDF</div>
+        <div class="study-sub">Camera scan documents</div>
+      </div>
+      <div class="study-card">
+        <div class="study-icon">🔧</div>
+        <div class="study-name">PDF Tools</div>
+        <div class="study-sub">Split, merge, convert</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── GITHUB ── -->
+<section id="github" style="background: var(--surface);">
+  <div class="container" style="text-align: center;">
+    <div class="section-label">💻 Open Source</div>
+    <h2 class="section-title">GitHub-এ Available</h2>
+    <p class="section-sub" style="margin: 0 auto 40px;">
+      RasFocus সম্পূর্ণ Kotlin দিয়ে তৈরি Android app। MVVM architecture, Jetpack Compose, Firebase, Room, Hilt — সব modern stack।
+    </p>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; margin-bottom: 40px;">
+      <div style="background: var(--bg); border: 1.5px solid var(--divider); border-radius: 16px; padding: 16px 24px; text-align: center; min-width: 120px;">
+        <div style="font-size: 1.5rem; font-weight: 900; color: var(--teal);">Kotlin</div>
+        <div style="font-size: 0.8rem; color: var(--subtle);">Language</div>
+      </div>
+      <div style="background: var(--bg); border: 1.5px solid var(--divider); border-radius: 16px; padding: 16px 24px; text-align: center; min-width: 120px;">
+        <div style="font-size: 1.5rem; font-weight: 900; color: var(--teal);">Compose</div>
+        <div style="font-size: 0.8rem; color: var(--subtle);">UI Framework</div>
+      </div>
+      <div style="background: var(--bg); border: 1.5px solid var(--divider); border-radius: 16px; padding: 16px 24px; text-align: center; min-width: 120px;">
+        <div style="font-size: 1.5rem; font-weight: 900; color: var(--teal);">Firebase</div>
+        <div style="font-size: 0.8rem; color: var(--subtle);">Backend</div>
+      </div>
+      <div style="background: var(--bg); border: 1.5px solid var(--divider); border-radius: 16px; padding: 16px 24px; text-align: center; min-width: 120px;">
+        <div style="font-size: 1.5rem; font-weight: 900; color: var(--teal);">MVVM</div>
+        <div style="font-size: 0.8rem; color: var(--subtle);">Architecture</div>
+      </div>
+      <div style="background: var(--bg); border: 1.5px solid var(--divider); border-radius: 16px; padding: 16px 24px; text-align: center; min-width: 120px;">
+        <div style="font-size: 1.5rem; font-weight: 900; color: var(--teal);">Hilt</div>
+        <div style="font-size: 0.8rem; color: var(--subtle);">DI</div>
+      </div>
+      <div style="background: var(--bg); border: 1.5px solid var(--divider); border-radius: 16px; padding: 16px 24px; text-align: center; min-width: 120px;">
+        <div style="font-size: 1.5rem; font-weight: 900; color: var(--teal);">Room</div>
+        <div style="font-size: 0.8rem; color: var(--subtle);">Local DB</div>
+      </div>
+    </div>
+
+    <a href="https://github.com/raseledutools/RasFocus-final" class="btn-primary" target="_blank" style="display: inline-flex;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+      GitHub Repository দেখুন
+    </a>
+  </div>
+</section>
+
+<!-- ── CTA ── -->
+<section class="cta-section">
+  <h2>Focus করা শুরু করুন আজই</h2>
+  <p>RasFocus দিয়ে নিজেকে এবং পরিবারকে distraction-free রাখুন। GitHub থেকে clone করুন এবং build করুন।</p>
+  <a href="https://github.com/raseledutools/RasFocus-final" class="btn-white" target="_blank">
+    <svg width="20" height="20" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+    GitHub-এ দেখুন
+  </a>
+</section>
+
+<!-- ── FOOTER ── -->
+<footer>
+  <div class="footer-inner">
+    <div class="footer-top">
+      <div class="footer-brand">
+        <div class="footer-brand-name">
+          <div class="footer-brand-icon">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M16 2H8a2 2 0 00-2 2v16a2 2 0 002 2h8a2 2 0 002-2V4a2 2 0 00-2-2z" fill="rgba(255,255,255,0.2)" stroke="white" stroke-width="1.5"/>
+              <circle cx="10" cy="10" r="1.5" fill="white"/>
+              <circle cx="14" cy="10" r="1.5" fill="white"/>
+              <path d="M9 14s1 1.5 3 1.5S15 14 15 14" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </div>
+          RasFocus
+        </div>
+        <p>RasEduTools-এর তৈরি Android productivity app। Focus করুন, distraction block করুন, পরিবারকে সুরক্ষিত রাখুন।</p>
+        <div style="margin-top: 16px;">
+          <div class="android-badge">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="rgba(255,255,255,0.7)"><path d="M17.523 2.532l-1.437 2.49a7.21 7.21 0 00-8.172 0L6.477 2.532a.397.397 0 00-.546.144.404.404 0 00.143.551l1.416 2.452C5.677 7.007 4.5 9.124 4.5 11.498h15c0-2.374-1.177-4.49-2.99-5.819l1.416-2.452a.404.404 0 00-.143-.551.397.397 0 00-.26-.144zM9 9.498c-.552 0-1-.447-1-1s.448-1 1-1 1 .447 1 1-.448 1-1 1zm6 0c-.552 0-1-.447-1-1s.448-1 1-1 1 .447 1 1-.448 1-1 1zM3 12.498v7c0 .828.672 1.5 1.5 1.5h1v3c0 .828.672 1.5 1.5 1.5s1.5-.672 1.5-1.5v-3h7v3c0 .828.672 1.5 1.5 1.5s1.5-.672 1.5-1.5v-3h1c.828 0 1.5-.672 1.5-1.5v-7H3zm18-1.5c-.828 0-1.5.672-1.5 1.5v4.5c0 .828.672 1.5 1.5 1.5s1.5-.672 1.5-1.5V12.5c0-.828-.672-1.5-1.5-1.5zm-18 0c-.828 0-1.5.672-1.5 1.5v4.5c0 .828.672 1.5 1.5 1.5s1.5-.672 1.5-1.5V12.5c0-.828-.672-1.5-1.5-1.5z"/></svg>
+            Android App
+          </div>
+        </div>
+      </div>
+
+      <div class="footer-links">
+        <h4>Features</h4>
+        <ul>
+          <li><a href="#modes">Focus Modes</a></li>
+          <li><a href="#features">App Blocking</a></li>
+          <li><a href="#features">Reels Blocker</a></li>
+          <li><a href="#study">Study Tools</a></li>
+          <li><a href="#features">File Manager</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-links">
+        <h4>Modes</h4>
+        <ul>
+          <li><a href="#modes">Self Control</a></li>
+          <li><a href="#parental">Parental Control</a></li>
+          <li><a href="#combo">Pro Combo</a></li>
+          <li><a href="#modes">Student Mode</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-links">
+        <h4>Developer</h4>
+        <ul>
+          <li><a href="https://github.com/raseledutools" target="_blank">GitHub Profile</a></li>
+          <li><a href="https://github.com/raseledutools/RasFocus-final" target="_blank">Repository</a></li>
+          <li><a href="https://github.com/raseledutools/RasFocus-final/blob/main/CONTRIBUTING.md" target="_blank">Contributing</a></li>
+          <li><a href="https://github.com/raseledutools/RasFocus-final/issues" target="_blank">Issues</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <p>© 2025 RasEduTools. Built with ❤️ in Bangladesh.</p>
+      <a href="https://github.com/raseledutools/RasFocus-final" target="_blank" style="color: rgba(255,255,255,0.5); font-size: 0.8rem; text-decoration: none; display: flex; align-items: center; gap: 6px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        raseledutools/RasFocus-final
+      </a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

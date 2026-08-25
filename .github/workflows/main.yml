@@ -1,0 +1,142 @@
+name: Build RasFocus APK
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'app/**'
+      - 'build.gradle*'
+      - 'settings.gradle*'
+      - 'gradle/**'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - '.github/workflows/main.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'app/**'
+      - 'build.gradle*'
+      - 'settings.gradle*'
+      - 'gradle/**'
+  workflow_dispatch:
+
+# ══════════════════════════════════════════════════════
+# RELEASE_BUILD: true  → Full release (minify + sign)
+#                false → Debug build  (fast, no minify)
+# ══════════════════════════════════════════════════════
+env:
+  RELEASE_BUILD: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Set up Gradle (with dependency + build cache)
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+
+      - name: Build APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ "$RELEASE_BUILD" = "true" ]; then
+            echo ">>> RELEASE BUILD (minify + sign)"
+            ./gradlew assembleFullRelease --build-cache --parallel 2>&1 | tee /tmp/build.log; BUILD_EXIT=${PIPESTATUS[0]}
+          else
+            echo ">>> DEBUG BUILD (fast, no minify)"
+            ./gradlew assembleFullDebug --build-cache --parallel 2>&1 | tee /tmp/build.log; BUILD_EXIT=${PIPESTATUS[0]}
+          fi
+          exit $BUILD_EXIT
+
+      - name: On success — write SUCCESS to error_log.txt
+        if: success()
+        run: |
+          {
+            echo "╔══════════════════════════════════════════╗"
+            echo "║        LAST BUILD: SUCCESS ✅            ║"
+            echo "╚══════════════════════════════════════════╝"
+            echo ""
+            echo "Build passed at: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+            echo "Run: #${{ github.run_number }}  |  Commit: ${{ github.sha }}"
+            echo ""
+            echo "No errors. Safe to push."
+          } > error_log.txt
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add error_log.txt
+          git diff --cached --quiet && echo "No change" || git commit -m "ci: update error_log.txt [skip ci]"
+          git pull --rebase origin ${{ github.ref_name }} || true
+          git push origin HEAD:main || true
+
+      - name: On failure — write ERROR to error_log.txt
+        if: failure()
+        run: |
+          {
+            echo "╔══════════════════════════════════════════╗"
+            echo "║      LAST BUILD: ERROR ❌                ║"
+            echo "║   Push করার আগে এই error fix করুন।     ║"
+            echo "╚══════════════════════════════════════════╝"
+            echo ""
+            echo "=== KOTLIN ERRORS ==="
+            grep -E "^e: " /tmp/build.log || true
+            echo ""
+            echo "=== UNRESOLVED / TYPE ERRORS ==="
+            grep -E "Unresolved reference|Cannot find|None of the following|Type mismatch|Overload resolution|Redeclaration" /tmp/build.log || true
+            echo ""
+            echo "=== BUILD FAILURE ==="
+            grep -E "FAILED|BUILD FAILED|What went wrong|Execution failed" /tmp/build.log || true
+            echo ""
+            echo "=== LAST 60 LINES ==="
+            tail -60 /tmp/build.log
+          } > error_log.txt 2>&1 || true
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add error_log.txt
+          git diff --cached --quiet && echo "No change" || git commit -m "ci: update error_log.txt [skip ci]"
+          git pull --rebase origin ${{ github.ref_name }} || true
+          git push origin HEAD:main || true
+
+      - name: List generated APKs
+        run: find app/build/outputs/apk -name "*.apk" -print
+
+      - name: Upload APK as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RasFocus-${{ env.RELEASE_BUILD == 'true' && 'release' || 'debug' }}
+          path: |
+            app/build/outputs/apk/full/release/*.apk
+            app/build/outputs/apk/full/debug/*.apk
+          retention-days: 30
+
+      - name: Publish to GitHub Release (release only)
+        if: env.RELEASE_BUILD == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: RasFocus v1.0.${{ github.run_number }}
+          files: app/build/outputs/apk/full/release/*.apk
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
