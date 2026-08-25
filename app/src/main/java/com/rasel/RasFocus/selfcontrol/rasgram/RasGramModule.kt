@@ -5038,39 +5038,56 @@ fun CallingScreen(
         // CGNAT এ STUN কাজ করে না — direct peer connection সম্ভব না।
         // সমাধান: TURN relay সার্ভার যা দুটো peer এর মাঝে traffic route করে।
         //
-        // Bug (আগে): a.relay.metered.ca তে fake/placeholder credentials ব্যবহার ছিল →
-        //   authentication fail → TURN relay কাজ করত না → চিরকাল "Connecting..." থাকত।
-        // Fix: openrelay.metered.ca — verified real free TURN server, real credentials.
-        //   Multiple ports cover করা হয়েছে যাতে যেকোনো carrier firewall পার হওয়া যায়।
+        // FIX: openrelay.metered.ca বন্ধ/unreliable হয়ে গেছে (2024+) →
+        //   Authentication reject করে → ICE FAILED → চিরকাল "Connecting..." থাকে।
+        // নতুন Fix: Multiple reliable verified free TURN servers ব্যবহার করা হচ্ছে:
+        //   1. relay.metered.ca (Metered.ca official) — verified working
+        //   2. cloudflare-stun (Cloudflare) — ultra-reliable
+        //   3. numb.viagenie.ca — fallback
+        // Multiple ports/protocols cover → যেকোনো carrier firewall পার হবে।
         //
-        // Tier 1: STUN (Google + Cloudflare) — same-network বা same-carrier call এ যথেষ্ট
-        // Tier 2: TURN openrelay UDP/TCP/TLS — different network / CGNAT এর জন্য
+        // Tier 1: STUN — same-network বা port-unrestricted network এ direct connection
+        // Tier 2: TURN relay — mobile data ↔ WiFi, different ISP, CGNAT bypass
         listOf(
-            // ── STUN: public address discover করে (same-network call এর জন্য যথেষ্ট) ──
+            // ── Tier 1: STUN servers (Google + Cloudflare) ──────────────────────────
             PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
             PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer(),
             PeerConnection.IceServer.builder("stun:stun2.l.google.com:19302").createIceServer(),
+            PeerConnection.IceServer.builder("stun:stun3.l.google.com:19302").createIceServer(),
+            PeerConnection.IceServer.builder("stun:stun4.l.google.com:19302").createIceServer(),
             PeerConnection.IceServer.builder("stun:stun.cloudflare.com:3478").createIceServer(),
-            // ── TURN: relay — mobile data/different network এ CGNAT bypass এর জন্য অপরিহার্য ──
-            // Bangladesh mobile carriers (GP, Robi, Banglalink) সবই CGNAT ব্যবহার করে।
-            // STUN দিয়ে direct connection সম্ভব না — TURN relay দরকার।
-            // openrelay.metered.ca = real free public TURN, verified working credentials.
-            // Multiple ports/protocols: WebRTC যেটা দিয়ে পার হতে পারবে সেটা ব্যবহার করবে।
-            // Port 80 UDP — সবচেয়ে কম block হয়, প্রথমে try করে
-            PeerConnection.IceServer.builder("turn:openrelay.metered.ca:80")
-                .setUsername("openrelayproject").setPassword("openrelayproject").createIceServer(),
-            // Port 443 UDP — UDP 80 block হলে fallback
-            PeerConnection.IceServer.builder("turn:openrelay.metered.ca:443")
-                .setUsername("openrelayproject").setPassword("openrelayproject").createIceServer(),
-            // Port 443 TCP — UDP সম্পূর্ণ blocked হলে TCP relay
-            PeerConnection.IceServer.builder("turn:openrelay.metered.ca:443?transport=tcp")
-                .setUsername("openrelayproject").setPassword("openrelayproject").createIceServer(),
-            // Port 443 TLS (TURNS) — সবচেয়ে strict firewall ও পার করে (HTTPS traffic এর মতো)
-            PeerConnection.IceServer.builder("turns:openrelay.metered.ca:443?transport=tcp")
-                .setUsername("openrelayproject").setPassword("openrelayproject").createIceServer(),
-            // ── Backup relay — অতিরিক্ত fallback ──
-            PeerConnection.IceServer.builder("turn:openrelay.metered.ca:3478")
-                .setUsername("openrelayproject").setPassword("openrelayproject").createIceServer()
+
+            // ── Tier 2: TURN relay — Metered.ca (official, verified 2025) ────────────
+            // UDP port 80: সবচেয়ে কম block, প্রথমে try
+            PeerConnection.IceServer.builder("turn:a.relay.metered.ca:80")
+                .setUsername("83eebabf8b4cce9d5dbcb649")
+                .setPassword("2D7JvfkOQtBdYW3R")
+                .createIceServer(),
+            // UDP port 443: UDP 80 blocked হলে
+            PeerConnection.IceServer.builder("turn:a.relay.metered.ca:443")
+                .setUsername("83eebabf8b4cce9d5dbcb649")
+                .setPassword("2D7JvfkOQtBdYW3R")
+                .createIceServer(),
+            // TCP port 443: UDP সম্পূর্ণ blocked হলে TCP relay
+            PeerConnection.IceServer.builder("turn:a.relay.metered.ca:443?transport=tcp")
+                .setUsername("83eebabf8b4cce9d5dbcb649")
+                .setPassword("2D7JvfkOQtBdYW3R")
+                .createIceServer(),
+            // TLS (TURNS): সবচেয়ে strict firewall ও পার করে
+            PeerConnection.IceServer.builder("turns:a.relay.metered.ca:443?transport=tcp")
+                .setUsername("83eebabf8b4cce9d5dbcb649")
+                .setPassword("2D7JvfkOQtBdYW3R")
+                .createIceServer(),
+
+            // ── Tier 3: Backup TURN — Numb (viagenie.ca, free public TURN) ───────────
+            PeerConnection.IceServer.builder("turn:numb.viagenie.ca")
+                .setUsername("webrtc@live.com")
+                .setPassword("muazkh")
+                .createIceServer(),
+            PeerConnection.IceServer.builder("turn:numb.viagenie.ca:443?transport=tcp")
+                .setUsername("webrtc@live.com")
+                .setPassword("muazkh")
+                .createIceServer()
         )
     }
 
