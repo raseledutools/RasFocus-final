@@ -127,7 +127,7 @@ fun RasGramDriveSyncSettings(currentUser: User) {
                     syncResult = null
                     scope.launch {
                         val result = kotlinx.coroutines.withContext(Dispatchers.IO) {
-                            RasGramDriveSyncEngine.performSync(context)
+                            RasGramDriveSyncEngine.performFullSync(context)  // সব messages, no age filter
                         }
                         isSyncing = false
                         syncResult = if (result.success) {
