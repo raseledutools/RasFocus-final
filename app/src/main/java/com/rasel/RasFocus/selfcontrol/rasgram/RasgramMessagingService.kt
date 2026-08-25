@@ -118,9 +118,25 @@ class RasgramMessagingService : FirebaseMessagingService() {
         if (hasOverlay) {
             // IncomingCallOverlayService নিজেই:
             // → startForeground notification দেয় (Answer/Decline সহ)
-            // → screen off/locked হলে RasGramActivity launch করে (full page)
+            // → screen off/locked হলে fullScreenIntent OS fire করে (full page)
             // → screen on+unlocked হলে floating overlay card দেখায়
-            IncomingCallOverlayService.start(this, callId, callerName, callerMobile, callType)
+            //
+            // FIX: try-catch — Android 14/15 এ MANAGE_OWN_CALLS বা
+            // USE_FULL_SCREEN_INTENT grant না থাকলে SecurityException আসতে পারে।
+            // সেক্ষেত্রে plain notification fallback দিয়ে কাজ চালাও।
+            var serviceStarted = false
+            try {
+                IncomingCallOverlayService.start(this, callId, callerName, callerMobile, callType)
+                serviceStarted = true
+            } catch (e: Exception) {
+                android.util.Log.e("RasGram", "IncomingCallOverlayService start failed: ${e.message}")
+            }
+            if (!serviceStarted) {
+                // Service start হয়নি — plain notification দাও
+                val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                createChannels(nm)
+                postFullScreenCallNotification(nm, callerName, callerMobile, callType, callId)
+            }
         } else {
             // Overlay permission নেই — fullScreenIntent notification fallback
             // Android নিজেই notification থেকে Activity খুলবে (HUD বা full screen)

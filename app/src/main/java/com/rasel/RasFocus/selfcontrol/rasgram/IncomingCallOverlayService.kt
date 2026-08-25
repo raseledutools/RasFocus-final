@@ -7,6 +7,8 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import android.graphics.PixelFormat
 import android.media.AudioManager
 import android.media.Ringtone
@@ -374,10 +376,41 @@ class IncomingCallOverlayService : Service(),
             .setAutoCancel(false)
             .build()
 
+        // Android 14+ (UPSIDE_DOWN_CAKE): foregroundServiceType="phoneCall" এর জন্য
+        // MANAGE_OWN_CALLS permission লাগে। কিছু OEM (Samsung, Xiaomi) তে
+        // MANAGE_OWN_CALLS থাকলেও SecurityException throw করে — তাই try-catch।
+        // Fallback: type ছাড়া plain startForeground — notification দেখাবে, crash নেই।
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(OVERLAY_NOTIF_ID, notif, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL)
+            try {
+                startForeground(
+                    OVERLAY_NOTIF_ID, notif,
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL
+                )
+            } catch (e: Exception) {
+                android.util.Log.w("RasGram", "phoneCall foreground type failed, fallback: ${e.message}")
+                try { startForeground(OVERLAY_NOTIF_ID, notif) } catch (_: Exception) {}
+            }
         } else {
             startForeground(OVERLAY_NOTIF_ID, notif)
+        }
+
+        // FIX Android 14+ (API 34): USE_FULL_SCREEN_INTENT permission runtime check।
+        // Android 14 থেকে এই permission user কে manually grant করতে হয়।
+        // না থাকলে fullScreenIntent fire হয় না — lock screen এ call আসে না।
+        // User কে Settings এ পাঠানো হয় যাতে একবার grant করে নেয়।
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            val nm2 = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+            if (!nm2.canUseFullScreenIntent()) {
+                android.util.Log.w("RasGram", "USE_FULL_SCREEN_INTENT not granted — lock screen call UI won't show")
+                // Settings এ নিয়ে যাও — user একবার grant করলে পরবর্তী call থেকে কাজ করবে
+                try {
+                    val settingsIntent = Intent(
+                        Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                        Uri.parse("package:$packageName")
+                    ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+                    startActivity(settingsIntent)
+                } catch (_: Exception) {}
+            }
         }
     }
 
