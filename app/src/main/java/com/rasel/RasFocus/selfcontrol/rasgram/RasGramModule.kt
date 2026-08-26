@@ -5442,157 +5442,39 @@ fun CallingScreen(
         )
     }
 
-    // FIX: Split from LaunchedEffect(peerConnectionFactory.value) above.
-    // Runs once peerConnection is created (non-null). Handles the receiver/caller
-    // signaling paths. Keeping this separate halves the bytecode per suspend lambda.
-    @Suppress("NAME_SHADOWING")
+    // FIX: Receiver/caller signaling paths extracted to top-level suspend functions
+    // handleReceiverSignaling() and handleCallerSignaling() below.
+    // Each anonymous SdpObserver + nested coroutine block was pushing this
+    // LaunchedEffect lambda past the JVM 64KB method bytecode limit, triggering
+    // Kotlin 2.1.x FixStackAnalyzer NullPointerException at instruction #346.
+    // Moving them to named top-level functions allocates their bytecode in
+    // separate class files, cutting this lambda's bytecode size below the threshold.
     LaunchedEffect(peerConnection, isReceiver) {
         val pc = peerConnection ?: return@LaunchedEffect
         try {
             if (isReceiver) {
-                // ── RECEIVER PATH ─────────────────────────────────────────────────────
-                callStatus = "Connecting..."
-                val callDoc = db.collection("calls").document(callId).get().await()
-                val offerMap = callDoc.data?.get("offer") as? Map<*, *>
-                    ?: run { onEndCall(); return@LaunchedEffect }
-                val offerSdp = offerMap["sdp"] as? String
-                    ?: run { onEndCall(); return@LaunchedEffect }
-
-                pc.setRemoteDescription(object : SdpObserver {
-                    override fun onCreateSuccess(s: SessionDescription?) {}
-                    override fun onSetSuccess() {
-                        val answerConstraints = MediaConstraints().apply {
-                            mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
-                            if (callType == "video") mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
-                        }
-                        pc.createAnswer(object : SdpObserver {
-                            override fun onCreateSuccess(sdp: SessionDescription?) {
-                                sdp?.let { s ->
-                                    pc.setLocalDescription(object : SdpObserver {
-                                        override fun onCreateSuccess(s2: SessionDescription?) {}
-                                        override fun onSetSuccess() {
-                                            scope.launch {
-                                                db.collection("calls").document(callId).update(
-                                                    "status", "answered",
-                                                    "answer", mapOf("type" to s.type.canonicalForm(), "sdp" to s.description)
-                                                )
-                                                db.collection("calls").document(callId)
-                                                    .collection("caller_ice")
-                                                    .addSnapshotListener { snap, _ ->
-                                                        snap?.documentChanges?.forEach { change ->
-                                                            if (change.type == com.google.firebase.firestore.DocumentChange.Type.ADDED) {
-                                                                val d = change.document.data
-                                                                pc.addIceCandidate(
-                                                                    IceCandidate(
-                                                                        d["sdpMid"] as? String ?: "",
-                                                                        (d["sdpMLineIndex"] as? Long)?.toInt() ?: 0,
-                                                                        d["candidate"] as? String ?: ""
-                                                                    )
-                                                                )
-                                                            }
-                                                        }
-                                                    }
-                                                callStatus = "Connecting..."
-                                            }
-                                        }
-                                        override fun onCreateFailure(e: String?) {}
-                                        override fun onSetFailure(e: String?) {}
-                                    }, s)
-                                }
-                            }
-                            override fun onSetSuccess() {}
-                            override fun onCreateFailure(e: String?) {}
-                            override fun onSetFailure(e: String?) {}
-                        }, answerConstraints)
-                    }
-                    override fun onCreateFailure(e: String?) {}
-                    override fun onSetFailure(e: String?) {}
-                }, SessionDescription(SessionDescription.Type.OFFER, offerSdp))
-
-                db.collection("calls").document(callId).addSnapshotListener { snapshot, _ ->
-                    val status = snapshot?.data?.get("status") as? String ?: return@addSnapshotListener
-                    if (status == "ended" || status == "rejected") scope.launch { onEndCall() }
-                }
+                handleReceiverSignaling(
+                    pc = pc,
+                    db = db,
+                    callId = callId,
+                    callType = callType,
+                    scope = scope,
+                    setCallStatus = { callStatus = it },
+                    onEndCall = onEndCall
+                )
             } else {
-                // ── CALLER PATH ───────────────────────────────────────────────────────
-                val offerConstraints = MediaConstraints().apply {
-                    mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
-                    if (callType == "video") mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
-                }
-
-                pc.createOffer(object : SdpObserver {
-                    override fun onCreateSuccess(sdp: SessionDescription?) {
-                        sdp?.let { s ->
-                            pc.setLocalDescription(object : SdpObserver {
-                                override fun onCreateSuccess(s2: SessionDescription?) {}
-                                override fun onSetSuccess() {
-                                    scope.launch {
-                                        db.collection("calls").document(callId).set(hashMapOf(
-                                            "caller" to currentUser.mobile,
-                                            "callerName" to currentUser.name,
-                                            "callee" to contact.mobile,
-                                            "type" to callType, "status" to "calling",
-                                            "timestamp" to System.currentTimeMillis(),
-                                            "offer" to mapOf("type" to s.type.canonicalForm(), "sdp" to s.description)
-                                        ))
-                                        sendFcmCallNotification(
-                                            calleeMobile = contact.mobile,
-                                            callerMobile = currentUser.mobile,
-                                            callerName = currentUser.name,
-                                            callType = callType,
-                                            callId = callId,
-                                            db = db,
-                                            context = context
-                                        )
-                                    }
-                                }
-                                override fun onCreateFailure(e: String?) {}
-                                override fun onSetFailure(e: String?) {}
-                            }, s)
-                        }
-                    }
-                    override fun onSetSuccess() {}
-                    override fun onCreateFailure(e: String?) {}
-                    override fun onSetFailure(e: String?) {}
-                }, offerConstraints)
-
-                db.collection("calls").document(callId).addSnapshotListener { snapshot, _ ->
-                    val data = snapshot?.data ?: return@addSnapshotListener
-                    when (data["status"] as? String) {
-                        "answered" -> {
-                            (data["answer"] as? Map<*, *>)?.let { ans ->
-                                val sdpStr = ans["sdp"] as? String ?: return@addSnapshotListener
-                                pc.setRemoteDescription(object : SdpObserver {
-                                    override fun onCreateSuccess(s: SessionDescription?) {}
-                                    override fun onSetSuccess() {
-                                        scope.launch { callStatus = "Connecting..." }
-                                        scope.launch {
-                                            db.collection("calls").document(callId)
-                                                .collection("callee_ice")
-                                                .addSnapshotListener { snap, _ ->
-                                                    snap?.documentChanges?.forEach { change ->
-                                                        if (change.type == com.google.firebase.firestore.DocumentChange.Type.ADDED) {
-                                                            val d = change.document.data
-                                                            pc.addIceCandidate(
-                                                                IceCandidate(
-                                                                    d["sdpMid"] as? String ?: "",
-                                                                    (d["sdpMLineIndex"] as? Long)?.toInt() ?: 0,
-                                                                    d["candidate"] as? String ?: ""
-                                                                )
-                                                            )
-                                                        }
-                                                    }
-                                                }
-                                        }
-                                    }
-                                    override fun onCreateFailure(e: String?) {}
-                                    override fun onSetFailure(e: String?) {}
-                                }, SessionDescription(SessionDescription.Type.ANSWER, sdpStr))
-                            }
-                        }
-                        "ended", "rejected" -> scope.launch { onEndCall() }
-                    }
-                }
+                handleCallerSignaling(
+                    pc = pc,
+                    db = db,
+                    callId = callId,
+                    callType = callType,
+                    currentUser = currentUser,
+                    contact = contact,
+                    context = context,
+                    scope = scope,
+                    setCallStatus = { callStatus = it },
+                    onEndCall = onEndCall
+                )
             }
         } catch (e: Exception) {
             Toast.makeText(context, "Call error: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -7505,6 +7387,177 @@ fun normalizeNumber(raw: String): String {
 // Extracted from LaunchedEffect(peerConnectionFactory.value) in CallingScreen.
 // Kotlin 2.1.x FixStackAnalyzer crashes when a single suspend lambda exceeds
 // the JVM 64KB bytecode limit (instruction #346 NullPointerException).
+// ── Signaling helpers — extracted from CallingScreen LaunchedEffect(peerConnection, isReceiver) ──
+// Each SdpObserver anonymous object + nested coroutine block was pushing that single
+// suspend lambda past the JVM 64KB method bytecode limit, causing Kotlin 2.1.x IR crash
+// (FixStackAnalyzer NullPointerException at instruction #346).
+// Extracting them to named top-level functions puts their bytecode in separate class files.
+
+suspend fun handleReceiverSignaling(
+    pc: PeerConnection,
+    db: FirebaseFirestore,
+    callId: String,
+    callType: String,
+    scope: kotlinx.coroutines.CoroutineScope,
+    setCallStatus: (String) -> Unit,
+    onEndCall: () -> Unit
+) {
+    setCallStatus("Connecting...")
+    val callDoc = db.collection("calls").document(callId).get().await()
+    val offerMap = callDoc.data?.get("offer") as? Map<*, *>
+        ?: run { onEndCall(); return }
+    val offerSdp = offerMap["sdp"] as? String
+        ?: run { onEndCall(); return }
+
+    pc.setRemoteDescription(object : SdpObserver {
+        override fun onCreateSuccess(s: SessionDescription?) {}
+        override fun onSetSuccess() {
+            val answerConstraints = MediaConstraints().apply {
+                mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
+                if (callType == "video") mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
+            }
+            pc.createAnswer(object : SdpObserver {
+                override fun onCreateSuccess(sdp: SessionDescription?) {
+                    sdp?.let { s ->
+                        pc.setLocalDescription(object : SdpObserver {
+                            override fun onCreateSuccess(s2: SessionDescription?) {}
+                            override fun onSetSuccess() {
+                                scope.launch {
+                                    db.collection("calls").document(callId).update(
+                                        "status", "answered",
+                                        "answer", mapOf("type" to s.type.canonicalForm(), "sdp" to s.description)
+                                    )
+                                    db.collection("calls").document(callId)
+                                        .collection("caller_ice")
+                                        .addSnapshotListener { snap, _ ->
+                                            snap?.documentChanges?.forEach { change ->
+                                                if (change.type == com.google.firebase.firestore.DocumentChange.Type.ADDED) {
+                                                    val d = change.document.data
+                                                    pc.addIceCandidate(
+                                                        IceCandidate(
+                                                            d["sdpMid"] as? String ?: "",
+                                                            (d["sdpMLineIndex"] as? Long)?.toInt() ?: 0,
+                                                            d["candidate"] as? String ?: ""
+                                                        )
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    setCallStatus("Connecting...")
+                                }
+                            }
+                            override fun onCreateFailure(e: String?) {}
+                            override fun onSetFailure(e: String?) {}
+                        }, s)
+                    }
+                }
+                override fun onSetSuccess() {}
+                override fun onCreateFailure(e: String?) {}
+                override fun onSetFailure(e: String?) {}
+            }, answerConstraints)
+        }
+        override fun onCreateFailure(e: String?) {}
+        override fun onSetFailure(e: String?) {}
+    }, SessionDescription(SessionDescription.Type.OFFER, offerSdp))
+
+    db.collection("calls").document(callId).addSnapshotListener { snapshot, _ ->
+        val status = snapshot?.data?.get("status") as? String ?: return@addSnapshotListener
+        if (status == "ended" || status == "rejected") scope.launch { onEndCall() }
+    }
+}
+
+suspend fun handleCallerSignaling(
+    pc: PeerConnection,
+    db: FirebaseFirestore,
+    callId: String,
+    callType: String,
+    currentUser: User,
+    contact: User,
+    context: android.content.Context,
+    scope: kotlinx.coroutines.CoroutineScope,
+    setCallStatus: (String) -> Unit,
+    onEndCall: () -> Unit
+) {
+    val offerConstraints = MediaConstraints().apply {
+        mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
+        if (callType == "video") mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
+    }
+
+    pc.createOffer(object : SdpObserver {
+        override fun onCreateSuccess(sdp: SessionDescription?) {
+            sdp?.let { s ->
+                pc.setLocalDescription(object : SdpObserver {
+                    override fun onCreateSuccess(s2: SessionDescription?) {}
+                    override fun onSetSuccess() {
+                        scope.launch {
+                            db.collection("calls").document(callId).set(hashMapOf(
+                                "caller" to currentUser.mobile,
+                                "callerName" to currentUser.name,
+                                "callee" to contact.mobile,
+                                "type" to callType, "status" to "calling",
+                                "timestamp" to System.currentTimeMillis(),
+                                "offer" to mapOf("type" to s.type.canonicalForm(), "sdp" to s.description)
+                            ))
+                            sendFcmCallNotification(
+                                calleeMobile = contact.mobile,
+                                callerMobile = currentUser.mobile,
+                                callerName = currentUser.name,
+                                callType = callType,
+                                callId = callId,
+                                db = db,
+                                context = context
+                            )
+                        }
+                    }
+                    override fun onCreateFailure(e: String?) {}
+                    override fun onSetFailure(e: String?) {}
+                }, s)
+            }
+        }
+        override fun onSetSuccess() {}
+        override fun onCreateFailure(e: String?) {}
+        override fun onSetFailure(e: String?) {}
+    }, offerConstraints)
+
+    db.collection("calls").document(callId).addSnapshotListener { snapshot, _ ->
+        val data = snapshot?.data ?: return@addSnapshotListener
+        when (data["status"] as? String) {
+            "answered" -> {
+                (data["answer"] as? Map<*, *>)?.let { ans ->
+                    val sdpStr = ans["sdp"] as? String ?: return@addSnapshotListener
+                    pc.setRemoteDescription(object : SdpObserver {
+                        override fun onCreateSuccess(s: SessionDescription?) {}
+                        override fun onSetSuccess() {
+                            scope.launch { setCallStatus("Connecting...") }
+                            scope.launch {
+                                db.collection("calls").document(callId)
+                                    .collection("callee_ice")
+                                    .addSnapshotListener { snap, _ ->
+                                        snap?.documentChanges?.forEach { change ->
+                                            if (change.type == com.google.firebase.firestore.DocumentChange.Type.ADDED) {
+                                                val d = change.document.data
+                                                pc.addIceCandidate(
+                                                    IceCandidate(
+                                                        d["sdpMid"] as? String ?: "",
+                                                        (d["sdpMLineIndex"] as? Long)?.toInt() ?: 0,
+                                                        d["candidate"] as? String ?: ""
+                                                    )
+                                                )
+                                            }
+                                        }
+                                    }
+                            }
+                        }
+                        override fun onCreateFailure(e: String?) {}
+                        override fun onSetFailure(e: String?) {}
+                    }, SessionDescription(SessionDescription.Type.ANSWER, sdpStr))
+                }
+            }
+            "ended", "rejected" -> scope.launch { onEndCall() }
+        }
+    }
+}
+
 // Putting the PeerConnection.Observer in a separate top-level function causes
 // the compiler to emit its bytecode in a distinct class file, keeping the
 // calling LaunchedEffect lambda small enough to compile cleanly.
