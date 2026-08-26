@@ -5272,13 +5272,10 @@ fun CallingScreen(
         )
     }
 
+    // ── Step 1: IO thread — init WebRTC native libs ──────────────────────────
+    // Split into a separate LaunchedEffect to avoid JVM bytecode method size limit.
+    // When done, peerConnectionFactory.value becomes non-null, triggering Step 2+3.
     LaunchedEffect(Unit) {
-        // ── Step 1: IO thread — init WebRTC native libs ──────────────────────
-        // MUST complete before WebRTC session starts. Running EglBase.create()
-        // or PeerConnectionFactory.initialize() on the Compose main thread
-        // blocks the UI and causes ANR / "app keeps stopping" on cold start.
-        val base: EglBase
-        val factory: PeerConnectionFactory
         try {
             val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 val b = EglBase.create()
@@ -5293,18 +5290,21 @@ fun CallingScreen(
                     .createPeerConnectionFactory()
                 Pair(b, f)
             }
-            base    = result.first
-            factory = result.second
-            eglBase.value             = base
-            peerConnectionFactory.value = factory
+            eglBase.value             = result.first
+            peerConnectionFactory.value = result.second
         } catch (e: Exception) {
             android.util.Log.e("RasGram", "WebRTC init failed: ${e.message}", e)
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                 Toast.makeText(context, "Call setup failed. Please restart the app.", Toast.LENGTH_LONG).show()
             }
             onEndCall()
-            return@LaunchedEffect
         }
+    }
+
+    // ── Step 2+3: Permission check + WebRTC session ───────────────────────────
+    // Runs only after Step 1 completes (peerConnectionFactory.value becomes non-null).
+    LaunchedEffect(peerConnectionFactory.value) {
+        val factory = peerConnectionFactory.value ?: return@LaunchedEffect
 
         // ── Step 2: Permission check ─────────────────────────────────────────
         val hasMicPerm = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
