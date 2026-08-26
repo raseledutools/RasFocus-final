@@ -5439,7 +5439,22 @@ fun CallingScreen(
             stream.audioTracks.forEach { pc?.addTrack(it, listOf("localStream")) }
             if (callType == "video") stream.videoTracks.forEach { pc?.addTrack(it, listOf("localStream")) }
             peerConnection = pc
+            // FIX: receiver/caller signaling paths moved to LaunchedEffect(peerConnection) below.
+            // This splits the single 300+ line LaunchedEffect into two smaller ones,
+            // reducing per-method bytecode size below the threshold that triggers
+            // the Kotlin 2.1.x FixStackAnalyzer NullPointerException at instruction #346.
+        } catch (e: Exception) {
+            Toast.makeText(context, "Call error: ${e.message}", Toast.LENGTH_SHORT).show()
+            onEndCall()
+        }
+    }
 
+    // FIX: Split from LaunchedEffect(peerConnectionFactory.value) above.
+    // Runs once peerConnection is created (non-null). Handles the receiver/caller
+    // signaling paths. Keeping this separate halves the bytecode per suspend lambda.
+    LaunchedEffect(peerConnection) {
+        val pc = peerConnection ?: return@LaunchedEffect
+        try {
             if (isReceiver) {
                 // ── RECEIVER PATH ─────────────────────────────────────────────────────
                 callStatus = "Connecting..."
@@ -5449,7 +5464,7 @@ fun CallingScreen(
                 val offerSdp = offerMap["sdp"] as? String
                     ?: run { onEndCall(); return@LaunchedEffect }
 
-                pc?.setRemoteDescription(object : SdpObserver {
+                pc.setRemoteDescription(object : SdpObserver {
                     override fun onCreateSuccess(s: SessionDescription?) {}
                     override fun onSetSuccess() {
                         val answerConstraints = MediaConstraints().apply {
@@ -5467,18 +5482,13 @@ fun CallingScreen(
                                                     "status", "answered",
                                                     "answer", mapOf("type" to s.type.canonicalForm(), "sdp" to s.description)
                                                 )
-                                                // Bug Fix #2: ICE candidates এর জন্য one-time get() ব্যবহার করা ছিল।
-                                                // Problem: receiver answer পাঠানোর আগেই caller ICE candidates
-                                                // Firestore এ আসে, কিন্তু get() তখন empty ছিল।
-                                                // Fix: snapshot listener দিয়ে ICE continuously শোনো —
-                                                // যখনই নতুন candidate আসুক, সাথে সাথে addIceCandidate করো।
                                                 db.collection("calls").document(callId)
                                                     .collection("caller_ice")
                                                     .addSnapshotListener { snap, _ ->
                                                         snap?.documentChanges?.forEach { change ->
                                                             if (change.type == com.google.firebase.firestore.DocumentChange.Type.ADDED) {
                                                                 val d = change.document.data
-                                                                pc?.addIceCandidate(
+                                                                pc.addIceCandidate(
                                                                     IceCandidate(
                                                                         d["sdpMid"] as? String ?: "",
                                                                         (d["sdpMLineIndex"] as? Long)?.toInt() ?: 0,
@@ -5488,12 +5498,6 @@ fun CallingScreen(
                                                             }
                                                         }
                                                     }
-                                                // NOTE: isConnected = true এখানে সেট করা হচ্ছে না।
-                                                // ICE negotiation এখনো চলছে — audio এখনো flow করছে না।
-                                                // isConnected সেট হবে শুধু onIceConnectionChange(CONNECTED)
-                                                // callback এ — তখনই actual audio পথ খোলে।
-                                                // এখানে সেট করলে caller দেখায় "Connected" কিন্তু কোনো
-                                                // audio আসে না (ICE not yet done)।
                                                 callStatus = "Connecting..."
                                             }
                                         }
@@ -5511,7 +5515,6 @@ fun CallingScreen(
                     override fun onSetFailure(e: String?) {}
                 }, SessionDescription(SessionDescription.Type.OFFER, offerSdp))
 
-                // Call ended/rejected by caller → screen বন্ধ করো
                 db.collection("calls").document(callId).addSnapshotListener { snapshot, _ ->
                     val status = snapshot?.data?.get("status") as? String ?: return@addSnapshotListener
                     if (status == "ended" || status == "rejected") scope.launch { onEndCall() }
@@ -5523,7 +5526,7 @@ fun CallingScreen(
                     if (callType == "video") mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
                 }
 
-                pc?.createOffer(object : SdpObserver {
+                pc.createOffer(object : SdpObserver {
                     override fun onCreateSuccess(sdp: SessionDescription?) {
                         sdp?.let { s ->
                             pc.setLocalDescription(object : SdpObserver {
@@ -5538,7 +5541,6 @@ fun CallingScreen(
                                             "timestamp" to System.currentTimeMillis(),
                                             "offer" to mapOf("type" to s.type.canonicalForm(), "sdp" to s.description)
                                         ))
-                                        // Send FCM push to callee so call arrives even if app is closed
                                         sendFcmCallNotification(
                                             calleeMobile = contact.mobile,
                                             callerMobile = currentUser.mobile,
@@ -5566,17 +5568,10 @@ fun CallingScreen(
                         "answered" -> {
                             (data["answer"] as? Map<*, *>)?.let { ans ->
                                 val sdpStr = ans["sdp"] as? String ?: return@addSnapshotListener
-                                pc?.setRemoteDescription(object : SdpObserver {
+                                pc.setRemoteDescription(object : SdpObserver {
                                     override fun onCreateSuccess(s: SessionDescription?) {}
                                     override fun onSetSuccess() {
-                                        // NOTE: isConnected = true এখানে সেট করা হচ্ছে না।
-                                        // setRemoteDescription success মানে SDP exchange শেষ,
-                                        // কিন্তু ICE negotiation এখনো চলছে — audio/video flow করছে না।
-                                        // isConnected = true → onIceConnectionChange(CONNECTED) callback এ,
-                                        // তখনই actual media path খোলে। এখানে সেট করলে premature
-                                        // "Connected" দেখায় কিন্তু audio আসে না।
                                         scope.launch { callStatus = "Connecting..." }
-                                        // Caller side ও snapshot listener — same fix as receiver
                                         scope.launch {
                                             db.collection("calls").document(callId)
                                                 .collection("callee_ice")
@@ -5584,7 +5579,7 @@ fun CallingScreen(
                                                     snap?.documentChanges?.forEach { change ->
                                                         if (change.type == com.google.firebase.firestore.DocumentChange.Type.ADDED) {
                                                             val d = change.document.data
-                                                            pc?.addIceCandidate(
+                                                            pc.addIceCandidate(
                                                                 IceCandidate(
                                                                     d["sdpMid"] as? String ?: "",
                                                                     (d["sdpMLineIndex"] as? Long)?.toInt() ?: 0,
