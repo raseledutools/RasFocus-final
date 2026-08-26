@@ -166,6 +166,109 @@ private fun restoreMediaFromArray(context: android.content.Context, mediaDataArr
     return restored
 }
 
+// ── Diary export/import helpers — extracted from ProfessionalDiaryScreen ──────
+// These coroutine blocks were inside onClick lambdas / rememberLauncherForActivityResult
+// callbacks inside ProfessionalDiaryScreen, pushing the function's bytecode past the
+// JVM 64KB method limit → Kotlin IR crash (FixStackAnalyzer NPE at instruction #346).
+// Moving them to top-level suspend functions puts their bytecode in separate class files.
+
+suspend fun diaryImportJsonEntries(context: android.content.Context, uri: android.net.Uri) {
+    try {
+        val text = context.contentResolver.openInputStream(uri)
+            ?.bufferedReader()?.readText() ?: return
+        val root = org.json.JSONObject(text)
+        val arr  = root.optJSONArray("entries") ?: return
+        val db   = DiaryDatabase.getDatabase(context)
+        val toInsert = (0 until arr.length()).map { i ->
+            val o = arr.getJSONObject(i)
+            val mediaDataArr = o.optJSONArray("mediaData")
+            val mediaPaths = if (mediaDataArr != null && mediaDataArr.length() > 0) {
+                android.util.Log.d(DIARY_LOG_TAG, "import: restoring ${mediaDataArr.length()} media items from base64")
+                restoreMediaFromArray(context, mediaDataArr)
+            } else {
+                val arr2 = o.optJSONArray("mediaPaths")
+                if (arr2 != null && arr2.length() > 0) {
+                    android.util.Log.w(DIARY_LOG_TAG, "import: no mediaData found, using raw paths (may not work on this device)")
+                }
+                if (arr2 != null) (0 until arr2.length()).map { arr2.getString(it) } else emptyList()
+            }
+            DiaryEntry(
+                id        = o.optLong("id", System.currentTimeMillis() + i),
+                title     = o.optString("title"),
+                body      = o.optString("body"),
+                date      = o.optString("date"),
+                mood      = o.optString("mood"),
+                folder    = o.optString("folder", "Personal"),
+                tags      = o.optString("tags").split(",").filter { it.isNotBlank() },
+                isLocked  = o.optBoolean("locked", false),
+                timestamp = o.optLong("timestamp", System.currentTimeMillis()),
+                reminderTimeMillis = o.optLong("reminderTimeMillis", 0L),
+                reminderLabel = o.optString("reminderLabel", ""),
+                mediaPaths = mediaPaths
+            )
+        }
+        db.diaryDao().upsertAll(toInsert)
+        withContext(kotlinx.coroutines.Dispatchers.Main) {
+            android.widget.Toast.makeText(context, "✅ Imported ${toInsert.size} entries", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    } catch (e: Exception) {
+        withContext(kotlinx.coroutines.Dispatchers.Main) {
+            android.widget.Toast.makeText(context, "Import failed: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+}
+
+suspend fun diaryExportJsonToDownloads(context: android.content.Context, allEntries: List<DiaryEntry>) {
+    try {
+        val arr = org.json.JSONArray()
+        allEntries.forEach { e ->
+            arr.put(org.json.JSONObject().apply {
+                put("id", e.id); put("title", e.title)
+                put("body", e.body); put("date", e.date)
+                put("mood", e.mood); put("folder", e.folder)
+                put("tags", e.tags.joinToString(","))
+                put("locked", e.isLocked)
+                put("timestamp", e.timestamp)
+                put("reminderTimeMillis", e.reminderTimeMillis)
+                put("reminderLabel", e.reminderLabel)
+                put("mediaPaths", org.json.JSONArray(e.mediaPaths))
+                put("mediaData", buildMediaDataArray(e.mediaPaths))
+            })
+        }
+        val root = org.json.JSONObject().apply {
+            put("exported_at", java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm", java.util.Locale.ENGLISH).format(java.util.Date()))
+            put("entry_count", allEntries.size)
+            put("entries", arr)
+        }
+        val fileName = "RasDiary_${java.text.SimpleDateFormat("yyyyMMdd_HHmm", java.util.Locale.ENGLISH).format(java.util.Date())}.json"
+        val saved = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            val values = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.Downloads.DISPLAY_NAME, fileName)
+                put(android.provider.MediaStore.Downloads.MIME_TYPE, "application/json")
+                put(android.provider.MediaStore.Downloads.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/RasDiary")
+            }
+            val uri = context.contentResolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            if (uri != null) {
+                context.contentResolver.openOutputStream(uri)?.use { it.write(root.toString(2).toByteArray()) }
+                true
+            } else false
+        } else {
+            val dir = java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "RasDiary")
+            dir.mkdirs()
+            java.io.File(dir, fileName).writeText(root.toString(2))
+            true
+        }
+        withContext(kotlinx.coroutines.Dispatchers.Main) {
+            if (saved) android.widget.Toast.makeText(context, "✅ JSON saved → Downloads/RasDiary/$fileName", android.widget.Toast.LENGTH_LONG).show()
+            else android.widget.Toast.makeText(context, "❌ JSON save failed", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    } catch (e: Exception) {
+        withContext(kotlinx.coroutines.Dispatchers.Main) {
+            android.widget.Toast.makeText(context, "Error: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+}
+
 // ============================================================
 // BIOMETRIC HELPER
 // ============================================================
@@ -1095,53 +1198,8 @@ fun ProfessionalDiaryScreen(
                 ActivityResultContracts.GetContent()
             ) { uri: Uri? ->
                 if (uri == null) return@rememberLauncherForActivityResult
-                CoroutineScope(Dispatchers.IO).launch {
-                    try {
-                        val text = listExportContext.contentResolver.openInputStream(uri)
-                            ?.bufferedReader()?.readText() ?: return@launch
-                        val root = JSONObject(text)
-                        val arr  = root.optJSONArray("entries") ?: return@launch
-                        val db   = DiaryDatabase.getDatabase(listExportContext)
-                        val toInsert = (0 until arr.length()).map { i ->
-                            val o = arr.getJSONObject(i)
-                            // Restore media: prefer embedded base64 data, fall back to paths
-                            val mediaDataArr = o.optJSONArray("mediaData")
-                            val mediaPaths = if (mediaDataArr != null && mediaDataArr.length() > 0) {
-                                android.util.Log.d(DIARY_LOG_TAG, "import: restoring ${mediaDataArr.length()} media items from base64")
-                                restoreMediaFromArray(listExportContext, mediaDataArr)
-                            } else {
-                                // Legacy JSON (no mediaData): keep paths as-is, log warning
-                                val arr2 = o.optJSONArray("mediaPaths")
-                                if (arr2 != null && arr2.length() > 0) {
-                                    android.util.Log.w(DIARY_LOG_TAG, "import: no mediaData found, using raw paths (may not work on this device)")
-                                }
-                                if (arr2 != null) (0 until arr2.length()).map { arr2.getString(it) } else emptyList()
-                            }
-                            DiaryEntry(
-                                id        = o.optLong("id", System.currentTimeMillis() + i),
-                                title     = o.optString("title"),
-                                body      = o.optString("body"),
-                                date      = o.optString("date"),
-                                mood      = o.optString("mood"),
-                                folder    = o.optString("folder", "Personal"),
-                                tags      = o.optString("tags").split(",").filter { it.isNotBlank() },
-                                isLocked  = o.optBoolean("locked", false),
-                                timestamp = o.optLong("timestamp", System.currentTimeMillis()),
-                                reminderTimeMillis = o.optLong("reminderTimeMillis", 0L),
-                                reminderLabel = o.optString("reminderLabel", ""),
-                                mediaPaths = mediaPaths
-                            )
-                        }
-                        db.diaryDao().upsertAll(toInsert)
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(listExportContext, "✅ Imported ${toInsert.size} entries", Toast.LENGTH_SHORT).show()
-                        }
-                    } catch (e: Exception) {
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(listExportContext, "Import failed: ${e.message}", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                }
+                // FIX: extracted to top-level suspend fun — bytecode overflow prevention
+                CoroutineScope(Dispatchers.IO).launch { diaryImportJsonEntries(listExportContext, uri) }
                 showListExportMenu = false
             }
 
@@ -1161,67 +1219,8 @@ fun ProfessionalDiaryScreen(
                         OutlinedButton(
                             modifier = Modifier.fillMaxWidth(),
                             onClick = {
-                                CoroutineScope(Dispatchers.IO).launch {
-                                    try {
-                                        val arr = JSONArray()
-                                        allEntries.forEach { e ->
-                                            arr.put(JSONObject().apply {
-                                                put("id", e.id); put("title", e.title)
-                                                put("body", e.body); put("date", e.date)
-                                                put("mood", e.mood); put("folder", e.folder)
-                                                put("tags", e.tags.joinToString(","))
-                                                put("locked", e.isLocked)
-                                                put("timestamp", e.timestamp)
-                                                put("reminderTimeMillis", e.reminderTimeMillis)
-                                                put("reminderLabel", e.reminderLabel)
-                                                // Include media paths so photos & voice notes survive export
-                                                // Embed binary data so images/voice survive across devices
-                                                put("mediaPaths", JSONArray(e.mediaPaths))     // kept for legacy compat
-                                                put("mediaData", buildMediaDataArray(e.mediaPaths))
-                                            })
-                                        }
-                                        val root = JSONObject().apply {
-                                            put("exported_at", java.text.SimpleDateFormat(
-                                                "yyyy-MM-dd_HH-mm", java.util.Locale.ENGLISH).format(java.util.Date()))
-                                            put("entry_count", allEntries.size)
-                                            put("entries", arr)
-                                        }
-                                        val fileName = "RasDiary_${java.text.SimpleDateFormat(
-                                            "yyyyMMdd_HHmm", java.util.Locale.ENGLISH).format(java.util.Date())}.json"
-                                        val saved = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                                            val values = android.content.ContentValues().apply {
-                                                put(android.provider.MediaStore.Downloads.DISPLAY_NAME, fileName)
-                                                put(android.provider.MediaStore.Downloads.MIME_TYPE, "application/json")
-                                                put(android.provider.MediaStore.Downloads.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/RasDiary")
-                                            }
-                                            val uri = listExportContext.contentResolver.insert(
-                                                android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                                            if (uri != null) {
-                                                listExportContext.contentResolver.openOutputStream(uri)?.use { it.write(root.toString(2).toByteArray()) }
-                                                true
-                                            } else false
-                                        } else {
-                                            val dir = java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
-                                                android.os.Environment.DIRECTORY_DOWNLOADS), "RasDiary")
-                                            dir.mkdirs()
-                                            java.io.File(dir, fileName).writeText(root.toString(2))
-                                            true
-                                        }
-                                        withContext(Dispatchers.Main) {
-                                            if (saved) {
-                                                Toast.makeText(listExportContext,
-                                                    "✅ JSON saved to Downloads/RasDiary/$fileName",
-                                                    Toast.LENGTH_LONG).show()
-                                            } else {
-                                                Toast.makeText(listExportContext, "❌ JSON save failed", Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
-                                    } catch (e: Exception) {
-                                        withContext(Dispatchers.Main) {
-                                            Toast.makeText(listExportContext, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
-                                        }
-                                    }
-                                }
+                                // FIX: extracted to top-level suspend fun — bytecode overflow prevention
+                                CoroutineScope(Dispatchers.IO).launch { diaryExportJsonToDownloads(listExportContext, allEntries) }
                                 showListExportMenu = false
                             }
                         ) {
@@ -1640,54 +1639,8 @@ fun ProfessionalDiaryScreen(
             ActivityResultContracts.GetContent()
         ) { uri: Uri? ->
             if (uri == null) return@rememberLauncherForActivityResult
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    val text = context.contentResolver.openInputStream(uri)
-                        ?.bufferedReader()?.readText() ?: return@launch
-                    val root    = JSONObject(text)
-                    val arr     = root.optJSONArray("entries") ?: return@launch
-                    val db      = DiaryDatabase.getDatabase(context)
-                    val toInsert = (0 until arr.length()).map { i ->
-                        val o = arr.getJSONObject(i)
-                        val mediaDataArr2 = o.optJSONArray("mediaData")
-                        val mediaPaths = if (mediaDataArr2 != null && mediaDataArr2.length() > 0) {
-                            android.util.Log.d(DIARY_LOG_TAG, "import: restoring ${mediaDataArr2.length()} media items from base64")
-                            restoreMediaFromArray(context, mediaDataArr2)
-                        } else {
-                            val arr2 = o.optJSONArray("mediaPaths")
-                            if (arr2 != null && arr2.length() > 0) {
-                                android.util.Log.w(DIARY_LOG_TAG, "import: no mediaData found, using raw paths (may not work on this device)")
-                            }
-                            if (arr2 != null) (0 until arr2.length()).map { arr2.getString(it) } else emptyList()
-                        }
-                        DiaryEntry(
-                            id        = o.optLong("id", System.currentTimeMillis() + i),
-                            title     = o.optString("title"),
-                            body      = o.optString("body"),
-                            date      = o.optString("date"),
-                            mood      = o.optString("mood"),
-                            folder    = o.optString("folder", "Personal"),
-                            tags      = o.optString("tags").split(",")
-                                         .filter { it.isNotBlank() },
-                            isLocked  = o.optBoolean("locked", false),
-                            timestamp = o.optLong("timestamp", System.currentTimeMillis()),
-                            reminderTimeMillis = o.optLong("reminderTimeMillis", 0L),
-                            reminderLabel = o.optString("reminderLabel", ""),
-                            mediaPaths = mediaPaths
-                        )
-                    }
-                    db.diaryDao().upsertAll(toInsert)
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context,
-                            "✅ Imported ${toInsert.size} entries", Toast.LENGTH_SHORT).show()
-                    }
-                } catch (e: Exception) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Import failed: ${e.message}",
-                            Toast.LENGTH_SHORT).show()
-                    }
-                }
-            }
+            // FIX: extracted to top-level suspend fun — bytecode overflow prevention
+            CoroutineScope(Dispatchers.IO).launch { diaryImportJsonEntries(context, uri) }
             showExportMenu = false
         }
 
@@ -1728,63 +1681,8 @@ fun ProfessionalDiaryScreen(
                     OutlinedButton(
                         modifier = Modifier.fillMaxWidth(),
                         onClick = {
-                            CoroutineScope(Dispatchers.IO).launch {
-                                try {
-                                    val arr = JSONArray()
-                                    allEntries.forEach { e ->
-                                        arr.put(JSONObject().apply {
-                                            put("id", e.id); put("title", e.title)
-                                            put("body", e.body); put("date", e.date)
-                                            put("mood", e.mood); put("folder", e.folder)
-                                            put("tags", e.tags.joinToString(","))
-                                            put("locked", e.isLocked)
-                                            put("timestamp", e.timestamp)
-                                            put("reminderTimeMillis", e.reminderTimeMillis)
-                                            put("reminderLabel", e.reminderLabel)
-                                            put("mediaPaths", JSONArray(e.mediaPaths))     // kept for legacy compat
-                                            put("mediaData", buildMediaDataArray(e.mediaPaths))
-                                        })
-                                    }
-                                    val root = JSONObject().apply {
-                                        put("exported_at", java.text.SimpleDateFormat(
-                                            "yyyy-MM-dd_HH-mm", java.util.Locale.ENGLISH).format(java.util.Date()))
-                                        put("entry_count", allEntries.size)
-                                        put("entries", arr)
-                                    }
-                                    val fileName = "RasDiary_${java.text.SimpleDateFormat(
-                                        "yyyyMMdd_HHmm", java.util.Locale.ENGLISH).format(java.util.Date())}.json"
-                                    val saved = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                                        val values = android.content.ContentValues().apply {
-                                            put(android.provider.MediaStore.Downloads.DISPLAY_NAME, fileName)
-                                            put(android.provider.MediaStore.Downloads.MIME_TYPE, "application/json")
-                                            put(android.provider.MediaStore.Downloads.RELATIVE_PATH,
-                                                android.os.Environment.DIRECTORY_DOWNLOADS + "/RasDiary")
-                                        }
-                                        val uri = context.contentResolver.insert(
-                                            android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                                        if (uri != null) {
-                                            context.contentResolver.openOutputStream(uri)
-                                                ?.use { it.write(root.toString(2).toByteArray()) }
-                                            true
-                                        } else false
-                                    } else {
-                                        val dir = java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
-                                            android.os.Environment.DIRECTORY_DOWNLOADS), "RasDiary")
-                                        dir.mkdirs()
-                                        java.io.File(dir, fileName).writeText(root.toString(2))
-                                        true
-                                    }
-                                    withContext(Dispatchers.Main) {
-                                        if (saved) Toast.makeText(context,
-                                            "✅ JSON saved → Downloads/RasDiary/$fileName", Toast.LENGTH_LONG).show()
-                                        else Toast.makeText(context, "❌ JSON save failed", Toast.LENGTH_SHORT).show()
-                                    }
-                                } catch (e: Exception) {
-                                    withContext(Dispatchers.Main) {
-                                        Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                            }
+                            // FIX: extracted to top-level suspend fun — bytecode overflow prevention
+                            CoroutineScope(Dispatchers.IO).launch { diaryExportJsonToDownloads(context, allEntries) }
                             showExportMenu = false
                         }
                     ) {
