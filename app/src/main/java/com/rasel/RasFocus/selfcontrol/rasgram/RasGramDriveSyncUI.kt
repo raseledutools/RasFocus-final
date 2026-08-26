@@ -417,60 +417,6 @@ fun FileUploadProgressIndicator(
 }
 
 // ============================================================
-// ENHANCED ATTACHMENT MENU  (includes "Files" from File Manager)
-// ============================================================
-
-@Composable
-fun EnhancedAttachmentMenuSheet(
-    onDismiss: () -> Unit,
-    onImageVideo: () -> Unit,
-    onDocument: () -> Unit,
-    onAudio: () -> Unit,
-    onFilesFromFolder: () -> Unit
-) {
-    androidx.compose.ui.window.Dialog(
-        onDismissRequest = onDismiss,
-        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Surface(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            shape = RoundedCornerShape(20.dp),
-            color = RasGramTheme.DarkPanel
-        ) {
-            Column(modifier = Modifier.padding(24.dp)) {
-                Text(
-                    "Share",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = RasGramTheme.TextPrimary,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(20.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    AttachOption(Icons.Default.Image, "Photos & Videos", RasGramTheme.Orange, onImageVideo)
-                    AttachOption(Icons.Default.InsertDriveFile, "Document", Color(0xFF6C63FF), onDocument)
-                    AttachOption(Icons.Default.AudioFile, "Audio", Color(0xFF00BFA5), onAudio)
-                    AttachOption(Icons.Default.Camera, "Camera", RasGramTheme.Green, onDismiss)
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    // "Files" option — opens file manager / file picker
-                    AttachOption(Icons.Default.Folder, "Files", Color(0xFF1A73E8), onFilesFromFolder)
-                    AttachOption(Icons.Default.LocationOn, "Location", RasGramTheme.Red, onDismiss)
-                    AttachOption(Icons.Default.ContactPage, "Contact", Color(0xFF2196F3), onDismiss)
-                    AttachOption(Icons.Default.Poll, "Poll", Color(0xFFFF9800), onDismiss)
-                }
-            }
-        }
-    }
-}
-
-// ============================================================
 // SHARE FILE CONTACT PICKER DIALOG
 // Shown when user taps "Send to RasGram" in FileManager.
 // Lets user pick a contact, then opens the chat with file attached.

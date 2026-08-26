@@ -85,6 +85,7 @@ class LanCallManager private constructor(private val context: Context) {
     private var signalOut: PrintWriter? = null
     private var peerConnection: PeerConnection? = null
     private var eglBase: EglBase? = null
+    fun getEglBase(): EglBase? = eglBase
     private var factory: PeerConnectionFactory? = null
     private var localStream: MediaStream? = null
     private var videoCapturer: VideoCapturer? = null

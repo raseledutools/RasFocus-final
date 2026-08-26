@@ -184,7 +184,7 @@ fun CallingLanScreen(
     var callStatus by remember { mutableStateOf("Connecting...") }
     var showEndedSummary by remember { mutableStateOf(false) }
     var finalCallSeconds by remember { mutableIntStateOf(0) }
-    val eglBase = remember { mutableStateOf(lanCallManager.eglBase) }
+    val eglBase = remember { mutableStateOf(lanCallManager.getEglBase()) }
 
     // Callee path: init WebRTC and create answer
     LaunchedEffect(Unit) {
@@ -195,7 +195,7 @@ fun CallingLanScreen(
 
             val ok = lanCallManager.initWebRtc(callType)
             if (!ok) { onEndCall(); return@LaunchedEffect }
-            eglBase.value = lanCallManager.eglBase
+            eglBase.value = lanCallManager.getEglBase()
 
             val answerSdp = lanCallManager.createAnswer(lanCallManager.pendingOfferSdp, callType)
             if (answerSdp == null) { onEndCall(); return@LaunchedEffect }
