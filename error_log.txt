@@ -1,77 +1,8 @@
 ╔══════════════════════════════════════════╗
-║      LAST BUILD: ERROR ❌                ║
-║   Push করার আগে এই error fix করুন।     ║
+║        LAST BUILD: SUCCESS ✅            ║
 ╚══════════════════════════════════════════╝
 
-=== KOTLIN ERRORS ===
+Build passed at: 2026-08-26 14:11:44 UTC
+Run: #1071  |  Commit: 0c61d6547c3e794e402676a14d2eab8c8f5896fc
 
-=== UNRESOLVED / TYPE ERRORS ===
-w: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:6952:48 Type mismatch: inferred type is Nothing? but String was expected
-
-=== BUILD FAILURE ===
-> Task :app:lintVitalFullRelease FAILED
-* What went wrong:
-Execution failed for task ':app:lintVitalFullRelease'.
-BUILD FAILED in 12m 48s
-
-=== LAST 60 LINES ===
-   Explanation for issues of type "SpecifyForegroundServiceType":
-   When using the setForegroundAsync() API, the application must override
-   <service /> entry for SystemForegroundService to include the foreground
-   service type in the  AndroidManifest.xml file.
-
-   Vendor: Android Open Source Project
-   Identifier: androidx.work
-   Feedback: https://issuetracker.google.com/issues/new?component=409906
-
-1 errors, 0 warnings
-
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1787750985334.json
-
-FAILURE: Build failed with an exception.
-
-* What went wrong:
-Execution failed for task ':app:lintVitalFullRelease'.
-> Lint found fatal errors while assembling a release target.
-  
-  Fix the issues identified by lint, or create a baseline to see only new errors.
-  To create a baseline, run `gradlew updateLintBaseline` after adding the following to the module's build.gradle file:
-  ```
-  android {
-      lint {
-          baseline = file("lint-baseline.xml")
-      }
-  }
-  ```
-  For more details, see https://developer.android.com/studio/write/lint#snapshot
-  
-  /home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramDriveSyncManager.kt:616: Error: Missing dataSync foregroundServiceType in the AndroidManifest.xml [SpecifyForegroundServiceType from androidx.work]
-                  ForegroundInfo(
-                  ^
-  
-     Explanation for issues of type "SpecifyForegroundServiceType":
-     When using the setForegroundAsync() API, the application must override
-     <service /> entry for SystemForegroundService to include the foreground
-     service type in the  AndroidManifest.xml file.
-  
-     Vendor: Android Open Source Project
-     Identifier: androidx.work
-     Feedback: https://issuetracker.google.com/issues/new?component=409906
-  
-  1 errors, 0 warnings
-
-* Try:
-> Run with --stacktrace option to get the stack trace.
-> Run with --info or --debug option to get more log output.
-> Run with --scan to get full insights.
-> Get more help at https://help.gradle.org.
-
-Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
-
-You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
-
-For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
-
-BUILD FAILED in 12m 48s
-42 actionable tasks: 32 executed, 10 from cache
-Configuration cache entry stored.
+No errors. Safe to push.
