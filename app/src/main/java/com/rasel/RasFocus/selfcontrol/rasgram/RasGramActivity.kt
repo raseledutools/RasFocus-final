@@ -199,7 +199,7 @@ private fun DirectOutgoingCallUI(
         contact        = User(name = calleeName, mobile = calleeMobile),
         callType       = callType,
         isReceiver     = false,   // আমরা caller
-        existingCallId = null,    // নতুন call — CallingScreen নিজে callId তৈরি করবে
+        existingCallId = "",      // নতুন call — CallingScreen নিজে callId তৈরি করবে
         onEndCall      = { onCallEnded() }
     )
 }
