@@ -12,25 +12,25 @@ e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/
 > Task :app:compileFullReleaseKotlin FAILED
 * What went wrong:
 Execution failed for task ':app:compileFullReleaseKotlin'.
-BUILD FAILED in 3m 1s
+BUILD FAILED in 3m 6s
 
 === LAST 60 LINES ===
-> Task :app:processFullReleaseGoogleServices FROM-CACHE
-> Task :app:validateSigningFullRelease
-> Task :app:collectFullReleaseDependencies
+> Task :app:extractProguardFiles
+> Task :app:buildKotlinToolingMetadata
 > Task :app:packageFullReleaseResources FROM-CACHE
 > Task :app:parseFullReleaseLocalResources FROM-CACHE
-> Task :app:extractDeepLinksFullRelease FROM-CACHE
-> Task :app:mapFullReleaseSourceSetPaths
 > Task :app:mergeFullReleaseAssets FROM-CACHE
 > Task :app:mergeFullReleaseArtProfile
-> Task :app:compressFullReleaseAssets FROM-CACHE
-> Task :app:writeFullReleaseAppMetadata
-> Task :app:writeFullReleaseSigningConfigVersions
 > Task :app:checkFullReleaseAarMetadata
+> Task :app:validateSigningFullRelease
+> Task :app:writeFullReleaseAppMetadata
+> Task :app:mapFullReleaseSourceSetPaths
+> Task :app:compressFullReleaseAssets FROM-CACHE
+> Task :app:writeFullReleaseSigningConfigVersions
 > Task :app:checkFullReleaseDuplicateClasses
-> Task :app:sdkFullReleaseDependencyData
 > Task :app:mergeFullReleaseNativeLibs
+> Task :app:collectFullReleaseDependencies
+> Task :app:sdkFullReleaseDependencyData
 > Task :app:mergeFullReleaseResources FROM-CACHE
 
 > Task :app:stripFullReleaseDebugSymbols
@@ -51,7 +51,7 @@ note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round ico
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramDriveSyncManager.kt:332:47 Returns are not allowed for functions with expression body. Use block body in '{...}'
 
 > Task :app:compileFullReleaseKotlin FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1787714376680.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1787716607206.json
 
 FAILURE: Build failed with an exception.
 
@@ -72,6 +72,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 3m 1s
+BUILD FAILED in 3m 6s
 32 actionable tasks: 22 executed, 10 from cache
 Configuration cache entry stored.
