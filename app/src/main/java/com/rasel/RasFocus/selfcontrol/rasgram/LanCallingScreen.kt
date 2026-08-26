@@ -3,10 +3,12 @@ package com.rasel.RasFocus.selfcontrol.rasgram
 import android.Manifest
 import android.content.pm.PackageManager
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,6 +22,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -186,6 +189,28 @@ fun CallingLanScreen(
     var finalCallSeconds by remember { mutableIntStateOf(0) }
     val eglBase = remember { mutableStateOf(lanCallManager.getEglBase()) }
 
+    // ── Screen Share (LAN mode — TCP signaling) ───────────────────────────────
+    val isSharingScreen    by ScreenShareManager.isSharingScreen.collectAsState()
+    val isRemoteSharing    by ScreenShareManager.isRemoteSharing.collectAsState()
+    val remoteInputGranted by ScreenShareManager.remoteInputGranted.collectAsState()
+    val incomingInputRequest by ScreenShareManager.incomingInputRequest.collectAsState()
+    var showInputRequestDialog by remember { mutableStateOf(false) }
+
+    val mediaProjectionManager = remember {
+        context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
+    }
+    val screenShareLauncher = rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK && result.data != null) {
+            ScreenShareManager.startScreenShare(context, result.data!!)
+        }
+    }
+
+    LaunchedEffect(incomingInputRequest) {
+        if (incomingInputRequest) showInputRequestDialog = true
+    }
+
     // Callee path: init WebRTC and create answer
     LaunchedEffect(Unit) {
         if (call != null) {
@@ -197,9 +222,45 @@ fun CallingLanScreen(
             if (!ok) { onEndCall(); return@LaunchedEffect }
             eglBase.value = lanCallManager.getEglBase()
 
+            // Attach ScreenShareManager for LAN screen share via TCP signaling
+            val pc = lanCallManager.peerConnection
+            val factory = lanCallManager.factory
+            val egl = lanCallManager.eglBase
+            val stream = lanCallManager.localStream
+            if (pc != null && factory != null && egl != null && stream != null) {
+                ScreenShareManager.attachCall(
+                    peerConnection = pc,
+                    factory        = factory,
+                    eglBase        = egl,
+                    localStream    = stream,
+                    callDocId      = call?.callId ?: "",
+                    lanMode        = true,
+                    lanManager     = lanCallManager
+                )
+            }
+
             val answerSdp = lanCallManager.createAnswer(lanCallManager.pendingOfferSdp, callType)
             if (answerSdp == null) { onEndCall(); return@LaunchedEffect }
             lanCallManager.acceptCall(call, answerSdp)
+        } else {
+            // Caller path: attach ScreenShareManager after startCall completes
+            // (peerConnection is set up in LanCallManager.startCall — we attach here once connected)
+            kotlinx.coroutines.delay(500)   // brief wait for PC to initialize
+            val pc = lanCallManager.peerConnection
+            val factory = lanCallManager.factory
+            val egl = lanCallManager.eglBase
+            val stream = lanCallManager.localStream
+            if (pc != null && factory != null && egl != null && stream != null) {
+                ScreenShareManager.attachCall(
+                    peerConnection = pc,
+                    factory        = factory,
+                    eglBase        = egl,
+                    localStream    = stream,
+                    callDocId      = lanCallManager.currentCallId,
+                    lanMode        = true,
+                    lanManager     = lanCallManager
+                )
+            }
         }
 
         // Audio mode
@@ -257,6 +318,46 @@ fun CallingLanScreen(
                         },
                         modifier = Modifier.fillMaxSize()
                     )
+                    // ── Remote touch forwarding overlay ───────────────────────
+                    // When viewer has input access, drag on remote video → send to sharer
+                    if (remoteInputGranted) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .pointerInput(Unit) {
+                                    detectDragGestures(
+                                        onDragStart = { offset ->
+                                            val normX = offset.x / size.width.toFloat()
+                                            val normY = offset.y / size.height.toFloat()
+                                            ScreenShareManager.sendTouchEvent(context, normX, normY, android.view.MotionEvent.ACTION_DOWN)
+                                        },
+                                        onDrag = { change, _ ->
+                                            val normX = change.position.x / size.width.toFloat()
+                                            val normY = change.position.y / size.height.toFloat()
+                                            ScreenShareManager.sendTouchEvent(context, normX, normY, android.view.MotionEvent.ACTION_MOVE)
+                                        },
+                                        onDragEnd = {
+                                            ScreenShareManager.sendTouchEvent(context, 0f, 0f, android.view.MotionEvent.ACTION_UP)
+                                        }
+                                    )
+                                }
+                        ) {
+                            // Touch mode badge
+                            Surface(
+                                modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
+                                color = Color(0xFFFF9800).copy(0.9f),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(
+                                    "✋ Touch Mode",
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
                     // Local PiP
                     AndroidView(
                         factory = { ctx ->
@@ -347,7 +448,7 @@ fun CallingLanScreen(
                         }
                         if (callType == "video") {
                             Spacer(Modifier.height(16.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                                 LanCallControlButton(icon = if (isCameraOff) Icons.Default.VideocamOff else Icons.Default.Videocam, label = "Camera", isActive = isCameraOff, activeColor = RasGramTheme.Red) {
                                     isCameraOff = !isCameraOff
                                     lanCallManager.setCameraEnabled(!isCameraOff)
@@ -355,6 +456,63 @@ fun CallingLanScreen(
                                 LanCallControlButton(icon = Icons.Default.Cameraswitch, label = "Flip", isActive = false, activeColor = Color(0xFF00BCD4)) {
                                     lanCallManager.flipCamera()
                                 }
+                                // ── Screen Share ──────────────────────────────
+                                LanCallControlButton(
+                                    icon = if (isSharingScreen) Icons.Default.StopScreenShare else Icons.Default.ScreenShare,
+                                    label = if (isSharingScreen) "Stop" else "Share Screen",
+                                    isActive = isSharingScreen,
+                                    activeColor = Color(0xFF00BCD4)
+                                ) {
+                                    if (isSharingScreen) {
+                                        ScreenShareManager.stopScreenShare(context)
+                                    } else {
+                                        screenShareLauncher.launch(mediaProjectionManager.createScreenCaptureIntent())
+                                    }
+                                }
+                                // ── Remote Input (viewer) ─────────────────────
+                                if (isRemoteSharing) {
+                                    LanCallControlButton(
+                                        icon = if (remoteInputGranted) Icons.Default.TouchApp else Icons.Default.PanTool,
+                                        label = if (remoteInputGranted) "Touch On" else "Req. Touch",
+                                        isActive = remoteInputGranted,
+                                        activeColor = Color(0xFFFF9800)
+                                    ) {
+                                        if (!remoteInputGranted) {
+                                            if (RemoteInputAccessibilityService.isServiceEnabled(context)) {
+                                                ScreenShareManager.requestRemoteInput(context)
+                                            } else {
+                                                RemoteInputAccessibilityService.openAccessibilitySettings(context)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Remote input permission dialog (sharer side)
+                            if (showInputRequestDialog) {
+                                androidx.compose.material3.AlertDialog(
+                                    onDismissRequest = { showInputRequestDialog = false },
+                                    containerColor = RasGramTheme.DarkPanel,
+                                    icon = { Icon(Icons.Default.TouchApp, null, tint = Color(0xFFFF9800)) },
+                                    title = { Text("Remote Touch Request", color = RasGramTheme.TextPrimary, fontWeight = FontWeight.Bold) },
+                                    text = {
+                                        Text(
+                                            "$peerName আপনার স্ক্রিনে ট্যাচ করার অনুমতি চাইছে।",
+                                            color = RasGramTheme.TextMuted
+                                        )
+                                    },
+                                    confirmButton = {
+                                        Button(
+                                            onClick = { showInputRequestDialog = false; ScreenShareManager.grantRemoteInput(context) },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))
+                                        ) { Text("অনুমতি দিন") }
+                                    },
+                                    dismissButton = {
+                                        OutlinedButton(onClick = { showInputRequestDialog = false; ScreenShareManager.denyRemoteInput(context) }) {
+                                            Text("না", color = RasGramTheme.TextMuted)
+                                        }
+                                    }
+                                )
                             }
                         }
                     }

@@ -38,6 +38,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.foundation.layout.*
@@ -5210,6 +5211,30 @@ fun CallingScreen(
     // ICE DISCONNECTED grace period job — cancel if CONNECTED comes back within 8s
     var iceDisconnectJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
+    // ── Screen Share state ────────────────────────────────────────────────────
+    val isSharingScreen   by ScreenShareManager.isSharingScreen.collectAsState()
+    val isRemoteSharing   by ScreenShareManager.isRemoteSharing.collectAsState()
+    val remoteInputGranted by ScreenShareManager.remoteInputGranted.collectAsState()
+    val incomingInputRequest by ScreenShareManager.incomingInputRequest.collectAsState()
+    var showInputRequestDialog by remember { mutableStateOf(false) }
+
+    // MediaProjection permission launcher
+    val mediaProjectionManager = remember {
+        context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
+    }
+    val screenShareLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK && result.data != null) {
+            ScreenShareManager.startScreenShare(context, result.data!!)
+        }
+    }
+
+    // Incoming input request from peer
+    LaunchedEffect(incomingInputRequest) {
+        if (incomingInputRequest) showInputRequestDialog = true
+    }
+
     // FIX: EglBase.create() and PeerConnectionFactory.initialize() are heavy
     // native calls. Running them inside remember {} executes on the Compose
     // main thread → blocks the UI → ANR / "app keeps stopping" on cold start
@@ -5449,12 +5474,30 @@ fun CallingScreen(
         }
     }
 
+<<<<<<< Updated upstream
     // FIX: Split from LaunchedEffect(peerConnectionFactory.value) above.
     // Runs once peerConnection is created (non-null). Handles the receiver/caller
     // signaling paths. Keeping this separate halves the bytecode per suspend lambda.
     LaunchedEffect(peerConnection) {
         val pc = peerConnection ?: return@LaunchedEffect
         try {
+=======
+            // ── Attach ScreenShareManager — normal (Firebase) mode ────────────
+            if (pc != null) {
+                val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+                val isLan = prefs.getBoolean(PREF_LAN_MODE, false)
+                ScreenShareManager.attachCall(
+                    peerConnection = pc,
+                    factory        = factory,
+                    eglBase        = eglBase.value!!,
+                    localStream    = stream,
+                    callDocId      = callId,
+                    lanMode        = isLan,
+                    lanManager     = if (isLan) LanCallManager.getInstance(context) else null
+                )
+            }
+
+>>>>>>> Stashed changes
             if (isReceiver) {
                 // ── RECEIVER PATH ─────────────────────────────────────────────────────
                 callStatus = "Connecting..."
@@ -5633,7 +5676,28 @@ fun CallingScreen(
             audioManager.mode = AudioManager.MODE_NORMAL
             audioManager.isSpeakerphoneOn = false
             try { eglBase.value?.release() } catch (_: Exception) {}
+            // Screen share cleanup
+            ScreenShareManager.reset()
         }
+    }
+
+    // ── Screen share: Firestore signal listener (normal mode) ─────────────────
+    // LAN mode: signals come via LanCallManager TCP socket (already handled in processSignalMessage)
+    LaunchedEffect(callId) {
+        if (callId.isEmpty()) return@LaunchedEffect
+        val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        if (prefs.getBoolean(PREF_LAN_MODE, false)) return@LaunchedEffect   // LAN: TCP handles it
+        db.collection("calls").document(callId).collection("screenShare")
+            .addSnapshotListener { snap, _ ->
+                snap?.documentChanges?.forEach { change ->
+                    if (change.type == com.google.firebase.firestore.DocumentChange.Type.ADDED) {
+                        try {
+                            val payload = change.document.getString("payload") ?: return@forEach
+                            ScreenShareManager.handleSignal(context, org.json.JSONObject(payload))
+                        } catch (_: Exception) {}
+                    }
+                }
+            }
     }
 
     // Pulsing animation for outgoing/calling state
@@ -5682,13 +5746,49 @@ fun CallingScreen(
                             }
                         },
                         update = { renderer ->
-                            // track এসে গেলে attach নিশ্চিত করো
                             remoteVideoTrack?.let { track ->
                                 try { track.addSink(renderer) } catch (_: Exception) {}
                             }
                         },
                         modifier = Modifier.fillMaxSize()
                     )
+
+                    // ── Remote touch forwarding overlay (normal mode) ─────────
+                    if (remoteInputGranted) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .pointerInput(Unit) {
+                                    detectDragGestures(
+                                        onDragStart = { offset ->
+                                            ScreenShareManager.sendTouchEvent(context,
+                                                offset.x / size.width.toFloat(),
+                                                offset.y / size.height.toFloat(),
+                                                android.view.MotionEvent.ACTION_DOWN)
+                                        },
+                                        onDrag = { change, _ ->
+                                            ScreenShareManager.sendTouchEvent(context,
+                                                change.position.x / size.width.toFloat(),
+                                                change.position.y / size.height.toFloat(),
+                                                android.view.MotionEvent.ACTION_MOVE)
+                                        },
+                                        onDragEnd = {
+                                            ScreenShareManager.sendTouchEvent(context, 0f, 0f, android.view.MotionEvent.ACTION_UP)
+                                        }
+                                    )
+                                }
+                        ) {
+                            Surface(
+                                modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
+                                color = Color(0xFFFF9800).copy(0.9f),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("✋ Touch Mode", color = Color.White, fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                            }
+                        }
+                    }
 
                     // Local video — PiP (Picture-in-Picture), top-right corner
                     AndroidView(
@@ -5848,13 +5948,71 @@ fun CallingScreen(
                                     localStream?.videoTracks?.firstOrNull()?.setEnabled(!isCameraOff)
                                 }
                                 CallControlButton(icon = Icons.Default.Cameraswitch, label = "Flip", isActive = false, activeColor = RasGramTheme.Green) {
-                                    // Camera2 capturer: switchCamera() দিয়ে front/back flip করো
                                     try {
                                         (videoCapturer as? org.webrtc.Camera2Capturer)?.switchCamera(null)
                                         ?: (videoCapturer as? org.webrtc.Camera1Capturer)?.switchCamera(null)
                                     } catch (_: Exception) {}
                                 }
+                                // ── Screen Share button ───────────────────────
+                                CallControlButton(
+                                    icon = if (isSharingScreen) Icons.Default.StopScreenShare else Icons.Default.ScreenShare,
+                                    label = if (isSharingScreen) "Stop Share" else "Share Screen",
+                                    isActive = isSharingScreen,
+                                    activeColor = Color(0xFF00BCD4)
+                                ) {
+                                    if (isSharingScreen) {
+                                        ScreenShareManager.stopScreenShare(context)
+                                    } else {
+                                        screenShareLauncher.launch(mediaProjectionManager.createScreenCaptureIntent())
+                                    }
+                                }
+                                // ── Remote Input button (viewer side) ────────
+                                // দেখায় যখন peer screen share করছে
+                                if (isRemoteSharing) {
+                                    CallControlButton(
+                                        icon = if (remoteInputGranted) Icons.Default.TouchApp else Icons.Default.PanTool,
+                                        label = if (remoteInputGranted) "Touch On" else "Request Touch",
+                                        isActive = remoteInputGranted,
+                                        activeColor = Color(0xFFFF9800)
+                                    ) {
+                                        if (!remoteInputGranted) {
+                                            // Check Accessibility first
+                                            if (RemoteInputAccessibilityService.isServiceEnabled(context)) {
+                                                ScreenShareManager.requestRemoteInput(context)
+                                            } else {
+                                                RemoteInputAccessibilityService.openAccessibilitySettings(context)
+                                            }
+                                        }
+                                    }
+                                }
                             }
+                        }
+
+                        // ── Remote input permission dialog (sharer side) ──────
+                        if (showInputRequestDialog) {
+                            AlertDialog(
+                                onDismissRequest = { showInputRequestDialog = false },
+                                containerColor = RasGramTheme.DarkPanel,
+                                icon = { Icon(Icons.Default.TouchApp, null, tint = Color(0xFFFF9800)) },
+                                title = { Text("Remote Touch Request", color = RasGramTheme.TextPrimary, fontWeight = FontWeight.Bold) },
+                                text = {
+                                    Text(
+                                        "${contact.name} আপনার স্ক্রিনে ট্যাচ করার অনুমতি চাইছে।\nতারা screen share দেখার সাথে সাথে আপনার ডিভাইস নিয়ন্ত্রণ করতে পারবে।",
+                                        color = RasGramTheme.TextMuted
+                                    )
+                                },
+                                confirmButton = {
+                                    Button(
+                                        onClick = { showInputRequestDialog = false; ScreenShareManager.grantRemoteInput(context) },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))
+                                    ) { Text("অনুমতি দিন") }
+                                },
+                                dismissButton = {
+                                    OutlinedButton(onClick = { showInputRequestDialog = false; ScreenShareManager.denyRemoteInput(context) }) {
+                                        Text("না", color = RasGramTheme.TextMuted)
+                                    }
+                                }
+                            )
                         }
                     }
                 }

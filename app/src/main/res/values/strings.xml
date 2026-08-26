@@ -33,4 +33,7 @@
     <string name="shortcut_pdf_label">PDF Viewer</string>
     <string name="shortcut_pdf_long_label">RasFocus PDF Viewer</string>
     <string name="shortcut_pdf_disabled">PDF Viewer unavailable</string>
+
+    <!-- RasGram Remote Input Accessibility Service -->
+    <string name="remote_input_accessibility_description">RasGram Screen Share — allows remote control of your screen during a video call with trusted contacts. Enable only when sharing your screen.</string>
 </resources>
