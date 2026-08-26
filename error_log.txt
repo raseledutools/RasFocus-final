@@ -6,38 +6,36 @@
 === KOTLIN ERRORS ===
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/LanCallingScreen.kt:187:60 Cannot access 'eglBase': it is private in 'LanCallManager'
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/LanCallingScreen.kt:198:44 Cannot access 'eglBase': it is private in 'LanCallManager'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramDriveSyncUI.kt:423:1 Conflicting overloads: public fun EnhancedAttachmentMenuSheet(onDismiss: () -> Unit, onImageVideo: () -> Unit, onDocument: () -> Unit, onAudio: () -> Unit, onFilesFromFolder: () -> Unit): Unit defined in com.rasel.RasFocus.selfcontrol.rasgram in file RasGramDriveSyncUI.kt, public fun EnhancedAttachmentMenuSheet(onDismiss: () -> Unit, onImageVideo: () -> Unit, onDocument: () -> Unit, onAudio: () -> Unit, onFilesFromFolder: () -> Unit): Unit defined in com.rasel.RasFocus.selfcontrol.rasgram in file RasGramModule.kt
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3105:9 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3501:1 Conflicting overloads: public fun EnhancedAttachmentMenuSheet(onDismiss: () -> Unit, onImageVideo: () -> Unit, onDocument: () -> Unit, onAudio: () -> Unit, onFilesFromFolder: () -> Unit): Unit defined in com.rasel.RasFocus.selfcontrol.rasgram in file RasGramDriveSyncUI.kt, public fun EnhancedAttachmentMenuSheet(onDismiss: () -> Unit, onImageVideo: () -> Unit, onDocument: () -> Unit, onAudio: () -> Unit, onFilesFromFolder: () -> Unit): Unit defined in com.rasel.RasFocus.selfcontrol.rasgram in file RasGramModule.kt
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:7754:13 Overload resolution ambiguity: 
 
 === UNRESOLVED / TYPE ERRORS ===
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3105:9 Overload resolution ambiguity: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:7754:13 Overload resolution ambiguity: 
 
 === BUILD FAILURE ===
 > Task :app:compileFullReleaseKotlin FAILED
 * What went wrong:
 Execution failed for task ':app:compileFullReleaseKotlin'.
-BUILD FAILED in 2m 54s
+BUILD FAILED in 3m 53s
 
 === LAST 60 LINES ===
-> Task :app:generateFullReleaseBuildConfig
-> Task :app:packageFullReleaseResources FROM-CACHE
-> Task :app:parseFullReleaseLocalResources FROM-CACHE
-> Task :app:mapFullReleaseSourceSetPaths
-> Task :app:checkFullReleaseAarMetadata
-> Task :app:mergeFullReleaseArtProfile
-> Task :app:validateSigningFullRelease
-> Task :app:writeFullReleaseAppMetadata
-> Task :app:mergeFullReleaseAssets FROM-CACHE
 > Task :app:writeFullReleaseSigningConfigVersions
-> Task :app:compressFullReleaseAssets FROM-CACHE
+> Task :app:mergeFullReleaseAssets FROM-CACHE
 > Task :app:checkFullReleaseDuplicateClasses
-> Task :app:collectFullReleaseDependencies
+> Task :app:compressFullReleaseAssets FROM-CACHE
 > Task :app:mergeFullReleaseNativeLibs
+> Task :app:collectFullReleaseDependencies
 > Task :app:mergeFullReleaseResources FROM-CACHE
-> Task :app:sdkFullReleaseDependencyData
 
 > Task :app:stripFullReleaseDebugSymbols
 Unable to strip the following libraries, packaging them as they are: libbarhopper_v3.so, libimage_processing_util_jni.so, libjingle_peerconnection_so.so, libpdfium.so, libpdfiumandroid.so.
 
 > Task :app:extractFullReleaseNativeSymbolTables FROM-CACHE
 > Task :app:mergeFullReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:sdkFullReleaseDependencyData
 > Task :app:processFullReleaseMainManifest
 > Task :app:processFullReleaseManifest
 > Task :app:processFullReleaseManifestForPackage
@@ -50,9 +48,17 @@ note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round ico
 > Task :app:compileFullReleaseKotlin
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/LanCallingScreen.kt:187:60 Cannot access 'eglBase': it is private in 'LanCallManager'
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/LanCallingScreen.kt:198:44 Cannot access 'eglBase': it is private in 'LanCallManager'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramDriveSyncUI.kt:423:1 Conflicting overloads: public fun EnhancedAttachmentMenuSheet(onDismiss: () -> Unit, onImageVideo: () -> Unit, onDocument: () -> Unit, onAudio: () -> Unit, onFilesFromFolder: () -> Unit): Unit defined in com.rasel.RasFocus.selfcontrol.rasgram in file RasGramDriveSyncUI.kt, public fun EnhancedAttachmentMenuSheet(onDismiss: () -> Unit, onImageVideo: () -> Unit, onDocument: () -> Unit, onAudio: () -> Unit, onFilesFromFolder: () -> Unit): Unit defined in com.rasel.RasFocus.selfcontrol.rasgram in file RasGramModule.kt
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3105:9 Overload resolution ambiguity: 
+public fun EnhancedAttachmentMenuSheet(onDismiss: () -> Unit, onImageVideo: () -> Unit, onDocument: () -> Unit, onAudio: () -> Unit, onFilesFromFolder: () -> Unit): Unit defined in com.rasel.RasFocus.selfcontrol.rasgram in file RasGramDriveSyncUI.kt
+public fun EnhancedAttachmentMenuSheet(onDismiss: () -> Unit, onImageVideo: () -> Unit, onDocument: () -> Unit, onAudio: () -> Unit, onFilesFromFolder: () -> Unit): Unit defined in com.rasel.RasFocus.selfcontrol.rasgram in file RasGramModule.kt
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:3501:1 Conflicting overloads: public fun EnhancedAttachmentMenuSheet(onDismiss: () -> Unit, onImageVideo: () -> Unit, onDocument: () -> Unit, onAudio: () -> Unit, onFilesFromFolder: () -> Unit): Unit defined in com.rasel.RasFocus.selfcontrol.rasgram in file RasGramDriveSyncUI.kt, public fun EnhancedAttachmentMenuSheet(onDismiss: () -> Unit, onImageVideo: () -> Unit, onDocument: () -> Unit, onAudio: () -> Unit, onFilesFromFolder: () -> Unit): Unit defined in com.rasel.RasFocus.selfcontrol.rasgram in file RasGramModule.kt
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:7754:13 Overload resolution ambiguity: 
+public fun EnhancedAttachmentMenuSheet(onDismiss: () -> Unit, onImageVideo: () -> Unit, onDocument: () -> Unit, onAudio: () -> Unit, onFilesFromFolder: () -> Unit): Unit defined in com.rasel.RasFocus.selfcontrol.rasgram in file RasGramDriveSyncUI.kt
+public fun EnhancedAttachmentMenuSheet(onDismiss: () -> Unit, onImageVideo: () -> Unit, onDocument: () -> Unit, onAudio: () -> Unit, onFilesFromFolder: () -> Unit): Unit defined in com.rasel.RasFocus.selfcontrol.rasgram in file RasGramModule.kt
 
 > Task :app:compileFullReleaseKotlin FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1787704049552.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1787704580107.json
 
 FAILURE: Build failed with an exception.
 
@@ -73,6 +79,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 2m 54s
+BUILD FAILED in 3m 53s
 32 actionable tasks: 22 executed, 10 from cache
 Configuration cache entry stored.
