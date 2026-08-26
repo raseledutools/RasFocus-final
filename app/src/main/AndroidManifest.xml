@@ -1032,6 +1032,12 @@
     <!-- RasGram — Daily archive Worker (WorkManager)
          Automatically archives old messages to Google Drive every 24 hours.
          No exported needed — only WorkManager triggers this. -->
+    <service
+        android:name="androidx.work.impl.foreground.SystemForegroundService"
+        android:exported="false"
+        android:foregroundServiceType="dataSync"
+        tools:node="merge" />
+
     <provider
         android:name="androidx.startup.InitializationProvider"
         android:authorities="${applicationId}.androidx-startup"
@@ -1045,5 +1051,4 @@
     </application>
 
 </manifest>
-
 
