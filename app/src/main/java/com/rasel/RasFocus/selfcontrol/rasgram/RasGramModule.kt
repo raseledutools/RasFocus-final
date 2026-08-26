@@ -5474,29 +5474,34 @@ fun CallingScreen(
         }
     }
 
+    // ── ScreenShareManager attach — separate LaunchedEffect to avoid IR bytecode overflow ──
+    // Keeping this out of LaunchedEffect(peerConnection) below prevents the Kotlin 2.1.x
+    // FixStackAnalyzer NullPointerException at instruction #346 (same fix pattern as before).
+    LaunchedEffect(peerConnection, callId) {
+        val pc = peerConnection ?: return@LaunchedEffect
+        val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        val isLan = prefs.getBoolean(PREF_LAN_MODE, false)
+        val stream = localStream ?: return@LaunchedEffect
+        val factory = peerConnectionFactory.value ?: return@LaunchedEffect
+        val egl = eglBase.value ?: return@LaunchedEffect
+        ScreenShareManager.attachCall(
+            peerConnection = pc,
+            factory        = factory,
+            eglBase        = egl,
+            localStream    = stream,
+            callDocId      = callId,
+            lanMode        = isLan,
+            lanManager     = if (isLan) LanCallManager.getInstance(context) else null
+        )
+    }
+
     // FIX: Split from LaunchedEffect(peerConnectionFactory.value) above.
     // Runs once peerConnection is created (non-null). Handles the receiver/caller
     // signaling paths. Keeping this separate halves the bytecode per suspend lambda.
-    LaunchedEffect(peerConnection) {
+    @Suppress("NAME_SHADOWING")
+    LaunchedEffect(peerConnection, isReceiver) {
         val pc = peerConnection ?: return@LaunchedEffect
         try {
-            // ── Attach ScreenShareManager — normal (Firebase) mode ────────────
-            val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-            val isLan = prefs.getBoolean(PREF_LAN_MODE, false)
-            val stream = localStream
-            val factory = peerConnectionFactory.value
-            val egl = eglBase.value
-            if (stream != null && factory != null && egl != null) {
-                ScreenShareManager.attachCall(
-                    peerConnection = pc,
-                    factory        = factory,
-                    eglBase        = egl,
-                    localStream    = stream,
-                    callDocId      = callId,
-                    lanMode        = isLan,
-                    lanManager     = if (isLan) LanCallManager.getInstance(context) else null
-                )
-            }
             if (isReceiver) {
                 // ── RECEIVER PATH ─────────────────────────────────────────────────────
                 callStatus = "Connecting..."
