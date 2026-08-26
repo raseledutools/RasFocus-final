@@ -80,6 +80,8 @@ private const val KEY_BTN_L   = "bottom_btn_left"
 private const val KEY_BTN_R   = "bottom_btn_right"
 private const val KEY_CLOCK_PKG = "clock_btn_pkg"
 
+private const val KEY_AUTO_KB   = "sidebar_auto_keyboard"   // boolean — open keyboard on sidebar open
+
 // ── Word Widget prefs ─────────────────────────────────────────────────────────
 // User stores custom words in settings; launcher cycles them hourly
 private const val KEY_CUSTOM_WORDS  = "word_widget_custom"   // JSON-ish: "word1|meaning1;word2|meaning2"
@@ -174,9 +176,10 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
     var showIcons  by rememberSaveable { mutableStateOf(prefs.getBoolean(KEY_ICONS, false)) }
 
     // bottom button packages (default: phone + camera)
-    var btnLeftPkg  by remember { mutableStateOf(prefs.getString(KEY_BTN_L, "PHONE") ?: "PHONE") }
-    var btnRightPkg by remember { mutableStateOf(prefs.getString(KEY_BTN_R, "CAMERA") ?: "CAMERA") }
-    var clockPkg    by remember { mutableStateOf(prefs.getString(KEY_CLOCK_PKG, "") ?: "") }
+    var btnLeftPkg    by remember { mutableStateOf(prefs.getString(KEY_BTN_L, "PHONE") ?: "PHONE") }
+    var btnRightPkg   by remember { mutableStateOf(prefs.getString(KEY_BTN_R, "CAMERA") ?: "CAMERA") }
+    var clockPkg      by remember { mutableStateOf(prefs.getString(KEY_CLOCK_PKG, "") ?: "") }
+    var autoKeyboard  by rememberSaveable { mutableStateOf(prefs.getBoolean(KEY_AUTO_KB, false)) }
 
     val theme       = LauncherTheme.entries[themeIdx.coerceIn(0, 2)]
     val appFontSize = when (fontSize) { 0 -> 16.sp; 2 -> 26.sp; else -> 21.sp }
@@ -423,15 +426,16 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                     .clickable(enabled = false) {}
             ) {
                 SidebarContent(
-                    allApps      = allApps,
-                    frequentApps = frequentApps,
-                    pinnedPkgs   = pinnedPkgs,
-                    hiddenPkgs   = hiddenPkgs,
-                    renamedMap   = renamedMap,
-                    theme        = theme,
-                    fontSize     = appFontSize,
-                    showIcons    = showIcons,
-                    query        = query,
+                    allApps       = allApps,
+                    frequentApps  = frequentApps,
+                    pinnedPkgs    = pinnedPkgs,
+                    hiddenPkgs    = hiddenPkgs,
+                    renamedMap    = renamedMap,
+                    theme         = theme,
+                    fontSize      = appFontSize,
+                    showIcons     = showIcons,
+                    autoKeyboard  = autoKeyboard,
+                    query         = query,
                     onQueryChange = { query = it },
                     onLaunch   = { app -> if (!app.isBlocked) {
                         launchApp(context, app.packageName)
@@ -530,16 +534,18 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
         // Settings
         if (showSettings) {
             LauncherSettingsSheet(
-                themeIdx    = themeIdx,
-                fontSize    = fontSize,
-                showIcons   = showIcons,
-                hiddenPkgs  = hiddenPkgs,
-                allApps     = allApps,
-                theme       = theme,
-                onThemeChange = { themeIdx = it; prefs.edit().putInt(KEY_THEME, it).apply() },
-                onFontChange  = { fontSize = it; prefs.edit().putInt(KEY_FONT, it).apply() },
-                onIconToggle  = { showIcons = it; prefs.edit().putBoolean(KEY_ICONS, it).apply() },
-                onUnhide      = { pkg ->
+                themeIdx     = themeIdx,
+                fontSize     = fontSize,
+                showIcons    = showIcons,
+                autoKeyboard = autoKeyboard,
+                hiddenPkgs   = hiddenPkgs,
+                allApps      = allApps,
+                theme        = theme,
+                onThemeChange   = { themeIdx = it; prefs.edit().putInt(KEY_THEME, it).apply() },
+                onFontChange    = { fontSize = it; prefs.edit().putInt(KEY_FONT, it).apply() },
+                onIconToggle    = { showIcons = it; prefs.edit().putBoolean(KEY_ICONS, it).apply() },
+                onAutoKbToggle  = { autoKeyboard = it; prefs.edit().putBoolean(KEY_AUTO_KB, it).apply() },
+                onUnhide        = { pkg ->
                     val u = hiddenPkgs.toMutableSet(); u.remove(pkg); hiddenPkgs = u
                     prefs.edit().putStringSet(KEY_HIDDEN, u).apply()
                 },
@@ -1121,6 +1127,7 @@ fun SidebarContent(
     theme:         LauncherTheme,
     fontSize:      androidx.compose.ui.unit.TextUnit,
     showIcons:     Boolean,
+    autoKeyboard:  Boolean = false,
     query:         String,
     onQueryChange: (String) -> Unit,
     onLaunch:      (AppInfo) -> Unit,
@@ -1151,8 +1158,9 @@ fun SidebarContent(
         }
     }
 
-    // Auto-focus search bar when sidebar opens
+    // Auto-focus search bar only when setting is enabled
     LaunchedEffect(Unit) {
+        if (!autoKeyboard) return@LaunchedEffect
         delay(300) // wait for slide-in animation
         try { searchFocus.requestFocus(); keyboard?.show() } catch (_: Exception) {}
     }
@@ -1710,18 +1718,20 @@ fun AppPickerDialog(
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 fun LauncherSettingsSheet(
-    themeIdx:     Int,
-    fontSize:     Int,
-    showIcons:    Boolean,
-    hiddenPkgs:   Set<String>,
-    allApps:      List<AppInfo>,
-    theme:        LauncherTheme,
-    onThemeChange: (Int) -> Unit,
-    onFontChange:  (Int) -> Unit,
-    onIconToggle:  (Boolean) -> Unit,
-    onUnhide:      (String) -> Unit,
-    onBack:        () -> Unit,
-    onDismiss:     () -> Unit
+    themeIdx:      Int,
+    fontSize:      Int,
+    showIcons:     Boolean,
+    autoKeyboard:  Boolean,
+    hiddenPkgs:    Set<String>,
+    allApps:       List<AppInfo>,
+    theme:         LauncherTheme,
+    onThemeChange:    (Int) -> Unit,
+    onFontChange:     (Int) -> Unit,
+    onIconToggle:     (Boolean) -> Unit,
+    onAutoKbToggle:   (Boolean) -> Unit,
+    onUnhide:         (String) -> Unit,
+    onBack:           () -> Unit,
+    onDismiss:        () -> Unit
 ) {
     val context    = LocalContext.current
     val hiddenApps = remember(hiddenPkgs, allApps) { allApps.filter { it.packageName in hiddenPkgs } }
@@ -1759,6 +1769,12 @@ fun LauncherSettingsSheet(
 
                 SettingsExpandableSection("Home screen", expandHome, { expandHome = !expandHome }) {
                     SettingsToggleRow("Show app icons", checked = showIcons, onToggle = onIconToggle)
+                    SettingsToggleRow(
+                        title    = "Sidebar — auto keyboard",
+                        subtitle = "Sidebar খুললে search keyboard automatically open হবে",
+                        checked  = autoKeyboard,
+                        onToggle = onAutoKbToggle
+                    )
                 }
 
                 // ── Hidden apps — সবসময় দেখা যাবে, expand ছাড়াই ─────────────
