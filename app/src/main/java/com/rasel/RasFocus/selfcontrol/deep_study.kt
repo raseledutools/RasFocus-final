@@ -395,6 +395,75 @@ object AmbientSoundEngine {
     private const val SR = 44100
     private const val BUF = 4096
 
+    // FIX: extracted from the coroutine body — a large `when` expression with
+    // inline calls (coerceIn, sin) inside a Dispatchers.IO coroutine triggers
+    // a Kotlin 2.1.x backend bug: FixStackAnalyzer NullPointerException at
+    // instruction INVOKESTATIC kotlin/jvm/internal/InlineMarker.afterInlineCall.
+    // Moving the when() into a named function avoids the problematic IR lowering.
+    private fun computeSample(
+        type: SoundType,
+        w1: Float, w2: Float, t: Double,
+        bLRef: FloatArray, bRRef: FloatArray  // [0] = bL, [0] = bR (single-element arrays as mutable refs)
+    ): Pair<Float, Float> {
+        var bL = bLRef[0]
+        var bR = bRRef[0]
+        val result: Pair<Float, Float> = when (type) {
+            SoundType.WHITE_NOISE -> Pair(w1 * 0.3f, w2 * 0.3f)
+            SoundType.CLASSIC_BROWN -> {
+                bL = (bL + w1 * 0.02f).coerceIn(-1f, 1f)
+                bR = (bR + w2 * 0.02f).coerceIn(-1f, 1f)
+                Pair(bL * 3.5f, bR * 3.5f)
+            }
+            SoundType.DEEP_BROWN -> {
+                bL = (bL * 0.998f + w1 * 0.012f).coerceIn(-1f, 1f)
+                bR = (bR * 0.998f + w2 * 0.012f).coerceIn(-1f, 1f)
+                Pair(bL * 4f, bR * 4f)
+            }
+            SoundType.WARM_BROWN -> {
+                bL = (bL * 0.99f + w1 * 0.025f).coerceIn(-1f, 1f)
+                bR = (bR * 0.99f + w2 * 0.025f).coerceIn(-1f, 1f)
+                Pair(bL * 3f, bR * 3f)
+            }
+            SoundType.HEAVY_RAIN -> {
+                val drop = if (Math.random() < 0.008) w1 * 0.5f else 0f
+                bL = (bL + w1 * 0.018f).coerceIn(-1f, 1f)
+                Pair(bL * 2f + drop, bL * 2f + w2 * 0.15f)
+            }
+            SoundType.WATERFALL -> {
+                val m = w1 * 0.5f + w2 * 0.3f
+                Pair(m * 0.55f, (w2 * 0.5f + w1 * 0.3f) * 0.55f)
+            }
+            SoundType.WIND -> {
+                bL = (bL + w1 * 0.022f).coerceIn(-1f, 1f)
+                bR = (bR + w2 * 0.022f).coerceIn(-1f, 1f)
+                val mod = (0.5f + 0.5f * sin(t * 0.3)).toFloat()
+                Pair(bL * mod * 3f, bR * mod * 3f)
+            }
+            SoundType.DEEP_FOCUS -> {
+                val drone = sin(2 * PI * 40.0 * t).toFloat() * 0.22f
+                bL = (bL + w1 * 0.015f).coerceIn(-1f, 1f)
+                Pair(bL * 1.8f + drone, bL * 1.8f + drone)
+            }
+            SoundType.SPACE_DRONE -> {
+                val d1 = sin(2 * PI * 60.0 * t).toFloat() * 0.18f
+                val d2 = sin(2 * PI * 90.0 * t).toFloat() * 0.09f
+                bL = (bL + w1 * 0.008f).coerceIn(-1f, 1f)
+                bR = (bR + w2 * 0.008f).coerceIn(-1f, 1f)
+                Pair(bL * 0.8f + d1 + d2, bR * 0.8f + d1 - d2)
+            }
+            SoundType.COSMIC_BROWN -> {
+                val sub = sin(2 * PI * 30.0 * t).toFloat() * 0.12f
+                bL = (bL * 0.9995f + w1 * 0.008f).coerceIn(-1f, 1f)
+                bR = (bR * 0.9995f + w2 * 0.008f).coerceIn(-1f, 1f)
+                Pair(bL * 4f + sub, bR * 4f + sub)
+            }
+            else -> Pair(0f, 0f)
+        }
+        bLRef[0] = bL
+        bRRef[0] = bR
+        return result
+    }
+
     fun play(context: android.content.Context, type: SoundType) {
         stop()
         if (type.downloadUrl != null) {
@@ -414,7 +483,11 @@ object AmbientSoundEngine {
 
         genJob = CoroutineScope(Dispatchers.IO).launch {
             val buf = FloatArray(BUF)
-            var bL = 0f; var bR = 0f; var sampleIdx = 0L
+            // FIX: use single-element FloatArray as mutable reference — avoids
+            // captured-variable mutation inside the extracted computeSample().
+            val bLRef = FloatArray(1) { 0f }
+            val bRRef = FloatArray(1) { 0f }
+            var sampleIdx = 0L
 
             while (isActive) {
                 for (i in 0 until BUF / 2) {
@@ -422,21 +495,10 @@ object AmbientSoundEngine {
                     val w2 = (Math.random() * 2 - 1).toFloat()
                     val t = sampleIdx.toDouble() / SR
                     sampleIdx++
-
-                    val (sL, sR) = when (type) {
-                        SoundType.WHITE_NOISE -> Pair(w1 * 0.3f, w2 * 0.3f)
-                        SoundType.CLASSIC_BROWN -> { bL = (bL + w1 * 0.02f).coerceIn(-1f,1f); bR = (bR + w2 * 0.02f).coerceIn(-1f,1f); Pair(bL * 3.5f, bR * 3.5f) }
-                        SoundType.DEEP_BROWN -> { bL = (bL * 0.998f + w1 * 0.012f).coerceIn(-1f,1f); bR = (bR * 0.998f + w2 * 0.012f).coerceIn(-1f,1f); Pair(bL * 4f, bR * 4f) }
-                        SoundType.WARM_BROWN -> { bL = (bL * 0.99f + w1 * 0.025f).coerceIn(-1f,1f); bR = (bR * 0.99f + w2 * 0.025f).coerceIn(-1f,1f); Pair(bL * 3f, bR * 3f) }
-                        SoundType.HEAVY_RAIN -> { val drop = if (Math.random() < 0.008) w1 * 0.5f else 0f; bL = (bL + w1 * 0.018f).coerceIn(-1f,1f); Pair(bL * 2f + drop, bL * 2f + w2 * 0.15f) }
-                        SoundType.WATERFALL -> { val m = w1 * 0.5f + w2 * 0.3f; Pair(m * 0.55f, (w2 * 0.5f + w1 * 0.3f) * 0.55f) }
-                        SoundType.WIND -> { bL = (bL + w1 * 0.022f).coerceIn(-1f,1f); bR = (bR + w2 * 0.022f).coerceIn(-1f,1f); val mod = (0.5f + 0.5f * sin(t * 0.3)).toFloat(); Pair(bL * mod * 3f, bR * mod * 3f) }
-                        SoundType.DEEP_FOCUS -> { val drone = sin(2 * PI * 40.0 * t).toFloat() * 0.22f; bL = (bL + w1 * 0.015f).coerceIn(-1f,1f); Pair(bL * 1.8f + drone, bL * 1.8f + drone) }
-                        SoundType.SPACE_DRONE -> { val d1 = sin(2 * PI * 60.0 * t).toFloat() * 0.18f; val d2 = sin(2 * PI * 90.0 * t).toFloat() * 0.09f; bL = (bL + w1 * 0.008f).coerceIn(-1f,1f); bR = (bR + w2 * 0.008f).coerceIn(-1f,1f); Pair(bL * 0.8f + d1 + d2, bR * 0.8f + d1 - d2) }
-                        SoundType.COSMIC_BROWN -> { val sub = sin(2 * PI * 30.0 * t).toFloat() * 0.12f; bL = (bL * 0.9995f + w1 * 0.008f).coerceIn(-1f,1f); bR = (bR * 0.9995f + w2 * 0.008f).coerceIn(-1f,1f); Pair(bL * 4f + sub, bR * 4f + sub) }
-                        else -> Pair(0f, 0f)
-                    }
-                    buf[i * 2] = sL.coerceIn(-1f, 1f); buf[i * 2 + 1] = sR.coerceIn(-1f, 1f)
+                    // FIX: call extracted function instead of inline when block
+                    val (sL, sR) = computeSample(type, w1, w2, t, bLRef, bRRef)
+                    buf[i * 2]     = sL.coerceIn(-1f, 1f)
+                    buf[i * 2 + 1] = sR.coerceIn(-1f, 1f)
                 }
                 track?.write(buf, 0, BUF, AudioTrack.WRITE_BLOCKING)
             }
