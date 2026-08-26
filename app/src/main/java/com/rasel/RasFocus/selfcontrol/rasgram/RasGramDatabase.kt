@@ -178,6 +178,10 @@ interface CachedMessageDao {
     // Total message count per chat (archive check এর জন্য)
     @Query("SELECT COUNT(*) FROM cached_messages WHERE chatId = :chatId AND isArchived = 0")
     suspend fun getActiveMessageCount(chatId: String): Int
+
+    // Drive sync: contactMobile দিয়ে chatId খোঁজা (sync engine এর জন্য)
+    @Query("SELECT chatId FROM cached_messages WHERE senderMobile = :mobile OR receiverMobile = :mobile LIMIT 1")
+    suspend fun getChatIdByContactMobile(mobile: String): String?
 }
 
 @Dao

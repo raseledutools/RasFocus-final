@@ -458,10 +458,10 @@ object RasGramDriveSyncEngine {
             var totalChats = 0; var totalMsgs = 0; var totalMedia = 0; var totalCld = 0
 
             previews.forEach { preview ->
-                val latestMsg = repo.messageDao.getLatestMessage(preview.contactMobile)
+                val chatId = repo.messageDao.getChatIdByContactMobile(preview.contactMobile)
                     ?: return@forEach
                 val (msgs, media, cld) = processChat(
-                    drive, rasGramFolder, latestMsg.chatId,
+                    drive, rasGramFolder, chatId,
                     preview.contactMobile, repo, db, cutoff
                 )
                 if (msgs > 0) { totalChats++; totalMsgs += msgs; totalMedia += media; totalCld += cld }
@@ -504,10 +504,10 @@ object RasGramDriveSyncEngine {
             var totalChats = 0; var totalMsgs = 0; var totalMedia = 0; var totalCld = 0
 
             previews.forEach { preview ->
-                val latestMsg = repo.messageDao.getLatestMessage(preview.contactMobile)
+                val chatId = repo.messageDao.getChatIdByContactMobile(preview.contactMobile)
                     ?: return@forEach
                 val (msgs, media, cld) = processChat(
-                    drive, rasGramFolder, latestMsg.chatId,
+                    drive, rasGramFolder, chatId,
                     preview.contactMobile, repo, db, cutoff
                 )
                 if (msgs > 0) { totalChats++; totalMsgs += msgs; totalMedia += media; totalCld += cld }
