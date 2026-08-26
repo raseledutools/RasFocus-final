@@ -80,6 +80,12 @@ private const val KEY_BTN_L   = "bottom_btn_left"
 private const val KEY_BTN_R   = "bottom_btn_right"
 private const val KEY_CLOCK_PKG = "clock_btn_pkg"
 
+// ── Word Widget prefs ─────────────────────────────────────────────────────────
+// User stores custom words in settings; launcher cycles them hourly
+private const val KEY_CUSTOM_WORDS  = "word_widget_custom"   // JSON-ish: "word1|meaning1;word2|meaning2"
+private const val KEY_WORD_IDX      = "word_widget_idx"       // current cycling index
+private const val KEY_WORD_HOUR     = "word_widget_hour"      // last hour shown
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Data
 // ─────────────────────────────────────────────────────────────────────────────
@@ -89,6 +95,39 @@ data class AppInfo(
     val customName: String = "",
     val isBlocked: Boolean = false,
     val usageMinutes: Long = 0L
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Word Widget data
+// ─────────────────────────────────────────────────────────────────────────────
+data class WordPair(
+    val english: String,
+    val bangla:  String,     // meaning / mnemonic in Bangla
+    val example: String = "" // optional English usage sentence
+)
+
+/** Built-in fallback word list shown when user hasn't added custom words */
+private val DEFAULT_WORDS = listOf(
+    WordPair("Ephemeral",   "ক্ষণস্থায়ী",           "The ephemeral beauty of cherry blossoms."),
+    WordPair("Resilient",   "স্থিতিস্থাপক / দৃঢ়",    "She remained resilient despite the setbacks."),
+    WordPair("Eloquent",    "বাগ্মী / সুবক্তা",      "His eloquent speech moved the crowd."),
+    WordPair("Tenacious",   "অদম্য / একগুঁয়ে",       "A tenacious student never gives up."),
+    WordPair("Pragmatic",   "ব্যবহারিক / বাস্তববাদী", "Take a pragmatic approach to problems."),
+    WordPair("Meticulous",  "সুক্ষ্মদৃষ্টি / নিখুঁত", "She was meticulous in her research."),
+    WordPair("Ambiguous",   "দ্ব্যর্থবোধক",           "The contract had ambiguous terms."),
+    WordPair("Diligent",    "পরিশ্রমী",               "Diligent effort yields great results."),
+    WordPair("Candid",      "খোলামেলা / সৎ",          "Please be candid with your feedback."),
+    WordPair("Profound",    "গভীর / গভীরতর",          "A profound silence fell over the room."),
+    WordPair("Verbose",     "বাচাল / অতিকথক",         "His verbose emails took an hour to read."),
+    WordPair("Austere",     "কঠোর / সাদাসিধা",       "She lived an austere, minimalist life."),
+    WordPair("Persevere",   "অধ্যবসায় করা",           "Persevere through difficult times."),
+    WordPair("Succinct",    "সংক্ষিপ্ত ও স্পষ্ট",     "Keep your answers succinct and clear."),
+    WordPair("Empathy",     "সহানুভূতি / অনুভূতি",   "Empathy makes you a better leader."),
+    WordPair("Innovative",  "উদ্ভাবনী",               "An innovative solution saved the day."),
+    WordPair("Intrinsic",   "স্বাভাবিক / সহজাত",      "Curiosity is intrinsic to learning."),
+    WordPair("Versatile",   "বহুমুখী",                "A versatile developer adapts quickly."),
+    WordPair("Fortitude",   "মনোবল / সাহস",           "He faced hardship with great fortitude."),
+    WordPair("Prudent",     "বিচক্ষণ / সতর্ক",        "A prudent decision saves future pain.")
 )
 
 enum class LauncherTheme(val bg: Color, val text: Color, val accent: Color) {
@@ -183,27 +222,35 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
     val sidebarOffsetAnim = remember { Animatable(10000f) }  // starts offscreen
     val scope = rememberCoroutineScope()
 
-    // Track whether sidebar is "logically open" for BackHandler / keyboard etc.
-    // We derive this from the animation value but keep showSidebar as the intent source.
-    val SIDEBAR_WIDTH_FRACTION = 0.78f
-    val OPEN_THRESHOLD_FRACTION = 0.45f   // past 45% → snap open on release
-    val SWIPE_SLOP_PX = 18f               // px before we start tracking horizontal drag
+    val SIDEBAR_WIDTH_FRACTION  = 0.78f
+    // Snap open only when user has dragged ≥ 35% of sidebar width (was 45% → too easy to trigger)
+    val OPEN_THRESHOLD_FRACTION = 0.35f
+    val SWIPE_SLOP_PX           = 12f    // px before we lock direction
 
-    // Sync animation to showSidebar state (for programmatic open/close)
+    // Single source of truth: animate based on showSidebar state changes
+    // BUT we use a flag to avoid re-triggering while gesture is active
+    val gestureActiveRef = remember { androidx.compose.runtime.mutableStateOf(false) }
+
     LaunchedEffect(showSidebar) {
+        // Only run programmatic animation when gesture is NOT controlling the offset
+        if (gestureActiveRef.value) return@LaunchedEffect
         keyboard?.hide()
-        // We don't know screen width here; use a placeholder — the gesture will set it properly.
-        // For programmatic open/close we animate to 0 or a large value.
         if (showSidebar) {
             sidebarOffsetAnim.animateTo(
                 0f,
-                animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow)
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness    = Spring.StiffnessMedium
+                )
             )
         } else {
-            // We don't know exact width yet; animate far off screen
+            val target = sidebarOffsetAnim.upperBound ?: 10000f
             sidebarOffsetAnim.animateTo(
-                sidebarOffsetAnim.upperBound ?: 10000f,
-                animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium)
+                target,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness    = Spring.StiffnessMediumLow
+                )
             )
         }
     }
@@ -234,35 +281,39 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(showSidebar) {
-                    // Simple, reliable approach:
-                    // Track drag manually. No early break — just ignore non-target events.
+                .pointerInput(Unit) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
-                        var totalX = 0f
-                        var totalY = 0f
+                        var totalX          = 0f
+                        var totalY          = 0f
                         var directionLocked = false
-                        var isHorizontal = false
+                        var isHorizontal    = false
                         var gestureConsuming = false
 
+                        // Snapshot showSidebar at gesture start — don't read live state mid-drag
+                        val sidebarWasOpen = showSidebar
+
                         while (true) {
-                            val event = awaitPointerEvent()
+                            val event  = awaitPointerEvent()
                             val change = event.changes.firstOrNull() ?: break
+
                             if (!change.pressed) {
-                                // Finger up — decide snap
+                                // ── Finger up: snap to nearest edge ──────────────────────────
+                                gestureActiveRef.value = false
                                 if (gestureConsuming && isHorizontal) {
-                                    val cur = sidebarOffsetAnim.value
+                                    val cur      = sidebarOffsetAnim.value
                                     val willOpen = cur < openThresholdPx
                                     scope.launch {
                                         sidebarOffsetAnim.animateTo(
                                             if (willOpen) 0f else sidebarWidthPx,
-                                            spring(Spring.DampingRatioLowBouncy, Spring.StiffnessMediumLow)
+                                            spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium)
                                         )
                                     }
-                                    if (willOpen && !showSidebar) showSidebar = true
-                                    else if (!willOpen && showSidebar) { showSidebar = false; query = "" }
-                                } else if (!gestureConsuming && !showSidebar && totalY > 80f) {
-                                    // Swipe down → notifications (only when sidebar closed)
+                                    // Update logical state AFTER animation target is decided
+                                    if (willOpen  && !showSidebar) showSidebar = true
+                                    if (!willOpen &&  showSidebar) { showSidebar = false; query = "" }
+                                } else if (!gestureConsuming && !sidebarWasOpen && totalY > 80f && abs(totalX) < 40f) {
+                                    // Swipe down → notifications panel (only when sidebar closed)
                                     try {
                                         val sb = context.getSystemService("statusbar")
                                         sb?.javaClass?.getMethod("expandNotificationsPanel")?.invoke(sb)
@@ -271,31 +322,35 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                                 break
                             }
 
-                            val dx = change.position.x - change.previousPosition.x
-                            val dy = change.position.y - change.previousPosition.y
+                            val dx = change.positionChange().x
+                            val dy = change.positionChange().y
                             totalX += dx
                             totalY += dy
 
-                            // Lock direction after slop
+                            // ── Lock direction once slop is exceeded ──────────────────────
                             if (!directionLocked) {
-                                val absX = abs(totalX); val absY = abs(totalY)
+                                val absX = abs(totalX)
+                                val absY = abs(totalY)
                                 if (absX > SWIPE_SLOP_PX || absY > SWIPE_SLOP_PX) {
                                     directionLocked = true
-                                    isHorizontal = absX >= absY
+                                    isHorizontal    = absX >= absY * 0.8f  // slight horizontal bias
+
                                     if (isHorizontal) {
-                                        // Only consume if valid direction
-                                        val validOpen  = !showSidebar && totalX < 0f
-                                        val validClose =  showSidebar && totalX > 0f
+                                        // Valid open:  swipe LEFT (totalX < 0) when sidebar is closed
+                                        // Valid close: swipe RIGHT (totalX > 0) when sidebar is open
+                                        val validOpen  = !sidebarWasOpen && totalX < -SWIPE_SLOP_PX
+                                        val validClose =  sidebarWasOpen && totalX >  SWIPE_SLOP_PX
                                         gestureConsuming = validOpen || validClose
+                                        if (gestureConsuming) gestureActiveRef.value = true
                                     }
                                 }
                             }
 
                             if (gestureConsuming && isHorizontal) {
                                 change.consume()
-                                // sidebar offset: 0 = open (flush right), sidebarWidthPx = hidden
-                                // swipe LEFT (dx < 0) from home → offset decreases → sidebar appears
-                                // swipe RIGHT (dx > 0) from open → offset increases → sidebar hides
+                                // sidebar offset tracks finger:
+                                //   swipe LEFT  (dx < 0) → offset decreases → sidebar slides in from right
+                                //   swipe RIGHT (dx > 0) → offset increases → sidebar slides back
                                 val newOffset = (sidebarOffsetAnim.value + dx)
                                     .coerceIn(0f, sidebarWidthPx)
                                 scope.launch { sidebarOffsetAnim.snapTo(newOffset) }
@@ -574,12 +629,17 @@ fun HomeScreen(
             // ── Greeting + daily quote ────────────────────────────────────
             GreetingQuoteSection(context = context)
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(12.dp))
+
+            // ── Hourly Word Widget ────────────────────────────────────────
+            HourlyWordWidget(context = context)
+
+            Spacer(Modifier.height(12.dp))
         }
 
         // ── Scrollable apps list — sits below clock, above bottom bar ────
-        // greeting section: ~16+48+16 = 80dp extra below clock
-        val clockSectionHeight = 48.dp + 180.dp + 16.dp + 56.dp + 16.dp
+        // greeting + word widget section: extra ~80dp (widget ≈ 80dp)
+        val clockSectionHeight = 48.dp + 180.dp + 16.dp + 56.dp + 12.dp + 80.dp + 12.dp
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1751,6 +1811,14 @@ fun LauncherSettingsSheet(
 
                 SettingsDivider()
 
+                // ── Word Widget Settings ──────────────────────────────────────
+                var expandWords by remember { mutableStateOf(false) }
+                SettingsExpandableSection("প্রতি ঘন্টার শব্দ", expandWords, { expandWords = !expandWords }) {
+                    WordSettingsPanel(prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE))
+                }
+
+                SettingsDivider()
+
                 SettingsExpandableSection("More", expandMore, { expandMore = !expandMore }) {
                     SettingsClickRow("Back to RasFocus") { onBack(); onDismiss() }
                     SettingsClickRow("Set as default launcher") {
@@ -2075,5 +2143,291 @@ fun GreetingQuoteSection(context: Context) {
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             lineHeight = 17.sp
         )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HOURLY WORD WIDGET
+// প্রতি ঘন্টায় একটি নতুন শব্দ দেখায়।
+// User settings থেকে custom words নিয়ে cycle করে;
+// custom না থাকলে built-in DEFAULT_WORDS ব্যবহার করে।
+//
+// Format stored in prefs (KEY_CUSTOM_WORDS):
+//   "EnglishWord|বাংলা অর্থ|Example sentence;NextWord|অর্থ|Example"
+//   Example অংশ optional — শুধু "|" separator থাকলেও কাজ করবে।
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Parse raw prefs string into list of WordPair */
+internal fun parseCustomWords(raw: String): List<WordPair> {
+    if (raw.isBlank()) return emptyList()
+    return raw.split(";").mapNotNull { entry ->
+        val parts = entry.split("|")
+        if (parts.size >= 2 && parts[0].isNotBlank() && parts[1].isNotBlank()) {
+            WordPair(
+                english = parts[0].trim(),
+                bangla  = parts[1].trim(),
+                example = if (parts.size >= 3) parts[2].trim() else ""
+            )
+        } else null
+    }
+}
+
+/** Serialize list back to prefs string */
+internal fun serializeCustomWords(words: List<WordPair>): String =
+    words.joinToString(";") { "${it.english}|${it.bangla}|${it.example}" }
+
+/**
+ * Pick which word to show for the current hour.
+ * — hour changes  → advance index by 1 (saved in prefs so it survives restarts)
+ * — index cycles  through the full word list
+ */
+internal fun currentWordForHour(
+    prefs:    SharedPreferences,
+    wordList: List<WordPair>
+): WordPair {
+    if (wordList.isEmpty()) return WordPair("Focus", "মনোযোগ", "Stay focused every hour.")
+    val cal      = java.util.Calendar.getInstance()
+    val thisHour = cal.get(java.util.Calendar.HOUR_OF_DAY) +
+                   cal.get(java.util.Calendar.DAY_OF_YEAR) * 24  // unique per hour per day
+    val lastHour = prefs.getInt(KEY_WORD_HOUR, -1)
+    var idx      = prefs.getInt(KEY_WORD_IDX,  0)
+
+    if (thisHour != lastHour) {
+        // Hour changed — advance to next word
+        idx = (idx + 1) % wordList.size
+        prefs.edit()
+            .putInt(KEY_WORD_HOUR, thisHour)
+            .putInt(KEY_WORD_IDX,  idx)
+            .apply()
+    }
+    return wordList[idx.coerceIn(0, wordList.size - 1)]
+}
+
+@Composable
+fun HourlyWordWidget(context: Context) {
+    val prefs = remember { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
+
+    // Re-read word every minute (in case hour changes while app is open)
+    var tick by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(60_000L)  // refresh every minute
+            tick++
+        }
+    }
+
+    val wordList: List<WordPair> = remember(tick) {
+        val custom = parseCustomWords(prefs.getString(KEY_CUSTOM_WORDS, "") ?: "")
+        if (custom.isNotEmpty()) custom else DEFAULT_WORDS
+    }
+
+    val word: WordPair = remember(tick, wordList) {
+        currentWordForHour(prefs, wordList)
+    }
+
+    // Flip animation — crossfade when word changes
+    var displayedWord by remember { mutableStateOf(word) }
+    val flipAnim = remember { Animatable(1f) }
+    LaunchedEffect(word) {
+        if (word == displayedWord) return@LaunchedEffect
+        flipAnim.animateTo(0f, animationSpec = tween(200))
+        displayedWord = word
+        flipAnim.animateTo(1f, animationSpec = tween(250))
+    }
+
+    // Card layout
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer { alpha = flipAnim.value }
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0xFF0E1A18))
+            .border(
+                width = 0.5.dp,
+                color = ACCENT.copy(alpha = 0.20f),
+                shape = RoundedCornerShape(14.dp)
+            )
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+    ) {
+        // ── Header row: "Word of the hour" label + clock icon ───────────
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment     = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text      = "শব্দ • Hour",
+                color     = ACCENT.copy(alpha = 0.65f),
+                fontSize  = 10.sp,
+                letterSpacing = 0.6.sp
+            )
+            Icon(
+                Icons.Default.Schedule,
+                contentDescription = null,
+                tint     = ACCENT.copy(alpha = 0.40f),
+                modifier = Modifier.size(12.dp)
+            )
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        // ── English word (big) + Bangla meaning ─────────────────────────
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Bottom
+        ) {
+            Text(
+                text       = displayedWord.english,
+                color      = TXT,
+                fontSize   = 22.sp,
+                fontWeight = FontWeight.Light,
+                modifier   = Modifier.weight(1f)
+            )
+            Text(
+                text     = displayedWord.bangla,
+                color    = ACCENT.copy(alpha = 0.85f),
+                fontSize = 13.sp,
+                modifier = Modifier.padding(start = 8.dp, bottom = 2.dp)
+            )
+        }
+
+        // ── Example sentence (optional) ──────────────────────────────────
+        if (displayedWord.example.isNotBlank()) {
+            Spacer(Modifier.height(5.dp))
+            Text(
+                text       = "\"${displayedWord.example}\"",
+                color      = TXT.copy(alpha = 0.35f),
+                fontSize   = 11.sp,
+                lineHeight = 15.sp,
+                fontStyle  = androidx.compose.ui.text.font.FontStyle.Italic
+            )
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WORD SETTINGS PANEL — user এখানে নিজের শব্দ format এ add করে
+// Format: "English|বাংলা অর্থ|Example sentence" প্রতিটা line তে
+// এই composable LauncherSettingsSheet এ include হবে
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+fun WordSettingsPanel(prefs: SharedPreferences) {
+    val context = LocalContext.current
+    var rawText by remember {
+        mutableStateOf(
+            run {
+                val saved = prefs.getString(KEY_CUSTOM_WORDS, "") ?: ""
+                // Convert stored semicolon-sep to newline-sep for editing
+                saved.replace(";", "\n")
+            }
+        )
+    }
+    var saved by remember { mutableStateOf(false) }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 12.dp)
+    ) {
+        Text(
+            text  = "প্রতি ঘন্টার শব্দ তালিকা",
+            color = TXT,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Light
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text  = "প্রতিটা শব্দ আলাদা line এ লেখো:\nEnglish|বাংলা অর্থ|Example (optional)",
+            color = DIM,
+            fontSize = 11.sp,
+            lineHeight = 16.sp
+        )
+        Spacer(Modifier.height(10.dp))
+
+        // Multi-line text field
+        BasicTextField(
+            value         = rawText,
+            onValueChange = { rawText = it; saved = false },
+            textStyle     = TextStyle(
+                color      = TXT,
+                fontSize   = 13.sp,
+                lineHeight = 20.sp,
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+            ),
+            decorationBox = { inner ->
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 120.dp, max = 260.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF141414))
+                        .border(
+                            width = 0.5.dp,
+                            color = if (saved) ACCENT.copy(alpha = 0.5f) else DIVIDER,
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                        .padding(12.dp)
+                ) {
+                    if (rawText.isBlank()) {
+                        Text(
+                            "Resilient|স্থিতিস্থাপক|She stayed resilient.\nFocus|মনোযোগ|Stay focused.\n...",
+                            color    = TXT.copy(alpha = 0.22f),
+                            fontSize = 12.sp,
+                            lineHeight = 18.sp
+                        )
+                    }
+                    inner()
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+        )
+
+        Spacer(Modifier.height(10.dp))
+
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment     = Alignment.CenterVertically
+        ) {
+            // Word count preview
+            val count = remember(rawText) {
+                parseCustomWords(rawText.replace("\n", ";")).size
+            }
+            Text(
+                text  = if (count > 0) "$count টি শব্দ" else "খালি → built-in 20 শব্দ ব্যবহার হবে",
+                color = DIM,
+                fontSize = 11.sp
+            )
+
+            Row {
+                if (rawText.isNotBlank()) {
+                    TextButton(onClick = { rawText = ""; saved = false }) {
+                        Text("Clear", color = RED.copy(alpha = 0.7f), fontSize = 12.sp)
+                    }
+                    Spacer(Modifier.width(4.dp))
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(ACCENT.copy(alpha = 0.18f))
+                        .clickable {
+                            val serialized = rawText.trim().replace("\n", ";")
+                            prefs.edit().putString(KEY_CUSTOM_WORDS, serialized).apply()
+                            // Reset cycling index so next widget refresh picks first word
+                            prefs.edit().putInt(KEY_WORD_IDX, -1).apply()
+                            saved = true
+                        }
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        if (saved) "✓ Saved" else "Save",
+                        color    = ACCENT,
+                        fontSize = 13.sp
+                    )
+                }
+            }
+        }
     }
 }
