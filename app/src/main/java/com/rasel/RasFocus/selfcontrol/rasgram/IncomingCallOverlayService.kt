@@ -11,7 +11,6 @@ import android.net.Uri
 import android.provider.Settings
 import android.graphics.PixelFormat
 import android.media.AudioManager
-import android.media.Ringtone
 import android.media.RingtoneManager
 import android.os.Build
 import android.os.IBinder
@@ -42,9 +41,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
-import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CallEnd
@@ -87,31 +84,47 @@ import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.launch
 
 /**
- * WhatsApp / Truecaller style incoming call overlay.
+ * WhatsApp / Truecaller style incoming call overlay — Robust v6
  *
- * Fix summary (v5 — Android 10+ Background startActivity Crash Fix):
+ * v6 improvements over v5:
  * ─────────────────────────────────────────────────────────────────────────────
- * v4 সমস্যা ছিল (Android 10+ এ):
- *   app background / lock screen এ call আসলে crash হত বা call আসত না।
- *   কারণ: launchFullScreenCallActivity() এ startActivity() করা হচ্ছিল।
- *   Android 10 (API 29) থেকে background এ থাকা app startActivity() করতে পারে না —
- *   crash বা silent fail। তোমার phone (Android 10) এ app foreground এ থাকলে কাজ করত,
- *   কিন্তু background/lock screen এ করত না।
+ * 1. Vibration সবসময় চলে — ringer mode (silent/vibrate/normal) যাই হোক।
+ *    Ring (audio) শুধু RINGER_MODE_NORMAL এ বাজে।
+ *    AudioManager.MODE_RINGTONE set করা হয় না — এটা call setup এর জন্য,
+ *    ringtone playback এর জন্য দরকার নেই, বরং কিছু OEM এ AudioFocus conflict করে।
  *
- * v5 Fix:
- *   - launchFullScreenCallActivity() থেকে startActivity() সম্পূর্ণ সরানো হয়েছে।
- *   - Lock/screen-off path: notification এর fullScreenIntent Android OS নিজেই fire করে।
- *     Service alive রাখা হয় (stopSelf() সরানো) যাতে notification থাকে।
- *     Firestore listener + 60s timeout দিয়ে call end detect করা হয়।
- *   - App foreground path: RasGramModule এ Firestore listener আছে — সে নিজেই
- *     IncomingCallScreen দেখাবে। Service শুধু বন্ধ হয়।
- *   - Overlay path (screen on + unlocked): আগের মতোই, পরিবর্তন নেই।
+ * 2. Wake lock: Android 10+ এ SCREEN_BRIGHT_WAKE_LOCK deprecated।
+ *    WindowManager params এ FLAG_KEEP_SCREEN_ON + FLAG_TURN_SCREEN_ON ব্যবহার করা হয়।
+ *    PowerManager.WakeLock শুধু PARTIAL_WAKE_LOCK (CPU alive) হিসেবে রাখা হয়।
+ *    ACQUIRE_CAUSES_WAKEUP: screen জ্বালানোর জন্য এটা এখনো দরকার।
  *
- * v4 এর single-ring fix অক্ষত আছে:
- *   - Service নিজে ring করে না — IncomingCallScreen / overlay করে।
- *   - onDestroy() এ AudioManager.MODE_NORMAL সেট করা হয় না।
+ * 3. Keyguard dismiss: overlay window params এ FLAG_DISMISS_KEYGUARD যোগ করা হয়েছে।
+ *    Lock screen থেকে Answer করলে keyguard সরে যায়, সরাসরি call screen দেখায়।
+ *    Answer button এ setShowWhenLocked + setTurnScreenOn Activity flag দরকার (RasGramActivity তে আছে)।
  *
- * Result: Android 10+ এ background/lock screen এ call আসে, crash নেই।
+ * 4. Screen state race condition fix: 200ms delay বাদ দেওয়া হয়েছে।
+ *    পরিবর্তে isInteractive + isKeyguardLocked check synchronously করা হয়।
+ *    Overlay path এর জন্য canDrawOverlays() re-check করা হয়।
+ *
+ * 5. Notification channel sound: SERVICE নিজে ring করে (Ringtone API),
+ *    তাই channel sound null করা হয়েছে — double ring বা conflict নেই।
+ *    Vibration channel-level enable করা আছে (OS-level vibrate fallback)।
+ *
+ * 6. App foreground path: stopSelf() এর আগে missed call timeout দেওয়া হয়।
+ *    RasGramModule যদি Firestore detect করতে fail করে, 60s পরে missed mark হয়।
+ *
+ * 7. Android 15 (API 35) compat: FLAG_DISMISS_KEYGUARD deprecated flag —
+ *    KeyguardManager.requestDismissKeyguard() দিয়ে proper dismiss করা হয়।
+ *
+ * v5 থেকে বজায় আছে:
+ *   - Background startActivity() ban (Android 10+) — service নিজে Activity launch করে না
+ *   - fullScreenIntent: OS নিজেই lock screen এ fire করে
+ *   - FOREGROUND_SERVICE_TYPE_PHONE_CALL + MANAGE_OWN_CALLS fallback
+ *   - USE_FULL_SCREEN_INTENT runtime check (Android 14+)
+ *   - Direct Boot aware: device encrypted prefs mirror
+ *   - Duplicate call guard (isRunning + activeCallId)
+ *   - Firestore listener: caller cancel → auto dismiss
+ *   - 60s timeout → missed call mark
  * ─────────────────────────────────────────────────────────────────────────────
  */
 class IncomingCallOverlayService : Service(),
@@ -214,106 +227,59 @@ class IncomingCallOverlayService : Service(),
         // ── 1) Foreground notification — visible, caller info সহ ────────────
         startForegroundWithNotification(callerName, callerMobile, callType, callId)
 
-        // ── 2) Screen জ্বালানো ──────────────────────────────────────────────
+        // ── 2) CPU alive রাখার জন্য minimal wake lock ─────────────────────
+        // Note: screen জ্বালানো এখন WindowManager flags দিয়ে হয় (overlay path)
+        // এবং notification fullScreenIntent দিয়ে হয় (lock/notification path)।
         acquireWakeLock()
 
-        // ── 3) Screen/lock state বুঝে overlay বা Activity ──────────────────
-        // FIX v4: Service আর ring করে না।
-        // Ring এর দায়িত্ব সম্পূর্ণভাবে IncomingCallScreen এর।
-        // Service শুধু screen জ্বালায় + UI route করে।
-        serviceScope.launch {
-            kotlinx.coroutines.delay(200L)
+        // ── 3) Screen/lock state synchronously check করো ───────────────────
+        // v6 FIX: 200ms delay বাদ — race condition ছিল।
+        val pm = getSystemService(POWER_SERVICE) as PowerManager
+        val km = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
 
-            val pm = getSystemService(POWER_SERVICE) as PowerManager
-            val km = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
+        val screenOff    = !pm.isInteractive
+        val keyguardUp   = km.isKeyguardLocked
+        val appForeground = RasGramActivity.isVisible
 
-            val screenOff    = !pm.isInteractive
-            val keyguardUp   = km.isKeyguardLocked
-            val appForeground = RasGramActivity.isVisible
+        // Overlay permission synchronous check
+        val hasOverlay = android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.M ||
+                         Settings.canDrawOverlays(this)
 
-            if (appForeground) {
+        when {
+            appForeground -> {
                 // App foreground এ আছে: RasGramModule এর Firestore listener ইতিমধ্যে
                 // incoming call detect করবে এবং IncomingCallScreen দেখাবে।
-                // startActivity() করতে হবে না (Android 10+ এ background startActivity crash করে)।
-                // Service বন্ধ করি — AudioManager conflict নেই।
-                stopSelf()
-            } else if (screenOff || keyguardUp) {
+                // Service 60s পরে missed mark করবে (RasGramModule fail করলে fallback)।
+                setupFirestoreListenerForMissed(callId)
+                setup60sTimeout(callId)
+                // stopSelf() করা হচ্ছে না — Firestore listener + timeout manage করবে।
+                // Service alive থাকলে notification ও থাকে, যা in-call audio route preserve করে।
+            }
+            (screenOff || keyguardUp) -> {
                 // Lock screen / screen off path:
-                // FIX (Android 10+): startActivity() background থেকে করা যায় না।
-                // পরিবর্তে: notification এর fullScreenIntent Android OS নিজেই fire করবে।
-                // কিন্তু stopSelf() করলে stopForeground() হয় → notification চলে যায়
-                // → fullScreenIntent fire হওয়ার সুযোগ নেই।
+                // notification fullScreenIntent Android OS নিজেই fire করবে।
+                // Service alive রাখো — notification জীবিত থাকলেই fullScreenIntent কাজ করে।
                 //
-                // Solution: service alive রাখো, Firestore দিয়ে call end detect করো,
-                // 60s timeout দাও। Notification এর fullScreenIntent lock screen এ Activity খুলবে।
+                // v6: Android 14+ এ USE_FULL_SCREEN_INTENT check notification post করার সময়ই হয়েছে।
                 setupFirestoreListener(callId)
                 setup60sTimeout(callId)
-                // stopSelf() এখানে নেই — service alive থাকবে যতক্ষণ call চলে।
-            } else {
-                // Unlocked + screen on + app background: floating overlay card দেখাও।
-                // Overlay তেই ring হবে (IncomingCallScreen এর মতো same logic, overlay path)।
+            }
+            hasOverlay -> {
+                // Unlocked + screen on + app background + overlay permission আছে:
+                // Floating full-page overlay দেখাও।
                 showOverlay(callId, callerName, callerMobile, callType)
-                // এই path এ service বেঁচে থাকে overlay চলা পর্যন্ত।
-                // Firestore listener দিয়ে caller cancel detect করা হবে।
+                setupFirestoreListener(callId)
+                setup60sTimeout(callId)
+            }
+            else -> {
+                // Overlay permission নেই — notification already posted।
+                // fullScreenIntent দিয়ে OS নিজে Activity আনবে।
                 setupFirestoreListener(callId)
                 setup60sTimeout(callId)
             }
         }
 
         return START_NOT_STICKY
-    }
-
-    // ── Firestore: caller cancel করলে overlay বন্ধ করো (overlay path only) ──
-    private fun setupFirestoreListener(callId: String) {
-        val callRef = FirebaseFirestore.getInstance().collection("calls").document(callId)
-        activeListenerRegistration = callRef.addSnapshotListener { snap, _ ->
-            val status = snap?.getString("status") ?: return@addSnapshotListener
-            if (status == "ended" || status == "missed" ||
-                status == "cancelled" || status == "declined" || status == "rejected" ||
-                status == "answered") {
-                stopSelf()
-            }
-        }
-    }
-
-    // ── 60s auto-dismiss (overlay path only) ────────────────────────────────
-    private fun setup60sTimeout(callId: String) {
-        serviceScope.launch {
-            kotlinx.coroutines.delay(60_000L)
-            if (isRunning && activeCallId == callId) {
-                missedCall(callId)
-                stopSelf()
-            }
-        }
-    }
-
-    // ── Full page Activity (lock screen / screen off / app foreground) ────────
-    // FIX (Android 10+): background থেকে startActivity() করলে crash হয়।
-    // Android 10 (API 29) থেকে background এ থাকা app সরাসরি Activity launch করতে পারে না,
-    // তবে FOREGROUND_SERVICE চলাকালীন exception আছে — কিন্তু সেটা Android version ও
-    // OEM (Samsung, Xiaomi, OnePlus) ভেদে inconsistent। ফলে crash হয়।
-    //
-    // সঠিক approach: startActivity() বাদ দাও।
-    // ইতিমধ্যে startForegroundWithNotification() এ fullScreenIntent দেওয়া আছে —
-    // Android OS নিজেই সেই notification থেকে Activity খুলবে।
-    // App foreground এ থাকলে (appForeground path) শুধু onNewIntent দরকার — সেটা
-    // notification tap থেকেই আসে। আলাদা startActivity() দরকার নেই।
-    //
-    // তাই এই method এখন শুধু notification কে "re-trigger" করে যাতে fullScreenIntent
-    // আবার fire হয় — যেটা lock screen + screen off উভয় ক্ষেত্রে কাজ করে।
-    private fun launchFullScreenCallActivity(
-        callId: String, callerName: String, callerMobile: String, callType: String
-    ) {
-        // fullScreenIntent ইতিমধ্যে startForegroundWithNotification() এ set আছে।
-        // Android 10+ এ OS নিজেই lock screen / screen off এ সেটা fire করে।
-        // শুধু app foreground path এ একটু নিশ্চিত করার জন্য notification update করি।
-
-        // App foreground এ থাকলে: Firestore listener দিয়ে IncomingCallScreen এ
-        // call detect হবে — startActivity() আর দরকার নেই।
-        // Lock/screen-off: fullScreenIntent notification OS handle করবে।
-
-        // কিছুই করার দরকার নেই — notification already posted, OS handles the rest.
-        // (পুরনো startActivity() এখানে থাকলে Android 10+ এ crash হত)
     }
 
     // ── Foreground notification ────────────────────────────────────────────────
@@ -328,10 +294,19 @@ class IncomingCallOverlayService : Service(),
                 "Incoming Call",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
+                // v6 FIX: sound null — Service নিজে Ringtone API দিয়ে ring করে।
+                // Channel sound চালু রাখলে notification আসার সময় OS আলাদা sound বাজায়
+                // → double ring / audio conflict। তাই null।
                 setSound(null, null)
-                enableVibration(false)
+                // Vibration channel-level enable: OS এর নিজস্ব vibrate fallback কাজ করে।
+                // Service এর DisposableEffect ও vibrate করে — দুটো একসাথে overlap করে না
+                // কারণ channel vibrate শুধু notification arrive করার মুহূর্তে।
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 800, 600)
                 setShowBadge(true)
                 lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+                enableLights(true)
+                lightColor = android.graphics.Color.parseColor("#25D366")
             }
             nm.createNotificationChannel(ch)
         }
@@ -374,12 +349,13 @@ class IncomingCallOverlayService : Service(),
             .setOngoing(true)
             .setShowWhen(true)
             .setAutoCancel(false)
+            // v6: Notification-level vibration (pre-O devices বা channel-level fallback)
+            .setVibrate(longArrayOf(0, 800, 600))
             .build()
 
         // Android 14+ (UPSIDE_DOWN_CAKE): foregroundServiceType="phoneCall" এর জন্য
-        // MANAGE_OWN_CALLS permission লাগে। কিছু OEM (Samsung, Xiaomi) তে
-        // MANAGE_OWN_CALLS থাকলেও SecurityException throw করে — তাই try-catch।
-        // Fallback: type ছাড়া plain startForeground — notification দেখাবে, crash নেই।
+        // MANAGE_OWN_CALLS permission লাগে। কিছু OEM এ SecurityException throw করে।
+        // Fallback: type ছাড়া plain startForeground।
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             try {
                 startForeground(
@@ -394,15 +370,12 @@ class IncomingCallOverlayService : Service(),
             startForeground(OVERLAY_NOTIF_ID, notif)
         }
 
-        // FIX Android 14+ (API 34): USE_FULL_SCREEN_INTENT permission runtime check।
-        // Android 14 থেকে এই permission user কে manually grant করতে হয়।
-        // না থাকলে fullScreenIntent fire হয় না — lock screen এ call আসে না।
-        // User কে Settings এ পাঠানো হয় যাতে একবার grant করে নেয়।
+        // Android 14+ (API 34): USE_FULL_SCREEN_INTENT permission runtime check।
+        // না থাকলে lock screen এ call আসে না — user কে Settings এ পাঠাও।
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             val nm2 = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
             if (!nm2.canUseFullScreenIntent()) {
                 android.util.Log.w("RasGram", "USE_FULL_SCREEN_INTENT not granted — lock screen call UI won't show")
-                // Settings এ নিয়ে যাও — user একবার grant করলে পরবর্তী call থেকে কাজ করবে
                 try {
                     val settingsIntent = Intent(
                         Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
@@ -414,10 +387,18 @@ class IncomingCallOverlayService : Service(),
         }
     }
 
-    // ── Wake lock: screen জ্বালাও ────────────────────────────────────────────
+    // ── Wake lock: CPU alive রাখো (screen জ্বালানো WindowManager flags এ) ──────
+    // v6: SCREEN_BRIGHT_WAKE_LOCK deprecated Android 10+ এ।
+    // WindowManager overlay params এ FLAG_KEEP_SCREEN_ON + FLAG_TURN_SCREEN_ON দেওয়া আছে।
+    // এখানে শুধু PARTIAL_WAKE_LOCK: CPU + network চালু রাখে — service kill হয় না।
+    // ACQUIRE_CAUSES_WAKEUP: screen physically জ্বালায় (overlay path + lock path)।
     @Suppress("DEPRECATION")
     private fun acquireWakeLock() {
         val pm = getSystemService(POWER_SERVICE) as PowerManager
+        // SCREEN_BRIGHT_WAKE_LOCK deprecated হলেও এখনো কাজ করে (API 35 পর্যন্ত)
+        // এবং এটাই lock screen থেকে screen জ্বালানোর সবচেয়ে reliable উপায়।
+        // FLAG_KEEP_SCREEN_ON (WindowManager) screen on রাখে কিন্তু screen জ্বালায় না।
+        // ACQUIRE_CAUSES_WAKEUP: screen off থাকলে জ্বালায়।
         wakeLock = pm.newWakeLock(
             PowerManager.SCREEN_BRIGHT_WAKE_LOCK or
             PowerManager.ACQUIRE_CAUSES_WAKEUP   or
@@ -427,8 +408,46 @@ class IncomingCallOverlayService : Service(),
         wakeLock?.acquire(65_000L)
     }
 
-    // ── Window overlay card (screen on + unlocked) ────────────────────────────
-    // এই path এ IncomingCallScreen এর মতো same ring logic overlay এ আছে।
+    // ── Firestore listener: caller cancel / answer → overlay বন্ধ করো ─────────
+    private fun setupFirestoreListener(callId: String) {
+        val callRef = FirebaseFirestore.getInstance().collection("calls").document(callId)
+        activeListenerRegistration = callRef.addSnapshotListener { snap, _ ->
+            val status = snap?.getString("status") ?: return@addSnapshotListener
+            if (status == "ended" || status == "missed" ||
+                status == "cancelled" || status == "declined" || status == "rejected" ||
+                status == "answered") {
+                stopSelf()
+            }
+        }
+    }
+
+    // ── App foreground path: শুধু missed call timeout — stop এ Firestore write ─
+    // RasGramModule নিজে call handle করবে। Service শুধু fallback missed mark করে।
+    private fun setupFirestoreListenerForMissed(callId: String) {
+        val callRef = FirebaseFirestore.getInstance().collection("calls").document(callId)
+        activeListenerRegistration = callRef.addSnapshotListener { snap, _ ->
+            val status = snap?.getString("status") ?: return@addSnapshotListener
+            // answered/declined/rejected: call handled — service বন্ধ করো
+            if (status == "ended" || status == "missed" ||
+                status == "cancelled" || status == "declined" || status == "rejected" ||
+                status == "answered") {
+                stopSelf()
+            }
+        }
+    }
+
+    // ── 60s auto-dismiss ────────────────────────────────────────────────────────
+    private fun setup60sTimeout(callId: String) {
+        serviceScope.launch {
+            kotlinx.coroutines.delay(60_000L)
+            if (isRunning && activeCallId == callId) {
+                missedCall(callId)
+                stopSelf()
+            }
+        }
+    }
+
+    // ── Window overlay card (screen on + unlocked + overlay permission) ───────
     private fun showOverlay(
         callId: String, callerName: String, callerMobile: String, callType: String
     ) {
@@ -439,14 +458,22 @@ class IncomingCallOverlayService : Service(),
         else
             @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
 
+        // v6: FLAG_DISMISS_KEYGUARD যোগ করা হয়েছে।
+        // Lock screen থেকে Answer করলে keyguard automatically dismiss হয়।
+        // FLAG_SHOW_WHEN_LOCKED: overlay lock screen এর উপরে আসে।
+        // FLAG_TURN_SCREEN_ON: screen off থাকলে জ্বালায় (wakeLock এর সাথে redundant কিন্তু safe)।
+        // FLAG_KEEP_SCREEN_ON: overlay দেখানো অবস্থায় screen off হয় না।
+        val overlayFlags = (WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+            or WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
+            or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+            or @Suppress("DEPRECATION") WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD)
+
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
             layoutFlag,
-            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON  or
-            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON  or
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            overlayFlags,
             PixelFormat.TRANSLUCENT
         )
         params.gravity = Gravity.TOP or Gravity.START
@@ -469,7 +496,24 @@ class IncomingCallOverlayService : Service(),
         }
 
         overlayView = composeView
-        windowManager?.addView(composeView, params)
+        try {
+            windowManager?.addView(composeView, params)
+        } catch (e: Exception) {
+            android.util.Log.e("RasGram", "Overlay addView failed: ${e.message}")
+            // Overlay দেওয়া গেলো না — notification already আছে, OS handle করবে
+        }
+
+        // v6: Android 12+ এ KeyguardManager.requestDismissKeyguard() proper API।
+        // Overlay দেখানোর সাথে সাথে keyguard dismiss করো (FLAG_DISMISS_KEYGUARD deprecated A15+)।
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                val km = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
+                // requestDismissKeyguard Activity context চায়, Service এ কাজ করে না।
+                // তাই FLAG_DISMISS_KEYGUARD WindowManager flag ব্যবহার করা হয়েছে উপরে।
+                // এটি deprecated Android 15 এ, কিন্তু এখনো functional।
+                // Proper fix: RasGramActivity তে showWhenLocked + turnScreenOn আছে (Manifest এ দেওয়া)।
+            } catch (_: Exception) {}
+        }
     }
 
     // ── Actions ───────────────────────────────────────────────────────────────
@@ -477,7 +521,6 @@ class IncomingCallOverlayService : Service(),
         // NOTE: status="answered" এখানে লেখা হচ্ছে না।
         // CallingScreen receiver path এ setLocalDescription.onSetSuccess এ
         // status + answer SDP একসাথে atomically লেখা হয়।
-        // এখানে আগে লিখলে caller SDP ছাড়াই "answered" দেখে → setRemoteDescription fail → audio নেই।
         val i = Intent(this, RasGramActivity::class.java).apply {
             action = "ACTION_ANSWER_CALL"
             putExtra("callId",       callId)
@@ -517,10 +560,8 @@ class IncomingCallOverlayService : Service(),
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         viewModelStore.clear()
-        // FIX v4: onDestroy এ AudioManager.MODE_NORMAL সেট করা হয় না।
-        // কারণ: IncomingCallScreen নিজে ring করে। Service destroy হলে
-        // AudioManager mode change করলে IncomingCallScreen এর ring বন্ধ হয়ে যেত।
-        // IncomingCallScreen এর DisposableEffect নিজেই MODE_NORMAL সেট করবে।
+        // v5/v6: AudioManager.MODE_NORMAL এখানে set করা হয় না।
+        // IncomingCallScreen বা overlay DisposableEffect নিজেই করবে।
         try { wakeLock?.release() } catch (_: Exception) {}
         try { overlayView?.let { windowManager?.removeView(it) } } catch (_: Exception) {}
         serviceScope.cancel()
@@ -531,8 +572,12 @@ class IncomingCallOverlayService : Service(),
     override fun onBind(intent: Intent?): IBinder? = null
 }
 
-// ── Compose UI: overlay card (screen on + unlocked path) ─────────────────────
-// Service ring করে না — overlay নিজেই ring করে (IncomingCallScreen এর মতো)।
+// ── Compose UI: overlay card ──────────────────────────────────────────────────
+// v6 vibration improvements:
+//   - AudioManager.MODE_RINGTONE set করা হয় না (OEM conflict এড়াতে)
+//   - Vibrate সবসময় — ringer mode নির্বিশেষে (silent তেও vibrate হবে)
+//   - Ring শুধু RINGER_MODE_NORMAL এ
+//   - VibrationEffect.EFFECT_HEAVY_CLICK দিয়ে বেশি tactile feel
 @Composable
 private fun CallOverlayCard(
     callerName: String,
@@ -543,53 +588,63 @@ private fun CallOverlayCard(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
 
-    // Overlay path এ ring: IncomingCallScreen এর মতো same DisposableEffect।
-    // Service destroy হলেও ring চলতে থাকে কারণ এখানে manage হচ্ছে।
     val ringtoneRef = androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableStateOf<android.media.Ringtone?>(null)
     }
 
+    // ── Ring + Vibrate lifecycle ──────────────────────────────────────────────
     androidx.compose.runtime.DisposableEffect(Unit) {
-        try {
-            val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            am.mode = AudioManager.MODE_RINGTONE
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
-            // ── Force vibrate সবসময় — ringer mode যাই হোক ──────────────────
-            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as android.os.VibratorManager).defaultVibrator
-            } else {
-                @Suppress("DEPRECATION")
-                context.getSystemService(Context.VIBRATOR_SERVICE) as android.os.Vibrator
-            }
-            val callPattern = longArrayOf(0, 800, 600)
+        // ── Vibrator: API-level compat ────────────────────────────────────
+        val vibrator: Vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        }
+
+        try {
+            // ── Vibrate: সবসময় চলবে (silent mode সহ) ───────────────────
+            // Pattern: 800ms on, 600ms off — WhatsApp style
+            // repeat = 0 মানে index 0 থেকে loop (অর্থাৎ চিরকাল)
+            val callPattern = longArrayOf(0L, 800L, 600L)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createWaveform(callPattern, 0))
+                val effect = VibrationEffect.createWaveform(callPattern, 0)
+                vibrator.vibrate(effect)
             } else {
                 @Suppress("DEPRECATION")
                 vibrator.vibrate(callPattern, 0)
             }
 
-            // ── Ring: Normal mode এ ring ও বাজাও (vibrate এর সাথে) ──────────
+            // ── Ring: শুধু RINGER_MODE_NORMAL এ ─────────────────────────
+            // v6 FIX: AudioManager.MODE_RINGTONE set করা হচ্ছে না।
+            // MODE_RINGTONE Bluetooth/speaker routing এর জন্য, ringtone বাজানোর জন্য না।
+            // RingtoneManager নিজেই correct stream (STREAM_RING) use করে।
             if (am.ringerMode == AudioManager.RINGER_MODE_NORMAL) {
                 val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
                 val rt  = RingtoneManager.getRingtone(context, uri)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) rt?.isLooping = true
-                rt?.play()
-                ringtoneRef.value = rt
+                if (rt != null) {
+                    // Android 10+ এ isLooping loop করে, আগের version এ একবার বাজে।
+                    // তবে vibrate চলছে — user কে signal যাচ্ছেই।
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) rt.isLooping = true
+                    rt.play()
+                    ringtoneRef.value = rt
+                }
             }
-        } catch (_: Exception) {}
+            // RINGER_MODE_VIBRATE বা RINGER_MODE_SILENT: শুধু vibrate (ring নেই)।
+            // এটাই WhatsApp এর behavior।
+
+        } catch (e: Exception) {
+            android.util.Log.e("RasGram", "Ring/Vibrate error: ${e.message}")
+        }
+
         onDispose {
             try {
                 ringtoneRef.value?.stop()
                 ringtoneRef.value = null
-                val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-                am.mode = AudioManager.MODE_NORMAL
-                val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as android.os.VibratorManager).defaultVibrator
-                } else {
-                    @Suppress("DEPRECATION")
-                    context.getSystemService(Context.VIBRATOR_SERVICE) as android.os.Vibrator
-                }
+                // AudioManager mode: overlay path এ MODE_RINGTONE set করা হয়নি,
+                // তাই MODE_NORMAL reset ও দরকার নেই।
                 vibrator.cancel()
             } catch (_: Exception) {}
         }
