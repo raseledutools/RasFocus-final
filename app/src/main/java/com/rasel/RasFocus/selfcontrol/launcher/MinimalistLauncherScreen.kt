@@ -624,22 +624,17 @@ fun HomeScreen(
                 }
             )
 
-            Spacer(Modifier.height(16.dp))
-
-            // ── Greeting + daily quote ────────────────────────────────────
-            GreetingQuoteSection(context = context)
-
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(10.dp))
 
             // ── Hourly Word Widget ────────────────────────────────────────
             HourlyWordWidget(context = context)
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
         }
 
         // ── Scrollable apps list — sits below clock, above bottom bar ────
-        // greeting + word widget section: extra ~80dp (widget ≈ 80dp)
-        val clockSectionHeight = 48.dp + 180.dp + 16.dp + 56.dp + 12.dp + 80.dp + 12.dp
+        // clock (180) + top pad (48) + spacer (10) + widget (~80) + spacer (8)
+        val clockSectionHeight = 48.dp + 180.dp + 10.dp + 80.dp + 8.dp
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
