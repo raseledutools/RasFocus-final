@@ -258,8 +258,7 @@ fun FtpServerScreen(onBack: () -> Unit) {
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                "Mobile hotspot চালু করুন এবং PC-তে connect করুন,
-অথবা WiFi-তে connect করুন।",
+                                "Mobile hotspot চালু করুন এবং PC-তে connect করুন, অথবা WiFi-তে connect করুন।",
                                 color = Color(0xFF795548),
                                 fontSize = 13.sp,
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -269,8 +268,7 @@ fun FtpServerScreen(onBack: () -> Unit) {
                 }
             } else {
                 Text(
-                    text = "Mobile hotspot বা WiFi দিয়ে PC connect করুন,
-তারপর FTP server start করুন।",
+                    text = "Mobile hotspot বা WiFi দিয়ে PC connect করুন, তারপর FTP server start করুন।",
                     color = Color.Gray,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     modifier = Modifier.padding(horizontal = 16.dp)
@@ -331,3 +329,4 @@ fun FtpServerScreen(onBack: () -> Unit) {
         }
     }
 }
+
