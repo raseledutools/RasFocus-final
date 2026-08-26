@@ -415,6 +415,7 @@ fun RasGramApp(
         val lanEnabled = prefs.getBoolean(PREF_LAN_MODE, false)
         if (lanEnabled && initialUser != null) {
             LanChatManager.getInstance(context).start(initialUser.mobile, initialUser.name)
+            LanCallManager.getInstance(context).start()   // LAN audio/video call signal server
         }
     }
 
@@ -1336,6 +1337,20 @@ fun MainScreen(
     var liveCurrentUser by remember { mutableStateOf(currentUser) }
     val isCompact = isCompactScreen()
 
+    // ── LAN Call: incoming call observer ──────────────────────────────────────
+    val lanCallManager = remember { LanCallManager.getInstance(context) }
+    val incomingLanCall by lanCallManager.incomingCall.collectAsState()
+    var showIncomingLanCall by remember { mutableStateOf(false) }
+    var showLanCalleeUI by remember { mutableStateOf(false) }
+    var activeLanIncomingCall by remember { mutableStateOf<LanCallManager.LanIncomingCall?>(null) }
+
+    LaunchedEffect(incomingLanCall) {
+        incomingLanCall?.let {
+            activeLanIncomingCall = it
+            showIncomingLanCall = true
+        }
+    }
+
     // ── Presence system ────────────────────────────────────────────────────────
     // Firebase RTDB onDisconnect: network drop হওয়ার সাথে সাথে offline mark হয়।
     // Firestore polling (30s delay) এর চেয়ে accurate — phone বন্ধ/network গেলেই offline।
@@ -1550,6 +1565,38 @@ fun MainScreen(
                 IncomingCallOverlayService.stop(context)
                 showIncomingCall = false
                 activeIncomingCallId = ""
+            }
+        )
+    }
+
+    // ── LAN Incoming Call overlay ─────────────────────────────────────────────
+    // Internet ছাড়া — same WiFi/Hotspot এ কেউ call করলে এই screen দেখাবে
+    if (showIncomingLanCall && activeLanIncomingCall != null) {
+        IncomingLanCallScreen(
+            call = activeLanIncomingCall!!,
+            onAccept = {
+                showIncomingLanCall = false
+                showLanCalleeUI = true
+            },
+            onDecline = {
+                showIncomingLanCall = false
+                activeLanIncomingCall = null
+            }
+        )
+    }
+
+    // ── LAN Callee Calling screen (after accepting) ───────────────────────────
+    if (showLanCalleeUI && activeLanIncomingCall != null) {
+        val lanCall = activeLanIncomingCall!!
+        CallingLanScreen(
+            currentUser = liveCurrentUser,
+            peerName = lanCall.callerName,
+            peerMobile = lanCall.callerMobile,
+            callType = lanCall.callType,
+            call = lanCall,
+            onEndCall = {
+                showLanCalleeUI = false
+                activeLanIncomingCall = null
             }
         )
     }
@@ -2360,6 +2407,42 @@ fun ChatArea(
     }
     val isLanAvailable = lanModeEnabled && lanPeer != null
 
+    // ── LAN Call state ────────────────────────────────────────────────────────
+    val lanCallManager = remember { LanCallManager.getInstance(context) }
+    var showLanCallUI by remember { mutableStateOf(false) }
+    var lanCallType by remember { mutableStateOf("audio") }
+
+    // Effective call handler: LAN peer আছে → LAN call, নাহলে Firebase call
+    val effectiveCallClick: (String) -> Unit = { type ->
+        if (isLanAvailable && lanPeer != null) {
+            lanCallType = type
+            showLanCallUI = true
+            scope.launch {
+                lanCallManager.startCall(
+                    peer = lanPeer,
+                    myMobile = currentUser.mobile,
+                    myName = currentUser.name,
+                    callType = type
+                )
+            }
+        } else {
+            onCallClick(type)   // normal Firebase WebRTC call
+        }
+    }
+
+    // LAN Call screen overlay
+    if (showLanCallUI) {
+        CallingLanScreen(
+            currentUser = currentUser,
+            peerName = contact.name,
+            peerMobile = contact.mobile,
+            callType = lanCallType,
+            call = null,   // caller role
+            onEndCall = { showLanCallUI = false }
+        )
+        return
+    }
+
     var inputText by remember { mutableStateOf("") }
     var liveContact by remember { mutableStateOf(contact) }
     var isUploading by remember { mutableStateOf(false) }
@@ -2756,7 +2839,7 @@ fun ChatArea(
                 currentUserMobile = currentUser.mobile,
                 isCompact = isCompact,
                 onBack = onBack,
-                onCallClick = onCallClick,
+                onCallClick = effectiveCallClick,   // LAN peer → LanCallManager, else Firebase
                 isLanActive = isLanAvailable,
                 onClearChat = {
                     scope.launch {
@@ -6201,8 +6284,10 @@ fun SettingsDialog(
                                     prefs.edit().putBoolean(PREF_LAN_MODE, enabled).apply()
                                     if (enabled) {
                                         lanManager.start(currentUser.mobile, currentUser.name)
+                                        LanCallManager.getInstance(context).start()
                                     } else {
                                         lanManager.stop()
+                                        LanCallManager.getInstance(context).stop()
                                     }
                                 }
                             )
