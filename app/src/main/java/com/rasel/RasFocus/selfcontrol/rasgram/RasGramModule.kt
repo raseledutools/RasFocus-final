@@ -3497,6 +3497,55 @@ fun AttachmentMenuSheet(
     }
 }
 
+// ── EnhancedAttachmentMenuSheet — Folder option সহ (LAN + Normal দুই mode এ কাজ করে) ──
+@Composable
+fun EnhancedAttachmentMenuSheet(
+    onDismiss: () -> Unit,
+    onImageVideo: () -> Unit,
+    onDocument: () -> Unit,
+    onAudio: () -> Unit,
+    onFilesFromFolder: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            shape = RoundedCornerShape(20.dp),
+            color = RasGramTheme.DarkPanel
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Text(
+                    "Share",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = RasGramTheme.TextPrimary,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+                // Row 1: Gallery, Document, Audio, Folder
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    AttachOption(Icons.Default.Image, "Photos & Videos", RasGramTheme.Orange, onImageVideo)
+                    AttachOption(Icons.Default.InsertDriveFile, "Document", Color(0xFF6C63FF), onDocument)
+                    AttachOption(Icons.Default.AudioFile, "Audio", Color(0xFF00BFA5), onAudio)
+                    AttachOption(Icons.Default.Folder, "Folder", Color(0xFFFFB300), onFilesFromFolder)
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                // Row 2: Camera, Location, Contact, GIF
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    AttachOption(Icons.Default.Camera, "Camera", RasGramTheme.Green, onDismiss)
+                    AttachOption(Icons.Default.LocationOn, "Location", RasGramTheme.Red, onDismiss)
+                    AttachOption(Icons.Default.ContactPage, "Contact", Color(0xFF2196F3), onDismiss)
+                    AttachOption(Icons.Default.Gif, "GIF", Color(0xFF9C27B0), onDismiss)
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun AttachOption(icon: ImageVector, label: String, color: Color, onClick: () -> Unit) {
     Column(
@@ -7432,6 +7481,54 @@ fun GroupChatArea(
 
     // File launchers
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
+    var uploadingFileName by remember { mutableStateOf("") }
+
+    // Image/Video launcher
+    val groupImageVideoLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let {
+            val name = getFileName(context, it) ?: "media_${System.currentTimeMillis()}"
+            uploadingFileName = name
+            isUploading = true
+            scope.launch {
+                try {
+                    val (url, fileName, fileType) = uploadToCloudinary(context, it) { prog -> uploadProgress = prog }
+                    if (url != null) {
+                        val now = System.currentTimeMillis()
+                        val msgMap = hashMapOf("text" to "", "senderMobile" to currentUser.mobile,
+                            "fileUrl" to url, "fileName" to (fileName ?: name), "fileType" to (fileType ?: "image/*"),
+                            "timestamp" to now, "timeString" to java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(now)))
+                        db.collection("groups").document(group.id).collection("messages").add(msgMap)
+                        db.collection("groups").document(group.id).update("lastMessageTime", now)
+                    } else Toast.makeText(context, "আপলোড ব্যর্থ", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) { Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show() }
+                isUploading = false; uploadProgress = 0f; uploadingFileName = ""
+            }
+        }
+    }
+
+    // Document / Audio / Any-file launcher — folder option ও এটাই ব্যবহার করে
+    val groupDocLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let {
+            val name = getFileName(context, it) ?: "file_${System.currentTimeMillis()}"
+            uploadingFileName = name
+            isUploading = true
+            scope.launch {
+                try {
+                    val mimeType = context.contentResolver.getType(it) ?: "application/octet-stream"
+                    val (url, fileName, fileType) = uploadToCloudinary(context, it) { prog -> uploadProgress = prog }
+                    if (url != null) {
+                        val now = System.currentTimeMillis()
+                        val msgMap = hashMapOf("text" to "", "senderMobile" to currentUser.mobile,
+                            "fileUrl" to url, "fileName" to (fileName ?: name), "fileType" to (fileType ?: mimeType),
+                            "timestamp" to now, "timeString" to java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(now)))
+                        db.collection("groups").document(group.id).collection("messages").add(msgMap)
+                        db.collection("groups").document(group.id).update("lastMessageTime", now)
+                    } else Toast.makeText(context, "আপলোড ব্যর্থ", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) { Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show() }
+                isUploading = false; uploadProgress = 0f; uploadingFileName = ""
+            }
+        }
+    }
 
     LaunchedEffect(group.id) {
         if (group.members.isNotEmpty()) {
@@ -7651,6 +7748,17 @@ fun GroupChatArea(
             },
             onMicCancel = { mediaRecorder?.release(); mediaRecorder = null; isRecording = false; recordingFile?.delete() }
         )
+
+        // Group attach menu — same options as ChatArea
+        if (showAttachMenu) {
+            EnhancedAttachmentMenuSheet(
+                onDismiss = { showAttachMenu = false },
+                onImageVideo = { groupImageVideoLauncher.launch(arrayOf("image/*", "video/*")); showAttachMenu = false },
+                onDocument = { groupDocLauncher.launch(arrayOf("application/*", "text/*")); showAttachMenu = false },
+                onAudio = { groupDocLauncher.launch(arrayOf("audio/*")); showAttachMenu = false },
+                onFilesFromFolder = { groupDocLauncher.launch(arrayOf("*/*")); showAttachMenu = false }
+            )
+        }
     }
 }
 
