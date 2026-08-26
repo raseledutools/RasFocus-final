@@ -144,6 +144,12 @@ class IncomingCallOverlayService : Service(),
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var activeListenerRegistration: ListenerRegistration? = null
 
+    // Missed call notification এর জন্য caller info store করা হয়
+    private var savedCallerName:   String = ""
+    private var savedCallerMobile: String = ""
+    private var savedCallType:     String = "audio"
+    private var savedCallId:       String = ""
+
     companion object {
         const val EXTRA_CALL_ID       = "callId"
         const val EXTRA_CALLER_NAME   = "callerName"
@@ -152,6 +158,8 @@ class IncomingCallOverlayService : Service(),
 
         const val OVERLAY_NOTIF_ID   = 8888
         const val OVERLAY_CHANNEL_ID = "OVERLAY_CALL_CHANNEL"
+        const val MISSED_CALL_CHANNEL  = "MISSED_CALL_CHANNEL"
+        const val MISSED_CALL_NOTIF_ID = 7777
 
         // Duplicate start guard — একই callId এর জন্য একাধিক overlay যাতে না আসে
         @Volatile var isRunning: Boolean = false
@@ -223,6 +231,12 @@ class IncomingCallOverlayService : Service(),
         if (isRunning && activeCallId == callId) return START_NOT_STICKY
         isRunning    = true
         activeCallId = callId
+
+        // Missed call notification এর জন্য caller info save করো
+        savedCallerName   = callerName
+        savedCallerMobile = callerMobile
+        savedCallType     = callType
+        savedCallId       = callId
 
         // ── 1) Foreground notification — visible, caller info সহ ────────────
         startForegroundWithNotification(callerName, callerMobile, callType, callId)
@@ -542,13 +556,106 @@ class IncomingCallOverlayService : Service(),
     }
 
     private fun missedCall(callId: String) {
+        // 1. Firestore এ missed mark করো
         serviceScope.launch {
             try {
                 FirebaseFirestore.getInstance().collection("calls").document(callId)
                     .update("status", "missed")
             } catch (_: Exception) {}
         }
+
+        // 2. "Missed call" notification দেখাও — WhatsApp এর মতো
+        showMissedCallNotification(
+            callerName   = savedCallerName.ifBlank { "Unknown" },
+            callerMobile = savedCallerMobile,
+            callType     = savedCallType
+        )
     }
+
+    private fun showMissedCallNotification(
+        callerName: String,
+        callerMobile: String,
+        callType: String
+    ) {
+        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+
+        // ── Channel ──────────────────────────────────────────────────────────
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val ch = NotificationChannel(
+                MISSED_CALL_CHANNEL,
+                "Missed Calls",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description          = "Missed RasGram call alerts"
+                enableVibration(true)
+                vibrationPattern     = longArrayOf(0, 300, 150, 300)
+                setShowBadge(true)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+                enableLights(true)
+                lightColor           = android.graphics.Color.RED
+            }
+            nm.createNotificationChannel(ch)
+        }
+
+        // ── Tap → open RasGram on that contact's chat ────────────────────────
+        val openIntent = Intent(this, RasGramActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("openChatWith", callerMobile)
+        }
+        val openPending = PendingIntent.getActivity(
+            this, MISSED_CALL_NOTIF_ID, openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // ── "Call Back" action button ─────────────────────────────────────────
+        // CallbackReceiver → RasGramActivity তে CallingScreen launch করে
+        val callbackIntent = Intent(this, CallbackReceiver::class.java).apply {
+            putExtra("calleeMobile", callerMobile)
+            putExtra("calleeName",   callerName)
+            putExtra("callType",     callType)
+        }
+        val callbackPending = PendingIntent.getBroadcast(
+            this,
+            MISSED_CALL_NOTIF_ID + 1,
+            callbackIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val callIcon = if (callType == "video")
+            android.R.drawable.ic_menu_camera
+        else
+            android.R.drawable.ic_menu_call
+
+        val title = if (callType == "video") "📹 Missed Video Call" else "📞 Missed Voice Call"
+
+        val notif = NotificationCompat.Builder(this, MISSED_CALL_CHANNEL)
+            .setSmallIcon(callIcon)
+            .setColor(android.graphics.Color.RED)
+            .setColorized(true)
+            .setContentTitle(title)
+            .setContentText("$callerName ($callerMobile)")
+            .setSubText("RasGram")
+            .setContentIntent(openPending)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_MISSED_CALL)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setAutoCancel(true)
+            .setShowWhen(true)
+            .setWhen(System.currentTimeMillis())
+            .setVibrate(longArrayOf(0, 300, 150, 300))
+            .setNumber(1)  // badge
+            // "Call Back" button
+            .addAction(
+                android.R.drawable.ic_menu_call,
+                "📞 Call Back",
+                callbackPending
+            )
+            .build()
+
+        nm.notify(MISSED_CALL_NOTIF_ID, notif)
+    }
+
+
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
     override fun onDestroy() {

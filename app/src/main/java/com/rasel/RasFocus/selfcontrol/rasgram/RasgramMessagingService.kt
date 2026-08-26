@@ -289,6 +289,13 @@ class RasgramMessagingService : FirebaseMessagingService() {
                 )
             )
 
+        // ── Unread badge count ──────────────────────────────────────────────
+        val badgeCount = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            nm.activeNotifications.count {
+                it.notification.category == android.app.Notification.CATEGORY_MESSAGE
+            } + 1
+        } else 1
+
         // ── Build the notification ──────────────────────────────────────────
         val notif = NotificationCompat.Builder(this, MSG_CHANNEL)
             // ── Icon & color ──────────────────────────────────────────
@@ -308,8 +315,9 @@ class RasgramMessagingService : FirebaseMessagingService() {
             .setAutoCancel(true)
             .setShowWhen(true)
             .setWhen(System.currentTimeMillis())
+            .setNumber(badgeCount)           // launcher icon badge
+            .setBadgeIconType(NotificationCompat.BADGE_ICON_SMALL)
             // ── Vibration & light ─────────────────────────────────────
-            // Force vibrate — ringer mode যাই হোক (silent/vibrate/normal)
             .setVibrate(longArrayOf(0, 400, 200, 400))
             .setLights(RASGRAM_GREEN, 500, 1000)
             // ── Actions ───────────────────────────────────────────────

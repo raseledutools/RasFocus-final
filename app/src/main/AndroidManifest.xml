@@ -975,6 +975,13 @@
         android:name=".selfcontrol.rasgram.RasgramReplyReceiver"
         android:exported="false" />
 
+    <!-- RasGram — Missed call "Call Back" button receiver
+         Triggered from missed call notification action button.
+         Launches RasGramActivity with ACTION_OUTGOING_CALL. -->
+    <receiver
+        android:name=".selfcontrol.rasgram.CallbackReceiver"
+        android:exported="false" />
+
     <!-- RasGram FCM messaging service — exported=true required for FCM delivery.
          directBootAware="true": phone reboot এর পর lock screen unlock করার আগেও
          FCM message receive হবে — WhatsApp এর exact behavior।

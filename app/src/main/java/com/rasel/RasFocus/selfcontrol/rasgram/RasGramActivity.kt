@@ -26,6 +26,11 @@ class RasGramActivity : ComponentActivity() {
     // File shared from FileManager (ACTION_SEND) — opens contact picker then attaches file
     private var sharedFileUri: android.net.Uri? = null
     private var sharedFileName: String?          = null
+    // ACTION_OUTGOING_CALL — missed call callback button থেকে outgoing call
+    private var outgoingCalleeMobile: String? = null
+    private var outgoingCalleeName: String?   = null
+    private var outgoingCallType: String?     = null
+    private var isOutgoingCall: Boolean       = false
 
     companion object {
         // RasgramMessagingService foreground check এর জন্য।
@@ -56,10 +61,6 @@ class RasGramActivity : ComponentActivity() {
             RasFocusAppTheme {
                 if (isIncomingCall) {
                     // ── Lock screen / killed path ────────────────────────────
-                    // Splash নেই, MainScreen নেই।
-                    // SharedPreferences থেকে current user তুলে সরাসরি
-                    // IncomingCallScreen দেখাও, তারপর accept হলে CallingScreen।
-                    // ACTION_ANSWER_CALL এ alreadyAnswered=true → IncomingCallScreen skip।
                     DirectCallUI(
                         callId          = incomingCallId       ?: "",
                         callerName      = incomingCallerName   ?: "Unknown",
@@ -67,6 +68,15 @@ class RasGramActivity : ComponentActivity() {
                         callType        = incomingCallType     ?: "audio",
                         alreadyAnswered = isAlreadyAnswered,
                         onCallEnded     = { finish() }
+                    )
+                } else if (isOutgoingCall && !outgoingCalleeMobile.isNullOrBlank()) {
+                    // ── Missed call "Call Back" path ─────────────────────────
+                    // SharedPreferences থেকে current user তুলে সরাসরি CallingScreen
+                    DirectOutgoingCallUI(
+                        calleeMobile = outgoingCalleeMobile ?: "",
+                        calleeName   = outgoingCalleeName   ?: "",
+                        callType     = outgoingCallType     ?: "audio",
+                        onCallEnded  = { finish() }
                     )
                 } else {
                     // ── Normal app open / message notification tap / file share ──
@@ -116,14 +126,28 @@ class RasGramActivity : ComponentActivity() {
                 // File shared from FileManager → open contact picker in RasGram
                 isIncomingCall    = false
                 isAlreadyAnswered = false
+                isOutgoingCall    = false
                 openChatWith      = null
                 sharedFileUri  = i.getParcelableExtra(Intent.EXTRA_STREAM)
                 sharedFileName = i.getStringExtra("fileName")
                     ?: sharedFileUri?.lastPathSegment
             }
+            "ACTION_OUTGOING_CALL" -> {
+                // Missed call notification এর "Call Back" button থেকে
+                isIncomingCall       = false
+                isAlreadyAnswered    = false
+                isOutgoingCall       = true
+                outgoingCalleeMobile = i.getStringExtra("calleeMobile")
+                outgoingCalleeName   = i.getStringExtra("calleeName")
+                outgoingCallType     = i.getStringExtra("callType") ?: "audio"
+                openChatWith         = null
+                sharedFileUri        = null
+                sharedFileName       = null
+            }
             else -> {
                 isIncomingCall    = false
                 isAlreadyAnswered = false
+                isOutgoingCall    = false
                 openChatWith      = i?.getStringExtra("openChatWith")
                 sharedFileUri     = null
                 sharedFileName    = null
@@ -148,6 +172,36 @@ class RasGramActivity : ComponentActivity() {
             )
         }
     }
+}
+
+// ── DirectOutgoingCallUI ──────────────────────────────────────────────────────
+// Missed call notification "Call Back" থেকে সরাসরি CallingScreen।
+@Composable
+private fun DirectOutgoingCallUI(
+    calleeMobile: String,
+    calleeName:   String,
+    callType:     String,
+    onCallEnded:  () -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs   = remember { context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE) }
+
+    val currentUser = remember {
+        val mobile = prefs.getString(PREF_MOBILE, "") ?: ""
+        val name   = prefs.getString(PREF_NAME_KEY, "") ?: ""
+        val uid    = prefs.getString(PREF_UID, "") ?: ""
+        val avatar = prefs.getString(PREF_AVATAR, "") ?: ""
+        User(uid = uid, name = name, mobile = mobile, avatarUrl = avatar)
+    }
+
+    CallingScreen(
+        currentUser    = currentUser,
+        contact        = User(name = calleeName, mobile = calleeMobile),
+        callType       = callType,
+        isReceiver     = false,   // আমরা caller
+        existingCallId = null,    // নতুন call — CallingScreen নিজে callId তৈরি করবে
+        onEndCall      = { onCallEnded() }
+    )
 }
 
 // ── DirectCallUI ──────────────────────────────────────────────────────────────
