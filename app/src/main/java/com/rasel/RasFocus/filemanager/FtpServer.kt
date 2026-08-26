@@ -1,14 +1,17 @@
 package com.rasel.RasFocus.filemanager
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
+import android.os.Build
 import android.os.Environment
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.WifiOff
@@ -33,7 +36,8 @@ import org.apache.ftpserver.listener.ListenerFactory
 import org.apache.ftpserver.usermanager.PropertiesUserManagerFactory
 import org.apache.ftpserver.usermanager.impl.BaseUser
 import org.apache.ftpserver.usermanager.impl.WritePermission
-import java.io.File
+import java.net.Inet4Address
+import java.net.NetworkInterface
 import java.util.Locale
 
 object FtpServerManager {
@@ -57,13 +61,12 @@ object FtpServerManager {
             serverFactory.addListener("default", listenerFactory.createListener())
 
             val userManagerFactory = PropertiesUserManagerFactory()
-            // In-memory user manager avoids needing a properties file on disk
             val userManager: UserManager = userManagerFactory.createUserManager()
             val user = BaseUser()
             user.name = username
             user.password = password
             user.homeDirectory = LocalFileManager.mainStoragePath
-            
+
             val authorities = ArrayList<Authority>()
             authorities.add(WritePermission())
             user.authorities = authorities
@@ -93,23 +96,51 @@ object FtpServerManager {
         }
     }
 
+    /**
+     * WiFi connected OR Hotspot host — দুটো ক্ষেত্রেই IP দেয়।
+     *
+     * পুরনো পদ্ধতি (WifiManager.connectionInfo.ipAddress) শুধু
+     * WiFi client হলে কাজ করত — hotspot host হলে 0 রিটার্ন করত।
+     *
+     * নতুন পদ্ধতি: সব active network interface scan করে প্রথম
+     * non-loopback IPv4 address নেয়, তাই WiFi + Hotspot উভয়েই কাজ করে।
+     */
     fun getLocalIpAddress(context: Context): String? {
         return try {
-            val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-            val wifiInfo = wifiManager.connectionInfo
-            val ipAddress = wifiInfo.ipAddress
-            if (ipAddress == 0) return null
-            String.format(
-                Locale.US,
-                "%d.%d.%d.%d",
-                ipAddress and 0xff,
-                ipAddress shr 8 and 0xff,
-                ipAddress shr 16 and 0xff,
-                ipAddress shr 24 and 0xff
-            )
+            // Method 1: NetworkInterface scan — WiFi client & Hotspot host দুটোতেই কাজ করে
+            val ifaces = NetworkInterface.getNetworkInterfaces() ?: return null
+            for (iface in ifaces.iterator()) {
+                if (!iface.isUp || iface.isLoopback) continue
+                for (addr in iface.inetAddresses.iterator()) {
+                    if (addr.isLoopbackAddress) continue
+                    if (addr is Inet4Address) {
+                        val ip = addr.hostAddress ?: continue
+                        // 169.254.x.x = APIPA/link-local, skip করো
+                        if (ip.startsWith("169.254")) continue
+                        return ip
+                    }
+                }
+            }
+            null
         } catch (e: Exception) {
             e.printStackTrace()
             null
+        }
+    }
+
+    /** WiFi connected অথবা Hotspot host — যেকোনো একটা থাকলে true */
+    fun isNetworkAvailable(context: Context): Boolean {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val nw = cm.activeNetwork ?: return false
+            val caps = cm.getNetworkCapabilities(nw) ?: return false
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+        } else {
+            @Suppress("DEPRECATION")
+            val info = cm.activeNetworkInfo
+            info != null && info.isConnected &&
+            (info.type == ConnectivityManager.TYPE_WIFI || info.type == ConnectivityManager.TYPE_ETHERNET)
         }
     }
 }
@@ -123,7 +154,9 @@ fun FtpServerScreen(onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(isRunning) {
-        ipAddress = FtpServerManager.getLocalIpAddress(context)
+        ipAddress = withContext(Dispatchers.IO) {
+            FtpServerManager.getLocalIpAddress(context)
+        }
     }
 
     Scaffold(
@@ -132,7 +165,7 @@ fun FtpServerScreen(onBack: () -> Unit) {
                 title = { Text("Access from PC", color = Color.White) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF1E1E1E))
@@ -148,7 +181,7 @@ fun FtpServerScreen(onBack: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(modifier = Modifier.height(32.dp))
-            
+
             Box(
                 modifier = Modifier
                     .size(120.dp)
@@ -183,7 +216,11 @@ fun FtpServerScreen(onBack: () -> Unit) {
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Enter this address in your PC's browser or File Explorer:", color = Color.Gray, fontSize = 14.sp)
+                            Text(
+                                "Enter this address in your PC's browser or File Explorer:",
+                                color = Color.Gray,
+                                fontSize = 14.sp
+                            )
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
                                 text = "ftp://$ipAddress:${FtpServerManager.port}",
@@ -199,16 +236,41 @@ fun FtpServerScreen(onBack: () -> Unit) {
                             Spacer(modifier = Modifier.height(8.dp))
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("Password:", color = Color.Gray)
-                                Text(if (FtpServerManager.password.isEmpty()) "None" else "••••", fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    if (FtpServerManager.password.isEmpty()) "None" else "••••",
+                                    fontWeight = FontWeight.SemiBold
+                                )
                             }
                         }
                     }
                 } else {
-                    Text("Please connect to Wi-Fi to use this feature.", color = Color.Red)
+                    // IP পাওয়া যায়নি — hotspot বা WiFi কোনোটাই active না
+                    Card(
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                "⚠️ IP address পাওয়া যাচ্ছে না",
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFE65100)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                "Mobile hotspot চালু করুন এবং PC-তে connect করুন,
+অথবা WiFi-তে connect করুন।",
+                                color = Color(0xFF795548),
+                                fontSize = 13.sp,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
+                    }
                 }
             } else {
                 Text(
-                    text = "Start the FTP server to browse and transfer files from your computer using a Wi-Fi connection.",
+                    text = "Mobile hotspot বা WiFi দিয়ে PC connect করুন,
+তারপর FTP server start করুন।",
                     color = Color.Gray,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     modifier = Modifier.padding(horizontal = 16.dp)
@@ -223,8 +285,14 @@ fun FtpServerScreen(onBack: () -> Unit) {
                         FtpServerManager.stopServer()
                         isRunning = false
                     } else {
-                        if (FtpServerManager.getLocalIpAddress(context) == null) {
-                            android.widget.Toast.makeText(context, "Please connect to Wi-Fi first", android.widget.Toast.LENGTH_SHORT).show()
+                        // Network check: hotspot বা WiFi — যেকোনো একটা থাকলেই চলবে
+                        val ip = FtpServerManager.getLocalIpAddress(context)
+                        if (ip == null) {
+                            android.widget.Toast.makeText(
+                                context,
+                                "Mobile hotspot বা WiFi চালু করুন, তারপর চেষ্টা করুন",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
                             return@Button
                         }
                         scope.launch {
@@ -234,7 +302,11 @@ fun FtpServerScreen(onBack: () -> Unit) {
                                         if (success) {
                                             isRunning = true
                                         } else {
-                                            android.widget.Toast.makeText(context, "Failed to start: $error", android.widget.Toast.LENGTH_SHORT).show()
+                                            android.widget.Toast.makeText(
+                                                context,
+                                                "Failed to start: $error",
+                                                android.widget.Toast.LENGTH_SHORT
+                                            ).show()
                                         }
                                     }
                                 }
@@ -246,9 +318,15 @@ fun FtpServerScreen(onBack: () -> Unit) {
                     .fillMaxWidth()
                     .height(56.dp),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = if (isRunning) Color.Red else Color(0xFF1565C0))
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isRunning) Color.Red else Color(0xFF1565C0)
+                )
             ) {
-                Text(text = if (isRunning) "STOP SERVER" else "START SERVER", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    text = if (isRunning) "STOP SERVER" else "START SERVER",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     }
