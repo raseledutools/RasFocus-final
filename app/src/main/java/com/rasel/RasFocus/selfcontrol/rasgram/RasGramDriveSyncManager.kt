@@ -327,7 +327,8 @@ private fun messagesToJson(messages: List<CachedMessage>): String {
     }.toString(2)
 }
 
-private fun jsonToMessages(json: String, chatId: String): List<CachedMessage> = try {
+private fun jsonToMessages(json: String, chatId: String): List<CachedMessage> {
+    return try {
     val obj = JSONObject(json)
     val arr = obj.optJSONArray("messages") ?: return emptyList()
     (0 until arr.length()).map { i ->
@@ -362,6 +363,7 @@ private fun jsonToMessages(json: String, chatId: String): List<CachedMessage> = 
         )
     }
 } catch (e: Exception) { Log.e(TAG, "jsonToMessages failed: ${e.message}"); emptyList() }
+}
 
 // ============================================================
 // MAIN SYNC ENGINE
