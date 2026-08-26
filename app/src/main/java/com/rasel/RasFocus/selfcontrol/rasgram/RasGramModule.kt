@@ -2587,6 +2587,72 @@ fun ChatArea(
         }
     }
 
+    // ── Folder launcher — OpenDocumentTree দিয়ে পুরো folder pick করা ──────────
+    // Sub-folder সহ recursive zip → Cloudinary upload → chat এ FOLDER bubble।
+    // Receiver এর phone এ Downloads/<folderName>/ হিসেবে extract হয়।
+    val folderLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
+        treeUri?.let { uri ->
+            scope.launch {
+                try {
+                    // Folder নাম বের করো
+                    val docTree = androidx.documentfile.provider.DocumentFile.fromTreeUri(context, uri)
+                    val folderName = docTree?.name ?: "folder_${System.currentTimeMillis()}"
+                    uploadingFileName = "📁 $folderName"
+                    isUploading = true
+                    uploadProgress = 0f
+
+                    // Cache dir এ zip file তৈরি করো
+                    val zipFile = java.io.File(context.cacheDir, "${folderName}_${System.currentTimeMillis()}.zip")
+
+                    // Recursive zip — sub-folder সহ সব কিছু
+                    val zipOk = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        try {
+                            java.util.zip.ZipOutputStream(
+                                java.io.BufferedOutputStream(java.io.FileOutputStream(zipFile))
+                            ).use { zos ->
+                                zipDocumentFile(context, docTree!!, folderName, zos)
+                            }
+                            true
+                        } catch (e: Exception) {
+                            android.util.Log.e("FolderZip", "zip error: ${e.message}", e)
+                            false
+                        }
+                    }
+
+                    if (!zipOk || !zipFile.exists() || zipFile.length() == 0L) {
+                        Toast.makeText(context, "ফোল্ডার zip করা যায়নি", Toast.LENGTH_SHORT).show()
+                        isUploading = false
+                        uploadingFileName = ""
+                        zipFile.delete()
+                        return@launch
+                    }
+
+                    // Cloudinary তে upload
+                    val (url, _, _) = uploadToCloudinary(context, zipFile.toUri()) { prog -> uploadProgress = prog }
+                    zipFile.delete()  // temp zip মুছে দাও
+
+                    if (url != null) {
+                        // RASGRAM_FOLDER_PREFIX যোগ করো — receiver বুঝবে এটা folder
+                        val markedName = "${RASGRAM_FOLDER_PREFIX}${folderName}.zip"
+                        sendMessage(
+                            db, chatId, currentUser.mobile, currentUser.name,
+                            contact.mobile, "", context,
+                            url, markedName, "application/zip"
+                        )
+                        Toast.makeText(context, "📁 ফোল্ডার পাঠানো হয়েছে", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "আপলোড ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+                isUploading = false
+                uploadProgress = 0f
+                uploadingFileName = ""
+            }
+        }
+    }
+
     // ── STEP 3: Firestore real-time sync → Room এ save → UI auto-update ───────
     // UI directly Firestore থেকে পড়ে না — Room Flow থেকে পড়ে (above)
     // এটা background sync — UI এর সাথে decouple
@@ -3108,8 +3174,8 @@ fun ChatArea(
             onDocument = { docLauncher.launch(arrayOf("*/*")); showAttachMenu = false },
             onAudio = { docLauncher.launch(arrayOf("audio/*")); showAttachMenu = false },
             onFilesFromFolder = {
-                // Open file picker for any file type — shows upload progress
-                anyFileLauncher.launch(arrayOf("*/*"))
+                // OpenDocumentTree — পুরো folder pick করে, sub-folder সহ recursive zip হয়
+                folderLauncher.launch(null)
                 showAttachMenu = false
             }
         )
@@ -8017,5 +8083,43 @@ fun openInFamilyBrowser(context: android.content.Context, url: String) {
             context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,
                 android.net.Uri.parse(url)).apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) })
         } catch (_: Exception) {}
+    }
+}
+
+// ── Recursive DocumentFile zip helper ────────────────────────────────────────
+// OpenDocumentTree URI থেকে DocumentFile tree নিয়ে সব sub-folder সহ zip করে।
+// entryPath = zip এর ভেতরে file এর path (যেমন "MyFolder/Documents/file.pdf")
+// Hidden files (.xxx) skip করা হয়।
+fun zipDocumentFile(
+    context: android.content.Context,
+    doc: androidx.documentfile.provider.DocumentFile,
+    entryPath: String,
+    zos: java.util.zip.ZipOutputStream
+) {
+    if (doc.name?.startsWith(".") == true) return  // hidden skip
+
+    if (doc.isDirectory) {
+        // Directory entry — zip এ folder marker হিসেবে যোগ করো
+        val dirEntry = java.util.zip.ZipEntry("$entryPath/")
+        try { zos.putNextEntry(dirEntry); zos.closeEntry() } catch (_: Exception) {}
+
+        // Sub-file ও sub-folder সব recursive process করো
+        doc.listFiles().forEach { child ->
+            val childPath = "$entryPath/${child.name ?: "unnamed"}"
+            zipDocumentFile(context, child, childPath, zos)
+        }
+    } else {
+        // File entry — ContentResolver দিয়ে পড়ো, zip এ লেখো
+        try {
+            val entry = java.util.zip.ZipEntry(entryPath)
+            zos.putNextEntry(entry)
+            context.contentResolver.openInputStream(doc.uri)?.use { input ->
+                input.copyTo(zos)
+            }
+            zos.closeEntry()
+        } catch (e: Exception) {
+            android.util.Log.w("FolderZip", "skip file $entryPath: ${e.message}")
+            // একটা file fail করলে বাকিগুলো চলতে থাকে
+        }
     }
 }

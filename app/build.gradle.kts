@@ -257,6 +257,7 @@ dependencies {
     "fullImplementation"("com.google.mlkit:barcode-scanning:17.3.0")
     "fullImplementation"("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0-beta1")
     implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.documentfile:documentfile:1.0.1")  // OpenDocumentTree folder zip এর জন্য
 
     // Lifecycle
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.2")
