@@ -12,7 +12,7 @@ e: org.jetbrains.kotlin.backend.common.BackendException: Backend Internal error:
 > Task :app:compileFullReleaseKotlin FAILED
 * What went wrong:
 Execution failed for task ':app:compileFullReleaseKotlin'.
-BUILD FAILED in 4m 52s
+BUILD FAILED in 5m 23s
 
 === LAST 60 LINES ===
 	at org.jetbrains.kotlin.backend.jvm.codegen.ExpressionCodegen.visitBlock(ExpressionCodegen.kt:134)
@@ -51,7 +51,7 @@ Caused by: java.lang.NullPointerException
 
 
 > Task :app:compileFullReleaseKotlin FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1787722690274.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1787723374716.json
 
 FAILURE: Build failed with an exception.
 
@@ -72,6 +72,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 4m 52s
+BUILD FAILED in 5m 23s
 32 actionable tasks: 22 executed, 10 from cache
 Configuration cache entry stored.
