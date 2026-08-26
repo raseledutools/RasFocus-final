@@ -5474,30 +5474,29 @@ fun CallingScreen(
         }
     }
 
-<<<<<<< Updated upstream
     // FIX: Split from LaunchedEffect(peerConnectionFactory.value) above.
     // Runs once peerConnection is created (non-null). Handles the receiver/caller
     // signaling paths. Keeping this separate halves the bytecode per suspend lambda.
     LaunchedEffect(peerConnection) {
         val pc = peerConnection ?: return@LaunchedEffect
         try {
-=======
             // ── Attach ScreenShareManager — normal (Firebase) mode ────────────
-            if (pc != null) {
-                val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-                val isLan = prefs.getBoolean(PREF_LAN_MODE, false)
+            val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+            val isLan = prefs.getBoolean(PREF_LAN_MODE, false)
+            val stream = localStream
+            val factory = peerConnectionFactory.value
+            val egl = eglBase.value
+            if (stream != null && factory != null && egl != null) {
                 ScreenShareManager.attachCall(
                     peerConnection = pc,
                     factory        = factory,
-                    eglBase        = eglBase.value!!,
+                    eglBase        = egl,
                     localStream    = stream,
                     callDocId      = callId,
                     lanMode        = isLan,
                     lanManager     = if (isLan) LanCallManager.getInstance(context) else null
                 )
             }
-
->>>>>>> Stashed changes
             if (isReceiver) {
                 // ── RECEIVER PATH ─────────────────────────────────────────────────────
                 callStatus = "Connecting..."

@@ -88,18 +88,10 @@ class LanCallManager private constructor(private val context: Context) {
     private var signalServer: ServerSocket? = null
     private var signalSocket: Socket? = null          // active call signaling socket
     private var signalOut: PrintWriter? = null
-<<<<<<< Updated upstream
-    private var peerConnection: PeerConnection? = null
-    private var eglBase: EglBase? = null
-    fun getEglBase(): EglBase? = eglBase
-    private var factory: PeerConnectionFactory? = null
-    private var localStream: MediaStream? = null
-=======
     internal var peerConnection: PeerConnection? = null
     internal var eglBase: EglBase? = null
     internal var factory: PeerConnectionFactory? = null
     internal var localStream: MediaStream? = null
->>>>>>> Stashed changes
     private var videoCapturer: VideoCapturer? = null
     private var isRunning = false
     var currentCallId = ""
