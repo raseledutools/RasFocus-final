@@ -1,8 +1,10 @@
 package com.rasel.RasFocus.selfcontrol.rasgram
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -187,7 +189,7 @@ fun CallingLanScreen(
     var callStatus by remember { mutableStateOf("Connecting...") }
     var showEndedSummary by remember { mutableStateOf(false) }
     var finalCallSeconds by remember { mutableIntStateOf(0) }
-    val eglBase = remember { mutableStateOf(lanCallManager.getEglBase()) }
+    val eglBase = remember { mutableStateOf(lanCallManager.eglBase) }
 
     // ── Screen Share (LAN mode — TCP signaling) ───────────────────────────────
     val isSharingScreen    by ScreenShareManager.isSharingScreen.collectAsState()
@@ -200,7 +202,7 @@ fun CallingLanScreen(
         context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
     }
     val screenShareLauncher = rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+        ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == android.app.Activity.RESULT_OK && result.data != null) {
             ScreenShareManager.startScreenShare(context, result.data!!)
@@ -220,7 +222,7 @@ fun CallingLanScreen(
 
             val ok = lanCallManager.initWebRtc(callType)
             if (!ok) { onEndCall(); return@LaunchedEffect }
-            eglBase.value = lanCallManager.getEglBase()
+            eglBase.value = lanCallManager.eglBase
 
             // Attach ScreenShareManager for LAN screen share via TCP signaling
             val pc = lanCallManager.peerConnection
