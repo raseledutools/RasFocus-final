@@ -127,13 +127,21 @@ fun RasGramDriveSyncSettings(currentUser: User) {
                     syncResult = null
                     scope.launch {
                         val result = kotlinx.coroutines.withContext(Dispatchers.IO) {
-                            RasGramDriveSyncEngine.performFullSync(context)  // সব messages, no age filter
+                            RasGramDriveSyncEngine.performSync(context)
                         }
                         isSyncing = false
                         syncResult = if (result.success) {
-                            if (result.syncedMessages > 0)
-                                "✅ ${result.syncedMessages} messages ও ${result.syncedMediaFiles} media Drive এ sync হয়েছে (${result.durationMs / 1000}s)"
-                            else "✅ সব আপ-টু-ডেট আছে"
+                            buildString {
+                                if (result.syncedMessages > 0 || result.downloadedFromDrive > 0) {
+                                    if (result.syncedMessages > 0)
+                                        append("✅ ${result.syncedMessages} msgs uploaded")
+                                    if (result.syncedMediaFiles > 0)
+                                        append(", ${result.syncedMediaFiles} media")
+                                    if (result.downloadedFromDrive > 0)
+                                        append(", ${result.downloadedFromDrive} msgs imported")
+                                    append(" (${result.durationMs / 1000}s)")
+                                } else "✅ সব আপ-টু-ডেট আছে"
+                            }
                         } else {
                             "❌ ${result.errorMessage ?: "Sync ব্যর্থ হয়েছে"}"
                         }

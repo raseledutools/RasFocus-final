@@ -182,6 +182,18 @@ interface CachedMessageDao {
     // Drive sync: contactMobile দিয়ে chatId খোঁজা (sync engine এর জন্য)
     @Query("SELECT chatId FROM cached_messages WHERE senderMobile = :mobile OR receiverMobile = :mobile LIMIT 1")
     suspend fun getChatIdByContactMobile(mobile: String): String?
+
+    // Drive sync v3: সব messages (archived + active) — upload এর জন্য
+    @Query("SELECT * FROM cached_messages WHERE chatId = :chatId ORDER BY timestamp ASC")
+    suspend fun getAllMessagesForChat(chatId: String): List<CachedMessage>
+
+    // Drive sync v3: chat এ কতটা message আছে — download skip check
+    @Query("SELECT COUNT(*) FROM cached_messages WHERE chatId = :chatId")
+    suspend fun getMessageCountForChat(chatId: String): Int
+
+    // Drive sync v3: সব messages archived mark (cutoff ছাড়া)
+    @Query("UPDATE cached_messages SET isArchived = 1, driveFileId = :driveFileId WHERE chatId = :chatId")
+    suspend fun markAllMessagesArchived(chatId: String, driveFileId: String)
 }
 
 @Dao

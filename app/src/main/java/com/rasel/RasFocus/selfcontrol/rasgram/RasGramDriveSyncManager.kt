@@ -1,32 +1,36 @@
 package com.rasel.RasFocus.selfcontrol.rasgram
 
 // ============================================================
-// RasGramDriveSyncManager.kt  — v2 (unified engine)
+// RasGramDriveSyncManager.kt  — v3 (bi-directional sync)
 //
-// পুরনো RasGramArchiveWorker + RasGramDriveSyncWorker merge করা হয়েছে।
+// Flow:
+//   UPLOAD side (Room → Drive):
+//     - Room এ আছে কিন্তু Drive এ নেই  → Drive এ upload
+//     - প্রতিটা chat এর সব messages JSON এ merge করে upsert
+//     - Media files → Drive copy (না থাকলেই)
+//     - Drive confirm হলে → Cloudinary delete (safe: Drive এ না থাকলে delete হবে না)
+//     - Drive confirm হলে → Firestore delete (safe: same condition)
 //
-// Flow (একটা Worker, একটাই job):
-//   1. প্রতিটা chat এর 7-day-old messages বের করো
-//   2. Drive এ upsert করো (নতুন file নয়, একটাই file update)
-//   3. Media → Drive copy (না থাকলেই শুধু upload)
-//   4. Drive confirm → Cloudinary থেকে delete
-//   5. Drive confirm → Firestore থেকে delete
-//   6. Room এ archived mark + পুরানো rows delete
+//   DOWNLOAD side (Drive → Room):
+//     - Drive এ JSON আছে কিন্তু Room এ নেই → Room এ import
+//     - অন্য phone এ same account → সব chat চলে আসবে
 //
-// Read flow:
-//   loadArchivedMessages(chatId) → Drive থেকে JSON নামাও → Room cache
+//   PROGRESS:
+//     - Notification এ percentage (X/Y chats)
+//     - Background WorkManager (foreground service চাইলে চলে)
 //
 // Scheduler:
 //   RasGramDriveSyncScheduler.schedule()  — 24h periodic
 //   RasGramDriveSyncScheduler.runNow()    — manual Sync Now
-//   RasGramArchiveScheduler → এখন এই scheduler কে delegate করে (backward compat)
 // ============================================================
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.util.Log
+import androidx.core.app.NotificationCompat
 import androidx.work.*
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
@@ -41,9 +45,7 @@ import com.google.api.services.drive.Drive
 import com.google.api.services.drive.DriveScopes
 import com.google.api.services.drive.model.File as DriveFile
 import com.google.firebase.firestore.FirebaseFirestore
-import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
@@ -56,23 +58,21 @@ import java.net.URL
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
-private const val TAG             = "RasGramDriveSync"
-private const val SYNC_WORK_NAME  = "RasGramDriveSync"
-private const val NOTIF_CHANNEL   = "rasgram_drive_sync"
-private const val NOTIF_ID        = 9902
-private const val ARCHIVE_DAYS    = 7L
-private const val ARCHIVE_MS      = ARCHIVE_DAYS * 24 * 60 * 60 * 1000L
+private const val TAG            = "RasGramDriveSync"
+private const val SYNC_WORK_NAME = "RasGramDriveSync"
+private const val NOTIF_CHANNEL  = "rasgram_drive_sync"
+private const val NOTIF_ID       = 9902
 
 // Drive folder structure
 private const val ROOT_FOLDER    = "RasFocus+"
 private const val RASGRAM_FOLDER = "RasGram"
 
 // SharedPreference keys
-private const val PREF_FILE              = "rasgram_drive_sync_prefs"
-private const val KEY_SYNC_ACCOUNTS      = "sync_accounts"
-private const val KEY_DEFAULT_ACCOUNT    = "default_account"
-private const val KEY_LAST_SYNC          = "last_sync_time"
-private const val KEY_RASGRAM_FOLDER_ID  = "rasgram_folder_id"
+private const val PREF_FILE             = "rasgram_drive_sync_prefs"
+private const val KEY_SYNC_ACCOUNTS     = "sync_accounts"
+private const val KEY_DEFAULT_ACCOUNT   = "default_account"
+private const val KEY_LAST_SYNC         = "last_sync_time"
+private const val KEY_RASGRAM_FOLDER_ID = "rasgram_folder_id"
 
 // Cloudinary credentials
 private const val CLD_CLOUD   = "de2w78yxh"
@@ -80,7 +80,7 @@ private const val CLD_API_KEY = "292749814534824"
 private const val CLD_SECRET  = "EEYmph3nZLR8Modypt0J7eH--58"
 
 // ============================================================
-// MULTI-ACCOUNT MANAGER (পুরনো interface অপরিবর্তিত)
+// MULTI-ACCOUNT MANAGER
 // ============================================================
 
 object RasGramDriveAccountManager {
@@ -89,11 +89,9 @@ object RasGramDriveAccountManager {
         try { GoogleSignIn.getLastSignedInAccount(context) } catch (_: Exception) { null }
 
     fun getSyncAccounts(context: Context): List<String> {
-        val prefs = prefs(context)
-        val set   = prefs.getStringSet(KEY_SYNC_ACCOUNTS, emptySet()) ?: emptySet()
-        val all   = set.toMutableSet()
-        getRasFocusAccount(context)?.email?.let { all.add(it) }
-        return all.toList().sorted()
+        val set = prefs(context).getStringSet(KEY_SYNC_ACCOUNTS, emptySet())?.toMutableSet() ?: mutableSetOf()
+        getRasFocusAccount(context)?.email?.let { set.add(it) }
+        return set.toList().sorted()
     }
 
     fun addSyncAccount(context: Context, email: String) {
@@ -105,8 +103,7 @@ object RasGramDriveAccountManager {
     }
 
     fun removeSyncAccount(context: Context, email: String) {
-        val rasFocusEmail = getRasFocusAccount(context)?.email
-        if (email == rasFocusEmail) return
+        if (email == getRasFocusAccount(context)?.email) return
         val p   = prefs(context)
         val cur = p.getStringSet(KEY_SYNC_ACCOUNTS, emptySet())?.toMutableSet() ?: mutableSetOf()
         cur.remove(email)
@@ -160,6 +157,7 @@ data class DriveSyncResult(
     val syncedMediaFiles: Int = 0,
     val deletedFromCloudinary: Int = 0,
     val deletedFromFirestore: Int = 0,
+    val downloadedFromDrive: Int = 0,
     val errorMessage: String? = null,
     val accountUsed: String? = null,
     val durationMs: Long = 0
@@ -187,7 +185,8 @@ private fun sha1Hex(input: String): String {
 private val httpClient by lazy {
     OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
         .build()
 }
 
@@ -228,7 +227,6 @@ private suspend fun getOrCreateFolder(
         }
 }
 
-/** chatId এর messages JSON file ID — Drive에 있으면 반환, 없으면 null */
 private suspend fun findExistingJsonFile(
     drive: Drive, chatFolderId: String, chatId: String
 ): String? = withContext(Dispatchers.IO) {
@@ -237,17 +235,36 @@ private suspend fun findExistingJsonFile(
         .files?.firstOrNull()?.id
 }
 
-/** Upsert: file আগে থাকলে update, না থাকলে create */
+/** Upsert: আছে → update (merge), নেই → create */
 private suspend fun upsertJsonToDrive(
-    drive: Drive, chatFolderId: String, chatId: String, jsonContent: String
+    drive: Drive, chatFolderId: String, chatId: String,
+    messages: List<CachedMessage>
 ): String = withContext(Dispatchers.IO) {
-    val bytes   = jsonContent.toByteArray(Charsets.UTF_8)
-    val content = ByteArrayContent("application/json", bytes)
     val fileName = "messages_$chatId.json"
-
     val existingId = findExistingJsonFile(drive, chatFolderId, chatId)
+
+    // Drive এ আগের data থাকলে merge করো — পুরানো message হারাবে না
+    val merged: List<CachedMessage> = if (existingId != null) {
+        try {
+            val out = ByteArrayOutputStream()
+            drive.files().get(existingId).executeMediaAndDownloadTo(out)
+            val driveMessages = jsonToMessages(out.toString(Charsets.UTF_8.name()), chatId)
+            // Room এরটা + Drive এরটা merge, id দিয়ে deduplicate, timestamp sort
+            val byId = LinkedHashMap<String, CachedMessage>()
+            driveMessages.forEach { byId[it.id] = it }
+            messages.forEach { byId[it.id] = it }  // Room এর version জয়ী (latest)
+            byId.values.sortedBy { it.timestamp }
+        } catch (e: Exception) {
+            Log.w(TAG, "Drive read for merge failed, overwriting: ${e.message}")
+            messages
+        }
+    } else messages
+
+    val json    = messagesToJson(merged)
+    val bytes   = json.toByteArray(Charsets.UTF_8)
+    val content = ByteArrayContent("application/json", bytes)
+
     if (existingId != null) {
-        // Update existing — নতুন file বানাবে না, duplicate হবে না
         drive.files().update(existingId, null, content).execute()
         existingId
     } else {
@@ -267,10 +284,18 @@ private suspend fun getRasGramRootFolderId(context: Context, drive: Drive): Stri
         val prefs  = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
         val cached = prefs.getString(KEY_RASGRAM_FOLDER_ID, null)
         if (!cached.isNullOrEmpty()) return@withContext cached
-        val rootId     = getOrCreateFolder(drive, ROOT_FOLDER)
-        val rasGramId  = getOrCreateFolder(drive, RASGRAM_FOLDER, rootId)
+        val rootId    = getOrCreateFolder(drive, ROOT_FOLDER)
+        val rasGramId = getOrCreateFolder(drive, RASGRAM_FOLDER, rootId)
         prefs.edit().putString(KEY_RASGRAM_FOLDER_ID, rasGramId).apply()
         rasGramId
+    }
+
+/** Drive এর RasGram folder এর সব chat subfolder list */
+private suspend fun listDriveChatFolders(drive: Drive, rasGramFolderId: String): List<DriveFile> =
+    withContext(Dispatchers.IO) {
+        val q = "'$rasGramFolderId' in parents and " +
+                "mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+        drive.files().list().setQ(q).setFields("files(id,name)").execute().files ?: emptyList()
     }
 
 // ============================================================
@@ -296,17 +321,15 @@ private fun messagesToJson(messages: List<CachedMessage>): String {
         })
     }
     return JSONObject().apply {
-        put("version", 3)
+        put("version", 4)
         put("exportTime", System.currentTimeMillis())
-        put("archiveDays", ARCHIVE_DAYS)
         put("messages", arr)
     }.toString(2)
 }
 
-private fun jsonToMessages(json: String, chatId: String): List<CachedMessage> {
-    return try {
-    val obj  = JSONObject(json)
-    val arr  = obj.optJSONArray("messages") ?: return emptyList()
+private fun jsonToMessages(json: String, chatId: String): List<CachedMessage> = try {
+    val obj = JSONObject(json)
+    val arr = obj.optJSONArray("messages") ?: return emptyList()
     (0 until arr.length()).map { i ->
         val o = arr.getJSONObject(i)
         CachedMessage(
@@ -339,7 +362,6 @@ private fun jsonToMessages(json: String, chatId: String): List<CachedMessage> {
         )
     }
 } catch (e: Exception) { Log.e(TAG, "jsonToMessages failed: ${e.message}"); emptyList() }
-}
 
 // ============================================================
 // MAIN SYNC ENGINE
@@ -348,123 +370,179 @@ private fun jsonToMessages(json: String, chatId: String): List<CachedMessage> {
 object RasGramDriveSyncEngine {
 
     /**
-     * একটা chat এর full archive + cleanup cycle।
-     * Returns: Triple(messages archived, media uploaded, cloudinary deleted)
+     * UPLOAD: একটা chat এর সব messages → Drive upsert + media upload
+     * Safe delete: Drive এ confirm হলে তবেই Firestore/Cloudinary থেকে মুছবে
+     * Returns: Triple(msgs uploaded, media uploaded, cloudinary deleted)
      */
-    private suspend fun processChat(
+    private suspend fun uploadChat(
         drive: Drive,
         rasGramFolderId: String,
         chatId: String,
         contactMobile: String,
         repo: RasGramRepository,
         db: FirebaseFirestore,
-        cutoff: Long
+        onProgress: suspend (String) -> Unit
     ): Triple<Int, Int, Int> = withContext(Dispatchers.IO) {
 
-        // ── Step 1: পুরানো, un-archived messages ────────────────────────
-        val messages = repo.messageDao.getMessagesForArchive(chatId, cutoff)
-        if (messages.isEmpty()) return@withContext Triple(0, 0, 0)
+        // Room থেকে সব messages (archived + active, সব)
+        val allMessages = repo.messageDao.getAllMessagesForChat(chatId)
+        if (allMessages.isEmpty()) return@withContext Triple(0, 0, 0)
 
-        // ── Step 2: Drive folder ─────────────────────────────────────────
+        onProgress("$chatId uploading ${allMessages.size} msgs…")
+
+        // ── Drive folder ─────────────────────────────────────────────────
         val chatFolderId = getOrCreateFolder(drive, chatId, rasGramFolderId)
 
-        // ── Step 3: JSON upsert (একটাই file, duplicate নেই) ─────────────
-        val json        = messagesToJson(messages)
-        val driveFileId = upsertJsonToDrive(drive, chatFolderId, chatId, json)
-        Log.i(TAG, "JSON upserted for $chatId → $driveFileId (${messages.size} msgs)")
+        // ── JSON upsert (merge with existing Drive data) ─────────────────
+        val driveFileId = upsertJsonToDrive(drive, chatFolderId, chatId, allMessages)
+        Log.i(TAG, "JSON upserted $chatId → $driveFileId (${allMessages.size} msgs)")
 
-        // ── Step 4: Room এ archived mark ─────────────────────────────────
-        repo.messageDao.markMessagesArchived(chatId, cutoff, driveFileId)
+        // Drive confirm হলে archived mark
+        repo.messageDao.markAllMessagesArchived(chatId, driveFileId)
 
-        // ── Step 5: Media → Drive copy + Cloudinary delete ───────────────
+        // ── Media → Drive (না থাকলেই upload) ────────────────────────────
         val mediaFolderId = getOrCreateFolder(drive, "media", chatFolderId)
         var mediaUploaded = 0
         var cldDeleted    = 0
 
-        messages.filter { !it.fileUrl.isNullOrEmpty() && !it.isDeleted }.forEach { msg ->
+        val mediaMessages = allMessages.filter { !it.fileUrl.isNullOrEmpty() && !it.isDeleted }
+        mediaMessages.forEach { msg ->
             val url  = msg.fileUrl ?: return@forEach
             val name = msg.fileName ?: "media_${msg.timestamp}"
             try {
-                // Drive এ না থাকলেই upload
-                if (!driveFileExists(drive, mediaFolderId, name)) {
-                    val conn  = URL(url).openConnection().apply { connect() }
-                    val mime  = msg.fileType ?: "application/octet-stream"
-                    val meta  = DriveFile().apply { this.name = name; parents = listOf(mediaFolderId) }
+                val alreadyInDrive = driveFileExists(drive, mediaFolderId, name)
+                if (!alreadyInDrive) {
+                    val conn = URL(url).openConnection().apply { connect() }
+                    val mime = msg.fileType ?: "application/octet-stream"
+                    val meta = DriveFile().apply { this.name = name; parents = listOf(mediaFolderId) }
                     drive.files().create(meta, InputStreamContent(mime, conn.getInputStream()))
                         .setFields("id").execute()
                     mediaUploaded++
                     Log.d(TAG, "Media uploaded: $name")
                 }
-                // Drive তে আছে নিশ্চিত → Cloudinary থেকে delete
-                val pubId = extractCloudinaryPublicId(url)
-                if (pubId != null) {
-                    val resType = cloudinaryResourceType(msg.fileType)
-                    if (deleteFromCloudinary(pubId, resType)) cldDeleted++
+
+                // ── SAFE DELETE: Drive এ আছে confirm → তারপর Cloudinary delete ──
+                val confirmedInDrive = alreadyInDrive || driveFileExists(drive, mediaFolderId, name)
+                if (confirmedInDrive) {
+                    val pubId = extractCloudinaryPublicId(url)
+                    if (pubId != null) {
+                        val resType = cloudinaryResourceType(msg.fileType)
+                        if (deleteFromCloudinary(pubId, resType)) cldDeleted++
+                    }
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Media processing failed for $name: ${e.message}")
             }
         }
 
-        // ── Step 6: Firestore থেকে delete (batch, 400 limit) ────────────
+        // ── SAFE DELETE: Drive JSON confirm → Firestore delete ───────────
+        // Drive এ file আছে নিশ্চিত (আমরাই মাত্র upsert করলাম), তাই safe
         try {
-            var remaining = true
-            while (remaining) {
+            var hasMore = true
+            while (hasMore) {
                 val snap = db.collection("pvt_msg_$chatId")
-                    .whereLessThan("timestamp", cutoff)
-                    .limit(400)
-                    .get().await()
+                    .limit(400).get().await()
                 if (snap.isEmpty) break
                 val batch = db.batch()
                 snap.documents.forEach { batch.delete(it.reference) }
                 batch.commit().await()
                 Log.d(TAG, "Firestore: deleted ${snap.size()} msgs from pvt_msg_$chatId")
-                if (snap.size() < 400) remaining = false
+                if (snap.size() < 400) hasMore = false
             }
         } catch (e: Exception) {
             Log.w(TAG, "Firestore delete non-critical: ${e.message}")
         }
 
-        // ── Step 7: Room থেকে delete (starred বাদে) ─────────────────────
-        repo.messageDao.deleteChatMessagesBefore(chatId, cutoff)
-
-        // ── Step 8: ChatPreview এ Drive info update ──────────────────────
+        // ChatPreview Drive info update
         repo.chatPreviewDao.updateDriveInfo(contactMobile, chatFolderId, System.currentTimeMillis())
 
-        Triple(messages.size, mediaUploaded, cldDeleted)
+        Triple(allMessages.size, mediaUploaded, cldDeleted)
     }
 
     /**
-     * Full sync without age cutoff — "Sync Now" button এ ব্যবহার হয়।
-     * Worker এর মতোই, কিন্তু cutoff = 0L মানে সব messages (নতুন সহ) upload হবে।
+     * DOWNLOAD: Drive এ যে chat folders আছে, Room এ না থাকলে import করো
+     * অন্য phone এ same account login করলে সব chat চলে আসবে
      */
-    suspend fun performFullSync(context: Context): DriveSyncResult = withContext(Dispatchers.IO) {
+    private suspend fun downloadMissingChats(
+        drive: Drive,
+        rasGramFolderId: String,
+        repo: RasGramRepository,
+        onProgress: suspend (String) -> Unit
+    ): Int = withContext(Dispatchers.IO) {
+        var imported = 0
+        val driveFolders = listDriveChatFolders(drive, rasGramFolderId)
+        driveFolders.forEach { folder ->
+            val chatId = folder.name ?: return@forEach
+            val folderId = folder.id ?: return@forEach
+
+            // Room এ এই chat এর কোনো message আছে কিনা দেখো
+            val roomCount = repo.messageDao.getMessageCountForChat(chatId)
+            if (roomCount > 0) return@forEach  // আছে, skip
+
+            onProgress("Importing $chatId from Drive…")
+
+            // Drive থেকে JSON download
+            val fileId = findExistingJsonFile(drive, folderId, chatId) ?: return@forEach
+            try {
+                val out = ByteArrayOutputStream()
+                drive.files().get(fileId).executeMediaAndDownloadTo(out)
+                val messages = jsonToMessages(out.toString(Charsets.UTF_8.name()), chatId)
+                if (messages.isNotEmpty()) {
+                    repo.messageDao.upsertMessages(messages)
+                    imported += messages.size
+                    Log.i(TAG, "Imported ${messages.size} msgs for $chatId from Drive")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Download failed for $chatId: ${e.message}")
+            }
+        }
+        imported
+    }
+
+    /**
+     * Full bi-directional sync:
+     *   1. Room → Drive (upload all chats)
+     *   2. Drive → Room (download missing chats)
+     * Progress callback → Worker notification এ percentage দেখায়
+     */
+    suspend fun performSync(
+        context: Context,
+        onProgress: suspend (current: Int, total: Int, label: String) -> Unit = { _, _, _ -> }
+    ): DriveSyncResult = withContext(Dispatchers.IO) {
         val startTime    = System.currentTimeMillis()
         val accountEmail = RasGramDriveAccountManager.getDefaultSyncAccount(context)
             ?: return@withContext DriveSyncResult(false, errorMessage = "Google Drive account সংযুক্ত নেই।")
 
         val drive = RasGramDriveAccountManager.buildDriveForAccount(context, accountEmail)
-            ?: return@withContext DriveSyncResult(false,
-                errorMessage = "Drive সংযোগ ব্যর্থ। আবার sign-in করুন।",
+            ?: return@withContext DriveSyncResult(
+                false, errorMessage = "Drive সংযোগ ব্যর্থ। আবার sign-in করুন.",
                 accountUsed = accountEmail)
 
         try {
-            val repo           = RasGramRepository.getInstance(context)
-            val db             = FirebaseFirestore.getInstance()
-            val rasGramFolder  = getRasGramRootFolderId(context, drive)
-            val previews       = repo.chatPreviewDao.getAllPreviews()
-            val cutoff         = Long.MAX_VALUE  // সব messages — কোনো age filter নেই
+            val repo          = RasGramRepository.getInstance(context)
+            val db            = FirebaseFirestore.getInstance()
+            val rasGramFolder = getRasGramRootFolderId(context, drive)
+            val previews      = repo.chatPreviewDao.getAllPreviews()
+            val total         = previews.size + 1  // +1 for download phase
 
-            var totalChats = 0; var totalMsgs = 0; var totalMedia = 0; var totalCld = 0
+            var totalChats = 0; var totalMsgs = 0; var totalMedia = 0
+            var totalCld   = 0; var totalDownloaded = 0
 
-            previews.forEach { preview ->
+            // ── Phase 1: UPLOAD (Room → Drive) ────────────────────────────
+            previews.forEachIndexed { idx, preview ->
                 val chatId = repo.messageDao.getChatIdByContactMobile(preview.contactMobile)
-                    ?: return@forEach
-                val (msgs, media, cld) = processChat(
-                    drive, rasGramFolder, chatId,
-                    preview.contactMobile, repo, db, cutoff
-                )
+                    ?: return@forEachIndexed
+                onProgress(idx + 1, total, "Uploading: ${preview.contactName.ifBlank { preview.contactMobile }}")
+                val (msgs, media, cld) = uploadChat(
+                    drive, rasGramFolder, chatId, preview.contactMobile, repo, db
+                ) { label -> Log.d(TAG, label) }
                 if (msgs > 0) { totalChats++; totalMsgs += msgs; totalMedia += media; totalCld += cld }
+            }
+
+            // ── Phase 2: DOWNLOAD (Drive → Room, missing chats only) ──────
+            onProgress(total, total, "Checking Drive for missing chats…")
+            totalDownloaded = downloadMissingChats(drive, rasGramFolder, repo) { label ->
+                Log.d(TAG, label)
             }
 
             RasGramDriveAccountManager.recordSyncTime(context)
@@ -474,54 +552,9 @@ object RasGramDriveSyncEngine {
                 syncedMessages        = totalMsgs,
                 syncedMediaFiles      = totalMedia,
                 deletedFromCloudinary = totalCld,
+                downloadedFromDrive   = totalDownloaded,
                 accountUsed           = accountEmail,
                 durationMs            = System.currentTimeMillis() - startTime
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "performFullSync failed: ${e.message}", e)
-            DriveSyncResult(false, errorMessage = e.message, accountUsed = accountEmail)
-        }
-    }
-
-    /** সব chats sync করে — Worker থেকে call হয় */
-    suspend fun performSync(context: Context): DriveSyncResult = withContext(Dispatchers.IO) {
-        val startTime    = System.currentTimeMillis()
-        val accountEmail = RasGramDriveAccountManager.getDefaultSyncAccount(context)
-            ?: return@withContext DriveSyncResult(false, errorMessage = "Google Drive account সংযুক্ত নেই।")
-
-        val drive = RasGramDriveAccountManager.buildDriveForAccount(context, accountEmail)
-            ?: return@withContext DriveSyncResult(false,
-                errorMessage = "Drive সংযোগ ব্যর্থ। আবার sign-in করুন।",
-                accountUsed = accountEmail)
-
-        try {
-            val repo           = RasGramRepository.getInstance(context)
-            val db             = FirebaseFirestore.getInstance()
-            val rasGramFolder  = getRasGramRootFolderId(context, drive)
-            val previews       = repo.chatPreviewDao.getAllPreviews()
-            val cutoff         = System.currentTimeMillis() - ARCHIVE_MS
-
-            var totalChats = 0; var totalMsgs = 0; var totalMedia = 0; var totalCld = 0
-
-            previews.forEach { preview ->
-                val chatId = repo.messageDao.getChatIdByContactMobile(preview.contactMobile)
-                    ?: return@forEach
-                val (msgs, media, cld) = processChat(
-                    drive, rasGramFolder, chatId,
-                    preview.contactMobile, repo, db, cutoff
-                )
-                if (msgs > 0) { totalChats++; totalMsgs += msgs; totalMedia += media; totalCld += cld }
-            }
-
-            RasGramDriveAccountManager.recordSyncTime(context)
-            DriveSyncResult(
-                success              = true,
-                syncedChats          = totalChats,
-                syncedMessages       = totalMsgs,
-                syncedMediaFiles     = totalMedia,
-                deletedFromCloudinary = totalCld,
-                accountUsed          = accountEmail,
-                durationMs           = System.currentTimeMillis() - startTime
             )
         } catch (e: Exception) {
             Log.e(TAG, "performSync failed: ${e.message}", e)
@@ -530,119 +563,124 @@ object RasGramDriveSyncEngine {
     }
 
     /**
-     * READ: পুরানো archived messages Drive থেকে load করে Room এ cache করো।
-     * UI: "Load older messages" বাটন থেকে call করো।
+     * READ: একটা chat এর archived messages Drive থেকে Room এ load করো।
+     * "Load older messages" button থেকে call করো।
      */
-    suspend fun loadArchivedMessages(
-        context: Context,
-        chatId: String
-    ): List<CachedMessage> = withContext(Dispatchers.IO) {
-        try {
-            val drive = RasGramDriveAccountManager.buildDefaultDrive(context)
-                ?: return@withContext emptyList<CachedMessage>()
-                    .also { Log.w(TAG, "loadArchived: no drive available") }
+    suspend fun loadArchivedMessages(context: Context, chatId: String): List<CachedMessage> =
+        withContext(Dispatchers.IO) {
+            try {
+                val drive = RasGramDriveAccountManager.buildDefaultDrive(context)
+                    ?: return@withContext emptyList<CachedMessage>()
+                        .also { Log.w(TAG, "loadArchived: no drive available") }
 
-            val repo          = RasGramRepository.getInstance(context)
-            val rasGramFolder = getRasGramRootFolderId(context, drive)
-            val chatFolderId  = getOrCreateFolder(drive, chatId, rasGramFolder)
+                val repo          = RasGramRepository.getInstance(context)
+                val rasGramFolder = getRasGramRootFolderId(context, drive)
+                val chatFolderId  = getOrCreateFolder(drive, chatId, rasGramFolder)
+                val fileId        = findExistingJsonFile(drive, chatFolderId, chatId)
+                    ?: return@withContext emptyList<CachedMessage>()
+                        .also { Log.i(TAG, "loadArchived: no archive for $chatId") }
 
-            // Drive এ এই chat এর JSON file খোঁজো
-            val fileId = findExistingJsonFile(drive, chatFolderId, chatId)
-                ?: return@withContext emptyList<CachedMessage>()
-                    .also { Log.i(TAG, "loadArchived: no archive found for $chatId") }
-
-            // Download করো
-            val out    = ByteArrayOutputStream()
-            drive.files().get(fileId).executeMediaAndDownloadTo(out)
-            val json   = out.toString(Charsets.UTF_8.name())
-
-            // Parse করো
-            val messages = jsonToMessages(json, chatId)
-
-            // Room এ cache করো (পরে আর Drive এ যেতে হবে না)
-            repo.messageDao.upsertMessages(messages)
-            Log.i(TAG, "Loaded ${messages.size} archived msgs for $chatId from Drive")
-            messages
-        } catch (e: Exception) {
-            Log.e(TAG, "loadArchivedMessages failed: ${e.message}")
-            emptyList()
+                val out      = ByteArrayOutputStream()
+                drive.files().get(fileId).executeMediaAndDownloadTo(out)
+                val messages = jsonToMessages(out.toString(Charsets.UTF_8.name()), chatId)
+                repo.messageDao.upsertMessages(messages)
+                Log.i(TAG, "Loaded ${messages.size} archived msgs for $chatId")
+                messages
+            } catch (e: Exception) {
+                Log.e(TAG, "loadArchivedMessages failed: ${e.message}")
+                emptyList()
+            }
         }
-    }
 }
 
 // ============================================================
-// WORKMANAGER WORKER
+// WORKMANAGER WORKER — percentage progress notification
 // ============================================================
 
-class RasGramDriveSyncWorker(context: Context, params: WorkerParameters) :
-    CoroutineWorker(context, params) {
+class RasGramDriveSyncWorker(appContext: Context, params: WorkerParameters) :
+    CoroutineWorker(appContext, params) {
 
-    // inputData key — runNow এ true পাঠালে full sync (no cutoff)
-    private val isManual get() = inputData.getBoolean("is_manual", false)
+    private val notifMgr by lazy {
+        appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    }
 
     override suspend fun doWork(): Result {
-        Log.i(TAG, "Drive sync worker starting... manual=$isManual")
-        showNotification("Drive sync শুরু হচ্ছে…")
-        val result = if (isManual)
-            RasGramDriveSyncEngine.performFullSync(applicationContext)
-        else
-            RasGramDriveSyncEngine.performSync(applicationContext)
+        Log.i(TAG, "Drive sync worker starting…")
+        ensureChannel()
+
+        // Android 14+ foreground service type required for long-running background work
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            setForeground(
+                ForegroundInfo(
+                    NOTIF_ID,
+                    buildProgressNotif("Drive sync শুরু হচ্ছে…", 0, 0),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                )
+            )
+        } else {
+            setForeground(ForegroundInfo(NOTIF_ID, buildProgressNotif("Drive sync শুরু হচ্ছে…", 0, 0)))
+        }
+
+        val result = RasGramDriveSyncEngine.performSync(applicationContext) { current, total, label ->
+            val pct = if (total > 0) (current * 100 / total) else 0
+            notifMgr.notify(NOTIF_ID, buildProgressNotif("$pct% — $label", current, total))
+        }
+
         if (result.success) {
             val summary = buildString {
-                if (result.syncedMessages > 0) {
-                    append("✅ ${result.syncedMessages} messages archived")
-                    if (result.syncedMediaFiles > 0) append(", ${result.syncedMediaFiles} media uploaded")
-                    if (result.deletedFromCloudinary > 0) append(", ${result.deletedFromCloudinary} Cloudinary files freed")
-                } else {
-                    append("✅ Sync সম্পন্ন — নতুন archive নেই")
-                }
+                append("✅ Sync সম্পন্ন")
+                if (result.syncedMessages > 0)
+                    append(" • ${result.syncedMessages} msgs uploaded")
+                if (result.syncedMediaFiles > 0)
+                    append(" • ${result.syncedMediaFiles} media")
+                if (result.deletedFromCloudinary > 0)
+                    append(" • ${result.deletedFromCloudinary} Cloudinary freed")
+                if (result.downloadedFromDrive > 0)
+                    append(" • ${result.downloadedFromDrive} msgs imported from Drive")
                 result.durationMs.let { if (it > 0) append(" (${it / 1000}s)") }
             }
-            showCompleteNotification(summary)
+            notifMgr.notify(
+                NOTIF_ID,
+                NotificationCompat.Builder(applicationContext, NOTIF_CHANNEL)
+                    .setSmallIcon(android.R.drawable.ic_dialog_info)
+                    .setContentTitle("RasGram Sync সম্পন্ন")
+                    .setContentText(summary)
+                    .setStyle(NotificationCompat.BigTextStyle().bigText(summary))
+                    .setAutoCancel(true)
+                    .setPriority(NotificationCompat.PRIORITY_LOW)
+                    .build()
+            )
         } else {
-            cancelNotification()
+            notifMgr.cancel(NOTIF_ID)
         }
+
         return if (result.success) Result.success() else Result.retry()
     }
 
-    private fun mgr() =
-        applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    private fun buildProgressNotif(label: String, current: Int, total: Int) =
+        NotificationCompat.Builder(applicationContext, NOTIF_CHANNEL)
+            .setSmallIcon(android.R.drawable.ic_popup_sync)
+            .setContentTitle("RasGram Drive Sync")
+            .setContentText(label)
+            .apply {
+                if (total > 0) setProgress(total, current, false)
+                else setProgress(0, 0, true)
+            }
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
 
     private fun ensureChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            mgr().createNotificationChannel(
+            notifMgr.createNotificationChannel(
                 NotificationChannel(NOTIF_CHANNEL, "Drive Sync", NotificationManager.IMPORTANCE_LOW)
             )
         }
     }
-
-    private fun showNotification(text: String) {
-        ensureChannel()
-        mgr().notify(NOTIF_ID,
-            NotificationCompat.Builder(applicationContext, NOTIF_CHANNEL)
-                .setSmallIcon(android.R.drawable.ic_popup_sync)
-                .setContentTitle("RasGram Drive Sync").setContentText(text)
-                .setProgress(0, 0, true).setOngoing(true)
-                .setPriority(NotificationCompat.PRIORITY_LOW).build()
-        )
-    }
-
-    private fun showCompleteNotification(text: String) {
-        ensureChannel()
-        mgr().notify(NOTIF_ID,
-            NotificationCompat.Builder(applicationContext, NOTIF_CHANNEL)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentTitle("RasGram Sync সম্পন্ন").setContentText(text)
-                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-                .setAutoCancel(true).setPriority(NotificationCompat.PRIORITY_LOW).build()
-        )
-    }
-
-    private fun cancelNotification() = mgr().cancel(NOTIF_ID)
 }
 
 // ============================================================
-// SCHEDULER — একটাই, পুরানো RasGramArchiveScheduler এখন এখানে delegate করে
+// SCHEDULER
 // ============================================================
 
 object RasGramDriveSyncScheduler {
@@ -655,25 +693,24 @@ object RasGramDriveSyncScheduler {
             .addTag(SYNC_WORK_NAME)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.MINUTES)
             .build()
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-            SYNC_WORK_NAME, ExistingPeriodicWorkPolicy.KEEP, req
-        )
+        WorkManager.getInstance(context)
+            .enqueueUniquePeriodicWork(SYNC_WORK_NAME, ExistingPeriodicWorkPolicy.KEEP, req)
         Log.i(TAG, "Daily Drive sync scheduled")
     }
 
     fun runNow(context: Context) {
         val req = OneTimeWorkRequestBuilder<RasGramDriveSyncWorker>()
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-            .setInputData(androidx.work.workDataOf("is_manual" to true))
-            .addTag("$SYNC_WORK_NAME.manual").build()
+            .addTag("$SYNC_WORK_NAME.manual")
+            .build()
         WorkManager.getInstance(context).enqueue(req)
-        Log.i(TAG, "Manual Drive sync triggered (full sync, no age filter)")
+        Log.i(TAG, "Manual Drive sync triggered")
     }
 
     fun cancel(context: Context) = WorkManager.getInstance(context).cancelUniqueWork(SYNC_WORK_NAME)
 }
 
-// ── Backward-compat: পুরানো RasGramArchiveScheduler call → নতুন scheduler তে delegate ──
+// Backward-compat
 object RasGramArchiveScheduler {
     fun schedule(context: Context) = RasGramDriveSyncScheduler.schedule(context)
     fun runNow(context: Context)   = RasGramDriveSyncScheduler.runNow(context)
