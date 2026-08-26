@@ -5385,80 +5385,27 @@ fun CallingScreen(
                 iceTransportsType = PeerConnection.IceTransportsType.ALL
             }
 
-            val observer = object : PeerConnection.Observer {
-                override fun onIceCandidate(candidate: IceCandidate?) {
-                    candidate?.let { c ->
-                        scope.launch {
-                            // Caller ICE → caller_ice, Receiver ICE → callee_ice
-                            val iceCollection = if (isReceiver) "callee_ice" else "caller_ice"
-                            db.collection("calls").document(callId).collection(iceCollection).add(
-                                mapOf("sdpMid" to c.sdpMid, "sdpMLineIndex" to c.sdpMLineIndex, "candidate" to c.sdp)
-                            )
-                        }
-                    }
-                }
-                override fun onIceCandidatesRemoved(c: Array<out IceCandidate>?) {}
-                override fun onSignalingChange(s: PeerConnection.SignalingState?) {}
-                override fun onIceConnectionChange(state: PeerConnection.IceConnectionState?) {
-                    // WebRTC internal thread থেকে আসে — Compose state Main thread এ সেট করতে হবে।
-                    // scope.launch {} ছাড়া isConnected = true করলে LaunchedEffect(isConnected)
-                    // recompose trigger নাও হতে পারে → timer শুরু হয় না।
-                    //
-                    // ICE DISCONNECTED grace period fix:
-                    // DISCONNECTED = transient state — mobile network packet loss বা brief hiccup এ আসে।
-                    // Initial negotiation: CHECKING → DISCONNECTED (brief) → CONNECTED
-                    // Reconnect:          CONNECTED → DISCONNECTED → CONNECTED
-                    // তাই DISCONNECTED এ সাথে সাথে cut না করে 8s grace দিতে হবে।
-                    // Grace period এ CONNECTED আসলে cancel, না আসলে তখন endCall।
-                    // শুধু FAILED এ immediate cut।
-                    when (state) {
-                        PeerConnection.IceConnectionState.CONNECTED -> scope.launch {
-                            iceDisconnectJob?.cancel()
-                            iceDisconnectJob = null
-                            callStatus = "Connected"
-                            isConnected = true
-                        }
-                        PeerConnection.IceConnectionState.DISCONNECTED -> scope.launch {
-                            // Reconnect হতে পারে — 8s দাও
-                            if (iceDisconnectJob?.isActive != true) {
-                                callStatus = "Reconnecting..."
-                                iceDisconnectJob = scope.launch {
-                                    kotlinx.coroutines.delay(8_000L)
-                                    onEndCall()
-                                }
-                            }
-                        }
-                        PeerConnection.IceConnectionState.FAILED -> scope.launch {
-                            iceDisconnectJob?.cancel()
-                            onEndCall()
-                        }
-                        else -> {}
-                    }
-                }
-                override fun onIceConnectionReceivingChange(b: Boolean) {}
-                override fun onIceGatheringChange(s: PeerConnection.IceGatheringState?) {}
-                // Bug Fix #1: onAddStream (Plan B) ও onAddTrack (UNIFIED_PLAN) দুটোই handle করো।
-                // আগে remoteVideoTrack set হচ্ছিল কিন্তু SurfaceViewRenderer তখনও
-                // compose হয়নি — তাই sink কখনো attach হয়নি → black screen।
-                // Fix: track set করার সাথে সাথে remoteSurfaceView এ sink করো।
-                override fun onAddStream(s: MediaStream?) {
-                    s?.videoTracks?.firstOrNull()?.let { track ->
-                        remoteVideoTrack = track
-                        remoteSurfaceView?.let { track.addSink(it) }
-                    }
-                }
-                override fun onRemoveStream(s: MediaStream?) {}
-                override fun onDataChannel(d: DataChannel?) {}
-                override fun onRenegotiationNeeded() {}
-                override fun onAddTrack(r: RtpReceiver?, streams: Array<out MediaStream>?) {
-                    r?.track()?.let { track ->
-                        if (track is VideoTrack) {
-                            remoteVideoTrack = track
-                            remoteSurfaceView?.let { track.addSink(it) }
-                        }
-                    }
-                }
-            }
+            // FIX: observer object extracted to buildPeerConnectionObserver() top-level function.
+            // Kotlin 2.1.x IR backend NullPointerException at instruction #346
+            // (FixStackAnalyzer / coroutine state machine bytecode overflow) —
+            // the anonymous object declaration inside this LaunchedEffect was pushing
+            // the suspend lambda past the JVM 64KB method bytecode limit.
+            // Moving it to a named top-level function allocates its bytecode in a
+            // separate class file, cutting this lambda's size below the threshold.
+            val observer = buildPeerConnectionObserver(
+                isReceiver           = isReceiver,
+                scope                = scope,
+                db                   = db,
+                getCallId            = { callId },
+                setCallStatus        = { callStatus = it },
+                setIsConnected       = { isConnected = it },
+                getIceDisconnectJob  = { iceDisconnectJob },
+                setIceDisconnectJob  = { iceDisconnectJob = it },
+                onEndCall            = onEndCall,
+                getRemoteVideoTrack  = { remoteVideoTrack },
+                setRemoteVideoTrack  = { remoteVideoTrack = it },
+                getRemoteSurfaceView = { remoteSurfaceView }
+            )
 
             val pc = factory.createPeerConnection(rtcConfig, observer)
             stream.audioTracks.forEach { pc?.addTrack(it, listOf("localStream")) }
@@ -7554,6 +7501,84 @@ fun normalizeNumber(raw: String): String {
         }
     }
 }
+// ── IR bytecode overflow fix ─────────────────────────────────────────────────
+// Extracted from LaunchedEffect(peerConnectionFactory.value) in CallingScreen.
+// Kotlin 2.1.x FixStackAnalyzer crashes when a single suspend lambda exceeds
+// the JVM 64KB bytecode limit (instruction #346 NullPointerException).
+// Putting the PeerConnection.Observer in a separate top-level function causes
+// the compiler to emit its bytecode in a distinct class file, keeping the
+// calling LaunchedEffect lambda small enough to compile cleanly.
+fun buildPeerConnectionObserver(
+    isReceiver:           Boolean,
+    scope:                kotlinx.coroutines.CoroutineScope,
+    db:                   FirebaseFirestore,
+    getCallId:            () -> String,
+    setCallStatus:        (String) -> Unit,
+    setIsConnected:       (Boolean) -> Unit,
+    getIceDisconnectJob:  () -> kotlinx.coroutines.Job?,
+    setIceDisconnectJob:  (kotlinx.coroutines.Job?) -> Unit,
+    onEndCall:            () -> Unit,
+    getRemoteVideoTrack:  () -> VideoTrack?,
+    setRemoteVideoTrack:  (VideoTrack) -> Unit,
+    getRemoteSurfaceView: () -> SurfaceViewRenderer?
+): PeerConnection.Observer = object : PeerConnection.Observer {
+    override fun onIceCandidate(candidate: IceCandidate?) {
+        candidate?.let { c ->
+            scope.launch {
+                val iceCollection = if (isReceiver) "callee_ice" else "caller_ice"
+                db.collection("calls").document(getCallId()).collection(iceCollection).add(
+                    mapOf("sdpMid" to c.sdpMid, "sdpMLineIndex" to c.sdpMLineIndex, "candidate" to c.sdp)
+                )
+            }
+        }
+    }
+    override fun onIceCandidatesRemoved(c: Array<out IceCandidate>?) {}
+    override fun onSignalingChange(s: PeerConnection.SignalingState?) {}
+    override fun onIceConnectionChange(state: PeerConnection.IceConnectionState?) {
+        when (state) {
+            PeerConnection.IceConnectionState.CONNECTED -> scope.launch {
+                getIceDisconnectJob()?.cancel()
+                setIceDisconnectJob(null)
+                setCallStatus("Connected")
+                setIsConnected(true)
+            }
+            PeerConnection.IceConnectionState.DISCONNECTED -> scope.launch {
+                if (getIceDisconnectJob()?.isActive != true) {
+                    setCallStatus("Reconnecting...")
+                    setIceDisconnectJob(scope.launch {
+                        kotlinx.coroutines.delay(8_000L)
+                        onEndCall()
+                    })
+                }
+            }
+            PeerConnection.IceConnectionState.FAILED -> scope.launch {
+                getIceDisconnectJob()?.cancel()
+                onEndCall()
+            }
+            else -> {}
+        }
+    }
+    override fun onIceConnectionReceivingChange(b: Boolean) {}
+    override fun onIceGatheringChange(s: PeerConnection.IceGatheringState?) {}
+    override fun onAddStream(s: MediaStream?) {
+        s?.videoTracks?.firstOrNull()?.let { track ->
+            setRemoteVideoTrack(track)
+            getRemoteSurfaceView()?.let { track.addSink(it) }
+        }
+    }
+    override fun onRemoveStream(s: MediaStream?) {}
+    override fun onDataChannel(d: DataChannel?) {}
+    override fun onRenegotiationNeeded() {}
+    override fun onAddTrack(r: RtpReceiver?, streams: Array<out MediaStream>?) {
+        r?.track()?.let { track ->
+            if (track is VideoTrack) {
+                setRemoteVideoTrack(track)
+                getRemoteSurfaceView()?.let { track.addSink(it) }
+            }
+        }
+    }
+}
+
 fun getVideoCapturer(context: Context): VideoCapturer? = try {
     val e2 = Camera2Enumerator(context)
     e2.deviceNames.firstOrNull { e2.isFrontFacing(it) }?.let { e2.createCapturer(it, null) }
