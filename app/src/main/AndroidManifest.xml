@@ -1032,6 +1032,15 @@
     <!-- RasGram — Daily archive Worker (WorkManager)
          Automatically archives old messages to Google Drive every 24 hours.
          No exported needed — only WorkManager triggers this. -->
+    <!-- FIX: WorkManager setForeground()/setForegroundAsync() → dataSync type required.
+         Lint rule: SpecifyForegroundServiceType (androidx.work).
+         Without this, lintVitalFullRelease fails with:
+         "Missing dataSync foregroundServiceType in AndroidManifest.xml" -->
+    <service
+        android:name="androidx.work.impl.foreground.SystemForegroundService"
+        android:foregroundServiceType="dataSync"
+        tools:node="merge" />
+
     <provider
         android:name="androidx.startup.InitializationProvider"
         android:authorities="${applicationId}.androidx-startup"
