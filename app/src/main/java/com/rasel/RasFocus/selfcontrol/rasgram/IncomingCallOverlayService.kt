@@ -144,6 +144,11 @@ class IncomingCallOverlayService : Service(),
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var activeListenerRegistration: ListenerRegistration? = null
 
+    // ── Ring/Vibrate: Service field হিসেবে রাখা — onDestroy এ reliable cleanup ──
+    // Compose DisposableEffect এ local রাখলে, service kill হলে onDispose fire না-ও হতে পারে।
+    @Volatile var serviceRingtone: android.media.Ringtone? = null
+    @Volatile var serviceVibrator: Vibrator? = null
+
     // Missed call notification এর জন্য caller info store করা হয়
     private var savedCallerName:   String = ""
     private var savedCallerMobile: String = ""
@@ -667,8 +672,12 @@ class IncomingCallOverlayService : Service(),
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         viewModelStore.clear()
-        // v5/v6: AudioManager.MODE_NORMAL এখানে set করা হয় না।
-        // IncomingCallScreen বা overlay DisposableEffect নিজেই করবে।
+        // FIX: Ring/Vibrate service-level cleanup — race condition fix।
+        // Compose DisposableEffect এর onDispose reliable নয় যদি service kill হয়
+        // আর overlay removeView এর আগেই onDestroy fire হয় (OEM / Android 12+ task killer)।
+        // Service field এ store করা থাকলে এখানে guarantee করে stop/cancel করা যায়।
+        try { serviceRingtone?.stop(); serviceRingtone = null } catch (_: Exception) {}
+        try { serviceVibrator?.cancel(); serviceVibrator = null } catch (_: Exception) {}
         try { wakeLock?.release() } catch (_: Exception) {}
         try { overlayView?.let { windowManager?.removeView(it) } } catch (_: Exception) {}
         serviceScope.cancel()
@@ -724,6 +733,10 @@ private fun CallOverlayCard(
                 vibrator.vibrate(callPattern, 0)
             }
 
+            // FIX: service field এ mirror করো — onDestroy এ race condition এড়াতে।
+            // context এখানে IncomingCallOverlayService (ComposeView এর context)।
+            (context as? IncomingCallOverlayService)?.serviceVibrator = vibrator
+
             // ── Ring: শুধু RINGER_MODE_NORMAL এ ─────────────────────────
             // v6 FIX: AudioManager.MODE_RINGTONE set করা হচ্ছে না।
             // MODE_RINGTONE Bluetooth/speaker routing এর জন্য, ringtone বাজানোর জন্য না।
@@ -737,6 +750,8 @@ private fun CallOverlayCard(
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) rt.isLooping = true
                     rt.play()
                     ringtoneRef.value = rt
+                    // FIX: service field এ mirror করো
+                    (context as? IncomingCallOverlayService)?.serviceRingtone = rt
                 }
             }
             // RINGER_MODE_VIBRATE বা RINGER_MODE_SILENT: শুধু vibrate (ring নেই)।
@@ -750,9 +765,11 @@ private fun CallOverlayCard(
             try {
                 ringtoneRef.value?.stop()
                 ringtoneRef.value = null
+                (context as? IncomingCallOverlayService)?.serviceRingtone = null
                 // AudioManager mode: overlay path এ MODE_RINGTONE set করা হয়নি,
                 // তাই MODE_NORMAL reset ও দরকার নেই।
                 vibrator.cancel()
+                (context as? IncomingCallOverlayService)?.serviceVibrator = null
             } catch (_: Exception) {}
         }
     }

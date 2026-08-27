@@ -940,6 +940,7 @@
          directBootAware="true": lock screen এ Activity launch হয় — phone reboot
          এর পরেও PIN/pattern enter করার আগেই incoming call screen দেখা যাবে।
          showWhenLocked + turnScreenOn: screen off থাকলেও Activity screen এর উপরে আসে।
+         showOnLockScreen: Android 10 (API 29) fallback — showWhenLocked কাজ না করলে।
          LAUNCHER category: Home screen এ আলাদা app icon হিসেবে দেখায়। -->
     <activity
         android:name=".selfcontrol.rasgram.RasGramActivity"
@@ -950,6 +951,7 @@
         android:roundIcon="@mipmap/ic_rasgram_launcher"
         android:theme="@style/Theme.RasFocus"
         android:windowSoftInputMode="adjustResize"
+        android:showOnLockScreen="true"
         android:showWhenLocked="true"
         android:turnScreenOn="true"
         android:directBootAware="true"
