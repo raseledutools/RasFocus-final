@@ -1,0 +1,1058 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+<uses-permission android:name="android.permission.INTERNET" />
+<uses-permission android:name="android.permission.WAKE_LOCK" />
+<uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+<uses-permission android:name="android.permission.TURN_SCREEN_ON" />
+<uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
+<!-- FIX: Android 14+ (API 34) এ foregroundServiceType="phoneCall" এর জন্য
+     MANAGE_OWN_CALLS required। না থাকলে startForeground() এ SecurityException
+     throw হয় → IncomingCallOverlayService crash → call notification আসে না। -->
+<uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
+<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+<uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+<uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+<uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
+<uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission" />
+
+<!-- Location: requested at runtime in ChildModule, not needed at install -->
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+<!-- NOTE: CAMERA, READ_MEDIA_IMAGES, READ_MEDIA_VIDEO removed — not used in codebase -->
+
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+<!-- FIX: required on Android 12+ (API 31) for AlarmManager.setExact/setExactAndAllowWhileIdle
+     used by the Pomodoro alarm scheduler in ButtonPhone.kt — without this, scheduling threw
+     SecurityException and crashed the app on every Android 12-16 device. -->
+<uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+<!-- FIX: USE_EXACT_ALARM is system-granted and cannot be revoked by the user (unlike
+     SCHEDULE_EXACT_ALARM which users can turn off in Settings). Required on targetSdk 33+
+     so that setExactAndAllowWhileIdle() always fires the Reminder alarm on time.
+     Both permissions declared so the OS picks the right one per API level. -->
+<uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
+<!-- FIX: Removed CAMERA, READ_MEDIA_IMAGES, READ_MEDIA_VIDEO, READ/WRITE_EXTERNAL_STORAGE
+     — none of these are used in the current codebase. Re-add only if a feature actually
+     needs them, with runtime permission requests at the point of use. -->
+
+<uses-permission android:name="android.permission.BIND_ACCESSIBILITY_SERVICE" />
+<uses-permission android:name="android.permission.BIND_VPN_SERVICE" />
+<uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" />
+<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+<uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+<uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+
+<!-- RasBrowser (FamilyBrowser) required permissions -->
+<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
+<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+<uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+<uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+<uses-permission android:name="android.permission.READ_MEDIA_DOCUMENTS" />
+<uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
+<uses-permission android:name="android.permission.VIBRATE" />
+<uses-permission android:name="android.permission.CAMERA" />
+<uses-permission android:name="android.permission.RECORD_AUDIO" />
+<uses-permission android:name="android.permission.PICTURE_IN_PICTURE" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+
+<!-- STREAMING_CHUNK:Defining application components... -->
+<application
+    android:name=".RasFocusApplication"
+    android:allowBackup="true"
+    android:icon="@mipmap/ic_launcher"
+    android:label="RasFocus+"
+    android:roundIcon="@mipmap/ic_launcher_round"
+    android:supportsRtl="true"
+    android:requestLegacyExternalStorage="true"
+    android:theme="@style/Theme.RasFocus">
+
+    <receiver
+        android:name=".features.MyDeviceAdminReceiver"
+        android:label="@string/admin_label"
+        android:description="@string/admin_description"
+        android:permission="android.permission.BIND_DEVICE_ADMIN"
+        android:exported="true">
+        <meta-data
+            android:name="android.app.device_admin"
+            android:resource="@xml/device_admin" />
+        <intent-filter>
+            <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+        </intent-filter>
+    </receiver>
+
+    <receiver
+        android:name=".features.BootReceiver"
+        android:exported="true">
+        <intent-filter>
+            <action android:name="android.intent.action.BOOT_COMPLETED" />
+            <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+            <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+        </intent-filter>
+    </receiver>
+
+    <!-- STREAMING_CHUNK:Registering activities and services... -->
+    <activity
+        android:name=".MainActivity"
+        android:exported="true"
+        android:launchMode="singleTask"
+        android:windowSoftInputMode="adjustResize"
+        android:theme="@style/Theme.RasFocus">
+        <intent-filter>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent-filter>
+
+        <!-- ✅ Home screen static shortcut — PDF Viewer -->
+        <meta-data
+            android:name="android.app.shortcuts"
+            android:resource="@xml/shortcuts" />
+    </activity>
+
+    <!-- ════════════════════════════════════════════════════════════════════
+         ✅ RasFocus Universal Viewer — ONE "Open with" entry for ALL types
+         Handles: PDF · DOCX · PPTX · XLSX/XLS · JPG/PNG/WEBP · TXT/MD/code
+         Android shows "RasFocus" exactly ONCE in the picker regardless of
+         file type. UniversalViewerActivity detects type and dispatches.
+         ════════════════════════════════════════════════════════════════════ -->
+    <activity
+        android:name=".selfcontrol.study_tools.UniversalViewerActivity"
+        android:label="RasFocus"
+        android:exported="true"
+        android:launchMode="singleTop"
+        android:hardwareAccelerated="true"
+        android:theme="@style/Theme.RasFocus"
+        android:configChanges="orientation|screenSize|keyboardHidden">
+
+        <!-- PDF -->
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="content" android:mimeType="application/pdf" />
+        </intent-filter>
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="file" android:mimeType="application/pdf" />
+        </intent-filter>
+
+        <!-- DOCX / DOC -->
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="content"
+                android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+        </intent-filter>
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="application/msword" />
+        </intent-filter>
+
+        <!-- PPTX / PPT -->
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="content"
+                android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
+        </intent-filter>
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="application/vnd.ms-powerpoint" />
+        </intent-filter>
+
+        <!-- XLSX / XLS -->
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="content"
+                android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+        </intent-filter>
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="application/vnd.ms-excel" />
+        </intent-filter>
+
+        <!-- Images — content:// scheme (modern file managers) -->
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="content" android:mimeType="image/jpeg" />
+        </intent-filter>
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="image/png" />
+        </intent-filter>
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="image/webp" />
+        </intent-filter>
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="image/gif" />
+        </intent-filter>
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="image/bmp" />
+        </intent-filter>
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="image/heic" />
+        </intent-filter>
+        <!-- Images — file:// scheme (older/third-party file managers) -->
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="file" android:mimeType="image/jpeg" />
+        </intent-filter>
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="file" android:mimeType="image/png" />
+        </intent-filter>
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="file" android:mimeType="image/webp" />
+        </intent-filter>
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="file" android:mimeType="image/gif" />
+        </intent-filter>
+        <!-- image/* wildcard — catches heic/bmp/tiff and file managers
+             that send a generic image MIME instead of a specific subtype -->
+        <intent-filter android:priority="90">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="image/*" />
+        </intent-filter>
+        <intent-filter android:priority="90">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="file" android:mimeType="image/*" />
+        </intent-filter>
+
+        <!-- Text / Markdown / Code -->
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="content" android:mimeType="text/plain" />
+        </intent-filter>
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="file" android:mimeType="text/plain" />
+        </intent-filter>
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="text/markdown" />
+        </intent-filter>
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="text/x-kotlin" />
+        </intent-filter>
+
+        <!-- Extension-based fallbacks for file managers that send */* -->
+        <intent-filter android:priority="90">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="*/*"
+                android:pathPattern=".*\\.pdf" />
+        </intent-filter>
+        <intent-filter android:priority="90">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="*/*"
+                android:pathPattern=".*\\.docx" />
+        </intent-filter>
+        <intent-filter android:priority="90">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="*/*"
+                android:pathPattern=".*\\.pptx" />
+        </intent-filter>
+        <intent-filter android:priority="90">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="*/*"
+                android:pathPattern=".*\\.xlsx" />
+        </intent-filter>
+        <intent-filter android:priority="90">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="*/*"
+                android:pathPattern=".*\\.xls" />
+        </intent-filter>
+        <intent-filter android:priority="90">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="*/*"
+                android:pathPattern=".*\\.md" />
+        </intent-filter>
+        <intent-filter android:priority="90">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="*/*"
+                android:pathPattern=".*\\.kt" />
+        </intent-filter>
+    </activity>
+
+    <!-- Internal-only activities (no intent-filters = not shown in picker) -->
+    <!-- FIX: singleTask+taskAffinity="" caused crash when launched from
+         UniversalViewerActivity (also singleTask) — Android tried to route
+         to the task root but the content URI grant didn't transfer, causing
+         SecurityException / instant crash. singleTop is correct: one instance
+         per task, reuses via onNewIntent when the same PDF is reopened. -->
+    <activity
+        android:name=".selfcontrol.study_tools.PdfViewerActivity"
+        android:label="RasFocus PDF"
+        android:exported="false"
+        android:launchMode="singleTop"
+        android:hardwareAccelerated="true"
+        android:theme="@style/Theme.RasFocus"
+        android:configChanges="orientation|screenSize|keyboardHidden" />
+
+    <activity
+        android:name=".selfcontrol.study_tools.PptxViewerActivity"
+        android:label="RasFocus Presentation"
+        android:exported="false"
+        android:launchMode="singleTop"
+        android:hardwareAccelerated="true"
+        android:theme="@style/Theme.RasFocus"
+        android:configChanges="orientation|screenSize|keyboardHidden" />
+
+    <activity
+        android:name=".selfcontrol.study_tools.DocxViewerActivity"
+        android:label="RasFocus Document"
+        android:exported="false"
+        android:launchMode="singleTop"
+        android:hardwareAccelerated="true"
+        android:theme="@style/Theme.RasFocus"
+        android:configChanges="orientation|screenSize|keyboardHidden" />
+
+    <activity
+        android:name=".selfcontrol.study_tools.XlsxViewerActivity"
+        android:label="RasFocus Spreadsheet"
+        android:exported="false"
+        android:launchMode="singleTop"
+        android:hardwareAccelerated="true"
+        android:theme="@style/Theme.RasFocus"
+        android:configChanges="orientation|screenSize|keyboardHidden" />
+
+    <activity
+        android:name=".selfcontrol.study_tools.TextViewerActivity"
+        android:label="RasFocus Text"
+        android:exported="false"
+        android:launchMode="singleTop"
+        android:hardwareAccelerated="true"
+        android:theme="@style/Theme.RasFocus"
+        android:configChanges="orientation|screenSize|keyboardHidden" />
+
+    <activity
+        android:name=".selfcontrol.study_tools.ImageViewerActivity"
+        android:label="RasFocus Image"
+        android:exported="false"
+        android:launchMode="singleTop"
+        android:hardwareAccelerated="true"
+        android:theme="@style/Theme.RasFocus"
+        android:configChanges="orientation|screenSize|keyboardHidden" />
+
+    <!-- Combo module viewers — internal only -->
+    <activity
+        android:name=".combo.selfcontrol.study_tools.PdfViewerActivity"
+        android:label="RasFocus PDF"
+        android:exported="false"
+        android:launchMode="singleTop"
+        android:hardwareAccelerated="true"
+        android:theme="@style/Theme.RasFocus"
+        android:configChanges="orientation|screenSize|keyboardHidden" />
+    <activity
+        android:name=".combo.selfcontrol.study_tools.PptxViewerActivity"
+        android:label="RasFocus Presentation"
+        android:exported="false"
+        android:launchMode="singleTop"
+        android:hardwareAccelerated="true"
+        android:theme="@style/Theme.RasFocus"
+        android:configChanges="orientation|screenSize|keyboardHidden" />
+    <activity
+        android:name=".combo.selfcontrol.study_tools.DocxViewerActivity"
+        android:label="RasFocus Document"
+        android:exported="false"
+        android:launchMode="singleTop"
+        android:hardwareAccelerated="true"
+        android:theme="@style/Theme.RasFocus"
+        android:configChanges="orientation|screenSize|keyboardHidden" />
+    <activity
+        android:name=".combo.selfcontrol.study_tools.XlsxViewerActivity"
+        android:label="RasFocus Spreadsheet"
+        android:exported="false"
+        android:launchMode="singleTop"
+        android:hardwareAccelerated="true"
+        android:theme="@style/Theme.RasFocus"
+        android:configChanges="orientation|screenSize|keyboardHidden" />
+
+    <!-- ✅ Credential Manager — Google Sign-In এর জন্য required -->
+    <activity
+        android:name="com.google.android.gms.auth.api.signin.internal.SignInHubActivity"
+        android:excludeFromRecents="true"
+        android:exported="false"
+        android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+    <service
+        android:name="androidx.credentials.playservices.HintRequest"
+        android:exported="false" />
+
+    <service
+        android:name=".child.ScreenCaptureService"
+        android:exported="false"
+        android:foregroundServiceType="mediaProjection" />
+
+    <service
+        android:name=".child.LocationTracker"
+        android:exported="false"
+        android:foregroundServiceType="location" />
+
+    <service
+        android:name=".child.FirebaseCommandListener"
+        android:exported="false"
+        android:foregroundServiceType="specialUse">
+        <property
+            android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+            android:value="RasFocus command listener for parental control" />
+    </service>
+
+    <!-- App Usage Sync Service — child ফোনের per-app usage Firebase এ push করে -->
+    <service
+        android:name=".child.AppUsageSyncService"
+        android:exported="false"
+        android:foregroundServiceType="specialUse">
+        <property
+            android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+            android:value="RasFocus app usage tracking for parental monitoring" />
+    </service>
+
+    <!-- Bedtime Schedule Receivers -->
+    <receiver android:name=".child.BedtimeReceiver" android:exported="false">
+        <intent-filter>
+            <action android:name="com.rasel.RasFocus.BEDTIME_LOCK" />
+            <action android:name="com.rasel.RasFocus.BEDTIME_UNLOCK" />
+        </intent-filter>
+    </receiver>
+
+    <provider
+        android:name="androidx.core.content.FileProvider"
+        android:authorities="${applicationId}.fileprovider"
+        android:exported="false"
+        android:grantUriPermissions="true">
+        <meta-data
+            android:name="android.support.FILE_PROVIDER_PATHS"
+            android:resource="@xml/file_paths" />
+    </provider>
+
+    <!-- STREAMING_CHUNK:Adding background services... -->
+    <!-- FIX: .selfcontrol.BlockerVpnService had no backing class. It was exported=true with
+         an android.net.VpnService intent-filter, so Android surfaced "RasFocus" as a
+         selectable VPN in system Network settings — selecting it (or any external bind
+         attempt) threw ClassNotFoundException. Removed until a real VpnService is built. -->
+    <service
+        android:name=".selfcontrol.BlockerForegroundService"
+        android:foregroundServiceType="specialUse"
+        android:exported="false">
+        <property
+            android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+            android:value="RasFocus app blocker service" />
+    </service>
+
+    <service
+        android:name=".selfcontrol.BpAppBlockerService"
+        android:foregroundServiceType="specialUse"
+        android:exported="false">
+        <property
+            android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+            android:value="RasFocus focus lock service" />
+    </service>
+
+    <service
+        android:name=".selfcontrol.AppBlockerService"
+        android:foregroundServiceType="specialUse"
+        android:exported="false">
+        <property
+            android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+            android:value="RasFocus reels blocker service" />
+    </service>
+
+    <!-- FIX: .selfcontrol.SingleAppsBootReceiver had no backing class — removed
+         (see note near PomodoroAlarmReceiver above; same boot-crash issue). -->
+
+    <activity
+        android:name=".selfcontrol.BlockedActivity"
+        android:exported="false"
+        android:theme="@style/Theme.RasFocus" />
+
+    <!-- BlockingProfile in-app WebView (Chrome allowed na hole) -->
+    <activity
+        android:name=".selfcontrol.BpWebViewActivity"
+        android:exported="false"
+        android:theme="@style/Theme.RasFocus"
+        android:configChanges="orientation|screenSize|keyboardHidden" />
+
+    <!-- ✅ RasBrowser Quick Settings Tile — Quick panel থেকে সরাসরি browser খোলা -->
+    <service
+        android:name=".selfcontrol.familybrowser.RasBrowserTileService"
+        android:exported="true"
+        android:icon="@drawable/ic_splash"
+        android:label="RasBrowser"
+        android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+        <intent-filter>
+            <action android:name="android.service.quicksettings.action.QS_TILE" />
+        </intent-filter>
+    </service>
+
+    <!-- STREAMING_CHUNK:Setting up Family Browser activities... -->
+    <!-- ✅ RasBrowser (FamilyBrowser) — Safe browser built into SelfControl module -->
+    <activity
+        android:name=".selfcontrol.familybrowser.FamilyBrowserActivity"
+        android:exported="false"
+        android:theme="@style/Theme.RasFocus"
+        android:hardwareAccelerated="true"
+        android:launchMode="singleTask"
+        android:taskAffinity="${applicationId}.browser"
+        android:supportsPictureInPicture="true"
+        android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize"
+        android:windowSoftInputMode="adjustResize">
+        <intent-filter>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="http" />
+            <data android:scheme="https" />
+        </intent-filter>
+    </activity>
+
+    <!-- ✅ YouTube Native Activity — browser UI ছাড়া fullscreen YouTube -->
+    <activity
+        android:name=".selfcontrol.familybrowser.YoutubeActivity"
+        android:exported="false"
+        android:theme="@style/Theme.RasFocus"
+        android:hardwareAccelerated="true"
+        android:launchMode="singleTask"
+        android:taskAffinity="${applicationId}.youtube"
+        android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize"
+        android:windowSoftInputMode="adjustResize" />
+
+    <!-- ✅ Facebook Native Activity — browser UI ছাড়া fullscreen Facebook -->
+    <activity
+        android:name=".selfcontrol.familybrowser.FacebookActivity"
+        android:exported="false"
+        android:theme="@style/Theme.RasFocus.Facebook"
+        android:hardwareAccelerated="true"
+        android:launchMode="singleTask"
+        android:taskAffinity="${applicationId}.facebook"
+        android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize"
+        android:windowSoftInputMode="adjustResize" />
+
+    <!-- ✅ RasBrowser background audio service -->
+    <service
+        android:name=".selfcontrol.familybrowser.service.BackgroundAudioService"
+        android:exported="false"
+        android:foregroundServiceType="mediaPlayback" />
+
+    <!-- ✅ RasBrowser floating window service -->
+    <service
+        android:name=".selfcontrol.familybrowser.service.FloatingWindowService"
+        android:exported="false"
+        android:foregroundServiceType="specialUse">
+        <property
+            android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+            android:value="RasBrowser floating tab window" />
+    </service>
+
+    <!-- ✅ YouTube Floating Window Service — native YouTube UI + minimize/drag/resize -->
+    <service
+        android:name=".selfcontrol.familybrowser.service.YoutubeFloatingWindowService"
+        android:exported="false"
+        android:foregroundServiceType="mediaPlayback">
+    </service>
+
+    <!-- ✅ Facebook Floating Window Service — chat-head bubble + minimize/drag/resize -->
+    <service
+        android:name=".selfcontrol.familybrowser.service.FacebookFloatingWindowService"
+        android:exported="false"
+        android:foregroundServiceType="specialUse">
+        <property
+            android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+            android:value="RasFocus Facebook floating bubble" />
+    </service>
+
+    <service
+        android:name=".UsageNotificationService"
+        android:foregroundServiceType="specialUse"
+        android:exported="false">
+        <property
+            android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+            android:value="RasFocus usage stats notification service" />
+    </service>
+
+    <!-- STREAMING_CHUNK:Adding specific app blockers and receivers... -->
+    <!-- FIX: .selfcontrol.ButtonPhoneBootReceiver and .selfcontrol.SingleAppsBootReceiver
+         classes did not exist anywhere in the codebase. BOOT_COMPLETED is broadcast by the
+         OS itself on every device boot, so this threw ClassNotFoundException and crashed
+         the app immediately after every reboot on Android 11 through 16. Removed. -->
+
+    <!-- ✅ Pomodoro Alarm Receiver (StayFocus NotificationReceiver equivalent) -->
+    <receiver
+        android:name=".selfcontrol.PomodoroAlarmReceiver"
+        android:exported="false">
+        <intent-filter>
+            <action android:name="com.rasel.RasFocus.POMODORO_ALARM" />
+        </intent-filter>
+    </receiver>
+
+    <!-- ✅ Reminder Alarm Receiver (study_tools/reminder.kt) -->
+    <receiver
+        android:name=".selfcontrol.study_tools.ReminderAlarmReceiver"
+        android:exported="false">
+        <intent-filter>
+            <action android:name="com.rasel.RasFocus.REMINDER_ALARM" />
+        </intent-filter>
+    </receiver>
+
+    <!-- ✅ Stop Ringtone Receiver — stops MediaPlayer alarm on notification action tap -->
+    <receiver
+        android:name=".selfcontrol.study_tools.StopRingtoneReceiver"
+        android:exported="false" />
+
+    <!-- ✅ Snooze Reminder Receiver — reschedules alarm 5 min later from notification -->
+    <receiver
+        android:name=".selfcontrol.study_tools.SnoozeReminderReceiver"
+        android:exported="false" />
+
+    <!-- ✅ Full-screen Alarm Popup Activity (shown over lock screen when alarm fires) -->
+    <activity
+        android:name=".selfcontrol.study_tools.ReminderAlarmActivity"
+        android:exported="false"
+        android:showOnLockScreen="true"
+        android:turnScreenOn="true"
+        android:showWhenLocked="true"
+        android:theme="@style/Theme.AppCompat.NoActionBar"
+        android:launchMode="singleTop"
+        android:excludeFromRecents="true" />
+
+    <!-- ✅ Quick Reminder Dialog Activity — opened from QS tile or shortcut -->
+    <activity
+        android:name=".selfcontrol.study_tools.QuickReminderActivity"
+        android:exported="true"
+        android:theme="@style/Theme.AppCompat.Translucent"
+        android:launchMode="singleTop"
+        android:excludeFromRecents="true">
+        <intent-filter>
+            <action android:name="com.rasel.RasFocus.QUICK_REMINDER" />
+            <category android:name="android.intent.category.DEFAULT" />
+        </intent-filter>
+    </activity>
+
+    <!-- ✅ Quick Settings Tile Service (notification shade quick action) — Android 7.0+ -->
+    <service
+        android:name=".selfcontrol.study_tools.QuickReminderTileService"
+        android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+        android:exported="true"
+        android:icon="@drawable/ic_launcher_foreground"
+        android:label="Quick Reminder">
+        <intent-filter>
+            <action android:name="android.service.quicksettings.action.QS_TILE" />
+        </intent-filter>
+        <meta-data
+            android:name="android.service.quicksettings.ACTIVE_TILE"
+            android:value="false" />
+    </service>
+
+    <!-- ✅ Unified Blocker Service (UnifiedBlockerService.kt) — adult, website, reels, shorts, app block -->
+    <!-- FIX: foregroundServiceType added — without it, onServiceConnected()'s startForeground()
+         call throws MissingForegroundServiceTypeException on Android 14+ the moment the user
+         enables this Accessibility Service, crashing the whole app process (since this service
+         runs in the main process, that crash takes Button Phone Mode / YouTube native / RasBrowser
+         down with it). -->
+    <service
+        android:name=".selfcontrol.UnifiedBlockerService"
+        android:label="RasFocus Protection"
+        android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+        android:foregroundServiceType="specialUse"
+        android:exported="true">
+        <intent-filter>
+            <action android:name="android.accessibilityservice.AccessibilityService" />
+        </intent-filter>
+        <meta-data
+            android:name="android.accessibilityservice"
+            android:resource="@xml/accessibility_unified_config" />
+        <property
+            android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+            android:value="RasFocus accessibility-based content blocker (adult/website/reels/app block)" />
+    </service>
+
+    <!-- ✅ Extreme Block Settings Activity -->
+    <activity
+        android:name=".selfcontrol.RasFocusSettingsActivity"
+        android:exported="true"
+        android:theme="@style/Theme.RasFocus" />
+
+    <!-- ✅ Take Rest Module (take_rest.kt) -->
+    <activity
+        android:name=".selfcontrol.TakeRestActivity"
+        android:exported="false"
+        android:theme="@style/Theme.RasFocus"
+        android:launchMode="singleTop" />
+
+    <activity android:name=".selfcontrol.StudyToolsActivity" />
+
+    <!-- ✅ Study Tools — PDF Tools, AI Section, Diary & Tasks -->
+    <activity
+        android:name=".studytools.StudyToolsActivity"
+        android:exported="false"
+        android:theme="@style/Theme.RasFocus"
+        android:launchMode="singleTop"
+        android:hardwareAccelerated="true"
+        android:windowSoftInputMode="adjustResize" />
+
+    <!-- FIX: was foregroundServiceType="dataSync" — the required
+         FOREGROUND_SERVICE_DATA_SYNC permission was never declared, so
+         startForeground() in onStartCommand() threw a SecurityException the
+         instant Button Phone Mode started (before showOverlay() ever got a
+         chance to run), crashing the app instead of showing the overlay.
+         Switched to "specialUse" — the permission for that type is already
+         declared above, and it's the same fix already applied to
+         UnifiedBlockerService for the identical problem. -->
+    <service
+        android:name=".selfcontrol.BpBlockingService"
+        android:exported="false"
+        android:foregroundServiceType="specialUse">
+        <property
+            android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+            android:value="RasFocus Button Phone Mode — focus-session app blocking overlay" />
+    </service>
+
+    <!-- New: Deep Study's allow-list enforcement service. Same
+         foregroundServiceType pattern as BpBlockingService above —
+         "specialUse" (permission already declared elsewhere in this
+         manifest) rather than any type needing a permission that isn't
+         present, to avoid the same startForeground() SecurityException
+         crash that was already found and fixed for BpBlockingService. -->
+    <service
+        android:name=".selfcontrol.DeepStudyBlockerService"
+        android:exported="false"
+        android:foregroundServiceType="specialUse">
+        <property
+            android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+            android:value="RasFocus Deep Study — allow-list app blocking during focus sessions" />
+    </service>
+
+    <!-- STREAMING_CHUNK:Finalizing receivers and child modules... -->
+
+    <!-- ✅ Child Module: Firebase command listener service -->
+    <service
+        android:name=".child.ChildFirebaseService"
+        android:foregroundServiceType="specialUse"
+        android:exported="false">
+        <property
+            android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+            android:value="RasFocus child device Firebase listener" />
+    </service>
+
+    <!-- ✅ Child Module: Notification interceptor -->
+    <service
+        android:name=".child.RasNotificationInterceptor"
+        android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+        android:exported="true">
+        <intent-filter>
+            <action android:name="android.service.notification.NotificationListenerService" />
+        </intent-filter>
+    </service>
+
+    <!-- ✅ Child Module: Boot survival receiver -->
+    <receiver
+        android:name=".child.BootSurvivalReceiver"
+        android:exported="true">
+        <intent-filter>
+            <action android:name="android.intent.action.BOOT_COMPLETED" />
+        </intent-filter>
+    </receiver>
+    
+    <!-- ✅ Child Module: Package addition receiver -->
+    <receiver
+        android:name=".child.PackageReceiver"
+        android:exported="true">
+        <intent-filter>
+            <action android:name="android.intent.action.PACKAGE_ADDED" />
+            <data android:scheme="package" />
+        </intent-filter>
+    </receiver>
+
+    <!-- ✅ Child Module: RasDeviceAdminReceiver -->
+    <receiver
+        android:name=".child.RasDeviceAdminReceiver"
+        android:permission="android.permission.BIND_DEVICE_ADMIN"
+        android:exported="true">
+        <meta-data
+            android:name="android.app.device_admin"
+            android:resource="@xml/device_admin" />
+        <intent-filter>
+            <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+        </intent-filter>
+    </receiver>
+
+    <!-- ✅ Child Module: parent-controlled app blocker (Accessibility Service).
+         Scoped ONLY to enforcing the parent's blocked-app list — separate from
+         .selfcontrol.UnifiedBlockerService, which handles the self-control
+         features. Uses the existing accessibility_appblocker_config.xml. -->
+    <service
+        android:name=".child.ChildAppBlockerService"
+        android:label="RasFocus Child Protection"
+        android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+        android:foregroundServiceType="specialUse"
+        android:exported="true">
+        <intent-filter>
+            <action android:name="android.accessibilityservice.AccessibilityService" />
+        </intent-filter>
+        <meta-data
+            android:name="android.accessibilityservice"
+            android:resource="@xml/accessibility_appblocker_config" />
+        <property
+            android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+            android:value="RasFocus parent-controlled app blocker for child device" />
+    </service>
+
+    <!-- ✅ ServiceRestartReceiver (extrem_block.kt) — service kill হলে restart করে -->
+    <receiver
+        android:name=".selfcontrol.ServiceRestartReceiver"
+        android:exported="false">
+        <intent-filter>
+            <action android:name="com.rasel.RasFocus.RESTART_SERVICE" />
+        </intent-filter>
+    </receiver>
+
+    <!-- Auto-update install receiver: handles notification tap safely with permission check -->
+    <receiver
+        android:name=".InstallUpdateReceiver"
+        android:exported="false">
+        <intent-filter>
+            <action android:name="com.rasel.RasFocus.ACTION_INSTALL_UPDATE" />
+        </intent-filter>
+    </receiver>
+        <activity
+            android:name=".drivebackup.DriveFileManagerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.RasFocus" />
+        <activity
+            android:name=".filemanager.FileManagerPlusActivity"
+            android:exported="true"
+            android:theme="@style/Theme.RasFocus.FileManager"
+            android:launchMode="singleTop"
+            android:hardwareAccelerated="true">
+            <!-- Non-PDF files (PDF goes directly to FMPdfViewerActivity) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+        <service
+            android:name=".filemanager.FileOperationService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <activity
+            android:name=".filemanager.FMPdfViewerActivity"
+            android:exported="true"
+            android:hardwareAccelerated="true"
+            android:theme="@style/Theme.RasFocus.FileManager"
+            android:launchMode="singleTop">
+            <!-- External "Open with" for PDF files -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" android:mimeType="application/pdf" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="file" android:mimeType="application/pdf" />
+            </intent-filter>
+        </activity>
+
+        <!-- PDF Layer 3: WebView (Google Docs viewer) -->
+        <activity
+            android:name=".filemanager.WebViewPdfActivity"
+            android:exported="false"
+            android:hardwareAccelerated="true"
+            android:theme="@style/Theme.RasFocus.FileManager" />
+
+    <!-- ✅ Minimalist Launcher — HOME intent handled here, not in MainActivity -->
+    <activity
+        android:name=".selfcontrol.launcher.LauncherActivity"
+        android:exported="true"
+        android:launchMode="singleTask"
+        android:theme="@style/Theme.RasFocus">
+        <intent-filter>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.HOME" />
+            <category android:name="android.intent.category.DEFAULT" />
+        </intent-filter>
+    </activity>
+
+
+    <!-- ✅ RasGram — WhatsApp-style messaging module
+         directBootAware="true": lock screen এ Activity launch হয় — phone reboot
+         এর পরেও PIN/pattern enter করার আগেই incoming call screen দেখা যাবে।
+         showWhenLocked + turnScreenOn: screen off থাকলেও Activity screen এর উপরে আসে।
+         LAUNCHER category: Home screen এ আলাদা app icon হিসেবে দেখায়। -->
+    <activity
+        android:name=".selfcontrol.rasgram.RasGramActivity"
+        android:exported="true"
+        android:launchMode="singleTop"
+        android:label="RasGram"
+        android:icon="@mipmap/ic_rasgram_launcher"
+        android:roundIcon="@mipmap/ic_rasgram_launcher"
+        android:theme="@style/Theme.RasFocus"
+        android:windowSoftInputMode="adjustResize"
+        android:showWhenLocked="true"
+        android:turnScreenOn="true"
+        android:directBootAware="true"
+        android:configChanges="orientation|screenSize|keyboardHidden">
+        <!-- Home screen shortcut — RasGram appears as a standalone app -->
+        <intent-filter>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent-filter>
+    </activity>
+
+    <!-- RasGram — Decline incoming call broadcast
+         directBootAware="true": lock screen থেকে Decline button কাজ করে। -->
+    <receiver
+        android:name=".selfcontrol.rasgram.DeclineCallReceiver"
+        android:exported="false"
+        android:directBootAware="true" />
+
+    <!-- RasGram — Inline Reply receiver
+         Handles the "Reply" RemoteInput action from the notification shade.
+         exported="false": only our own PendingIntent can trigger this. -->
+    <receiver
+        android:name=".selfcontrol.rasgram.RasgramReplyReceiver"
+        android:exported="false" />
+
+    <!-- RasGram — Missed call "Call Back" button receiver
+         Triggered from missed call notification action button.
+         Launches RasGramActivity with ACTION_OUTGOING_CALL. -->
+    <receiver
+        android:name=".selfcontrol.rasgram.CallbackReceiver"
+        android:exported="false" />
+
+    <!-- RasGram FCM messaging service — exported=true required for FCM delivery.
+         directBootAware="true": phone reboot এর পর lock screen unlock করার আগেও
+         FCM message receive হবে — WhatsApp এর exact behavior।
+         Firebase SDK নিজেও directBootAware, তাই এটা match করা দরকার। -->
+    <service
+        android:name=".selfcontrol.rasgram.RasgramMessagingService"
+        android:exported="true"
+        android:directBootAware="true">
+        <intent-filter>
+            <action android:name="com.google.firebase.MESSAGING_EVENT" />
+        </intent-filter>
+    </service>
+
+    <!-- RasGram — WhatsApp-style incoming call overlay service
+         directBootAware="true": reboot এর পর lock screen এ overlay দেখাতে পারবে।
+         foregroundServiceType="phoneCall" required on Android 14+ (API 34+). -->
+    <service
+        android:name=".selfcontrol.rasgram.IncomingCallOverlayService"
+        android:exported="false"
+        android:directBootAware="true"
+        android:foregroundServiceType="phoneCall" />
+
+    <!-- RasGram — Online Presence Service
+         Data/WiFi চালু থাকলেই online দেখাবে, background এও।
+         foregroundServiceType="dataSync" — network-bound background work।
+         IMPORTANCE_MIN notification: কোনো sound/vibration নেই, সবার নিচে। -->
+    <service
+        android:name=".selfcontrol.rasgram.RasGramPresenceService"
+        android:exported="false"
+        android:foregroundServiceType="dataSync" />
+
+    <!-- RasGram Screen Share — Remote Input Accessibility Service
+         Allows remote peer to inject touch events during a screen share session.
+         User must manually enable in Settings > Accessibility > RasGram Remote Input. -->
+    <service
+        android:name=".selfcontrol.rasgram.RemoteInputAccessibilityService"
+        android:exported="true"
+        android:label="RasGram Remote Input"
+        android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+        <intent-filter>
+            <action android:name="android.accessibilityservice.AccessibilityService" />
+        </intent-filter>
+        <meta-data
+            android:name="android.accessibilityservice"
+            android:resource="@xml/remote_input_accessibility_service" />
+    </service>
+
+    <!-- RasGram — Daily archive Worker (WorkManager)
+         Automatically archives old messages to Google Drive every 24 hours.
+         No exported needed — only WorkManager triggers this. -->
+    <!-- FIX: WorkManager setForeground()/setForegroundAsync() → dataSync type required.
+         Lint rule: SpecifyForegroundServiceType (androidx.work).
+         Without this, lintVitalFullRelease fails with:
+         "Missing dataSync foregroundServiceType in AndroidManifest.xml" -->
+    <service
+        android:name="androidx.work.impl.foreground.SystemForegroundService"
+        android:foregroundServiceType="dataSync"
+        tools:node="merge" />
+
+    <provider
+        android:name="androidx.startup.InitializationProvider"
+        android:authorities="${applicationId}.androidx-startup"
+        android:exported="false"
+        tools:node="merge" >
+        <meta-data
+            android:name="androidx.work.WorkManagerInitializer"
+            android:value="androidx.startup" />
+    </provider>
+
+    </application>
+
+</manifest>
+
+

@@ -75,6 +75,7 @@ fun OverlayPermissionDialog(
     onAllow: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -91,7 +92,7 @@ fun OverlayPermissionDialog(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    "📞  Incoming Call Permission",
+                    "📞  Incoming Call Permissions",
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
@@ -99,8 +100,9 @@ fun OverlayPermissionDialog(
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    "To show incoming calls even when you're in another app or your screen is off " +
-                    "(like WhatsApp does), RasGram needs the \"Display over other apps\" permission.",
+                    "RasGram needs 2 permissions to show incoming calls on lock screen and when screen is off:\n\n" +
+                    "① Display over other apps — WhatsApp-style call screen\n" +
+                    "② Full-screen notifications — lock screen এ call দেখাতে (Android 14+)",
                     color = Color.White.copy(alpha = 0.75f),
                     fontSize = 14.sp,
                     textAlign = TextAlign.Center,
@@ -108,7 +110,23 @@ fun OverlayPermissionDialog(
                 )
                 Spacer(Modifier.height(20.dp))
                 Button(
-                    onClick = onAllow,
+                    onClick = {
+                        onAllow()
+                        // FIX: Android 14+ এ USE_FULL_SCREEN_INTENT ও request করো
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                            try {
+                                val nm = context.getSystemService(android.app.NotificationManager::class.java)
+                                if (!nm.canUseFullScreenIntent()) {
+                                    context.startActivity(
+                                        Intent(
+                                            android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                                            android.net.Uri.parse("package:${context.packageName}")
+                                        ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+                                    )
+                                }
+                            } catch (_: Exception) {}
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366))
@@ -125,7 +143,7 @@ fun OverlayPermissionDialog(
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Without this permission, calls will only appear as notifications.",
+                    "Without these permissions, calls will only appear as notifications.",
                     color = Color.White.copy(alpha = 0.4f),
                     fontSize = 11.sp,
                     textAlign = TextAlign.Center

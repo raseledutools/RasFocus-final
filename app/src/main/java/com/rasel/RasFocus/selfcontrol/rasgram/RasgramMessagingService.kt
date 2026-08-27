@@ -351,6 +351,9 @@ class RasgramMessagingService : FirebaseMessagingService() {
                 lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
                 enableLights(true)
                 lightColor           = Color.parseColor("#25D366")
+                // FIX: DND (Do Not Disturb) mode এ call notification আসে না।
+                // setBypassDnd(true) — CATEGORY_CALL থাকলেও explicit bypass দরকার।
+                setBypassDnd(true)
             }
         )
 

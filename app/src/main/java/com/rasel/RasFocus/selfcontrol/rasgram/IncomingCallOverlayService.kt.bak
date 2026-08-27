@@ -144,11 +144,6 @@ class IncomingCallOverlayService : Service(),
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var activeListenerRegistration: ListenerRegistration? = null
 
-    // ── Ring/Vibrate: Service field হিসেবে রাখা — onDestroy এ reliable cleanup ──
-    // Compose DisposableEffect এ local রাখলে, service kill হলে onDispose fire না-ও হতে পারে।
-    @Volatile var serviceRingtone: android.media.Ringtone? = null
-    @Volatile var serviceVibrator: Vibrator? = null
-
     // Missed call notification এর জন্য caller info store করা হয়
     private var savedCallerName:   String = ""
     private var savedCallerMobile: String = ""
@@ -311,25 +306,21 @@ class IncomingCallOverlayService : Service(),
             val ch = NotificationChannel(
                 OVERLAY_CHANNEL_ID,
                 "Incoming Call",
-                // FIX: IMPORTANCE_HIGH → IMPORTANCE_MAX।
-                // IMPORTANCE_HIGH: heads-up দেখায় কিন্তু কিছু OEM (Samsung/Xiaomi) এ
-                // lock screen এ full-screen show নাও করতে পারে।
-                // IMPORTANCE_MAX: guaranteed heads-up + full-screen intent trigger।
-                NotificationManager.IMPORTANCE_MAX
+                NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 // v6 FIX: sound null — Service নিজে Ringtone API দিয়ে ring করে।
                 // Channel sound চালু রাখলে notification আসার সময় OS আলাদা sound বাজায়
                 // → double ring / audio conflict। তাই null।
                 setSound(null, null)
                 // Vibration channel-level enable: OS এর নিজস্ব vibrate fallback কাজ করে।
+                // Service এর DisposableEffect ও vibrate করে — দুটো একসাথে overlap করে না
+                // কারণ channel vibrate শুধু notification arrive করার মুহূর্তে।
                 enableVibration(true)
                 vibrationPattern = longArrayOf(0, 800, 600)
                 setShowBadge(true)
                 lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
                 enableLights(true)
                 lightColor = android.graphics.Color.parseColor("#25D366")
-                // FIX: DND mode এ call notification bypass করো।
-                setBypassDnd(true)
             }
             nm.createNotificationChannel(ch)
         }
@@ -358,9 +349,7 @@ class IncomingCallOverlayService : Service(),
         val title = if (callType == "video") "📹 Incoming Video Call" else "📞 Incoming Voice Call"
 
         val notif = NotificationCompat.Builder(this, OVERLAY_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_rasgram_notif)
-            .setColor(android.graphics.Color.parseColor("#25D366"))
-            .setColorized(true)
+            .setSmallIcon(android.R.drawable.ic_menu_call)
             .setContentTitle(title)
             .setContentText("$callerName · $callerMobile")
             .setSubText("RasGram")
@@ -369,11 +358,12 @@ class IncomingCallOverlayService : Service(),
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .addAction(android.R.drawable.ic_menu_call, "✅ Answer",  answerPending)
-            .addAction(android.R.drawable.ic_delete,    "❌ Decline", declinePending)
+            .addAction(android.R.drawable.ic_menu_call, "Answer",  answerPending)
+            .addAction(android.R.drawable.ic_delete,    "Decline", declinePending)
             .setOngoing(true)
             .setShowWhen(true)
             .setAutoCancel(false)
+            // v6: Notification-level vibration (pre-O devices বা channel-level fallback)
             .setVibrate(longArrayOf(0, 800, 600))
             .build()
 
@@ -677,12 +667,8 @@ class IncomingCallOverlayService : Service(),
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         viewModelStore.clear()
-        // FIX: Ring/Vibrate service-level cleanup — race condition fix।
-        // Compose DisposableEffect এর onDispose reliable নয় যদি service kill হয়
-        // আর overlay removeView এর আগেই onDestroy fire হয় (OEM / Android 12+ task killer)।
-        // Service field এ store করা থাকলে এখানে guarantee করে stop/cancel করা যায়।
-        try { serviceRingtone?.stop(); serviceRingtone = null } catch (_: Exception) {}
-        try { serviceVibrator?.cancel(); serviceVibrator = null } catch (_: Exception) {}
+        // v5/v6: AudioManager.MODE_NORMAL এখানে set করা হয় না।
+        // IncomingCallScreen বা overlay DisposableEffect নিজেই করবে।
         try { wakeLock?.release() } catch (_: Exception) {}
         try { overlayView?.let { windowManager?.removeView(it) } } catch (_: Exception) {}
         serviceScope.cancel()
@@ -738,10 +724,6 @@ private fun CallOverlayCard(
                 vibrator.vibrate(callPattern, 0)
             }
 
-            // FIX: service field এ mirror করো — onDestroy এ race condition এড়াতে।
-            // context এখানে IncomingCallOverlayService (ComposeView এর context)।
-            (context as? IncomingCallOverlayService)?.serviceVibrator = vibrator
-
             // ── Ring: শুধু RINGER_MODE_NORMAL এ ─────────────────────────
             // v6 FIX: AudioManager.MODE_RINGTONE set করা হচ্ছে না।
             // MODE_RINGTONE Bluetooth/speaker routing এর জন্য, ringtone বাজানোর জন্য না।
@@ -755,8 +737,6 @@ private fun CallOverlayCard(
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) rt.isLooping = true
                     rt.play()
                     ringtoneRef.value = rt
-                    // FIX: service field এ mirror করো
-                    (context as? IncomingCallOverlayService)?.serviceRingtone = rt
                 }
             }
             // RINGER_MODE_VIBRATE বা RINGER_MODE_SILENT: শুধু vibrate (ring নেই)।
@@ -770,11 +750,9 @@ private fun CallOverlayCard(
             try {
                 ringtoneRef.value?.stop()
                 ringtoneRef.value = null
-                (context as? IncomingCallOverlayService)?.serviceRingtone = null
                 // AudioManager mode: overlay path এ MODE_RINGTONE set করা হয়নি,
                 // তাই MODE_NORMAL reset ও দরকার নেই।
                 vibrator.cancel()
-                (context as? IncomingCallOverlayService)?.serviceVibrator = null
             } catch (_: Exception) {}
         }
     }
