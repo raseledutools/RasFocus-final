@@ -1006,14 +1006,6 @@
         android:directBootAware="true"
         android:foregroundServiceType="phoneCall" />
 
-    <!-- RasGram — Online Presence Service
-         Data/WiFi চালু থাকলেই online দেখাবে, background এও।
-         foregroundServiceType="dataSync" — network-bound background work।
-         IMPORTANCE_MIN notification: কোনো sound/vibration নেই, সবার নিচে। -->
-    <service
-        android:name=".selfcontrol.rasgram.RasGramPresenceService"
-        android:exported="false"
-        android:foregroundServiceType="specialUse" />
 
     <!-- RasGram Screen Share — Remote Input Accessibility Service
          Allows remote peer to inject touch events during a screen share session.
