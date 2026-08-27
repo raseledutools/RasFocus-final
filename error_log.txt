@@ -13,26 +13,26 @@ e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/
 > Task :app:compileFullReleaseKotlin FAILED
 * What went wrong:
 Execution failed for task ':app:compileFullReleaseKotlin'.
-BUILD FAILED in 4m 2s
+BUILD FAILED in 3m 45s
 
 === LAST 60 LINES ===
 > Task :app:generateFullReleaseBuildConfig
-> Task :app:buildKotlinToolingMetadata
+> Task :app:extractDeepLinksFullRelease FROM-CACHE
 > Task :app:packageFullReleaseResources FROM-CACHE
 > Task :app:parseFullReleaseLocalResources FROM-CACHE
 > Task :app:mapFullReleaseSourceSetPaths
+> Task :app:checkFullReleaseAarMetadata
 > Task :app:mergeFullReleaseArtProfile
 > Task :app:validateSigningFullRelease
 > Task :app:writeFullReleaseAppMetadata
 > Task :app:writeFullReleaseSigningConfigVersions
 > Task :app:mergeFullReleaseAssets FROM-CACHE
-> Task :app:checkFullReleaseDuplicateClasses
 > Task :app:compressFullReleaseAssets FROM-CACHE
-> Task :app:checkFullReleaseAarMetadata
-> Task :app:collectFullReleaseDependencies
+> Task :app:checkFullReleaseDuplicateClasses
 > Task :app:mergeFullReleaseNativeLibs
-> Task :app:sdkFullReleaseDependencyData
+> Task :app:collectFullReleaseDependencies
 > Task :app:mergeFullReleaseResources FROM-CACHE
+> Task :app:sdkFullReleaseDependencyData
 
 > Task :app:stripFullReleaseDebugSymbols
 Unable to strip the following libraries, packaging them as they are: libbarhopper_v3.so, libimage_processing_util_jni.so, libjingle_peerconnection_so.so, libpdfium.so, libpdfiumandroid.so.
@@ -52,7 +52,7 @@ note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round ico
 e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/IncomingCallOverlayService.kt:361:27 Unresolved reference: R
 
 > Task :app:compileFullReleaseKotlin FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1787808826156.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1787809271320.json
 
 FAILURE: Build failed with an exception.
 
@@ -73,6 +73,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 4m 2s
+BUILD FAILED in 3m 45s
 32 actionable tasks: 22 executed, 10 from cache
 Configuration cache entry stored.
