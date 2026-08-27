@@ -805,7 +805,8 @@ fun HomeScreen(
                     }
                 }
             }
-        }
+        }       // end LazyColumn content
+        }       // end LazyColumn
 
         // ── Bottom two buttons ───────────────────────────────────────────
         BottomButtonBar(
@@ -816,9 +817,8 @@ fun HomeScreen(
             onLongPressLeft  = onLongPressBtnLeft,
             onLongPressRight = onLongPressBtnRight
         )
-    }
-}
-}
+    }   // end Box
+}       // end HomeScreen
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Battery Ring Clock  — full circle, fills clockwise as battery increases
