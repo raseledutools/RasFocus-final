@@ -4,34 +4,34 @@
 ╚══════════════════════════════════════════╝
 
 === KOTLIN ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/launcher/MinimalistLauncherScreen.kt:2510:2 Expecting '}'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/launcher/MinimalistLauncherScreen.kt:811:9 @Composable invocations can only happen from the context of a @Composable function
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/IncomingCallOverlayService.kt:361:27 Unresolved reference: R
 
 === UNRESOLVED / TYPE ERRORS ===
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/IncomingCallOverlayService.kt:361:27 Unresolved reference: R
 
 === BUILD FAILURE ===
-> Task :app:kspFullReleaseKotlin FAILED
+> Task :app:compileFullReleaseKotlin FAILED
 * What went wrong:
-Execution failed for task ':app:kspFullReleaseKotlin'.
-BUILD FAILED in 34s
+Execution failed for task ':app:compileFullReleaseKotlin'.
+BUILD FAILED in 4m 1s
 
 === LAST 60 LINES ===
-> Task :app:extractProguardFiles
-> Task :app:buildKotlinToolingMetadata
-> Task :app:extractDeepLinksFullRelease FROM-CACHE
 > Task :app:generateFullReleaseBuildConfig
 > Task :app:packageFullReleaseResources FROM-CACHE
 > Task :app:parseFullReleaseLocalResources FROM-CACHE
-> Task :app:mergeFullReleaseArtProfile
 > Task :app:mapFullReleaseSourceSetPaths
+> Task :app:mergeFullReleaseArtProfile
 > Task :app:validateSigningFullRelease
 > Task :app:writeFullReleaseAppMetadata
 > Task :app:writeFullReleaseSigningConfigVersions
+> Task :app:checkFullReleaseAarMetadata
 > Task :app:mergeFullReleaseAssets FROM-CACHE
 > Task :app:checkFullReleaseDuplicateClasses
 > Task :app:compressFullReleaseAssets FROM-CACHE
-> Task :app:checkFullReleaseAarMetadata
-> Task :app:mergeFullReleaseNativeLibs
 > Task :app:collectFullReleaseDependencies
+> Task :app:mergeFullReleaseNativeLibs
+> Task :app:sdkFullReleaseDependencyData
 > Task :app:mergeFullReleaseResources FROM-CACHE
 
 > Task :app:stripFullReleaseDebugSymbols
@@ -39,7 +39,6 @@ Unable to strip the following libraries, packaging them as they are: libbarhoppe
 
 > Task :app:extractFullReleaseNativeSymbolTables FROM-CACHE
 > Task :app:mergeFullReleaseNativeDebugMetadata NO-SOURCE
-> Task :app:sdkFullReleaseDependencyData
 > Task :app:processFullReleaseMainManifest
 > Task :app:processFullReleaseManifest
 > Task :app:processFullReleaseManifestForPackage
@@ -48,15 +47,18 @@ note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round ico
 note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
 
 > Task :app:processFullReleaseResources
+> Task :app:kspFullReleaseKotlin
+> Task :app:compileFullReleaseKotlin
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/launcher/MinimalistLauncherScreen.kt:811:9 @Composable invocations can only happen from the context of a @Composable function
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/IncomingCallOverlayService.kt:361:27 Unresolved reference: R
 
-> Task :app:kspFullReleaseKotlin FAILED
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/launcher/MinimalistLauncherScreen.kt:2510:2 Expecting '}'
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1787809911707.json
+> Task :app:compileFullReleaseKotlin FAILED
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1787821452745.json
 
 FAILURE: Build failed with an exception.
 
 * What went wrong:
-Execution failed for task ':app:kspFullReleaseKotlin'.
+Execution failed for task ':app:compileFullReleaseKotlin'.
 > A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
    > Compilation error. See log for more details
 
@@ -72,6 +74,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 34s
-31 actionable tasks: 21 executed, 10 from cache
+BUILD FAILED in 4m 1s
+32 actionable tasks: 22 executed, 10 from cache
 Configuration cache entry stored.
