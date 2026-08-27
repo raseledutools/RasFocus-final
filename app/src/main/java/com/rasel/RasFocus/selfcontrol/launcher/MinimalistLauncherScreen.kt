@@ -226,16 +226,14 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
     val scope = rememberCoroutineScope()
 
     val SIDEBAR_WIDTH_FRACTION  = 0.78f
-    // Snap open only when user has dragged ≥ 35% of sidebar width (was 45% → too easy to trigger)
     val OPEN_THRESHOLD_FRACTION = 0.35f
-    val SWIPE_SLOP_PX           = 12f    // px before we lock direction
+    val SWIPE_SLOP_PX           = 10f    // px before direction lock
+    // Fast swipe threshold — px/ms: above this velocity always snap regardless of distance
+    val FAST_SWIPE_VELOCITY_PX_MS = 0.5f  // ~500 px/s
 
-    // Single source of truth: animate based on showSidebar state changes
-    // BUT we use a flag to avoid re-triggering while gesture is active
     val gestureActiveRef = remember { androidx.compose.runtime.mutableStateOf(false) }
 
     LaunchedEffect(showSidebar) {
-        // Only run programmatic animation when gesture is NOT controlling the offset
         if (gestureActiveRef.value) return@LaunchedEffect
         keyboard?.hide()
         if (showSidebar) {
@@ -287,11 +285,12 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                 .pointerInput(Unit) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
-                        var totalX          = 0f
-                        var totalY          = 0f
-                        var directionLocked = false
-                        var isHorizontal    = false
+                        var totalX           = 0f
+                        var totalY           = 0f
+                        var directionLocked  = false
+                        var isHorizontal     = false
                         var gestureConsuming = false
+                        val gestureStartTime = System.currentTimeMillis()
 
                         // Snapshot showSidebar at gesture start — don't read live state mid-drag
                         val sidebarWasOpen = showSidebar
@@ -301,22 +300,28 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                             val change = event.changes.firstOrNull() ?: break
 
                             if (!change.pressed) {
-                                // ── Finger up: snap to nearest edge ──────────────────────────
+                                // ── Finger up: velocity + distance based snap ─────────────
                                 gestureActiveRef.value = false
                                 if (gestureConsuming && isHorizontal) {
-                                    val cur      = sidebarOffsetAnim.value
-                                    val willOpen = cur < openThresholdPx
+                                    val cur           = sidebarOffsetAnim.value
+                                    val elapsedMs     = (System.currentTimeMillis() - gestureStartTime).coerceAtLeast(1L)
+                                    val velocityPxMs  = abs(totalX) / elapsedMs.toFloat()
+                                    val isFastSwipe   = velocityPxMs >= FAST_SWIPE_VELOCITY_PX_MS
+                                    // willOpen: fast left swipe OR dragged past threshold
+                                    val willOpen = when {
+                                        isFastSwipe && totalX < 0 -> true   // fast left → open
+                                        isFastSwipe && totalX > 0 -> false  // fast right → close
+                                        else -> cur < openThresholdPx
+                                    }
                                     scope.launch {
                                         sidebarOffsetAnim.animateTo(
                                             if (willOpen) 0f else sidebarWidthPx,
-                                            spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium)
+                                            spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMediumLow)
                                         )
                                     }
-                                    // Update logical state AFTER animation target is decided
                                     if (willOpen  && !showSidebar) showSidebar = true
                                     if (!willOpen &&  showSidebar) { showSidebar = false; query = "" }
                                 } else if (!gestureConsuming && !sidebarWasOpen && totalY > 80f && abs(totalX) < 40f) {
-                                    // Swipe down → notifications panel (only when sidebar closed)
                                     try {
                                         val sb = context.getSystemService("statusbar")
                                         sb?.javaClass?.getMethod("expandNotificationsPanel")?.invoke(sb)
@@ -336,11 +341,9 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                                 val absY = abs(totalY)
                                 if (absX > SWIPE_SLOP_PX || absY > SWIPE_SLOP_PX) {
                                     directionLocked = true
-                                    isHorizontal    = absX >= absY * 0.8f  // slight horizontal bias
+                                    isHorizontal    = absX >= absY * 0.75f
 
                                     if (isHorizontal) {
-                                        // Valid open:  swipe LEFT (totalX < 0) when sidebar is closed
-                                        // Valid close: swipe RIGHT (totalX > 0) when sidebar is open
                                         val validOpen  = !sidebarWasOpen && totalX < -SWIPE_SLOP_PX
                                         val validClose =  sidebarWasOpen && totalX >  SWIPE_SLOP_PX
                                         gestureConsuming = validOpen || validClose
@@ -351,9 +354,6 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
 
                             if (gestureConsuming && isHorizontal) {
                                 change.consume()
-                                // sidebar offset tracks finger:
-                                //   swipe LEFT  (dx < 0) → offset decreases → sidebar slides in from right
-                                //   swipe RIGHT (dx > 0) → offset increases → sidebar slides back
                                 val newOffset = (sidebarOffsetAnim.value + dx)
                                     .coerceIn(0f, sidebarWidthPx)
                                 scope.launch { sidebarOffsetAnim.snapTo(newOffset) }
@@ -446,7 +446,7 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                         val u = pinnedPkgs.toMutableList()
                         if (pkg in u) u.remove(pkg) else u.add(pkg)
                         pinnedPkgs = u
-                        prefs.edit().putStringSet(KEY_PINNED, u.toSet()).apply()
+                        prefs.edit().putStringSet(KEY_PINNED, u.toSet()).putString("pinned_order", u.joinToString(",")).apply()
                     },
                     onHide     = { pkg ->
                         val u = hiddenPkgs.toMutableSet(); u.add(pkg); hiddenPkgs = u
@@ -475,7 +475,7 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                 theme    = theme,
                 onUnpin  = {
                     val u = pinnedPkgs.toMutableList(); u.remove(app.packageName); pinnedPkgs = u
-                    prefs.edit().putStringSet(KEY_PINNED, u.toSet()).apply(); longPressedApp = null
+                    prefs.edit().putStringSet(KEY_PINNED, u.toSet()).putString("pinned_order", u.joinToString(",")).apply(); longPressedApp = null
                 },
                 onRename = { name ->
                     val u = renamedMap.toMutableMap()
@@ -487,7 +487,7 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                     // Always show Remove from Home since these ARE pinned apps
                     ContextMenuRow(Icons.Default.PushPin, "Remove from Home") {
                         val u = pinnedPkgs.toMutableList(); u.remove(app.packageName); pinnedPkgs = u
-                        prefs.edit().putStringSet(KEY_PINNED, u.toSet()).apply(); longPressedApp = null
+                        prefs.edit().putStringSet(KEY_PINNED, u.toSet()).putString("pinned_order", u.joinToString(",")).apply(); longPressedApp = null
                     }
                 }
             )
@@ -840,6 +840,18 @@ fun ClockWithBatteryRing(
         label         = "batterySweep"
     )
 
+    // ── Charging sweep rotation — arc rotates 360° when charging ──────────────
+    val rotateSweepAnim = rememberInfiniteTransition(label = "chargingRotate")
+    val chargingRotation by rotateSweepAnim.animateFloat(
+        initialValue  = 0f,
+        targetValue   = 360f,
+        animationSpec = infiniteRepeatable(
+            animation  = tween(1800, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "chargingRotation"
+    )
+
     // ── Ambient breathing — clock slowly scales 1.0 → 1.018 → 1.0 every ~4s ──
     val breathAnim = rememberInfiniteTransition(label = "breath")
     val breathScale by breathAnim.animateFloat(
@@ -945,40 +957,44 @@ fun ClockWithBatteryRing(
                             style      = Stroke(width = strokePx, cap = StrokeCap.Round)
                         )
                     }
+                    // Charging: extra bright rotating arc (60°) that sweeps around ring
+                    if (isCharging) {
+                        drawArc(
+                            color      = Color(0xFF00FFB2).copy(alpha = pulseAlpha * 0.85f),
+                            startAngle = chargingRotation - 90f,
+                            sweepAngle = 60f,
+                            useCenter  = false,
+                            topLeft    = topLeft,
+                            size       = arcSize,
+                            style      = Stroke(width = strokePx * 1.8f, cap = StrokeCap.Round)
+                        )
+                    }
                 }
         ) {
+            // Only show battery % and charging icon — no time/date text
             Column(
                 Modifier.fillMaxSize(),
                 verticalArrangement   = Arrangement.Center,
                 horizontalAlignment   = Alignment.CenterHorizontally
             ) {
-                Text(
-                    text       = time,
-                    color      = if (isCharging) chargingColor else TXT,
-                    fontSize   = 30.sp,
-                    fontWeight = FontWeight.Light
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text     = date,
-                    color    = TXT.copy(alpha = 0.5f),
-                    fontSize = 13.sp
-                )
-                Spacer(Modifier.height(2.dp))
-                // Battery % + screen time
+                if (isCharging) {
+                    // Charging icon — pulses with color
+                    Icon(
+                        Icons.Default.BatteryChargingFull,
+                        contentDescription = "Charging",
+                        tint     = chargingColor.copy(alpha = pulseAlpha),
+                        modifier = Modifier
+                            .size(32.dp)
+                            .graphicsLayer { scaleX = 0.9f + pulseAlpha * 0.1f; scaleY = 0.9f + pulseAlpha * 0.1f }
+                    )
+                    Spacer(Modifier.height(4.dp))
+                }
                 Text(
                     text     = "$battery%",
-                    color    = (if (isCharging) chargingColor else DIM).copy(alpha = 0.7f),
-                    fontSize = 11.sp
+                    color    = (if (isCharging) chargingColor else DIM).copy(alpha = if (isCharging) pulseAlpha else 0.7f),
+                    fontSize = if (isCharging) 14.sp else 11.sp,
+                    fontWeight = if (isCharging) FontWeight.Medium else FontWeight.Light
                 )
-                if (screenTimeLabel.isNotBlank()) {
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        text     = screenTimeLabel,
-                        color    = usageArcColor.copy(alpha = 0.8f),
-                        fontSize = 10.sp
-                    )
-                }
             }
         }
     }
