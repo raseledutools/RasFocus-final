@@ -7409,9 +7409,50 @@ suspend fun handleReceiverSignaling(
     val offerSdp = offerMap["sdp"] as? String
         ?: run { onEndCall(); return }
 
+    // ── FIX: caller_ice listener আগে attach করো — BEFORE setRemoteDescription ──
+    // Bug (আগে): listener শুধু setLocalDescription.onSetSuccess callback এর ভেতরে attach হত।
+    // Race condition: caller ICE candidates Firestore-এ আসে offer post করার সাথে সাথেই।
+    // Receiver এর setRemoteDescription + createAnswer + setLocalDescription async chain
+    // শেষ হওয়ার আগেই caller এর candidates চলে আসত — সব miss হত।
+    // Fix: listener আগে attach করো। Remote description set হওয়ার আগে আসা candidates
+    // WebRTC নিজেই queue করে রাখে এবং remote set হলে apply করে।
+    var remoteDescriptionSet = false
+    val pendingCallerCandidates = mutableListOf<IceCandidate>()
+
+    db.collection("calls").document(callId)
+        .collection("caller_ice")
+        .addSnapshotListener { snap, _ ->
+            snap?.documentChanges?.forEach { change ->
+                if (change.type == com.google.firebase.firestore.DocumentChange.Type.ADDED) {
+                    val d = change.document.data
+                    val candidate = IceCandidate(
+                        d["sdpMid"] as? String ?: "",
+                        (d["sdpMLineIndex"] as? Long)?.toInt() ?: 0,
+                        d["candidate"] as? String ?: ""
+                    )
+                    if (remoteDescriptionSet) {
+                        // Remote description ready — সরাসরি add করো
+                        pc.addIceCandidate(candidate)
+                    } else {
+                        // Remote description এখনো set হয়নি — queue করে রাখো
+                        synchronized(pendingCallerCandidates) {
+                            pendingCallerCandidates.add(candidate)
+                        }
+                    }
+                }
+            }
+        }
+
     pc.setRemoteDescription(object : SdpObserver {
         override fun onCreateSuccess(s: SessionDescription?) {}
         override fun onSetSuccess() {
+            // Remote description set হয়েছে — pending candidates apply করো
+            remoteDescriptionSet = true
+            synchronized(pendingCallerCandidates) {
+                pendingCallerCandidates.forEach { pc.addIceCandidate(it) }
+                pendingCallerCandidates.clear()
+            }
+
             val answerConstraints = MediaConstraints().apply {
                 mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
                 if (callType == "video") mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
@@ -7427,22 +7468,6 @@ suspend fun handleReceiverSignaling(
                                         "status", "answered",
                                         "answer", mapOf("type" to s.type.canonicalForm(), "sdp" to s.description)
                                     )
-                                    db.collection("calls").document(callId)
-                                        .collection("caller_ice")
-                                        .addSnapshotListener { snap, _ ->
-                                            snap?.documentChanges?.forEach { change ->
-                                                if (change.type == com.google.firebase.firestore.DocumentChange.Type.ADDED) {
-                                                    val d = change.document.data
-                                                    pc.addIceCandidate(
-                                                        IceCandidate(
-                                                            d["sdpMid"] as? String ?: "",
-                                                            (d["sdpMLineIndex"] as? Long)?.toInt() ?: 0,
-                                                            d["candidate"] as? String ?: ""
-                                                        )
-                                                    )
-                                                }
-                                            }
-                                        }
                                     setCallStatus("Connecting...")
                                 }
                             }
@@ -7525,28 +7550,47 @@ suspend fun handleCallerSignaling(
             "answered" -> {
                 (data["answer"] as? Map<*, *>)?.let { ans ->
                     val sdpStr = ans["sdp"] as? String ?: return@addSnapshotListener
+
+                    // ── FIX: callee_ice listener আগে attach করো — BEFORE setRemoteDescription ──
+                    // Bug (আগে): listener শুধু setRemoteDescription.onSetSuccess এর ভেতরে attach হত।
+                    // Race: receiver answer post করার সাথে সাথে callee ICE candidates ও Firestore-এ আসে।
+                    // Caller এর setRemoteDescription async callback শেষ হওয়ার আগেই miss হত।
+                    // Fix: listener আগে attach করো, remote set হলে pending candidates flush করো।
+                    var remoteAnswerSet = false
+                    val pendingCalleeCandidates = mutableListOf<IceCandidate>()
+
+                    db.collection("calls").document(callId)
+                        .collection("callee_ice")
+                        .addSnapshotListener { snap, _ ->
+                            snap?.documentChanges?.forEach { change ->
+                                if (change.type == com.google.firebase.firestore.DocumentChange.Type.ADDED) {
+                                    val d = change.document.data
+                                    val candidate = IceCandidate(
+                                        d["sdpMid"] as? String ?: "",
+                                        (d["sdpMLineIndex"] as? Long)?.toInt() ?: 0,
+                                        d["candidate"] as? String ?: ""
+                                    )
+                                    if (remoteAnswerSet) {
+                                        pc.addIceCandidate(candidate)
+                                    } else {
+                                        synchronized(pendingCalleeCandidates) {
+                                            pendingCalleeCandidates.add(candidate)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                     pc.setRemoteDescription(object : SdpObserver {
                         override fun onCreateSuccess(s: SessionDescription?) {}
                         override fun onSetSuccess() {
-                            scope.launch { setCallStatus("Connecting...") }
-                            scope.launch {
-                                db.collection("calls").document(callId)
-                                    .collection("callee_ice")
-                                    .addSnapshotListener { snap, _ ->
-                                        snap?.documentChanges?.forEach { change ->
-                                            if (change.type == com.google.firebase.firestore.DocumentChange.Type.ADDED) {
-                                                val d = change.document.data
-                                                pc.addIceCandidate(
-                                                    IceCandidate(
-                                                        d["sdpMid"] as? String ?: "",
-                                                        (d["sdpMLineIndex"] as? Long)?.toInt() ?: 0,
-                                                        d["candidate"] as? String ?: ""
-                                                    )
-                                                )
-                                            }
-                                        }
-                                    }
+                            // Remote answer set হয়েছে — pending candidates flush করো
+                            remoteAnswerSet = true
+                            synchronized(pendingCalleeCandidates) {
+                                pendingCalleeCandidates.forEach { pc.addIceCandidate(it) }
+                                pendingCalleeCandidates.clear()
                             }
+                            scope.launch { setCallStatus("Connecting...") }
                         }
                         override fun onCreateFailure(e: String?) {}
                         override fun onSetFailure(e: String?) {}
@@ -7598,8 +7642,11 @@ fun buildPeerConnectionObserver(
             PeerConnection.IceConnectionState.DISCONNECTED -> scope.launch {
                 if (getIceDisconnectJob()?.isActive != true) {
                     setCallStatus("Reconnecting...")
+                    // FIX: 8s → 15s — mobile data network switch (WiFi ↔ data) এ
+                    // ICE restart নিতে 10-12s পর্যন্ত সময় লাগতে পারে।
+                    // 8s এ prematurely end হয়ে যাচ্ছিল।
                     setIceDisconnectJob(scope.launch {
-                        kotlinx.coroutines.delay(8_000L)
+                        kotlinx.coroutines.delay(15_000L)
                         onEndCall()
                     })
                 }
