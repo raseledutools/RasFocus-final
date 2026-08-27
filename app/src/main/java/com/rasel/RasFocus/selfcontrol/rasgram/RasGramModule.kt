@@ -3487,14 +3487,18 @@ fun ChatInputBar(
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                             keyboardActions = KeyboardActions(onSend = { onSend() })
                         )
-                        // Attach icon — ছোট করা
+                        // Attach icon — full Box tappable (44dp hit area)
                         Box(
-                            modifier = Modifier.size(44.dp),
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clickable { onAttachClick() },
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.AttachFile, null,
+                            Icon(
+                                Icons.Default.AttachFile, null,
                                 tint = RasGramTheme.TextMuted,
-                                modifier = Modifier.size(22.dp).clickable { onAttachClick() })
+                                modifier = Modifier.size(22.dp)
+                            )
                         }
                     }
                 }
