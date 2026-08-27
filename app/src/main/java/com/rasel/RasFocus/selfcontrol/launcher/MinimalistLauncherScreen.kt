@@ -604,51 +604,70 @@ fun HomeScreen(
             .background(BG)
             .navigationBarsPadding()
     ) {
-        // ── Fixed top section: clock ─────────────────────────────────────
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .align(Alignment.TopCenter)
-        ) {
-            Spacer(Modifier.height(48.dp))
-
-            // ── Battery ring clock ────────────────────────────────────────
-            ClockWithBatteryRing(
-                time               = timeState.first,
-                date               = timeState.second,
-                battery            = battery,
-                isCharging         = isCharging,
-                totalScreenMinutes = totalScreenMinutes,
-                onLongPress = onLongPressClockRing,
-                onTap = {
-                    if (clockPkg.isNotBlank()) {
-                        launchApp(context, clockPkg)
-                    } else {
-                        onLongPressClockRing()
-                    }
-                }
-            )
-
-            Spacer(Modifier.height(10.dp))
-
-            // ── Hourly Word Widget ────────────────────────────────────────
-            HourlyWordWidget(context = context)
-
-            Spacer(Modifier.height(8.dp))
-        }
-
-        // ── Scrollable apps list — sits below clock, above bottom bar ────
-        // clock (180) + top pad (48) + spacer (10) + widget (~80) + spacer (8)
-        val clockSectionHeight = 48.dp + 180.dp + 10.dp + 80.dp + 8.dp
+        // ═══════════════════════════════════════════════════════════════
+        // Two-column layout: LEFT = clock ring | RIGHT = word widget
+        // Both sides scroll together inside a single LazyColumn so that
+        // the pinned apps list continues below the split header.
+        // ═══════════════════════════════════════════════════════════════
         LazyColumn(
             modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.TopStart)
-                .padding(top = clockSectionHeight, bottom = 96.dp)
-                .padding(horizontal = 24.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 4.dp)
+                .fillMaxSize()
+                .padding(bottom = 80.dp),   // leave room for bottom bar
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                top = 48.dp, bottom = 8.dp
+            )
         ) {
+            // ── HEADER ROW: clock (left) + word widget (right) ──────────
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    // LEFT column — clock ring (40% width)
+                    Box(
+                        modifier = Modifier.weight(0.42f),
+                        contentAlignment = Alignment.TopCenter
+                    ) {
+                        ClockWithBatteryRing(
+                            time               = timeState.first,
+                            date               = timeState.second,
+                            battery            = battery,
+                            isCharging         = isCharging,
+                            totalScreenMinutes = totalScreenMinutes,
+                            onLongPress = onLongPressClockRing,
+                            onTap = {
+                                if (clockPkg.isNotBlank()) launchApp(context, clockPkg)
+                                else onLongPressClockRing()
+                            }
+                        )
+                    }
+
+                    Spacer(Modifier.width(10.dp))
+
+                    // RIGHT column — 5-word widget (58% width)
+                    Column(
+                        modifier = Modifier.weight(0.58f)
+                    ) {
+                        HourlyWordWidget(context = context)
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+            }
+
+            // ── PINNED APPS LIST ─────────────────────────────────────────
+            if (localOrder.isEmpty()) {
+                item {
+                    Text(
+                        "Long press buttons below to assign apps",
+                        color    = TXT.copy(alpha = 0.2f),
+                        fontSize = 13.sp,
+                        lineHeight = 19.sp,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+                    )
+                }
+            } else {
             if (localOrder.isEmpty()) {
                 item {
                     Text(
@@ -2217,7 +2236,8 @@ internal fun currentWordForHour(
     val thisHour = cal.get(java.util.Calendar.HOUR_OF_DAY) +
                    cal.get(java.util.Calendar.DAY_OF_YEAR) * 24  // unique per hour per day
     val lastHour = prefs.getInt(KEY_WORD_HOUR, -1)
-    var idx      = prefs.getInt(KEY_WORD_IDX,  0)
+    // Clamp saved idx to valid range first (handles -1 reset and list size changes)
+    var idx = prefs.getInt(KEY_WORD_IDX, 0).coerceIn(0, wordList.size - 1)
 
     if (thisHour != lastHour) {
         // Hour changed — advance to next word
@@ -2227,20 +2247,43 @@ internal fun currentWordForHour(
             .putInt(KEY_WORD_IDX,  idx)
             .apply()
     }
-    return wordList[idx.coerceIn(0, wordList.size - 1)]
+    return wordList[idx]
+}
+
+/** Returns up to [count] consecutive words starting from current hour index */
+internal fun currentWordsForHour(
+    prefs:    SharedPreferences,
+    wordList: List<WordPair>,
+    count:    Int = 5
+): List<WordPair> {
+    if (wordList.isEmpty()) return listOf(WordPair("Focus", "মনোযোগ", "Stay focused every hour."))
+    val cal      = java.util.Calendar.getInstance()
+    val thisHour = cal.get(java.util.Calendar.HOUR_OF_DAY) +
+                   cal.get(java.util.Calendar.DAY_OF_YEAR) * 24
+    val lastHour = prefs.getInt(KEY_WORD_HOUR, -1)
+    var startIdx = prefs.getInt(KEY_WORD_IDX, 0).coerceIn(0, wordList.size - 1)
+
+    if (thisHour != lastHour) {
+        startIdx = (startIdx + 1) % wordList.size
+        prefs.edit()
+            .putInt(KEY_WORD_HOUR, thisHour)
+            .putInt(KEY_WORD_IDX,  startIdx)
+            .apply()
+    }
+    // Return [count] words starting at startIdx, wrapping around
+    return (0 until count.coerceAtMost(wordList.size)).map { i ->
+        wordList[(startIdx + i) % wordList.size]
+    }
 }
 
 @Composable
 fun HourlyWordWidget(context: Context) {
     val prefs = remember { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
 
-    // Re-read word every minute (in case hour changes while app is open)
+    // Re-read every minute in case hour flips while app is open
     var tick by remember { mutableStateOf(0) }
     LaunchedEffect(Unit) {
-        while (true) {
-            delay(60_000L)  // refresh every minute
-            tick++
-        }
+        while (true) { delay(60_000L); tick++ }
     }
 
     val wordList: List<WordPair> = remember(tick) {
@@ -2248,86 +2291,93 @@ fun HourlyWordWidget(context: Context) {
         if (custom.isNotEmpty()) custom else DEFAULT_WORDS
     }
 
-    val word: WordPair = remember(tick, wordList) {
-        currentWordForHour(prefs, wordList)
+    // 5 words — highlighted index cycles each tick (so they blink in turn)
+    val words: List<WordPair> = remember(tick, wordList) {
+        currentWordsForHour(prefs, wordList, 5)
     }
 
-    // Flip animation — crossfade when word changes
-    var displayedWord by remember { mutableStateOf(word) }
-    val flipAnim = remember { Animatable(1f) }
-    LaunchedEffect(word) {
-        if (word == displayedWord) return@LaunchedEffect
-        flipAnim.animateTo(0f, animationSpec = tween(200))
-        displayedWord = word
-        flipAnim.animateTo(1f, animationSpec = tween(250))
+    // Which word index is "active" (highlighted) — cycles every 3 s
+    var activeIdx by remember { mutableStateOf(0) }
+    LaunchedEffect(words) { activeIdx = 0 }
+    LaunchedEffect(words) {
+        while (true) {
+            delay(3000L)
+            activeIdx = (activeIdx + 1) % words.size
+        }
     }
 
-    // Card layout
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .graphicsLayer { alpha = flipAnim.value }
-            .clip(RoundedCornerShape(14.dp))
-            .background(Color(0xFF0E1A18))
-            .border(
-                width = 0.5.dp,
-                color = ACCENT.copy(alpha = 0.20f),
-                shape = RoundedCornerShape(14.dp)
-            )
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+    // Header
+    Row(
+        Modifier.fillMaxWidth().padding(bottom = 6.dp),
+        verticalAlignment     = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        // ── Header row: "Word of the hour" label + clock icon ───────────
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment     = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+        Text(
+            "শব্দ • Hour",
+            color = ACCENT.copy(alpha = 0.55f),
+            fontSize = 10.sp,
+            letterSpacing = 0.6.sp
+        )
+        Icon(Icons.Default.Schedule, null, tint = ACCENT.copy(alpha = 0.35f), modifier = Modifier.size(11.dp))
+    }
+
+    // 5 word cards — vertically stacked, each tappable
+    words.forEachIndexed { i, wordPair ->
+        val isActive = i == activeIdx
+        val cardAlpha by animateFloatAsState(
+            targetValue   = if (isActive) 1f else 0.42f,
+            animationSpec = tween(500),
+            label         = "wordAlpha$i"
+        )
+        val cardBg by animateColorAsState(
+            targetValue   = if (isActive) Color(0xFF0E2A22) else Color(0xFF0A1410),
+            animationSpec = tween(500),
+            label         = "wordBg$i"
+        )
+        val borderAlpha by animateFloatAsState(
+            targetValue   = if (isActive) 0.55f else 0.10f,
+            animationSpec = tween(500),
+            label         = "wordBorder$i"
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 3.dp)
+                .graphicsLayer { alpha = cardAlpha }
+                .clip(RoundedCornerShape(10.dp))
+                .background(cardBg)
+                .border(0.5.dp, ACCENT.copy(alpha = borderAlpha), RoundedCornerShape(10.dp))
+                .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
-            Text(
-                text      = "শব্দ • Hour",
-                color     = ACCENT.copy(alpha = 0.65f),
-                fontSize  = 10.sp,
-                letterSpacing = 0.6.sp
-            )
-            Icon(
-                Icons.Default.Schedule,
-                contentDescription = null,
-                tint     = ACCENT.copy(alpha = 0.40f),
-                modifier = Modifier.size(12.dp)
-            )
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        // ── English word (big) + Bangla meaning ─────────────────────────
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.Bottom
-        ) {
-            Text(
-                text       = displayedWord.english,
-                color      = TXT,
-                fontSize   = 22.sp,
-                fontWeight = FontWeight.Light,
-                modifier   = Modifier.weight(1f)
-            )
-            Text(
-                text     = displayedWord.bangla,
-                color    = ACCENT.copy(alpha = 0.85f),
-                fontSize = 13.sp,
-                modifier = Modifier.padding(start = 8.dp, bottom = 2.dp)
-            )
-        }
-
-        // ── Example sentence (optional) ──────────────────────────────────
-        if (displayedWord.example.isNotBlank()) {
-            Spacer(Modifier.height(5.dp))
-            Text(
-                text       = "\"${displayedWord.example}\"",
-                color      = TXT.copy(alpha = 0.35f),
-                fontSize   = 11.sp,
-                lineHeight = 15.sp,
-                fontStyle  = androidx.compose.ui.text.font.FontStyle.Italic
-            )
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Bottom
+            ) {
+                Text(
+                    text       = wordPair.english,
+                    color      = if (isActive) TXT else TXT.copy(alpha = 0.75f),
+                    fontSize   = 15.sp,
+                    fontWeight = if (isActive) FontWeight.Normal else FontWeight.Light,
+                    modifier   = Modifier.weight(1f)
+                )
+                Text(
+                    text     = wordPair.bangla,
+                    color    = ACCENT.copy(alpha = if (isActive) 0.9f else 0.5f),
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(start = 6.dp, bottom = 1.dp)
+                )
+            }
+            if (isActive && wordPair.example.isNotBlank()) {
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text       = "\"${wordPair.example}\"",
+                    color      = TXT.copy(alpha = 0.30f),
+                    fontSize   = 10.sp,
+                    lineHeight = 14.sp,
+                    fontStyle  = androidx.compose.ui.text.font.FontStyle.Italic
+                )
+            }
         }
     }
 }
@@ -2443,7 +2493,7 @@ fun WordSettingsPanel(prefs: SharedPreferences) {
                             val serialized = rawText.trim().replace("\n", ";")
                             prefs.edit().putString(KEY_CUSTOM_WORDS, serialized).apply()
                             // Reset cycling index so next widget refresh picks first word
-                            prefs.edit().putInt(KEY_WORD_IDX, -1).apply()
+                            prefs.edit().putInt(KEY_WORD_IDX, 0).putInt(KEY_WORD_HOUR, -1).apply()
                             saved = true
                         }
                         .padding(horizontal = 16.dp, vertical = 8.dp)
