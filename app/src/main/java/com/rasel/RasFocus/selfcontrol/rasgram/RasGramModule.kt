@@ -2727,6 +2727,7 @@ fun ChatArea(
                             msg.senderMobile == contact.mobile &&  // শুধু received (আমার পাঠানো না)
                             !msg.fileUrl.isNullOrEmpty() &&
                             !msg.isDeleted &&
+                            !msg.fileUrl!!.startsWith("local://") && // LAN file: already local, skip
                             (msg.fileType?.startsWith("image/") == true ||
                              msg.fileType?.startsWith("audio/") == true)
                         }.forEach { msg ->
@@ -2866,9 +2867,44 @@ fun ChatArea(
         if (text.isBlank()) return
 
         if (isLanAvailable && lanPeer != null) {
-            // ── LAN Mode: Firebase ছাড়াই সরাসরি peer এ পাঠাও ────────────────
+            // ── LAN Mode: 100% offline — TCP পাঠাও + Room এ sender copy save ──
             scope.launch {
+                // 1. TCP দিয়ে peer এ পাঠাও
                 lanManager.sendText(lanPeer, text, chatId)
+                // 2. Sender নিজের copy Room এ save করো (Firebase নয়)
+                val now       = System.currentTimeMillis()
+                val timeStr   = java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault())
+                                    .format(java.util.Date(now))
+                val tempId    = "lan_out_${now}_${currentUser.mobile.takeLast(4)}"
+                val rasRepo   = RasGramRepository.getInstance(context)
+                rasRepo.messageDao.upsertMessage(
+                    CachedMessage(
+                        id             = tempId,
+                        chatId         = chatId,
+                        text           = text,
+                        senderMobile   = currentUser.mobile,
+                        receiverMobile = contact.mobile,
+                        timestamp      = now,
+                        timeString     = timeStr,
+                        read           = true,
+                        delivered      = true,
+                        isPending      = false
+                    )
+                )
+                // Chat preview update
+                val existing = rasRepo.chatPreviewDao.getPreview(contact.mobile)
+                rasRepo.chatPreviewDao.upsertPreview(
+                    CachedChatPreview(
+                        contactMobile     = contact.mobile,
+                        contactName       = contact.name,
+                        contactAvatarUrl  = contact.avatarUrl,
+                        lastMessageText   = text,
+                        lastMessageSender = currentUser.mobile,
+                        lastTimestamp     = now,
+                        lastTimeString    = timeStr,
+                        unreadCount       = existing?.unreadCount ?: 0
+                    )
+                )
             }
         } else {
             // ── Normal Mode: Firebase Firestore ────────────────────────────────
@@ -3997,8 +4033,14 @@ fun ImageMessageContent(url: String, context: Context) {
     var isSaving by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
+    // LAN mode: local:// URL → java.io.File → Coil কে File pass করো
+    val imageModel: Any = remember(url) {
+        if (url.startsWith("local://")) java.io.File(url.removePrefix("local://"))
+        else url
+    }
+
     AsyncImage(
-        model = url,
+        model = imageModel,
         contentDescription = "Image",
         modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp, max = 220.dp)
             .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 4.dp, bottomEnd = 4.dp))
@@ -4008,28 +4050,30 @@ fun ImageMessageContent(url: String, context: Context) {
     if (showFullScreen) {
         Dialog(onDismissRequest = { showFullScreen = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
             Box(modifier = Modifier.fillMaxSize().background(Color.Black).clickable { showFullScreen = false }, contentAlignment = Alignment.Center) {
-                AsyncImage(model = url, contentDescription = null, modifier = Modifier.fillMaxWidth(), contentScale = ContentScale.Fit)
+                AsyncImage(model = imageModel, contentDescription = null, modifier = Modifier.fillMaxWidth(), contentScale = ContentScale.Fit)
                 IconButton(onClick = { showFullScreen = false }, modifier = Modifier.align(Alignment.TopStart).padding(16.dp)) {
                     Icon(Icons.Default.Close, null, tint = Color.White)
                 }
-                // Download to Rasgram folder
-                IconButton(
-                    onClick = {
-                        scope.launch {
-                            isSaving = true
-                            val saved = downloadToRasgramFolder(context, url, null, "image/jpeg")
-                            isSaving = false
-                            if (saved != null) {
-                                Toast.makeText(context, "Rasgram ফোল্ডারে সেভ হয়েছে", Toast.LENGTH_SHORT).show()
-                            } else {
-                                Toast.makeText(context, "সেভ করা যায়নি", Toast.LENGTH_SHORT).show()
+                // LAN file: already local — no download needed
+                if (!url.startsWith("local://")) {
+                    IconButton(
+                        onClick = {
+                            scope.launch {
+                                isSaving = true
+                                val saved = downloadToRasgramFolder(context, url, null, "image/jpeg")
+                                isSaving = false
+                                if (saved != null) {
+                                    Toast.makeText(context, "Rasgram ফোল্ডারে সেভ হয়েছে", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, "সেভ করা যায়নি", Toast.LENGTH_SHORT).show()
+                                }
                             }
-                        }
-                    },
-                    modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
-                ) {
-                    if (isSaving) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White, strokeWidth = 2.dp)
-                    else Icon(Icons.Default.Download, null, tint = Color.White)
+                        },
+                        modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
+                    ) {
+                        if (isSaving) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White, strokeWidth = 2.dp)
+                        else Icon(Icons.Default.Download, null, tint = Color.White)
+                    }
                 }
             }
         }
@@ -4161,7 +4205,12 @@ fun AudioMessageContent(url: String, fileName: String?, duration: Int) {
                 if (!isPlaying) {
                     try {
                         mediaPlayer.reset()
-                        mediaPlayer.setDataSource(url)
+                        // LAN mode: local:// → File path দিয়ে setDataSource
+                        if (url.startsWith("local://")) {
+                            mediaPlayer.setDataSource(url.removePrefix("local://"))
+                        } else {
+                            mediaPlayer.setDataSource(url)
+                        }
                         mediaPlayer.prepareAsync()
                         mediaPlayer.setOnPreparedListener { mp ->
                             mp.start()
@@ -6492,9 +6541,9 @@ fun LanModeSettingsTab(
                     Spacer(Modifier.height(4.dp))
                     Text(
                         if (lanModeEnabled)
-                            "✅ চালু — ইন্টারনেট ছাড়াই একই WiFi তে চ্যাট হচ্ছে"
+                            "✅ চালু — ১০০% অফলাইন। চ্যাট, ফাইল, কল সব শুধু WiFi/Hotspot এ। Firebase/ইন্টারনেট কিছুই লাগবে না।"
                         else
-                            "বন্ধ — Firebase ও Cloudinary ব্যবহার হচ্ছে (স্বাভাবিক মোড)",
+                            "বন্ধ — স্বাভাবিক মোড (Firebase + ইন্টারনেট ব্যবহার হচ্ছে)",
                         color = RasGramTheme.TextMuted,
                         fontSize = 12.sp,
                         lineHeight = 16.sp,
@@ -6810,6 +6859,10 @@ fun rasgramLocalFileName(url: String, fileName: String?, fileType: String?): Str
  * থাকলে File object ফেরত দেয়, না থাকলে null।
  */
 fun getRasgramCachedFile(context: Context, url: String, fileName: String?, fileType: String?): java.io.File {
+    // LAN mode: local:// URL মানে file already local disk এ আছে
+    if (url.startsWith("local://")) {
+        return java.io.File(url.removePrefix("local://"))
+    }
     val folder = getRasgramFolder(context)
     val name = rasgramLocalFileName(url, fileName, fileType)
     return java.io.File(folder, name)

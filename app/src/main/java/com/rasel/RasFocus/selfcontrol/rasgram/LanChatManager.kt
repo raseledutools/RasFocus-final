@@ -3,7 +3,6 @@ package com.rasel.RasFocus.selfcontrol.rasgram
 import android.content.Context
 import android.net.wifi.WifiManager
 import android.util.Log
-import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -15,6 +14,26 @@ import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 
+// ── timeString helper (same WhatsApp format as sendMessage() in RasGramModule) ─
+private fun lanTimeString(): String {
+    val now = System.currentTimeMillis()
+    val todayCal = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0);      set(Calendar.MILLISECOND, 0)
+    }
+    val yesterdayCal = Calendar.getInstance().apply {
+        add(Calendar.DAY_OF_YEAR, -1)
+        set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0);      set(Calendar.MILLISECOND, 0)
+    }
+    return when {
+        now >= todayCal.timeInMillis ->
+            SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(now))
+        now >= yesterdayCal.timeInMillis -> "Yesterday"
+        else -> SimpleDateFormat("dd/MM/yy", Locale.getDefault()).format(Date(now))
+    }
+}
+
 // ── Data class: discovered LAN user ──────────────────────────────────────────
 data class LanDiscoveredUser(
     val mobile: String,
@@ -24,11 +43,15 @@ data class LanDiscoveredUser(
 )
 
 /**
- * LanChatManager — WiFi LAN peer-to-peer chat
+ * LanChatManager — 100% offline WiFi/Hotspot LAN peer-to-peer chat
+ *
+ * NO Firebase / Firestore / internet required.
+ * All messages stored in local Room DB only.
  *
  * Architecture:
  *  • UDP broadcast (port 5555) for peer discovery (beacon every 3 s)
  *  • TCP server (port 5556) for message / file / voice transfer
+ *  • Room DB for persistent message storage (both sender & receiver)
  *
  * Usage:
  *   val mgr = LanChatManager.getInstance(context)
@@ -45,7 +68,7 @@ class LanChatManager private constructor(private val context: Context) {
         const val UDP_PORT = 5555
         const val TCP_PORT = 5556
         private const val BEACON_INTERVAL_MS = 3_000L
-        private const val PEER_TIMEOUT_MS = 10_000L
+        private const val PEER_TIMEOUT_MS    = 10_000L
         private const val TAG = "LanChatManager"
 
         @Volatile
@@ -56,14 +79,14 @@ class LanChatManager private constructor(private val context: Context) {
                 INSTANCE ?: LanChatManager(context.applicationContext).also { INSTANCE = it }
             }
 
-        /** Returns the device's current WiFi/LAN IP, or "Unknown" */
+        /** Returns the device's current WiFi/hotspot IP, or "Unknown" */
         fun getLocalIp(context: Context): String {
             return try {
                 val wifi = context.applicationContext
                     .getSystemService(Context.WIFI_SERVICE) as WifiManager
                 val ip = wifi.connectionInfo.ipAddress
                 if (ip == 0) {
-                    // Fallback: enumerate network interfaces
+                    // Fallback: enumerate network interfaces (works for hotspot too)
                     NetworkInterface.getNetworkInterfaces()?.toList()
                         ?.flatMap { it.inetAddresses.toList() }
                         ?.firstOrNull { !it.isLoopbackAddress && it is Inet4Address }
@@ -71,7 +94,8 @@ class LanChatManager private constructor(private val context: Context) {
                 } else {
                     String.format(
                         "%d.%d.%d.%d",
-                        ip and 0xff, ip shr 8 and 0xff, ip shr 16 and 0xff, ip shr 24 and 0xff
+                        ip and 0xff, ip shr 8 and 0xff,
+                        ip shr 16 and 0xff, ip shr 24 and 0xff
                     )
                 }
             } catch (e: Exception) {
@@ -86,25 +110,28 @@ class LanChatManager private constructor(private val context: Context) {
     val discoveredUsers: StateFlow<List<LanDiscoveredUser>> = _discoveredUsers.asStateFlow()
 
     private val peerLastSeen = ConcurrentHashMap<String, Long>()   // mobile → timestamp
-    private val peerMap = ConcurrentHashMap<String, LanDiscoveredUser>()
+    private val peerMap      = ConcurrentHashMap<String, LanDiscoveredUser>()
 
     private var myMobile = ""
-    private var myName = ""
-    private var localIp = "0.0.0.0"
+    private var myName   = ""
+    private var localIp  = "0.0.0.0"
 
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val scope     = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var udpSocket: DatagramSocket? = null
-    private var tcpServer: ServerSocket? = null
+    private var tcpServer: ServerSocket?   = null
     private var running = false
+
+    // ── Room DB (no Firebase) ─────────────────────────────────────────────────
+    private val repo: RasGramRepository by lazy { RasGramRepository.getInstance(context) }
 
     // ── Start / Stop ─────────────────────────────────────────────────────────
     fun start(mobile: String, name: String) {
         if (running) return
-        running = true
+        running  = true
         myMobile = mobile
-        myName = name
-        localIp = getLocalIp(context)
-        Log.i(TAG, "Starting LAN mode — IP: $localIp")
+        myName   = name
+        localIp  = getLocalIp(context)
+        Log.i(TAG, "LAN mode ON — IP: $localIp")
 
         scope.launch { runUdpBeacon() }
         scope.launch { runUdpListener() }
@@ -122,28 +149,29 @@ class LanChatManager private constructor(private val context: Context) {
         peerMap.clear()
         peerLastSeen.clear()
         _discoveredUsers.value = emptyList()
-        Log.i(TAG, "LAN mode stopped")
+        Log.i(TAG, "LAN mode OFF")
     }
 
-    // ── UDP Beacon (broadcast presence) ──────────────────────────────────────
+    // ── UDP Beacon — broadcast "I'm here" every 3 s ───────────────────────────
     private suspend fun runUdpBeacon() = withContext(Dispatchers.IO) {
         while (running) {
             try {
-                val sock = DatagramSocket()
-                sock.broadcast = true
-                val payload = JSONObject().apply {
-                    put("type", "beacon")
-                    put("mobile", myMobile)
-                    put("name", myName)
-                    put("ip", localIp)
-                    put("port", TCP_PORT)
-                }.toString().toByteArray()
-                val packet = DatagramPacket(
-                    payload, payload.size,
-                    InetAddress.getByName("255.255.255.255"), UDP_PORT
-                )
-                sock.send(packet)
-                sock.close()
+                DatagramSocket().use { sock ->
+                    sock.broadcast = true
+                    val payload = JSONObject().apply {
+                        put("type",   "beacon")
+                        put("mobile", myMobile)
+                        put("name",   myName)
+                        put("ip",     localIp)
+                        put("port",   TCP_PORT)
+                    }.toString().toByteArray()
+                    sock.send(
+                        DatagramPacket(
+                            payload, payload.size,
+                            InetAddress.getByName("255.255.255.255"), UDP_PORT
+                        )
+                    )
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "Beacon error: ${e.message}")
             }
@@ -151,7 +179,7 @@ class LanChatManager private constructor(private val context: Context) {
         }
     }
 
-    // ── UDP Listener (receive beacons from peers) ─────────────────────────────
+    // ── UDP Listener — receive peer beacons ───────────────────────────────────
     private suspend fun runUdpListener() = withContext(Dispatchers.IO) {
         try {
             udpSocket = DatagramSocket(UDP_PORT).also { it.broadcast = true }
@@ -167,16 +195,16 @@ class LanChatManager private constructor(private val context: Context) {
 
                     val peer = LanDiscoveredUser(
                         mobile = mobile,
-                        name = json.optString("name", mobile),
-                        ip = json.optString("ip", packet.address.hostAddress ?: ""),
-                        port = json.optInt("port", TCP_PORT)
+                        name   = json.optString("name", mobile),
+                        ip     = json.optString("ip", packet.address.hostAddress ?: ""),
+                        port   = json.optInt("port", TCP_PORT)
                     )
                     peerLastSeen[mobile] = System.currentTimeMillis()
                     if (peerMap[mobile] != peer) {
                         peerMap[mobile] = peer
                         _discoveredUsers.value = peerMap.values.toList()
                     }
-                } catch (e: SocketTimeoutException) { /* ignore */ }
+                } catch (_: SocketTimeoutException) {}
                   catch (e: Exception) {
                     if (running) Log.w(TAG, "UDP recv: ${e.message}")
                 }
@@ -186,12 +214,12 @@ class LanChatManager private constructor(private val context: Context) {
         }
     }
 
-    // ── Peer pruner (remove stale peers) ─────────────────────────────────────
+    // ── Peer pruner — remove stale peers after PEER_TIMEOUT_MS ───────────────
     private suspend fun runPeerPruner() = withContext(Dispatchers.IO) {
         while (running) {
             delay(5_000L)
             val cutoff = System.currentTimeMillis() - PEER_TIMEOUT_MS
-            val stale = peerLastSeen.entries.filter { it.value < cutoff }.map { it.key }
+            val stale  = peerLastSeen.entries.filter { it.value < cutoff }.map { it.key }
             if (stale.isNotEmpty()) {
                 stale.forEach { peerMap.remove(it); peerLastSeen.remove(it) }
                 _discoveredUsers.value = peerMap.values.toList()
@@ -199,13 +227,13 @@ class LanChatManager private constructor(private val context: Context) {
         }
     }
 
-    // ── TCP Server (receive messages / files from peers) ──────────────────────
+    // ── TCP Server — receive text / file / voice from peers ───────────────────
     private suspend fun runTcpServer() = withContext(Dispatchers.IO) {
         try {
             tcpServer = ServerSocket(TCP_PORT)
-            Log.i(TAG, "TCP server listening on $TCP_PORT")
+            Log.i(TAG, "TCP server ready on :$TCP_PORT")
             while (running) {
-                val client = try { tcpServer!!.accept() } catch (e: Exception) { break }
+                val client = try { tcpServer!!.accept() } catch (_: Exception) { break }
                 scope.launch { handleTcpClient(client) }
             }
         } catch (e: Exception) {
@@ -215,52 +243,65 @@ class LanChatManager private constructor(private val context: Context) {
 
     private suspend fun handleTcpClient(socket: Socket) = withContext(Dispatchers.IO) {
         try {
-            val dis = DataInputStream(socket.getInputStream())
-            val headerLen = dis.readInt()
+            val dis         = DataInputStream(socket.getInputStream())
+            val headerLen   = dis.readInt()
             val headerBytes = ByteArray(headerLen)
             dis.readFully(headerBytes)
             val header = JSONObject(String(headerBytes))
 
-            val type = header.optString("type")
-            val chatId = header.optString("chatId")
+            val type         = header.optString("type")
+            val chatId       = header.optString("chatId")
             val senderMobile = header.optString("senderMobile")
-            val senderName = header.optString("senderName")
+            val senderName   = header.optString("senderName")
+            // receiverMobile is myMobile since this is an incoming packet
+            val receiverMobile = myMobile
 
             when (type) {
                 "text" -> {
                     val text = header.optString("text")
-                    saveMessageToFirestore(chatId, senderMobile, senderName, text, null, null, null)
-                }
-                "file", "voice" -> {
-                    val mimeType = header.optString("mimeType", "application/octet-stream")
-                    val fileName = header.optString("fileName", "file_${System.currentTimeMillis()}")
-                    val durationSecs = header.optLong("durationSecs", 0L)
-                    val fileSize = dis.readLong()
-
-                    // Save to cache
-                    val outFile = File(context.cacheDir, "lan_recv_$fileName")
-                    val fos = FileOutputStream(outFile)
-                    val buf = ByteArray(8192)
-                    var remaining = fileSize
-                    while (remaining > 0) {
-                        val read = dis.read(buf, 0, minOf(buf.size.toLong(), remaining).toInt())
-                        if (read == -1) break
-                        fos.write(buf, 0, read)
-                        remaining -= read
-                    }
-                    fos.close()
-
-                    // Save to Firebase with local file path as URL placeholder
-                    val localUrl = "lan://${outFile.absolutePath}"
-                    saveMessageToFirestore(
-                        chatId, senderMobile, senderName,
-                        if (type == "voice") "" else "",
-                        localUrl, fileName, mimeType,
-                        if (type == "voice") durationSecs else null
+                    saveToRoom(
+                        chatId        = chatId,
+                        senderMobile  = senderMobile,
+                        receiverMobile= receiverMobile,
+                        senderName    = senderName,
+                        text          = text
                     )
                 }
-                else -> {
-                    // Unknown type — ignore
+
+                "file", "voice" -> {
+                    val mimeType    = header.optString("mimeType", "application/octet-stream")
+                    val fileName    = header.optString("fileName", "lan_${System.currentTimeMillis()}")
+                    val durationSec = header.optLong("durationSecs", 0L)
+                    val fileSize    = dis.readLong()
+
+                    // Save file bytes to app's files dir (persistent across reboots)
+                    val lanDir = File(context.getExternalFilesDir(null), "RasGram/LAN").also { it.mkdirs() }
+                    val outFile = File(lanDir, "${System.currentTimeMillis()}_$fileName")
+                    FileOutputStream(outFile).use { fos ->
+                        val buf  = ByteArray(8192)
+                        var rem  = fileSize
+                        while (rem > 0) {
+                            val read = dis.read(buf, 0, minOf(buf.size.toLong(), rem).toInt())
+                            if (read == -1) break
+                            fos.write(buf, 0, read)
+                            rem -= read
+                        }
+                    }
+
+                    // Use a local:// URI so ChatArea knows this is a local file
+                    val localUrl = "local://${outFile.absolutePath}"
+                    saveToRoom(
+                        chatId         = chatId,
+                        senderMobile   = senderMobile,
+                        receiverMobile = receiverMobile,
+                        senderName     = senderName,
+                        text           = "",
+                        fileUrl        = localUrl,
+                        fileName       = fileName,
+                        fileType       = mimeType,
+                        fileSizeBytes  = outFile.length(),
+                        duration       = durationSec.toInt()
+                    )
                 }
             }
         } catch (e: Exception) {
@@ -271,37 +312,50 @@ class LanChatManager private constructor(private val context: Context) {
     }
 
     // ── Send: Text ────────────────────────────────────────────────────────────
+    // ChatArea already saves sender's message to Room optimistically.
+    // We only send the TCP packet to the peer here.
     suspend fun sendText(peer: LanDiscoveredUser, text: String, chatId: String) =
         withContext(Dispatchers.IO) {
             try {
                 val header = JSONObject().apply {
-                    put("type", "text")
-                    put("chatId", chatId)
-                    put("senderMobile", myMobile)
-                    put("senderName", myName)
-                    put("text", text)
+                    put("type",          "text")
+                    put("chatId",        chatId)
+                    put("senderMobile",  myMobile)
+                    put("senderName",    myName)
+                    put("text",          text)
                 }
                 sendTcpPacket(peer, header, null)
-                // Also persist locally (sender side)
-                saveMessageToFirestore(chatId, myMobile, myName, text, null, null, null)
             } catch (e: Exception) {
                 Log.e(TAG, "sendText: ${e.message}")
             }
         }
 
     // ── Send: File ────────────────────────────────────────────────────────────
+    // Saves sender's own copy to Room, then TCP-sends file bytes to peer.
     fun sendFile(peer: LanDiscoveredUser, file: File, mimeType: String, chatId: String) {
         scope.launch(Dispatchers.IO) {
             try {
                 val header = JSONObject().apply {
-                    put("type", "file")
-                    put("chatId", chatId)
+                    put("type",         "file")
+                    put("chatId",       chatId)
                     put("senderMobile", myMobile)
-                    put("senderName", myName)
-                    put("mimeType", mimeType)
-                    put("fileName", file.name)
+                    put("senderName",   myName)
+                    put("mimeType",     mimeType)
+                    put("fileName",     file.name)
                 }
                 sendTcpPacket(peer, header, file)
+                // Sender side: save our copy to Room
+                saveToRoom(
+                    chatId         = chatId,
+                    senderMobile   = myMobile,
+                    receiverMobile = peer.mobile,
+                    senderName     = myName,
+                    text           = "",
+                    fileUrl        = "local://${file.absolutePath}",
+                    fileName       = file.name,
+                    fileType       = mimeType,
+                    fileSizeBytes  = file.length()
+                )
             } catch (e: Exception) {
                 Log.e(TAG, "sendFile: ${e.message}")
             }
@@ -313,15 +367,28 @@ class LanChatManager private constructor(private val context: Context) {
         scope.launch(Dispatchers.IO) {
             try {
                 val header = JSONObject().apply {
-                    put("type", "voice")
-                    put("chatId", chatId)
+                    put("type",         "voice")
+                    put("chatId",       chatId)
                     put("senderMobile", myMobile)
-                    put("senderName", myName)
-                    put("mimeType", "audio/mp4")
-                    put("fileName", file.name)
+                    put("senderName",   myName)
+                    put("mimeType",     "audio/mp4")
+                    put("fileName",     file.name)
                     put("durationSecs", durationSecs)
                 }
                 sendTcpPacket(peer, header, file)
+                // Sender side: save our copy to Room
+                saveToRoom(
+                    chatId         = chatId,
+                    senderMobile   = myMobile,
+                    receiverMobile = peer.mobile,
+                    senderName     = myName,
+                    text           = "",
+                    fileUrl        = "local://${file.absolutePath}",
+                    fileName       = file.name,
+                    fileType       = "audio/mp4",
+                    fileSizeBytes  = file.length(),
+                    duration       = durationSecs.toInt()
+                )
             } catch (e: Exception) {
                 Log.e(TAG, "sendVoice: ${e.message}")
             }
@@ -332,7 +399,7 @@ class LanChatManager private constructor(private val context: Context) {
     private fun sendTcpPacket(peer: LanDiscoveredUser, header: JSONObject, file: File?) {
         Socket().use { sock ->
             sock.connect(InetSocketAddress(peer.ip, peer.port), 5_000)
-            val dos = DataOutputStream(sock.getOutputStream())
+            val dos         = DataOutputStream(sock.getOutputStream())
             val headerBytes = header.toString().toByteArray()
             dos.writeInt(headerBytes.size)
             dos.write(headerBytes)
@@ -340,57 +407,85 @@ class LanChatManager private constructor(private val context: Context) {
                 dos.writeLong(file.length())
                 FileInputStream(file).use { fis ->
                     val buf = ByteArray(8192)
-                    var read: Int
-                    while (fis.read(buf).also { read = it } != -1) {
-                        dos.write(buf, 0, read)
-                    }
+                    var n: Int
+                    while (fis.read(buf).also { n = it } != -1) dos.write(buf, 0, n)
                 }
             }
             dos.flush()
         }
     }
 
-    // ── Save received message to Firestore ────────────────────────────────────
-    // (so existing message list / UI shows LAN messages too)
-    private fun saveMessageToFirestore(
+    // ── Save message to Room DB (100% offline — no Firebase) ─────────────────
+    private fun saveToRoom(
         chatId: String,
         senderMobile: String,
+        receiverMobile: String,
         senderName: String,
         text: String,
-        fileUrl: String?,
-        fileName: String?,
-        mimeType: String?,
-        durationSecs: Long? = null
+        fileUrl: String?   = null,
+        fileName: String?  = null,
+        fileType: String?  = null,
+        fileSizeBytes: Long = 0L,
+        duration: Int      = 0
     ) {
-        try {
-            val db = FirebaseFirestore.getInstance()
-            val msgId = db.collection("chats").document(chatId).collection("messages").document().id
-            val timestamp = System.currentTimeMillis()
-            val dateStr = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(timestamp))
+        scope.launch(Dispatchers.IO) {
+            try {
+                val now       = System.currentTimeMillis()
+                val timeStr   = lanTimeString()
+                val msgId     = "lan_${now}_${senderMobile.takeLast(4)}_${(0..9999).random()}"
 
-            val data = hashMapOf<String, Any?>(
-                "id" to msgId,
-                "senderMobile" to senderMobile,
-                "senderName" to senderName,
-                "text" to text,
-                "timestamp" to timestamp,
-                "date" to dateStr,
-                "read" to false,
-                "deliveredViaLan" to true
-            )
-            if (fileUrl != null) data["fileUrl"] = fileUrl
-            if (fileName != null) data["fileName"] = fileName
-            if (mimeType != null) data["fileType"] = mimeType
-            if (durationSecs != null && durationSecs > 0) data["durationSecs"] = durationSecs
+                repo.messageDao.upsertMessage(
+                    CachedMessage(
+                        id             = msgId,
+                        chatId         = chatId,
+                        text           = text,
+                        senderMobile   = senderMobile,
+                        receiverMobile = receiverMobile,
+                        timestamp      = now,
+                        timeString     = timeStr,
+                        fileUrl        = fileUrl,
+                        fileName       = fileName,
+                        fileType       = fileType,
+                        fileSizeBytes  = fileSizeBytes,
+                        duration       = duration,
+                        read           = (senderMobile == myMobile), // own messages are "read"
+                        delivered      = true,
+                        isPending      = false
+                    )
+                )
 
-            db.collection("chats").document(chatId)
-                .collection("messages").document(msgId)
-                .set(data)
-                .addOnFailureListener { e ->
-                    Log.w(TAG, "Firestore save failed (LAN msg): ${e.message}")
+                // Update chat preview (last message shown in contact list)
+                val previewText = when {
+                    text.isNotEmpty()                          -> text
+                    fileType?.startsWith("audio/") == true     -> "🎵 Voice message"
+                    fileType?.startsWith("image/") == true     -> "📷 Image"
+                    fileType?.startsWith("video/") == true     -> "📹 Video"
+                    fileName != null                           -> "📎 $fileName"
+                    else                                       -> "File"
                 }
-        } catch (e: Exception) {
-            Log.e(TAG, "saveMessageToFirestore: ${e.message}")
+                val contactMobile = if (senderMobile == myMobile) receiverMobile else senderMobile
+                val existing = repo.chatPreviewDao.getPreview(contactMobile)
+                repo.chatPreviewDao.upsertPreview(
+                    CachedChatPreview(
+                        contactMobile      = contactMobile,
+                        contactName        = if (senderMobile == myMobile) "" else senderName,
+                        contactAvatarUrl   = existing?.contactAvatarUrl ?: "",
+                        lastMessageText    = previewText,
+                        lastMessageSender  = senderMobile,
+                        lastTimestamp      = now,
+                        lastTimeString     = timeStr,
+                        lastFileType       = fileType,
+                        lastIsCallLog      = false,
+                        // Unread: increment only for received messages (not our own)
+                        unreadCount        = if (senderMobile != myMobile)
+                                                (existing?.unreadCount ?: 0) + 1
+                                            else
+                                                existing?.unreadCount ?: 0
+                    )
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "saveToRoom: ${e.message}")
+            }
         }
     }
 }
