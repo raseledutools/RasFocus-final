@@ -208,6 +208,7 @@ class LanChatManager private constructor(private val context: Context) {
                   catch (e: Exception) {
                     if (running) Log.w(TAG, "UDP recv: ${e.message}")
                 }
+                else -> { /* unknown type – ignore */ }
             }
         } catch (e: Exception) {
             Log.e(TAG, "UDP listener failed: ${e.message}")
