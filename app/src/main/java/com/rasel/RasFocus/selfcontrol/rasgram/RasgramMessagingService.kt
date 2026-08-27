@@ -100,46 +100,42 @@ class RasgramMessagingService : FirebaseMessagingService() {
             // Not logged in — ignore call
             return
         }
-        // calleeMobile FCM data এ আছে → strict match।
-        // না থাকলে (পুরনো FCM format) → accept করো (backward compatibility)।
-        if (calleeMobile.isNotEmpty() && calleeMobile != myMobile) {
+        // calleeMobile FCM data এ আছে → normalized match।
+        // FIX: strict string equality এর বদলে normalized comparison।
+        // Android 15 এ number format ভিন্ন হতে পারে (leading zero, +880, whitespace)।
+        // normalizeNumber() দিয়ে দুটো কেই canonical form এ আনো তারপর compare করো।
+        if (calleeMobile.isNotEmpty() && normalizeMobile(calleeMobile) != normalizeMobile(myMobile)) {
             // এই call আমার জন্য না — ignore করো।
-            // এটা ঘটে যখন FCM token ভুল user এর কাছে route হয়
-            // বা একই device এ account switch হয়েছে।
             return
         }
 
-        // foreground চেক নেই — app open থাকলেও, screen off থাকলেও, যেকোনো অবস্থায়
-        // WhatsApp style: সবসময় full page overlay দেখাতে হবে।
-
-        val hasOverlay = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
-                         Settings.canDrawOverlays(this)
-
-        if (hasOverlay) {
-            // IncomingCallOverlayService নিজেই:
-            // → startForeground notification দেয় (Answer/Decline সহ)
-            // → screen off/locked হলে fullScreenIntent OS fire করে (full page)
-            // → screen on+unlocked হলে floating overlay card দেখায়
-            //
-            // FIX: try-catch — Android 14/15 এ MANAGE_OWN_CALLS বা
-            // USE_FULL_SCREEN_INTENT grant না থাকলে SecurityException আসতে পারে।
-            // সেক্ষেত্রে plain notification fallback দিয়ে কাজ চালাও।
-            var serviceStarted = false
-            try {
-                IncomingCallOverlayService.start(this, callId, callerName, callerMobile, callType)
-                serviceStarted = true
-            } catch (e: Exception) {
-                android.util.Log.e("RasGram", "IncomingCallOverlayService start failed: ${e.message}")
-            }
-            if (!serviceStarted) {
-                // Service start হয়নি — plain notification দাও
-                val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                createChannels(nm)
-                postFullScreenCallNotification(nm, callerName, callerMobile, callType, callId)
-            }
-        } else {
-            // Overlay permission নেই — fullScreenIntent notification fallback
-            // Android নিজেই notification থেকে Activity খুলবে (HUD বা full screen)
+        // FIX v7: canDrawOverlays() এখানে check করা হচ্ছে না।
+        //
+        // Bug: Android 10 এ FCM background worker process থেকে
+        // Settings.canDrawOverlays() মাঝে মাঝে false return করে — permission দেওয়া
+        // থাকলেও। এটা Android 10 এর known IPC cross-process timing issue।
+        // ফলে code else branch এ যায় → শুধু notification post হয় →
+        // notification থেকে fullScreenIntent Android 10 এ reliably fire হয় না
+        // (app killed থাকলে) → call notification আসে না।
+        //
+        // Fix: IncomingCallOverlayService.start() সবসময় call করো।
+        // Service এর নিজের onStartCommand() এ canDrawOverlays() check করা হয়
+        // (সেখানে UI process, reliable result পাওয়া যায়):
+        //   → screen off/locked → notification fullScreenIntent path
+        //   → screen on + overlay ok → floating card
+        //   → overlay নেই → notification-only
+        //
+        // FIX: try-catch — Android 14/15 এ MANAGE_OWN_CALLS বা
+        // USE_FULL_SCREEN_INTENT grant না থাকলে SecurityException আসতে পারে।
+        var serviceStarted = false
+        try {
+            IncomingCallOverlayService.start(this, callId, callerName, callerMobile, callType)
+            serviceStarted = true
+        } catch (e: Exception) {
+            android.util.Log.e("RasGram", "IncomingCallOverlayService start failed: ${e.message}")
+        }
+        if (!serviceStarted) {
+            // Service start হয়নি — plain notification fallback
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             createChannels(nm)
             postFullScreenCallNotification(nm, callerName, callerMobile, callType, callId)
@@ -158,6 +154,23 @@ class RasgramMessagingService : FirebaseMessagingService() {
                     .getString(PREF_MOBILE, null)
             else null
         } catch (_: Exception) { null }
+
+    /**
+     * FIX: Mobile number normalize — Bangladesh format canonical form।
+     * "01711223344", "+8801711223344", "8801711223344", " 01711223344 " → "8801711223344"
+     * Android 15 এ number format ভিন্ন হতে পারে → calleeMobile vs myMobile mismatch।
+     */
+    private fun normalizeMobile(raw: String): String {
+        val digits = raw.trim().replace(Regex("[^0-9]"), "")
+        return when {
+            digits.startsWith("880") && digits.length >= 12 -> digits
+            digits.startsWith("0") && digits.length == 11  -> "880${digits.substring(1)}"
+            digits.length == 10 && digits.startsWith("1")  -> "880$digits"
+            else -> digits.takeLast(11).let { tail ->
+                if (tail.startsWith("1") && tail.length == 11) "880${tail.substring(1)}" else digits
+            }
+        }
+    }
 
     private fun postFullScreenCallNotification(
         nm: NotificationManager,
