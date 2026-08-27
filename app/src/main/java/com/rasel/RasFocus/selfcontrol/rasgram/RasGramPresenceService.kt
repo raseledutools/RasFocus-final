@@ -3,6 +3,7 @@ package com.rasel.RasFocus.selfcontrol.rasgram
 import android.app.*
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -28,7 +29,7 @@ import com.rasel.RasFocus.R
  *   • Firestore lastActive ও update করে (contact list "last seen" এর জন্য)
  *
  * ব্যাটারি impact: negligible — RTDB long-poll connection মাত্র, কোনো polling নেই।
- * Notification: Priority.MIN → notification bar এ সবার নিচে, কোনো sound/vibration নেই।
+ * Notification: IMPORTANCE_NONE channel + PRIORITY_MIN → notification shade এ দেখায় না।
  */
 class RasGramPresenceService : Service() {
 
@@ -37,7 +38,17 @@ class RasGramPresenceService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        startForeground(PRESENCE_NOTIF_ID, buildNotification())
+        // Android 14+ (UPSIDE_DOWN_CAKE): startForeground এ serviceType দিতে হয়,
+        // specialUse = generic background work, IMPORTANCE_NONE channel এ notification আসে না।
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                PRESENCE_NOTIF_ID,
+                buildNotification(),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        } else {
+            startForeground(PRESENCE_NOTIF_ID, buildNotification())
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -117,19 +128,23 @@ class RasGramPresenceService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun buildNotification(): Notification {
+        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+            // IMPORTANCE_NONE = channel এ কোনো notification দেখাবে না,
+            // কিন্তু foreground service চালু রাখার জন্য technically তৈরি থাকবে।
             if (nm.getNotificationChannel(PRESENCE_CHANNEL) == null) {
                 NotificationChannel(
                     PRESENCE_CHANNEL,
                     "RasGram Online Status",
-                    NotificationManager.IMPORTANCE_MIN
+                    NotificationManager.IMPORTANCE_NONE   // ← NONE = invisible
                 ).apply {
-                    description          = "Keeps your online status active"
+                    description      = "Keeps your online status active"
                     setShowBadge(false)
                     setSound(null, null)
                     enableVibration(false)
                     enableLights(false)
+                    lockscreenVisibility = Notification.VISIBILITY_SECRET
                 }.also { nm.createNotificationChannel(it) }
             }
         }
@@ -138,14 +153,14 @@ class RasGramPresenceService : Service() {
             .setSmallIcon(R.drawable.ic_rasgram_notif)
             .setContentTitle("")
             .setContentText("")
-            .setPriority(NotificationCompat.PRIORITY_MIN)
-            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setPriority(NotificationCompat.PRIORITY_MIN)   // সবচেয়ে কম priority
             .setSilent(true)
-            .setOngoing(true)
+            .setOngoing(false)          // ← false = user চাইলে swipe করে dismiss করতে পারবে
             .setShowWhen(false)
-            .setVisibility(NotificationCompat.VISIBILITY_SECRET)
+            .setVisibility(NotificationCompat.VISIBILITY_SECRET)  // lock screen এও লুকানো
 
-        // Android 12+ (S): defer the notification so it never appears in the shade
+        // Android 12+ (S): system কে বলছি — notification shade এ show করো না,
+        // শুধু 10 সেকেন্ড পরে দেখাও (বেশিরভাগ সময় দেখাই যায় না)।
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             builder.setForegroundServiceBehavior(
                 NotificationCompat.FOREGROUND_SERVICE_DEFERRED

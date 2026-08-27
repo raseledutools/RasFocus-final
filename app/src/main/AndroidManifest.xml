@@ -1013,7 +1013,7 @@
     <service
         android:name=".selfcontrol.rasgram.RasGramPresenceService"
         android:exported="false"
-        android:foregroundServiceType="dataSync" />
+        android:foregroundServiceType="specialUse" />
 
     <!-- RasGram Screen Share — Remote Input Accessibility Service
          Allows remote peer to inject touch events during a screen share session.
