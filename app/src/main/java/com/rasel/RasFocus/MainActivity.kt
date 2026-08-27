@@ -2185,7 +2185,11 @@ class UsageNotificationService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(CHANNEL_ID, "RasFocus Usage Stats", NotificationManager.IMPORTANCE_LOW).apply { description = "Shows your daily screen time"; setShowBadge(false) }
+            val channel = NotificationChannel(CHANNEL_ID, "RasFocus Usage Stats", NotificationManager.IMPORTANCE_MIN).apply {
+                description = "Background service"
+                setShowBadge(false)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_SECRET
+            }
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
     }
@@ -2243,6 +2247,8 @@ class UsageNotificationService : Service() {
             .setOngoing(true)
             .setContentIntent(pi)
             .setSilent(true)
+            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_MIN)
+            .setVisibility(androidx.core.app.NotificationCompat.VISIBILITY_SECRET)
             .build()
     }
 }
