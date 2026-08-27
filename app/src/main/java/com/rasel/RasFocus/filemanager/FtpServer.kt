@@ -47,10 +47,16 @@ object FtpServerManager {
 
     var port = 2221
     var username = "rasfocus"
-    var password = ""
+    var password = "1111"
+
+    /** Last known IP — UI এ সবসময় দেখানোর জন্য cache করা হয় */
+    var lastKnownIp: String? = null
+        private set
 
     fun startServer(context: Context, onResult: (Boolean, String?) -> Unit) {
         if (isRunning) {
+            // Already running — just refresh IP cache and return success
+            lastKnownIp = getLocalIpAddress(context) ?: lastKnownIp
             onResult(true, null)
             return
         }
@@ -77,6 +83,8 @@ object FtpServerManager {
             server = serverFactory.createServer()
             server?.start()
             isRunning = true
+            // Cache IP immediately after start so UI always has a link to show
+            lastKnownIp = getLocalIpAddress(context)
             onResult(true, null)
         } catch (e: Exception) {
             e.printStackTrace()
@@ -91,6 +99,7 @@ object FtpServerManager {
             server?.stop()
             server = null
             isRunning = false
+            lastKnownIp = null
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -150,12 +159,18 @@ object FtpServerManager {
 fun FtpServerScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     var isRunning by remember { mutableStateOf(FtpServerManager.isRunning) }
-    var ipAddress by remember { mutableStateOf<String?>(null) }
+    // Use cached IP from manager so it's stable across recompositions
+    var ipAddress by remember { mutableStateOf(FtpServerManager.lastKnownIp) }
     val scope = rememberCoroutineScope()
 
+    // Refresh IP whenever running state changes (e.g. after start)
     LaunchedEffect(isRunning) {
-        ipAddress = withContext(Dispatchers.IO) {
-            FtpServerManager.getLocalIpAddress(context)
+        if (isRunning) {
+            ipAddress = withContext(Dispatchers.IO) {
+                FtpServerManager.lastKnownIp ?: FtpServerManager.getLocalIpAddress(context)
+            }
+        } else {
+            ipAddress = null
         }
     }
 
@@ -236,10 +251,7 @@ fun FtpServerScreen(onBack: () -> Unit) {
                             Spacer(modifier = Modifier.height(8.dp))
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("Password:", color = Color.Gray)
-                                Text(
-                                    if (FtpServerManager.password.isEmpty()) "None" else "••••",
-                                    fontWeight = FontWeight.SemiBold
-                                )
+                                Text("1111", fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }
@@ -283,22 +295,24 @@ fun FtpServerScreen(onBack: () -> Unit) {
                         FtpServerManager.stopServer()
                         isRunning = false
                     } else {
-                        // Network check: hotspot বা WiFi — যেকোনো একটা থাকলেই চলবে
-                        val ip = FtpServerManager.getLocalIpAddress(context)
-                        if (ip == null) {
-                            android.widget.Toast.makeText(
-                                context,
-                                "Mobile hotspot বা WiFi চালু করুন, তারপর চেষ্টা করুন",
-                                android.widget.Toast.LENGTH_LONG
-                            ).show()
-                            return@Button
-                        }
                         scope.launch {
                             withContext(Dispatchers.IO) {
                                 FtpServerManager.startServer(context) { success, error ->
                                     scope.launch {
                                         if (success) {
                                             isRunning = true
+                                            // Immediately show the stable IP link
+                                            ipAddress = FtpServerManager.lastKnownIp
+                                                ?: withContext(Dispatchers.IO) {
+                                                    FtpServerManager.getLocalIpAddress(context)
+                                                }
+                                            if (ipAddress == null) {
+                                                android.widget.Toast.makeText(
+                                                    context,
+                                                    "Server চালু হয়েছে। Mobile hotspot বা WiFi চালু করুন যাতে IP দেখা যায়।",
+                                                    android.widget.Toast.LENGTH_LONG
+                                                ).show()
+                                            }
                                         } else {
                                             android.widget.Toast.makeText(
                                                 context,

@@ -818,6 +818,7 @@ fun HomeScreen(
         )
     }
 }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Battery Ring Clock  — full circle, fills clockwise as battery increases
