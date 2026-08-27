@@ -45,7 +45,7 @@ object FtpServerManager {
     var isRunning = false
         private set
 
-    var port = 2221
+    var port = 1111
     var username = "rasfocus"
     var password = "1111"
 
