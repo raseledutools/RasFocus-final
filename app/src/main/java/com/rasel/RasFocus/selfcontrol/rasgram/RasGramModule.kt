@@ -2515,16 +2515,53 @@ fun ChatArea(
                         // ── LAN: Cloudinary নয়, সরাসরি TCP দিয়ে ────────────────
                         val tempFile = uriToTempFile(context, it, uploadingFileName)
                         if (tempFile != null) {
-                            lanManager.sendFile(lanPeer, tempFile, mimeType, chatId)
-                            Toast.makeText(context, "📶 LAN দিয়ে পাঠানো হয়েছে", Toast.LENGTH_SHORT).show()
+                            // FIX: onProgress দিয়ে LAN upload % UI তে দেখাও
+                            lanManager.sendFile(lanPeer, tempFile, mimeType, chatId) { prog ->
+                                kotlinx.coroutines.runBlocking {
+                                    withContext(Dispatchers.Main) { uploadProgress = prog }
+                                }
+                            }
                         }
                     } else {
-                        val (url, fileName, fileType) = uploadToCloudinary(context, it) { prog -> uploadProgress = prog }
+                        // FIX: WhatsApp style — attach করলেই সাথে সাথে pending bubble দেখাও।
+                        // আগে: upload শেষ হওয়ার পরে sendMessage call হত → UI তে দেরিতে দেখাত।
+                        // এখন: আগে pending message Room এ save করো (instant bubble),
+                        //       তারপর background এ upload করো, upload শেষে Firestore update করো।
+                        val pendingId = "pending_${System.currentTimeMillis()}_upload"
+                        val attachedFileName = uploadingFileName
+
+                        // Step 1: সাথে সাথে pending bubble দেখাও (placeholder URL দিয়ে)
+                        sendMessage(
+                            db, chatId, currentUser.mobile, currentUser.name, contact.mobile,
+                            "", context,
+                            fileUrl  = "uploading://$pendingId",   // placeholder
+                            fileName = attachedFileName,
+                            fileType = mimeType
+                        )
+
+                        // Step 2: background upload
+                        val (url, uploadedFileName, fileType) = uploadToCloudinary(context, it) { prog ->
+                            uploadProgress = prog
+                        }
+
                         if (url != null) {
-                            sendMessage(db, chatId, currentUser.mobile, currentUser.name, contact.mobile, "", context, url, fileName, fileType)
-                            val label = if (mimeType.startsWith("video/")) "ভিডিও" else "ছবি"
-                            Toast.makeText(context, "$label পাঠানো হয়েছে", Toast.LENGTH_SHORT).show()
-                        } else Toast.makeText(context, "আপলোড ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
+                            // Step 3: pending message কে real URL দিয়ে update করো
+                            // Firestore এ pending doc খুঁজে update — Room এ isPending=false হবে Firestore listener এ
+                            try {
+                                val snap = db.collection("messages").document(chatId)
+                                    .collection("msgs")
+                                    .whereEqualTo("fileUrl", "uploading://$pendingId")
+                                    .limit(1).get().await()
+                                snap.documents.firstOrNull()?.reference?.update(
+                                    "fileUrl", url,
+                                    "fileName", uploadedFileName,
+                                    "fileType", fileType,
+                                    "isPending", false
+                                )
+                            } catch (_: Exception) {}
+                        } else {
+                            Toast.makeText(context, "আপলোড ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 } catch (e: Exception) {
                     Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -2546,15 +2583,45 @@ fun ChatArea(
                     if (isLanAvailable && lanPeer != null) {
                         val tempFile = uriToTempFile(context, it, uploadingFileName)
                         if (tempFile != null) {
-                            lanManager.sendFile(lanPeer, tempFile, mimeType, chatId)
-                            Toast.makeText(context, "📶 LAN দিয়ে ফাইল পাঠানো হয়েছে", Toast.LENGTH_SHORT).show()
+                            lanManager.sendFile(lanPeer, tempFile, mimeType, chatId) { prog ->
+                                kotlinx.coroutines.runBlocking {
+                                    withContext(Dispatchers.Main) { uploadProgress = prog }
+                                }
+                            }
                         }
                     } else {
-                        val (url, fileName, fileType) = uploadToCloudinary(context, it) { prog -> uploadProgress = prog }
+                        val pendingId = "pending_${System.currentTimeMillis()}_upload"
+                        val attachedFileName = uploadingFileName
+                        val mimeType2 = context.contentResolver.getType(it) ?: "application/octet-stream"
+
+                        sendMessage(
+                            db, chatId, currentUser.mobile, currentUser.name, contact.mobile,
+                            "", context,
+                            fileUrl  = "uploading://$pendingId",
+                            fileName = attachedFileName,
+                            fileType = mimeType2
+                        )
+
+                        val (url, uploadedFileName, fileType) = uploadToCloudinary(context, it) { prog ->
+                            uploadProgress = prog
+                        }
+
                         if (url != null) {
-                            sendMessage(db, chatId, currentUser.mobile, currentUser.name, contact.mobile, "", context, url, fileName, fileType)
-                            Toast.makeText(context, "ফাইল পাঠানো হয়েছে", Toast.LENGTH_SHORT).show()
-                        } else Toast.makeText(context, "আপলোড ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
+                            try {
+                                val snap = db.collection("messages").document(chatId)
+                                    .collection("msgs")
+                                    .whereEqualTo("fileUrl", "uploading://$pendingId")
+                                    .limit(1).get().await()
+                                snap.documents.firstOrNull()?.reference?.update(
+                                    "fileUrl", url,
+                                    "fileName", uploadedFileName,
+                                    "fileType", fileType,
+                                    "isPending", false
+                                )
+                            } catch (_: Exception) {}
+                        } else {
+                            Toast.makeText(context, "আপলোড ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 } catch (e: Exception) {
                     Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -7025,9 +7092,11 @@ suspend fun uploadToCloudinary(
             }
         }
 
+        // FIX: fileBody এর বদলে progressBody use করো — আগে progressBody বানানো হত
+        // কিন্তু request এ fileBody পাঠানো হত, তাই progress কখনো update হত না।
         val requestBody = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
-            .addFormDataPart("file", fileName, fileBody)
+            .addFormDataPart("file", fileName, progressBody)
             .addFormDataPart("upload_preset", CLOUDINARY_UPLOAD_PRESET)
             .build()
 

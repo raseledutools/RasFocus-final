@@ -370,9 +370,30 @@ class LanChatManager private constructor(private val context: Context) {
 
     // ── Send: File ────────────────────────────────────────────────────────────
     // Saves sender's own copy to Room, then TCP-sends file bytes to peer.
-    fun sendFile(peer: LanDiscoveredUser, file: File, mimeType: String, chatId: String) {
+    fun sendFile(
+        peer: LanDiscoveredUser,
+        file: File,
+        mimeType: String,
+        chatId: String,
+        onProgress: ((Float) -> Unit)? = null   // FIX: progress callback
+    ) {
         scope.launch(Dispatchers.IO) {
             try {
+                // FIX: WhatsApp style — আগে pending bubble Room এ save করো (instant UI)
+                val localUrl = "local://${file.absolutePath}"
+                saveToRoom(
+                    chatId         = chatId,
+                    senderMobile   = myMobile,
+                    receiverMobile = peer.mobile,
+                    senderName     = myName,
+                    text           = "",
+                    fileUrl        = localUrl,
+                    fileName       = file.name,
+                    fileType       = mimeType,
+                    fileSizeBytes  = file.length(),
+                    isPending      = true          // sending... indicator
+                )
+
                 val header = JSONObject().apply {
                     put("type",         "file")
                     put("chatId",       chatId)
@@ -381,19 +402,12 @@ class LanChatManager private constructor(private val context: Context) {
                     put("mimeType",     mimeType)
                     put("fileName",     file.name)
                 }
-                sendTcpPacket(peer, header, file)
-                // Sender side: save our copy to Room
-                saveToRoom(
-                    chatId         = chatId,
-                    senderMobile   = myMobile,
-                    receiverMobile = peer.mobile,
-                    senderName     = myName,
-                    text           = "",
-                    fileUrl        = "local://${file.absolutePath}",
-                    fileName       = file.name,
-                    fileType       = mimeType,
-                    fileSizeBytes  = file.length()
-                )
+                // TCP send — progress callback দিয়ে
+                sendTcpPacket(peer, header, file, onProgress)
+
+                // Send সফল — isPending false করো
+                updateRoomPending(chatId, localUrl, isPending = false)
+
             } catch (e: Exception) {
                 Log.e(TAG, "sendFile: ${e.message}")
             }
@@ -434,7 +448,13 @@ class LanChatManager private constructor(private val context: Context) {
     }
 
     // ── TCP packet sender ─────────────────────────────────────────────────────
-    private fun sendTcpPacket(peer: LanDiscoveredUser, header: JSONObject, file: File?) {
+    // FIX: onProgress callback যোগ করা হয়েছে — LAN file send progress track করার জন্য
+    private fun sendTcpPacket(
+        peer: LanDiscoveredUser,
+        header: JSONObject,
+        file: File?,
+        onProgress: ((Float) -> Unit)? = null
+    ) {
         Socket().use { sock ->
             sock.connect(InetSocketAddress(peer.ip, peer.port), 5_000)
             val dos         = DataOutputStream(sock.getOutputStream())
@@ -442,11 +462,17 @@ class LanChatManager private constructor(private val context: Context) {
             dos.writeInt(headerBytes.size)
             dos.write(headerBytes)
             if (file != null && file.exists()) {
-                dos.writeLong(file.length())
+                val total = file.length()
+                dos.writeLong(total)
+                var sent = 0L
                 FileInputStream(file).use { fis ->
                     val buf = ByteArray(8192)
                     var n: Int
-                    while (fis.read(buf).also { n = it } != -1) dos.write(buf, 0, n)
+                    while (fis.read(buf).also { n = it } != -1) {
+                        dos.write(buf, 0, n)
+                        sent += n
+                        onProgress?.invoke(sent.toFloat() / total.toFloat())
+                    }
                 }
             }
             dos.flush()
@@ -464,7 +490,8 @@ class LanChatManager private constructor(private val context: Context) {
         fileName: String?  = null,
         fileType: String?  = null,
         fileSizeBytes: Long = 0L,
-        duration: Int      = 0
+        duration: Int      = 0,
+        isPending: Boolean = false   // FIX: pending bubble support
     ) {
         scope.launch(Dispatchers.IO) {
             try {
@@ -488,7 +515,7 @@ class LanChatManager private constructor(private val context: Context) {
                         duration       = duration,
                         read           = (senderMobile == myMobile), // own messages are "read"
                         delivered      = true,
-                        isPending      = false
+                        isPending      = isPending
                     )
                 )
 
@@ -523,6 +550,24 @@ class LanChatManager private constructor(private val context: Context) {
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "saveToRoom: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * FIX: LAN file send শেষে pending bubble কে confirmed এ update করো।
+     * fileUrl দিয়ে Room এ message খুঁজে isPending = false করে দাও।
+     */
+    private fun updateRoomPending(chatId: String, fileUrl: String, isPending: Boolean) {
+        scope.launch(Dispatchers.IO) {
+            try {
+                val msgs = repo.messageDao.getMessagesForChat(chatId)
+                msgs.filter { it.fileUrl == fileUrl && it.isPending }
+                    .forEach { msg ->
+                        repo.messageDao.upsertMessage(msg.copy(isPending = isPending))
+                    }
+            } catch (e: Exception) {
+                Log.e(TAG, "updateRoomPending: ${e.message}")
             }
         }
     }
