@@ -7221,8 +7221,11 @@ suspend fun sendFcmCallNotification(
         }
         android.util.Log.d(TAG, "OAuth2 token OK, sending FCM…")
 
-        // ── Step 4: FCM v1 data message ──────────────────────────────────────
-        // HIGH priority + ttl 60s: Doze wakeup + 1-minute expiry (no stale ring)
+        // ── Step 4: FCM v1 data + notification message ───────────────────────
+        // notification block: app closed/killed থাকলেও system নিজেই notification দেখায়।
+        // data block: app foreground/background থাকলে onMessageReceived() এ যায়।
+        // HIGH priority + ttl 60s: Doze wakeup করে, 1-minute expiry (stale ring নেই)।
+        val callTitle = if (callType == "video") "📹 Incoming Video Call" else "📞 Incoming Voice Call"
         val fcmPayload = org.json.JSONObject().apply {
             put("message", org.json.JSONObject().apply {
                 put("token", fcmToken)
@@ -7235,10 +7238,23 @@ suspend fun sendFcmCallNotification(
                     put("callId", callId)
                     put("direct_boot_ok", "true")
                 })
+                // notification block: app killed হলেও system tray এ দেখায়
+                put("notification", org.json.JSONObject().apply {
+                    put("title", callTitle)
+                    put("body", "$callerName · $callerMobile")
+                })
                 put("android", org.json.JSONObject().apply {
                     put("priority", "HIGH")
                     put("ttl", "60s")
                     put("direct_boot_ok", true)
+                    // notification channel: IMPORTANCE_MAX, CATEGORY_CALL
+                    put("notification", org.json.JSONObject().apply {
+                        put("channel_id", "CALL_CHANNEL")
+                        put("sound", "default")
+                        put("default_vibrate_timings", true)
+                        put("notification_priority", "PRIORITY_MAX")
+                        put("visibility", "PUBLIC")
+                    })
                 })
             })
         }.toString()
@@ -8610,3 +8626,4 @@ fun zipDocumentFile(
         }
     }
 }
+
