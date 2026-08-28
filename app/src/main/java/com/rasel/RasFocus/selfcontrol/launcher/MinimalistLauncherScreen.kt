@@ -2135,7 +2135,7 @@ private fun getAppShortcuts(context: Context, packageName: String): List<AppShor
             .setPackage(packageName)
         val user = Process.myUserHandle()
         la.getShortcuts(query, user)
-            ?.filter { !it.isDisabled }
+            ?.filter { it.isEnabled }
             ?.sortedBy { it.rank }   // rank 0 = highest priority
             ?.take(4)
             ?.map { si ->
