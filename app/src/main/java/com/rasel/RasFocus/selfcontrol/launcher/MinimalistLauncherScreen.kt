@@ -604,70 +604,47 @@ fun HomeScreen(
             .background(BG)
             .navigationBarsPadding()
     ) {
-        // ═══════════════════════════════════════════════════════════════
-        // Two-column layout: LEFT = clock ring | RIGHT = word widget
-        // Both sides scroll together inside a single LazyColumn so that
-        // the pinned apps list continues below the split header.
-        // ═══════════════════════════════════════════════════════════════
+        // ── Fixed top section: clock + word widget (vertical) ────────────
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .align(Alignment.TopCenter)
+        ) {
+            Spacer(Modifier.height(48.dp))
+
+            ClockWithBatteryRing(
+                time               = timeState.first,
+                date               = timeState.second,
+                battery            = battery,
+                isCharging         = isCharging,
+                totalScreenMinutes = totalScreenMinutes,
+                onLongPress = onLongPressClockRing,
+                onTap = {
+                    if (clockPkg.isNotBlank()) launchApp(context, clockPkg)
+                    else onLongPressClockRing()
+                }
+            )
+
+            Spacer(Modifier.height(10.dp))
+
+            HourlyWordWidget(context = context)
+
+            Spacer(Modifier.height(8.dp))
+        }
+
+        // ── Scrollable apps list — sits below header, above bottom bar ───
+        // clock (180) + top pad (48) + spacer (10) + widget (~80) + spacer (8)
+        val clockSectionHeight = 48.dp + 180.dp + 10.dp + 80.dp + 8.dp
         LazyColumn(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(bottom = 80.dp),   // leave room for bottom bar
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                top = 48.dp, bottom = 8.dp
-            )
+                .fillMaxWidth()
+                .align(Alignment.TopStart)
+                .padding(top = clockSectionHeight, bottom = 96.dp)
+                .padding(horizontal = 24.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 4.dp)
         ) {
-            // ── HEADER ROW: clock (left) + word widget (right) ──────────
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    verticalAlignment = Alignment.Top
-                ) {
-                    // LEFT column — clock ring (40% width)
-                    Box(
-                        modifier = Modifier.weight(0.42f),
-                        contentAlignment = Alignment.TopCenter
-                    ) {
-                        ClockWithBatteryRing(
-                            time               = timeState.first,
-                            date               = timeState.second,
-                            battery            = battery,
-                            isCharging         = isCharging,
-                            totalScreenMinutes = totalScreenMinutes,
-                            onLongPress = onLongPressClockRing,
-                            onTap = {
-                                if (clockPkg.isNotBlank()) launchApp(context, clockPkg)
-                                else onLongPressClockRing()
-                            }
-                        )
-                    }
-
-                    Spacer(Modifier.width(10.dp))
-
-                    // RIGHT column — 5-word widget (58% width)
-                    Column(
-                        modifier = Modifier.weight(0.58f)
-                    ) {
-                        HourlyWordWidget(context = context)
-                    }
-                }
-                Spacer(Modifier.height(16.dp))
-            }
-
             // ── PINNED APPS LIST ─────────────────────────────────────────
-            if (localOrder.isEmpty()) {
-                item {
-                    Text(
-                        "Long press buttons below to assign apps",
-                        color    = TXT.copy(alpha = 0.2f),
-                        fontSize = 13.sp,
-                        lineHeight = 19.sp,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
-                    )
-                }
-            } else {
             if (localOrder.isEmpty()) {
                 item {
                     Text(
@@ -805,7 +782,6 @@ fun HomeScreen(
                     }
                 }
             }
-        }       // end LazyColumn content
         }       // end LazyColumn
 
         // ── Bottom two buttons ───────────────────────────────────────────
@@ -991,30 +967,42 @@ fun ClockWithBatteryRing(
                     }
                 }
         ) {
-            // Only show battery % and charging icon — no time/date text
             Column(
                 Modifier.fillMaxSize(),
                 verticalArrangement   = Arrangement.Center,
                 horizontalAlignment   = Alignment.CenterHorizontally
             ) {
-                if (isCharging) {
-                    // Charging icon — pulses with color
-                    Icon(
-                        Icons.Default.BatteryChargingFull,
-                        contentDescription = "Charging",
-                        tint     = chargingColor.copy(alpha = pulseAlpha),
-                        modifier = Modifier
-                            .size(32.dp)
-                            .graphicsLayer { scaleX = 0.9f + pulseAlpha * 0.1f; scaleY = 0.9f + pulseAlpha * 0.1f }
-                    )
-                    Spacer(Modifier.height(4.dp))
-                }
+                // Time — large, charging color pulses
+                Text(
+                    text       = time,
+                    color      = if (isCharging) chargingColor else TXT,
+                    fontSize   = 30.sp,
+                    fontWeight = FontWeight.Light
+                )
+                Spacer(Modifier.height(4.dp))
+                // Date
+                Text(
+                    text     = date,
+                    color    = TXT.copy(alpha = 0.5f),
+                    fontSize = 13.sp
+                )
+                Spacer(Modifier.height(2.dp))
+                // Battery % — charging pulses
                 Text(
                     text     = "$battery%",
                     color    = (if (isCharging) chargingColor else DIM).copy(alpha = if (isCharging) pulseAlpha else 0.7f),
                     fontSize = if (isCharging) 14.sp else 11.sp,
                     fontWeight = if (isCharging) FontWeight.Medium else FontWeight.Light
                 )
+                // Screen time label (only when data available)
+                if (screenTimeLabel.isNotBlank()) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text     = screenTimeLabel,
+                        color    = usageArcColor.copy(alpha = 0.8f),
+                        fontSize = 10.sp
+                    )
+                }
             }
         }
     }
