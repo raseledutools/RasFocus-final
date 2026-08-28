@@ -7634,21 +7634,37 @@ suspend fun handleCallerSignaling(
                 pc.setLocalDescription(object : SdpObserver {
                     override fun onCreateSuccess(s2: SessionDescription?) {}
                     override fun onSetSuccess() {
-                        scope.launch {
-                            db.collection("calls").document(callId).set(hashMapOf(
-                                "caller" to currentUser.mobile,
-                                "callerName" to currentUser.name,
-                                "callee" to contact.mobile,
-                                "type" to callType, "status" to "calling",
-                                "timestamp" to System.currentTimeMillis(),
-                                "offer" to mapOf("type" to s.type.canonicalForm(), "sdp" to s.description)
-                            ))
+                        // FIX: Android 15 deadlock — এই callback WebRTC internal
+                        // thread এ আসে। scope.launch করলে Compose Main dispatcher
+                        // এ যায়, কিন্তু sendFcmCallNotification এর ভেতরে
+                        // withContext(Dispatchers.IO) করার সময় Firestore internal
+                        // executor কে block করে → .get().await() কখনো return করে না।
+                        //
+                        // Fix: Dispatchers.IO explicitly দিয়ে launch করো।
+                        // Firestore এবং OkHttp দুটোই IO dispatcher এ নিরাপদ।
+                        // callId capture করা হলো — SdpObserver callback এ
+                        // outer scope এর mutable var access unsafe।
+                        val capturedCallId = callId
+                        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                            try {
+                                db.collection("calls").document(capturedCallId).set(hashMapOf(
+                                    "caller" to currentUser.mobile,
+                                    "callerName" to currentUser.name,
+                                    "callee" to contact.mobile,
+                                    "type" to callType, "status" to "calling",
+                                    "timestamp" to System.currentTimeMillis(),
+                                    "offer" to mapOf("type" to s.type.canonicalForm(), "sdp" to s.description)
+                                )).await()
+                            } catch (e: Exception) {
+                                android.util.Log.e("RasGram_Call", "Firestore call doc set failed: ${e.message}")
+                                return@launch
+                            }
                             sendFcmCallNotification(
                                 calleeMobile = contact.mobile,
                                 callerMobile = currentUser.mobile,
                                 callerName = currentUser.name,
                                 callType = callType,
-                                callId = callId,
+                                callId = capturedCallId,
                                 db = db,
                                 context = context
                             )
