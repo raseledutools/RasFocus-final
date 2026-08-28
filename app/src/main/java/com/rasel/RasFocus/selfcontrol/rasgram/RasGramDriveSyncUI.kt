@@ -555,7 +555,29 @@ fun ShareFileContactPickerDialog(
                                             isUploading = true
                                             scope.launch {
                                                 try {
-                                                    val (url, fn, ft) = uploadToCloudinary(context, fileUri) { prog ->
+                                                    // FileProvider URI থেকে temp file copy করো — 
+                                                    // content:// URI এ Activity/Process context ছাড়া access হয় না।
+                                                    // cache dir এ copy করলে upload পুরো হওয়া পর্যন্ত পড়া যাবে।
+                                                    val uploadUri = try {
+                                                        context.contentResolver.takePersistableUriPermission(
+                                                            fileUri,
+                                                            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                                        )
+                                                        fileUri
+                                                    } catch (_: Exception) {
+                                                        // Persistable permission নেই (FileProvider) — temp file এ copy করো
+                                                        val tempFile = java.io.File(
+                                                            context.cacheDir,
+                                                            "share_tmp_${System.currentTimeMillis()}_${fileName.takeLast(40)}"
+                                                        )
+                                                        try {
+                                                            context.contentResolver.openInputStream(fileUri)?.use { input ->
+                                                                tempFile.outputStream().use { output -> input.copyTo(output) }
+                                                            }
+                                                            android.net.Uri.fromFile(tempFile)
+                                                        } catch (_: Exception) { fileUri }
+                                                    }
+                                                    val (url, fn, ft) = uploadToCloudinary(context, uploadUri) { prog ->
                                                         uploadProgress = prog
                                                     }
                                                     if (url != null) {

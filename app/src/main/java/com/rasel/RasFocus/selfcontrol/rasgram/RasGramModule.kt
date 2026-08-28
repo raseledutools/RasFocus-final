@@ -8090,6 +8090,53 @@ fun GroupChatArea(
         }
     }
 
+    // ── Group Folder launcher (OpenDocumentTree) — sub-folder সহ recursive zip → Cloudinary ──
+    val groupFolderLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
+        treeUri?.let { uri ->
+            scope.launch {
+                try {
+                    val docTree = androidx.documentfile.provider.DocumentFile.fromTreeUri(context, uri)
+                    val folderName = docTree?.name ?: "folder_${System.currentTimeMillis()}"
+                    uploadingFileName = "📁 $folderName"
+                    isUploading = true
+                    uploadProgress = 0f
+
+                    val zipFile = java.io.File(context.cacheDir, "${folderName}_${System.currentTimeMillis()}.zip")
+                    val zipOk = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        try {
+                            java.util.zip.ZipOutputStream(
+                                java.io.BufferedOutputStream(java.io.FileOutputStream(zipFile))
+                            ).use { zos -> zipDocumentFile(context, docTree!!, folderName, zos) }
+                            true
+                        } catch (e: Exception) { false }
+                    }
+                    if (!zipOk || !zipFile.exists() || zipFile.length() == 0L) {
+                        Toast.makeText(context, "ফোল্ডার zip করা যায়নি", Toast.LENGTH_SHORT).show()
+                        isUploading = false; uploadingFileName = ""; zipFile.delete(); return@launch
+                    }
+                    val (url, _, _) = uploadToCloudinary(context, zipFile.toUri()) { prog -> uploadProgress = prog }
+                    zipFile.delete()
+                    if (url != null) {
+                        val markedName = "${RASGRAM_FOLDER_PREFIX}${folderName}.zip"
+                        val now = System.currentTimeMillis()
+                        val msgMap = hashMapOf(
+                            "text" to "", "senderMobile" to currentUser.mobile,
+                            "fileUrl" to url, "fileName" to markedName, "fileType" to "application/zip",
+                            "timestamp" to now,
+                            "timeString" to java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(now))
+                        )
+                        db.collection("groups").document(group.id).collection("messages").add(msgMap)
+                        db.collection("groups").document(group.id).update("lastMessageTime", now)
+                        Toast.makeText(context, "📁 ফোল্ডার পাঠানো হয়েছে", Toast.LENGTH_SHORT).show()
+                    } else Toast.makeText(context, "আপলোড ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+                isUploading = false; uploadProgress = 0f; uploadingFileName = ""
+            }
+        }
+    }
+
     // Document / Audio / Any-file launcher — folder option ও এটাই ব্যবহার করে
     val groupDocLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
@@ -8340,7 +8387,7 @@ fun GroupChatArea(
                 onImageVideo = { groupImageVideoLauncher.launch(arrayOf("image/*", "video/*")); showAttachMenu = false },
                 onDocument = { groupDocLauncher.launch(arrayOf("application/*", "text/*")); showAttachMenu = false },
                 onAudio = { groupDocLauncher.launch(arrayOf("audio/*")); showAttachMenu = false },
-                onFilesFromFolder = { groupDocLauncher.launch(arrayOf("*/*")); showAttachMenu = false }
+                onFilesFromFolder = { groupFolderLauncher.launch(null); showAttachMenu = false }
             )
         }
     }
