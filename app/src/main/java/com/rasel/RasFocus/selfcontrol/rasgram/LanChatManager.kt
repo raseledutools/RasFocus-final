@@ -561,11 +561,12 @@ class LanChatManager private constructor(private val context: Context) {
     private fun updateRoomPending(chatId: String, fileUrl: String, isPending: Boolean) {
         scope.launch(Dispatchers.IO) {
             try {
-                val msgs = repo.messageDao.getMessagesForChat(chatId)
-                msgs.filter { it.fileUrl == fileUrl && it.isPending }
-                    .forEach { msg ->
-                        repo.messageDao.upsertMessage(msg.copy(isPending = isPending))
+                val msgs = repo.messageDao.getAllMessagesForChat(chatId)
+                for (msg in msgs) {
+                    if (msg.fileUrl == fileUrl && msg.isPending) {
+                        repo.messageDao.updatePending(msg.id, isPending)
                     }
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "updateRoomPending: ${e.message}")
             }

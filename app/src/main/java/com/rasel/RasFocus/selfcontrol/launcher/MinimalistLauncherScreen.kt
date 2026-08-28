@@ -133,9 +133,15 @@ private val DEFAULT_WORDS = listOf(
 )
 
 enum class LauncherTheme(val bg: Color, val text: Color, val accent: Color) {
-    PureBlack(Color(0xFF000000), Color(0xFFFFFFFF), Color(0xFF14C3B2)),
-    DarkBlue(Color(0xFF0A0E1A),  Color(0xFFE8EAF6), Color(0xFF4FC3F7)),
-    DarkGreen(Color(0xFF030E0A), Color(0xFFE8F5E9), Color(0xFF00FFB2))
+    PureBlack (Color(0xFF000000), Color(0xFFFFFFFF), Color(0xFF14C3B2)),
+    DarkBlue  (Color(0xFF0A0E1A), Color(0xFFE8EAF6), Color(0xFF4FC3F7)),
+    DarkGreen (Color(0xFF030E0A), Color(0xFFE8F5E9), Color(0xFF00FFB2)),
+    // ── 5 new distinct styles ──────────────────────────────────────
+    Study     (Color(0xFF110E07), Color(0xFFEED9A0), Color(0xFFD4922A)),  // warm desk-lamp — amber parchment
+    NeonCity  (Color(0xFF0A010F), Color(0xFFE8D5FF), Color(0xFFBB40FF)),  // cyberpunk — neon purple
+    Ocean     (Color(0xFF011018), Color(0xFFD0EAF5), Color(0xFF29B6E0)),  // deep sea — icy blue
+    Ember     (Color(0xFF0F0200), Color(0xFFF5DDD0), Color(0xFFFF6B35)),  // fireplace — warm orange
+    Moonlight (Color(0xFF06061A), Color(0xFFE8EAFF), Color(0xFF9999FF))   // night sky — silver periwinkle
 }
 
 // which picker slot is active
@@ -181,7 +187,7 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
     var clockPkg      by remember { mutableStateOf(prefs.getString(KEY_CLOCK_PKG, "") ?: "") }
     var autoKeyboard  by rememberSaveable { mutableStateOf(prefs.getBoolean(KEY_AUTO_KB, false)) }
 
-    val theme       = LauncherTheme.entries[themeIdx.coerceIn(0, 2)]
+    val theme       = LauncherTheme.entries[themeIdx.coerceIn(0, LauncherTheme.entries.size - 1)]
     val appFontSize = when (fontSize) { 0 -> 16.sp; 2 -> 26.sp; else -> 21.sp }
 
     val usageMap: Map<String, Long> = remember { getUsageMap(context) }
@@ -422,7 +428,7 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                     .fillMaxWidth(SIDEBAR_WIDTH_FRACTION)
                     .align(Alignment.CenterEnd)
                     .offset { IntOffset(sidebarOffsetAnim.value.roundToInt(), 0) }
-                    .background(Color(0xFF0D0D0D))
+                    .background(theme.bg)
                     .clickable(enabled = false) {}
             ) {
                 SidebarContent(
@@ -601,7 +607,7 @@ fun HomeScreen(
     Box(
         Modifier
             .fillMaxSize()
-            .background(BG)
+            .background(theme.bg)
             .navigationBarsPadding()
     ) {
         // ── Fixed top section: clock + word widget (vertical) ────────────
@@ -645,7 +651,7 @@ fun HomeScreen(
                 item {
                     Text(
                         "Long press the ring or buttons below to assign apps",
-                        color    = TXT.copy(alpha = 0.2f),
+                        color    = theme.text.copy(alpha = 0.2f),
                         fontSize = 14.sp,
                         lineHeight = 20.sp,
                         modifier = Modifier.padding(vertical = 12.dp)
@@ -722,7 +728,7 @@ fun HomeScreen(
                             Icon(
                                 if (isSelected) Icons.Default.DragHandle else Icons.Default.UnfoldMore,
                                 null,
-                                tint     = if (isSelected) ACCENT else TXT.copy(alpha = 0.25f),
+                                tint     = if (isSelected) theme.accent else theme.text.copy(alpha = 0.25f),
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(Modifier.width(10.dp))
@@ -731,9 +737,9 @@ fun HomeScreen(
                         Text(
                             text       = renamedMap[app.packageName] ?: app.label,
                             color      = when {
-                                isSelected    -> ACCENT
+                                isSelected    -> theme.accent
                                 app.isBlocked -> RED.copy(alpha = 0.7f)
-                                else          -> TXT
+                                else          -> theme.text
                             },
                             fontSize   = appFontSize,
                             fontWeight = if (isSelected) FontWeight.Normal else FontWeight.Light,
@@ -742,11 +748,11 @@ fun HomeScreen(
 
                         // selected app এ ডান দিকে arrow hints
                         if (reorderMode && selectedIndex == null) {
-                            Text("tap to move here", color = TXT.copy(alpha = 0.2f), fontSize = 11.sp)
+                            Text("tap to move here", color = theme.text.copy(alpha = 0.2f), fontSize = 11.sp)
                         }
                         if (isSelected) {
                             Spacer(Modifier.width(8.dp))
-                            Text("tap a slot →", color = ACCENT.copy(alpha = 0.7f), fontSize = 11.sp)
+                            Text("tap a slot →", color = theme.accent.copy(alpha = 0.7f), fontSize = 11.sp)
                         }
                     }
 
@@ -763,7 +769,7 @@ fun HomeScreen(
                             Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(10.dp))
-                                .background(ACCENT.copy(alpha = 0.15f))
+                                .background(theme.accent.copy(alpha = 0.15f))
                                 .clickable {
                                     reorderMode   = false
                                     selectedIndex = null
@@ -771,9 +777,9 @@ fun HomeScreen(
                                 .padding(vertical = 14.dp),
                             horizontalArrangement = Arrangement.Center
                         ) {
-                            Icon(Icons.Default.Check, null, tint = ACCENT, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Check, null, tint = theme.accent, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Done", color = ACCENT, fontSize = 14.sp)
+                            Text("Done", color = theme.accent, fontSize = 14.sp)
                         }
                     }
                 }
@@ -1810,11 +1816,30 @@ fun LauncherSettingsSheet(
                 SettingsDivider()
 
                 SettingsExpandableSection("Display", expandDisplay, { expandDisplay = !expandDisplay }) {
-                    SettingsSectionLabel("Theme")
-                    listOf("Pure Black", "Dark Blue", "Dark Green").forEachIndexed { i, name ->
-                        SettingsRadioRow(name, themeIdx == i) { onThemeChange(i) }
+                    // ── Classic themes ──────────────────────────────────────────
+                    SettingsSectionLabel("CLASSIC")
+                    listOf(
+                        Triple("Pure Black", LauncherTheme.PureBlack.bg,  LauncherTheme.PureBlack.accent),
+                        Triple("Dark Blue",  LauncherTheme.DarkBlue.bg,   LauncherTheme.DarkBlue.accent),
+                        Triple("Dark Green", LauncherTheme.DarkGreen.bg,  LauncherTheme.DarkGreen.accent)
+                    ).forEachIndexed { i, (name, bg, ac) ->
+                        SettingsStyleRow(name, bg, ac, themeIdx == i) { onThemeChange(i) }
                     }
-                    SettingsSectionLabel("Font size")
+                    Spacer(Modifier.height(4.dp))
+                    // ── 5 new distinct styles ───────────────────────────────────
+                    SettingsSectionLabel("STYLES")
+                    listOf(
+                        Triple("Study",     LauncherTheme.Study.bg,     LauncherTheme.Study.accent),
+                        Triple("Neon City", LauncherTheme.NeonCity.bg,  LauncherTheme.NeonCity.accent),
+                        Triple("Ocean",     LauncherTheme.Ocean.bg,     LauncherTheme.Ocean.accent),
+                        Triple("Ember",     LauncherTheme.Ember.bg,     LauncherTheme.Ember.accent),
+                        Triple("Moonlight", LauncherTheme.Moonlight.bg, LauncherTheme.Moonlight.accent)
+                    ).forEachIndexed { i, (name, bg, ac) ->
+                        SettingsStyleRow(name, bg, ac, themeIdx == (i + 3)) { onThemeChange(i + 3) }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    // ── Font size ───────────────────────────────────────────────
+                    SettingsSectionLabel("FONT SIZE")
                     listOf("Small", "Medium", "Large").forEachIndexed { i, lbl ->
                         SettingsRadioRow(lbl, fontSize == i) { onFontChange(i) }
                     }
@@ -1917,6 +1942,45 @@ fun SettingsRadioRow(title: String, selected: Boolean, onClick: () -> Unit) {
         verticalAlignment     = Alignment.CenterVertically
     ) {
         Text(title, color = Color.White.copy(alpha = if (selected) 1f else 0.6f), fontSize = 16.sp)
+        if (selected) Icon(Icons.Default.Check, null, tint = Color(0xFF14C3B2), modifier = Modifier.size(18.dp))
+    }
+}
+
+// Style row with two color preview dots (bg swatch + accent swatch)
+@Composable
+fun SettingsStyleRow(title: String, bgColor: Color, accentColor: Color, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(horizontal = 24.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment     = Alignment.CenterVertically
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // bg swatch — bordered so pure-black is still visible
+            Box(
+                Modifier
+                    .size(16.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(bgColor)
+                    .border(0.5.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(4.dp))
+            )
+            Spacer(Modifier.width(5.dp))
+            // accent swatch
+            Box(
+                Modifier
+                    .size(16.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(accentColor)
+            )
+            Spacer(Modifier.width(14.dp))
+            Text(
+                text  = title,
+                color = Color.White.copy(alpha = if (selected) 1f else 0.6f),
+                fontSize = 16.sp
+            )
+        }
         if (selected) Icon(Icons.Default.Check, null, tint = Color(0xFF14C3B2), modifier = Modifier.size(18.dp))
     }
 }
