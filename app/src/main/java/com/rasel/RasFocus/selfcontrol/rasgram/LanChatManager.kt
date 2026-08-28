@@ -82,25 +82,58 @@ class LanChatManager private constructor(private val context: Context) {
         /** Returns the device's current WiFi/hotspot IP, or "Unknown" */
         fun getLocalIp(context: Context): String {
             return try {
-                val wifi = context.applicationContext
-                    .getSystemService(Context.WIFI_SERVICE) as WifiManager
-                val ip = wifi.connectionInfo.ipAddress
-                if (ip == 0) {
-                    // Fallback: enumerate network interfaces (works for hotspot too)
-                    NetworkInterface.getNetworkInterfaces()?.toList()
-                        ?.flatMap { it.inetAddresses.toList() }
-                        ?.firstOrNull { !it.isLoopbackAddress && it is Inet4Address }
-                        ?.hostAddress ?: "Unknown"
-                } else {
-                    String.format(
-                        "%d.%d.%d.%d",
-                        ip and 0xff, ip shr 8 and 0xff,
-                        ip shr 16 and 0xff, ip shr 24 and 0xff
-                    )
-                }
+                // NetworkInterface enumerate করো — WiFi + hotspot দুটোতেই কাজ করে।
+                // WifiManager.connectionInfo.ipAddress hotspot client এ 0 return করে।
+                NetworkInterface.getNetworkInterfaces()?.toList()
+                    ?.flatMap { it.inetAddresses.toList() }
+                    ?.firstOrNull { addr ->
+                        !addr.isLoopbackAddress && addr is Inet4Address &&
+                        !addr.hostAddress.startsWith("169.254") // link-local বাদ
+                    }
+                    ?.hostAddress ?: "Unknown"
             } catch (e: Exception) {
                 Log.w(TAG, "getLocalIp: ${e.message}")
                 "Unknown"
+            }
+        }
+
+        /**
+         * Subnet-specific broadcast address বের করো।
+         * WiFi: 192.168.1.255 — Hotspot: 192.168.43.255 বা 10.0.0.255
+         *
+         * কেন: Android hotspot এ "255.255.255.255" (limited broadcast) block হয়।
+         * কিন্তু subnet directed broadcast (192.168.43.255) পার হয়।
+         * NetworkInterface থেকে prefix length নিয়ে broadcast address বানাই।
+         */
+        fun getSubnetBroadcast(localIp: String): String {
+            return try {
+                NetworkInterface.getNetworkInterfaces()?.toList()
+                    ?.flatMap { ni -> ni.interfaceAddresses.map { ia -> ni to ia } }
+                    ?.firstOrNull { (_, ia) ->
+                        ia.address is Inet4Address &&
+                        ia.address.hostAddress == localIp
+                    }
+                    ?.let { (_, ia) ->
+                        val prefix = ia.networkPrefixLength.toInt()  // e.g. 24
+                        val ipBytes = ia.address.address             // 4 bytes
+                        // Subnet mask: first [prefix] bits = 1, rest = 0
+                        val maskInt = if (prefix == 0) 0 else (-1 shl (32 - prefix))
+                        val ipInt = (ipBytes[0].toInt() and 0xFF shl 24) or
+                                    (ipBytes[1].toInt() and 0xFF shl 16) or
+                                    (ipBytes[2].toInt() and 0xFF shl 8)  or
+                                    (ipBytes[3].toInt() and 0xFF)
+                        // Broadcast = (ip & mask) | ~mask
+                        val broadInt = (ipInt and maskInt) or maskInt.inv()
+                        String.format("%d.%d.%d.%d",
+                            broadInt ushr 24 and 0xFF,
+                            broadInt ushr 16 and 0xFF,
+                            broadInt ushr 8  and 0xFF,
+                            broadInt         and 0xFF
+                        )
+                    } ?: "255.255.255.255"  // fallback
+            } catch (e: Exception) {
+                Log.w(TAG, "getSubnetBroadcast: ${e.message}")
+                "255.255.255.255"
             }
         }
     }
@@ -156,6 +189,10 @@ class LanChatManager private constructor(private val context: Context) {
     private suspend fun runUdpBeacon() = withContext(Dispatchers.IO) {
         while (running) {
             try {
+                // FIX: "255.255.255.255" Android hotspot এ block হয়।
+                // Subnet directed broadcast (e.g. 192.168.43.255) ব্যবহার করো —
+                // এটা WiFi + hotspot দুটোতেই কাজ করে।
+                val broadcastAddr = getSubnetBroadcast(localIp)
                 DatagramSocket().use { sock ->
                     sock.broadcast = true
                     val payload = JSONObject().apply {
@@ -168,7 +205,7 @@ class LanChatManager private constructor(private val context: Context) {
                     sock.send(
                         DatagramPacket(
                             payload, payload.size,
-                            InetAddress.getByName("255.255.255.255"), UDP_PORT
+                            InetAddress.getByName(broadcastAddr), UDP_PORT
                         )
                     )
                 }
