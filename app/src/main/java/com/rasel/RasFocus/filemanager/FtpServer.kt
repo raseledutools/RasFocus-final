@@ -344,3 +344,179 @@ fun FtpServerScreen(onBack: () -> Unit) {
     }
 }
 
+
+// ══════════════════════════════════════════════════════════════════
+// PC Remote Screen — Phone থেকে PC Control করো (Browser দিয়ে)
+// PC তে RasFocus.exe চালু থাকলে "Phone Remote" tab এ server start
+// করলে এখানে দেখানো link phone browser এ খুলতে হবে।
+// ══════════════════════════════════════════════════════════════════
+
+@Composable
+fun PcRemoteScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    var pcIp by remember { mutableStateOf("") }
+    val pcPort = 9222
+
+    // Try to detect PC IP from active connections (gateway = usually PC in hotspot)
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            try {
+                val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+                @Suppress("DEPRECATION")
+                val dhcp = wm.dhcpInfo
+                if (dhcp != null && dhcp.gateway != 0) {
+                    val g = dhcp.gateway
+                    val ip = String.format(
+                        Locale.US, "%d.%d.%d.%d",
+                        g and 0xff, g shr 8 and 0xff, g shr 16 and 0xff, g shr 24 and 0xff
+                    )
+                    pcIp = ip
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    val suggestedUrl = if (pcIp.isNotEmpty()) "http://$pcIp:$pcPort" else "http://<PC-IP>:$pcPort"
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFFF5F7FA))
+    ) {
+        // ── Top bar ──────────────────────────────────────────────
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFF005F6B))
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+        ) {
+            IconButton(onClick = onBack, modifier = Modifier.align(Alignment.CenterStart)) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+            }
+            Text(
+                "📡  PC Remote Control",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 17.sp,
+                modifier = Modifier.align(Alignment.Center)
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+
+            // ── How it works card ────────────────────────────────
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(2.dp)
+            ) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("কীভাবে ব্যবহার করবে", fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp, color = Color(0xFF005F6B))
+
+                    listOf(
+                        "① PC তে RasFocus.exe চালু করো",
+                        "② Sidebar এ \"Phone Remote\" tab এ যাও",
+                        "③ \"Start Server\" বাটনে চাপো",
+                        "④ Phone কে PC র Hotspot এ connect করো",
+                        "⑤ নিচের link টা phone browser এ খোলো",
+                        "⑥ CMD, Files, Screen, Mouse — সব পাবে"
+                    ).forEach { step ->
+                        Text(step, fontSize = 13.sp, color = Color(0xFF444444))
+                    }
+                }
+            }
+
+            // ── URL card ─────────────────────────────────────────
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFFE0F7FA)
+                ),
+                elevation = CardDefaults.cardElevation(1.dp)
+            ) {
+                Column(
+                    Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("Browser এ এই link খোলো:",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp, color = Color(0xFF004D5A))
+
+                    Text(
+                        suggestedUrl,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp,
+                        color = Color(0xFF0077A8),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color.White, RoundedCornerShape(10.dp))
+                            .padding(12.dp)
+                    )
+
+                    if (pcIp.isNotEmpty()) {
+                        Text("✅ PC IP auto-detect হয়েছে: $pcIp",
+                            fontSize = 12.sp, color = Color(0xFF2E7D32))
+                    } else {
+                        Text("⚠️ PC IP detect হয়নি। Hotspot connect করলে আবার চেষ্টা করো।",
+                            fontSize = 12.sp, color = Color(0xFFF57C00))
+                    }
+
+                    // Open in browser button
+                    if (pcIp.isNotEmpty()) {
+                        Button(
+                            onClick = {
+                                val intent = android.content.Intent(
+                                    android.content.Intent.ACTION_VIEW,
+                                    android.net.Uri.parse(suggestedUrl)
+                                )
+                                context.startActivity(intent)
+                            },
+                            modifier = Modifier.fillMaxWidth().height(50.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF005F6B))
+                        ) {
+                            Text("🌐  Browser এ খোলো", fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    }
+                }
+            }
+
+            // ── Features info card ───────────────────────────────
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF3E5F5)),
+                elevation = CardDefaults.cardElevation(1.dp)
+            ) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Browser এ যা পাবে", fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp, color = Color(0xFF6A0080))
+                    listOf(
+                        "🖥️  CMD Terminal — command দাও, output দেখো",
+                        "📁  File Browser — PC ফাইল দেখো, folder navigate করো",
+                        "🖼️  Live Screen — PC screen phone এ দেখো",
+                        "🖱️  Mouse & Keyboard — phone থেকে PC control করো"
+                    ).forEach { f ->
+                        Text(f, fontSize = 13.sp, color = Color(0xFF444444))
+                    }
+                }
+            }
+
+            // ── Port info ────────────────────────────────────────
+            Text(
+                "Port: $pcPort  •  কোনো app install লাগবে না — শুধু browser",
+                fontSize = 12.sp, color = Color(0xFF9E9E9E),
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}

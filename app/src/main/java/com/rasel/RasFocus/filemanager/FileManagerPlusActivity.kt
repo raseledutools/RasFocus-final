@@ -98,6 +98,7 @@ sealed class NavState {
     object AppManager : NavState()
     object DriveOfflineSettings : NavState()
     object FtpServer : NavState()
+    object PcRemote : NavState()
     object FMSettings : NavState()
     data class TextEditor(val path: String) : NavState()
     data class MarkdownViewer(val path: String) : NavState()
@@ -693,6 +694,7 @@ fun HomeScreen(initialPath: String? = null, sharedUris: List<android.net.Uri> = 
                     currentNavState != NavState.DriveOfflineSettings &&
                     currentNavState != NavState.FMSettings &&
                     currentNavState != NavState.FtpServer &&
+                    currentNavState != NavState.PcRemote &&
                     currentNavState != NavState.RemoteConnections
                 if (needsGlobalHeader) {
                     if (showSearchBar) {
@@ -748,6 +750,7 @@ fun HomeScreen(initialPath: String? = null, sharedUris: List<android.net.Uri> = 
                                     is NavState.DriveOfflineSettings -> "Offline Settings"
                                     is NavState.FMSettings -> "Settings"
                                     is NavState.FtpServer -> "Access from PC"
+                                    is NavState.PcRemote -> "PC Remote Control"
                                     is NavState.RemoteConnections -> "Remote Connections"
                                     is NavState.P2PChat -> "Chat with ${state.deviceName}"
                                     is NavState.TextEditor -> state.path.substringAfterLast("/")
@@ -1025,6 +1028,9 @@ fun HomeScreen(initialPath: String? = null, sharedUris: List<android.net.Uri> = 
                         onBack = { currentNavState = NavState.Home }
                     )
                     is NavState.FtpServer -> FtpServerScreen(
+                        onBack = { currentNavState = NavState.Home }
+                    )
+                    is NavState.PcRemote -> PcRemoteScreen(
                         onBack = { currentNavState = NavState.Home }
                     )
                     is NavState.RecycleBin -> RecycleBinScreen(
@@ -1500,6 +1506,9 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
             "Access from..." -> {
                 onNavigate(NavState.FtpServer)
             }
+            "PC Remote" -> {
+                onNavigate(NavState.PcRemote)
+            }
             "Recycle Bin" -> {
                 onNavigate(NavState.RecycleBin)
             }
@@ -1571,6 +1580,7 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
             GridItemData("Cloud",     cloudCount,    Icons.Default.Cloud)        to Color(0xFF42A5F5),
             GridItemData("Remote",    "",            Icons.Default.Computer)     to Color(0xFF8D6E63),
             GridItemData("Access from...", "",       Icons.Default.Devices)      to Color(0xFF607D8B),
+            GridItemData("PC Remote", "",            Icons.Default.DesktopWindows) to Color(0xFF00838F),
             GridItemData("Recycle Bin", "",          Icons.Default.Delete)       to Color(0xFF757575)
         )
 
@@ -1905,6 +1915,7 @@ fun MainGridContent(modifier: Modifier = Modifier, onNavigate: (NavState) -> Uni
                     GridItemData("Cloud",     "", Icons.Default.Cloud)       to Color(0xFF42A5F5),
                     GridItemData("Remote",    "", Icons.Default.Computer)    to Color(0xFF8D6E63),
                     GridItemData("Access from...", "", Icons.Default.Devices)to Color(0xFF607D8B),
+                    GridItemData("PC Remote", "", Icons.Default.DesktopWindows) to Color(0xFF00838F),
                     GridItemData("Recycle Bin",   "", Icons.Default.Delete)  to Color(0xFF757575)
                 )
                 allShortcutOptions.forEach { (data, color) ->
