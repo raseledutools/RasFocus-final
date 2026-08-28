@@ -6,8 +6,10 @@ import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.LauncherApps
 import android.os.BatteryManager
 import android.os.Build
+import android.os.Process
 import android.provider.Settings
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -97,6 +99,14 @@ data class AppInfo(
     val customName: String = "",
     val isBlocked: Boolean = false,
     val usageMinutes: Long = 0L
+)
+
+// App shortcut entry (Android 7.1+ static/dynamic shortcuts)
+data class AppShortcut(
+    val id:          String,
+    val label:       String,
+    val packageName: String,
+    val userHandle:  android.os.UserHandle
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -233,9 +243,9 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
 
     val SIDEBAR_WIDTH_FRACTION  = 0.78f
     val OPEN_THRESHOLD_FRACTION = 0.35f
-    val SWIPE_SLOP_PX           = 10f    // px before direction lock
+    val SWIPE_SLOP_PX           = 5f     // px before direction lock (more sensitive)
     // Fast swipe threshold — px/ms: above this velocity always snap regardless of distance
-    val FAST_SWIPE_VELOCITY_PX_MS = 0.5f  // ~500 px/s
+    val FAST_SWIPE_VELOCITY_PX_MS = 0.25f // ~250 px/s — more responsive to quick flicks
 
     val gestureActiveRef = remember { androidx.compose.runtime.mutableStateOf(false) }
 
@@ -327,11 +337,41 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                                     }
                                     if (willOpen  && !showSidebar) showSidebar = true
                                     if (!willOpen &&  showSidebar) { showSidebar = false; query = "" }
-                                } else if (!gestureConsuming && !sidebarWasOpen && totalY > 80f && abs(totalX) < 40f) {
-                                    try {
-                                        val sb = context.getSystemService("statusbar")
-                                        sb?.javaClass?.getMethod("expandNotificationsPanel")?.invoke(sb)
-                                    } catch (_: Exception) {}
+                                } else if (!gestureConsuming) {
+                                    // Fast swipe that bypassed direction lock (too quick for slop)
+                                    val elapsedMs   = (System.currentTimeMillis() - gestureStartTime).coerceAtLeast(1L)
+                                    val velPxMs     = abs(totalX) / elapsedMs.toFloat()
+                                    val isFastHoriz = velPxMs >= FAST_SWIPE_VELOCITY_PX_MS &&
+                                                      abs(totalX) >= abs(totalY) * 0.75f
+                                    when {
+                                        isFastHoriz && totalX < 0 && !sidebarWasOpen -> {
+                                            // Fast left flick → open sidebar even without direction lock
+                                            scope.launch {
+                                                sidebarOffsetAnim.animateTo(
+                                                    0f,
+                                                    spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMediumLow)
+                                                )
+                                            }
+                                            showSidebar = true
+                                        }
+                                        isFastHoriz && totalX > 0 && sidebarWasOpen -> {
+                                            // Fast right flick → close sidebar
+                                            scope.launch {
+                                                sidebarOffsetAnim.animateTo(
+                                                    sidebarWidthPx,
+                                                    spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMedium)
+                                                )
+                                            }
+                                            showSidebar = false; query = ""
+                                        }
+                                        !sidebarWasOpen && totalY > 80f && abs(totalX) < 40f -> {
+                                            // Swipe down → notification panel
+                                            try {
+                                                val sb = context.getSystemService("statusbar")
+                                                sb?.javaClass?.getMethod("expandNotificationsPanel")?.invoke(sb)
+                                            } catch (_: Exception) {}
+                                        }
+                                    }
                                 }
                                 break
                             }
@@ -1562,8 +1602,15 @@ fun AppContextMenu(
     onDismiss:    () -> Unit,
     extraActions: @Composable (() -> Unit)? = null
 ) {
+    val context = LocalContext.current
     var showRename by remember { mutableStateOf(false) }
     var renameText by remember { mutableStateOf(app.customName.ifBlank { app.label }) }
+
+    // Load app shortcuts (Android 7.1+)
+    var shortcuts by remember { mutableStateOf<List<AppShortcut>>(emptyList()) }
+    LaunchedEffect(app.packageName) {
+        shortcuts = getAppShortcuts(context, app.packageName)
+    }
 
     Box(
         Modifier
@@ -1588,6 +1635,19 @@ fun AppContextMenu(
             Spacer(Modifier.height(18.dp))
             HorizontalDivider(color = DIVIDER)
             Spacer(Modifier.height(10.dp))
+
+            // ── App shortcuts section ─────────────────────────────────────
+            if (shortcuts.isNotEmpty()) {
+                shortcuts.forEach { shortcut ->
+                    ContextMenuRow(Icons.Default.Launch, shortcut.label) {
+                        launchShortcut(context, shortcut)
+                        onDismiss()
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                HorizontalDivider(color = DIVIDER)
+                Spacer(Modifier.height(10.dp))
+            }
 
             extraActions?.invoke()
 
@@ -2060,6 +2120,41 @@ private fun getInstalledApps(
     return (fromLauncher + listOfNotNull(ownAppEntry))
         .sortedBy { (renamed[it.packageName] ?: it.label).lowercase() }
         .distinctBy { it.packageName }
+}
+
+// ── Shortcut helpers (Android 7.1+ / API 25) ──────────────────────────────────
+private fun getAppShortcuts(context: Context, packageName: String): List<AppShortcut> {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N_MR1) return emptyList()
+    return try {
+        val la    = context.getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
+        val query = LauncherApps.ShortcutQuery()
+            .setQueryFlags(
+                LauncherApps.ShortcutQuery.FLAG_MATCH_DYNAMIC or
+                LauncherApps.ShortcutQuery.FLAG_MATCH_MANIFEST
+            )
+            .setPackage(packageName)
+        val user = Process.myUserHandle()
+        la.getShortcuts(query, user)
+            ?.filter { !it.isDisabled }
+            ?.sortedBy { it.rank }   // rank 0 = highest priority
+            ?.take(4)
+            ?.map { si ->
+                AppShortcut(
+                    id          = si.id,
+                    label       = (si.shortLabel ?: si.longLabel ?: si.id).toString(),
+                    packageName = packageName,
+                    userHandle  = user
+                )
+            } ?: emptyList()
+    } catch (_: Exception) { emptyList() }
+}
+
+private fun launchShortcut(context: Context, shortcut: AppShortcut) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N_MR1) return
+    try {
+        val la = context.getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
+        la.startShortcut(shortcut.packageName, shortcut.id, null, null, shortcut.userHandle)
+    } catch (_: Exception) {}
 }
 
 private fun launchApp(context: Context, packageName: String) {
