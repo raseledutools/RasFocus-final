@@ -1,6 +1,7 @@
 package com.rasel.RasFocus.filemanager
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
@@ -10,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Computer
@@ -23,6 +25,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +40,9 @@ import org.apache.ftpserver.listener.ListenerFactory
 import org.apache.ftpserver.usermanager.PropertiesUserManagerFactory
 import org.apache.ftpserver.usermanager.impl.BaseUser
 import org.apache.ftpserver.usermanager.impl.WritePermission
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.InetAddress
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.util.Locale
@@ -346,177 +353,283 @@ fun FtpServerScreen(onBack: () -> Unit) {
 
 
 // ══════════════════════════════════════════════════════════════════
-// PC Remote Screen — Phone থেকে PC Control করো (Browser দিয়ে)
-// PC তে RasFocus.exe চালু থাকলে "Phone Remote" tab এ server start
-// করলে এখানে দেখানো link phone browser এ খুলতে হবে।
+// PC Remote Screen  —  RustDesk style PIN connect
+//
+// Flow:
+//   1. PC এ "Phone Remote" tab → Start → 6-digit PIN দেখায়
+//   2. Phone এ PIN লেখো → "Connect" চাপো
+//   3. UDP broadcast পাঠায় PIN সহ (port 9223)
+//   4. PC UDP beacon ধরে → IP:port reply করে
+//   5. Phone IP save করে (SharedPreferences) + browser খোলে
+//   6. পরের বার saved IP দিয়ে auto-connect (PIN লাগবে না)
 // ══════════════════════════════════════════════════════════════════
+
+private const val PREFS_NAME   = "pc_remote_prefs"
+private const val KEY_PC_IP    = "saved_pc_ip"
+private const val KEY_PC_PORT  = "saved_pc_port"
+private const val UDP_PORT     = 9223
+private const val HTTP_PORT    = 9222
+
+/** UDP broadcast: send PIN → get PC's IP back */
+private suspend fun discoverPcByPin(pin: String): Pair<String, Int>? =
+    withContext(Dispatchers.IO) {
+        try {
+            val sock = DatagramSocket()
+            sock.broadcast = true
+            sock.soTimeout = 3000
+            val msg = "RASPIN:$pin".toByteArray()
+            // Broadcast on 255.255.255.255 and common hotspot subnet
+            val targets = listOf("255.255.255.255", "192.168.43.255", "192.168.1.255", "10.0.0.255")
+            targets.forEach { addr ->
+                try {
+                    val pkt = DatagramPacket(msg, msg.size, InetAddress.getByName(addr), UDP_PORT)
+                    sock.send(pkt)
+                } catch (_: Exception) {}
+            }
+            val buf = ByteArray(256)
+            val reply = DatagramPacket(buf, buf.size)
+            sock.receive(reply)   // waits up to 3s
+            val resp = String(buf, 0, reply.length)
+            // Expected: "RASACK:XXXXXX:<ip>:<port>"
+            if (resp.startsWith("RASACK:")) {
+                val parts = resp.split(":")
+                if (parts.size >= 4) {
+                    val ip   = parts[2]
+                    val port = parts[3].trim().toIntOrNull() ?: HTTP_PORT
+                    sock.close()
+                    return@withContext Pair(ip, port)
+                }
+            }
+            sock.close()
+        } catch (_: Exception) {}
+        null
+    }
 
 @Composable
 fun PcRemoteScreen(onBack: () -> Unit) {
-    val context = LocalContext.current
-    var pcIp by remember { mutableStateOf("") }
-    val pcPort = 9222
+    val context  = LocalContext.current
+    val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    val scope    = rememberCoroutineScope()
 
-    // Try to detect PC IP from active connections (gateway = usually PC in hotspot)
+    // Saved PC connection
+    var savedIp   by remember { mutableStateOf(prefs.getString(KEY_PC_IP,   "") ?: "") }
+    var savedPort by remember { mutableStateOf(prefs.getInt(KEY_PC_PORT, HTTP_PORT)) }
+
+    // UI state
+    var pinInput      by remember { mutableStateOf("") }
+    var status        by remember { mutableStateOf(if (savedIp.isNotEmpty()) "✅ Last: $savedIp" else "") }
+    var isSearching   by remember { mutableStateOf(false) }
+    var autoConnected by remember { mutableStateOf(false) }
+
+    // Auto-connect on enter if saved IP exists
     LaunchedEffect(Unit) {
-        withContext(Dispatchers.IO) {
-            try {
-                val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-                @Suppress("DEPRECATION")
-                val dhcp = wm.dhcpInfo
-                if (dhcp != null && dhcp.gateway != 0) {
-                    val g = dhcp.gateway
-                    val ip = String.format(
-                        Locale.US, "%d.%d.%d.%d",
-                        g and 0xff, g shr 8 and 0xff, g shr 16 and 0xff, g shr 24 and 0xff
-                    )
-                    pcIp = ip
-                }
-            } catch (_: Exception) {}
+        if (savedIp.isNotEmpty() && !autoConnected) {
+            autoConnected = true
+            status = "🔄 Auto-connecting to $savedIp..."
+            // Small delay to let UI render
+            kotlinx.coroutines.delay(600)
+            val url = "http://$savedIp:$savedPort"
+            val intent = android.content.Intent(
+                android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)
+            )
+            try { context.startActivity(intent) } catch (_: Exception) {}
+            status = "✅ Browser এ খুলেছে: $url"
         }
     }
 
-    val suggestedUrl = if (pcIp.isNotEmpty()) "http://$pcIp:$pcPort" else "http://<PC-IP>:$pcPort"
+    fun connectWithPin(pin: String) {
+        if (pin.length != 6) { status = "⚠️ PIN 6 digit হতে হবে"; return }
+        isSearching = true
+        status = "🔍 PC খুঁজছে..."
+        scope.launch {
+            val result = discoverPcByPin(pin.trim())
+            isSearching = false
+            if (result != null) {
+                val (ip, port) = result
+                savedIp   = ip
+                savedPort = port
+                prefs.edit().putString(KEY_PC_IP, ip).putInt(KEY_PC_PORT, port).apply()
+                status = "✅ PC পেয়েছি! $ip:$port — Browser খুলছে..."
+                kotlinx.coroutines.delay(400)
+                val url = "http://$ip:$port"
+                val intent = android.content.Intent(
+                    android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)
+                )
+                try { context.startActivity(intent) } catch (_: Exception) {}
+            } else {
+                status = "❌ PC পাওয়া যায়নি। PC তে Server চালু আছে? Same network?"
+            }
+        }
+    }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFFF5F7FA))
+        modifier = Modifier.fillMaxSize().background(Color(0xFFF0F4F8))
     ) {
         // ── Top bar ──────────────────────────────────────────────
         Box(
-            modifier = Modifier
-                .fillMaxWidth()
+            modifier = Modifier.fillMaxWidth()
                 .background(Color(0xFF005F6B))
                 .padding(horizontal = 8.dp, vertical = 4.dp)
         ) {
             IconButton(onClick = onBack, modifier = Modifier.align(Alignment.CenterStart)) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White)
             }
-            Text(
-                "📡  PC Remote Control",
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 17.sp,
-                modifier = Modifier.align(Alignment.Center)
-            )
+            Text("📡  PC Remote", color = Color.White,
+                fontWeight = FontWeight.Bold, fontSize = 17.sp,
+                modifier = Modifier.align(Alignment.Center))
         }
 
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            modifier = Modifier.fillMaxSize().padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
 
-            // ── How it works card ────────────────────────────────
+            // ── PIN Input card ───────────────────────────────────
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(2.dp)
-            ) {
-                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("কীভাবে ব্যবহার করবে", fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp, color = Color(0xFF005F6B))
-
-                    listOf(
-                        "① PC তে RasFocus.exe চালু করো",
-                        "② Sidebar এ \"Phone Remote\" tab এ যাও",
-                        "③ \"Start Server\" বাটনে চাপো",
-                        "④ Phone কে PC র Hotspot এ connect করো",
-                        "⑤ নিচের link টা phone browser এ খোলো",
-                        "⑥ CMD, Files, Screen, Mouse — সব পাবে"
-                    ).forEach { step ->
-                        Text(step, fontSize = 13.sp, color = Color(0xFF444444))
-                    }
-                }
-            }
-
-            // ── URL card ─────────────────────────────────────────
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFFE0F7FA)
-                ),
-                elevation = CardDefaults.cardElevation(1.dp)
+                elevation = CardDefaults.cardElevation(3.dp)
             ) {
                 Column(
-                    Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    Modifier.padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("Browser এ এই link খোলো:",
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 13.sp, color = Color(0xFF004D5A))
+                    Text("PC এর PIN লেখো",
+                        fontWeight = FontWeight.Bold, fontSize = 16.sp,
+                        color = Color(0xFF005F6B))
 
-                    Text(
-                        suggestedUrl,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp,
-                        color = Color(0xFF0077A8),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color.White, RoundedCornerShape(10.dp))
-                            .padding(12.dp)
+                    // Big PIN input
+                    OutlinedTextField(
+                        value = pinInput,
+                        onValueChange = { if (it.length <= 6) pinInput = it.filter { c -> c.isDigit() } },
+                        placeholder = {
+                            Text("000000", fontSize = 32.sp, textAlign = TextAlign.Center,
+                                color = Color(0xFFCCCCCC), modifier = Modifier.fillMaxWidth())
+                        },
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            fontSize = 36.sp, fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center, color = Color(0xFF005F6B)
+                        ),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF005F6B),
+                            unfocusedBorderColor = Color(0xFFCCCCCC)
+                        )
                     )
 
-                    if (pcIp.isNotEmpty()) {
-                        Text("✅ PC IP auto-detect হয়েছে: $pcIp",
-                            fontSize = 12.sp, color = Color(0xFF2E7D32))
-                    } else {
-                        Text("⚠️ PC IP detect হয়নি। Hotspot connect করলে আবার চেষ্টা করো।",
-                            fontSize = 12.sp, color = Color(0xFFF57C00))
-                    }
-
-                    // Open in browser button
-                    if (pcIp.isNotEmpty()) {
-                        Button(
-                            onClick = {
-                                val intent = android.content.Intent(
-                                    android.content.Intent.ACTION_VIEW,
-                                    android.net.Uri.parse(suggestedUrl)
-                                )
-                                context.startActivity(intent)
-                            },
-                            modifier = Modifier.fillMaxWidth().height(50.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF005F6B))
-                        ) {
-                            Text("🌐  Browser এ খোলো", fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold, color = Color.White)
+                    // Connect button
+                    Button(
+                        onClick = { connectWithPin(pinInput) },
+                        enabled = pinInput.length == 6 && !isSearching,
+                        modifier = Modifier.fillMaxWidth().height(54.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF005F6B),
+                            disabledContainerColor = Color(0xFFB0BEC5)
+                        )
+                    ) {
+                        if (isSearching) {
+                            CircularProgressIndicator(color = Color.White,
+                                modifier = Modifier.size(22.dp), strokeWidth = 2.5.dp)
+                            Spacer(Modifier.width(10.dp))
+                            Text("খুঁজছে...", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        } else {
+                            Text("🔗  Connect", fontSize = 15.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
             }
 
-            // ── Features info card ───────────────────────────────
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF3E5F5)),
-                elevation = CardDefaults.cardElevation(1.dp)
-            ) {
-                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Browser এ যা পাবে", fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp, color = Color(0xFF6A0080))
-                    listOf(
-                        "🖥️  CMD Terminal — command দাও, output দেখো",
-                        "📁  File Browser — PC ফাইল দেখো, folder navigate করো",
-                        "🖼️  Live Screen — PC screen phone এ দেখো",
-                        "🖱️  Mouse & Keyboard — phone থেকে PC control করো"
-                    ).forEach { f ->
-                        Text(f, fontSize = 13.sp, color = Color(0xFF444444))
+            // ── Status ───────────────────────────────────────────
+            if (status.isNotEmpty()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = when {
+                            status.startsWith("✅") -> Color(0xFFE8F5E9)
+                            status.startsWith("❌") -> Color(0xFFFFEBEE)
+                            else                   -> Color(0xFFE3F2FD)
+                        }
+                    )
+                ) {
+                    Text(status, modifier = Modifier.padding(14.dp),
+                        fontSize = 13.sp, color = Color(0xFF333333))
+                }
+            }
+
+            // ── Auto-connect (saved) ──────────────────────────────
+            if (savedIp.isNotEmpty()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFE0F7FA)),
+                    elevation = CardDefaults.cardElevation(1.dp)
+                ) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("💾  Saved PC", fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp, color = Color(0xFF004D5A))
+                        Text("$savedIp : $savedPort", fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp, color = Color(0xFF0077A8))
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // Re-open browser
+                            Button(
+                                onClick = {
+                                    val url = "http://$savedIp:$savedPort"
+                                    val intent = android.content.Intent(
+                                        android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)
+                                    )
+                                    try { context.startActivity(intent) } catch (_: Exception) {}
+                                },
+                                modifier = Modifier.weight(1f).height(44.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF005F6B))
+                            ) { Text("🌐 Open", fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+
+                            // Forget
+                            OutlinedButton(
+                                onClick = {
+                                    prefs.edit().remove(KEY_PC_IP).remove(KEY_PC_PORT).apply()
+                                    savedIp = ""; status = "Saved PC forgotten."
+                                },
+                                modifier = Modifier.height(44.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = Color(0xFFB71C1C)
+                                )
+                            ) { Text("Forget", fontSize = 13.sp) }
+                        }
                     }
                 }
             }
 
-            // ── Port info ────────────────────────────────────────
-            Text(
-                "Port: $pcPort  •  কোনো app install লাগবে না — শুধু browser",
-                fontSize = 12.sp, color = Color(0xFF9E9E9E),
-                modifier = Modifier.fillMaxWidth()
-            )
+            // ── Steps ────────────────────────────────────────────
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF3E5F5)),
+                elevation = CardDefaults.cardElevation(1.dp)
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Text("কীভাবে করবে", fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp, color = Color(0xFF6A0080))
+                    listOf(
+                        "① PC তে RasFocus.exe খোলো",
+                        "② Sidebar → Phone Remote → Start চাপো",
+                        "③ 6-digit PIN দেখাবে — এখানে লেখো",
+                        "④ Connect চাপো — browser এ control panel খুলবে",
+                        "⑤ পরের বার auto-connect (PIN লাগবে না)",
+                        "⑥ Forget চাপলে আবার PIN দিতে হবে"
+                    ).forEach { Text(it, fontSize = 12.sp, color = Color(0xFF444444)) }
+                }
+            }
         }
     }
 }
