@@ -726,12 +726,16 @@ fun OtpLoginScreen(onLogin: (User) -> Unit) {
                 val freshSnap = docRef.get().await()
                 val savedName = freshSnap.getString("name") ?: userName
                 
-                // Save FCM token after login
+                // FIX: FCM token save — await দিয়ে ensure করা হচ্ছে।
                 try {
-                    com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnSuccessListener { fcmToken ->
-                        db.collection("chat_users").document(mobile).update("fcmToken", fcmToken)
+                    val fcmToken = com.google.firebase.messaging.FirebaseMessaging.getInstance().token.await()
+                    if (fcmToken != null) {
+                        db.collection("chat_users").document(mobile).update("fcmToken", fcmToken).await()
+                        android.util.Log.d("RasGram_FCM", "FCM token saved on login → ${fcmToken.take(20)}…")
                     }
-                } catch (_: Exception) { }
+                } catch (e: Exception) {
+                    android.util.Log.e("RasGram_FCM", "FCM token save on login failed: ${e.message}")
+                }
                 
                 onLogin(User(uid = uid, name = savedName, mobile = mobile, avatarUrl = freshSnap.getString("avatarUrl") ?: ""))
             } catch (e: Exception) {
@@ -768,12 +772,15 @@ fun OtpLoginScreen(onLogin: (User) -> Unit) {
                     docRef.update("lastActive", System.currentTimeMillis(), "uid", uid)
                 }
                 val savedName = snap.getString("name") ?: userName
-                // Save FCM token after OTP login
+                // FIX: FCM token save after OTP login — await দিয়ে ensure।
                 try {
-                    com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnSuccessListener { fcmToken ->
-                        db.collection("chat_users").document(mobile).update("fcmToken", fcmToken)
+                    val fcmToken = com.google.firebase.messaging.FirebaseMessaging.getInstance().token.await()
+                    if (fcmToken != null) {
+                        db.collection("chat_users").document(mobile).update("fcmToken", fcmToken).await()
                     }
-                } catch (_: Exception) { }
+                } catch (e: Exception) {
+                    android.util.Log.e("RasGram_FCM", "FCM token save on OTP login failed: ${e.message}")
+                }
                 onLogin(User(uid = uid, name = savedName, mobile = mobile, avatarUrl = snap.getString("avatarUrl") ?: ""))
             } catch (e: Exception) {
                 errorMsg = "Invalid OTP. Please try again."
@@ -1278,13 +1285,21 @@ fun MainScreen(
             }
         }
 
-        try {
-            com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
+        // FIX: FCM token refresh — await দিয়ে ensure করা হচ্ছে token Firestore এ পৌঁছায়।
+        // আগে addOnSuccessListener fire-and-forget ছিল — Android 15 এ app background হলে
+        // callback আসার আগেই process kill হতো → fcmToken Firestore এ stale থাকত।
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            try {
+                val token = com.google.firebase.messaging.FirebaseMessaging.getInstance().token.await()
                 if (token != null) {
-                    db.collection("chat_users").document(currentUser.mobile).update("fcmToken", token)
+                    db.collection("chat_users").document(currentUser.mobile)
+                        .update("fcmToken", token).await()
+                    android.util.Log.d("RasGram_FCM", "FCM token refreshed on startup → ${token.take(20)}…")
                 }
+            } catch (e: Exception) {
+                android.util.Log.e("RasGram_FCM", "FCM token startup refresh failed: ${e.message}")
             }
-        } catch (_: Exception) { }
+        }
     }
 
     // Listen for incoming calls when app is open — IncomingCallScreen দেখাও directly
