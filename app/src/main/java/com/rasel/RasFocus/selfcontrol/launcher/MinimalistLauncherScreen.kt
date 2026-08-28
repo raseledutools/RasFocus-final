@@ -626,16 +626,12 @@ fun HomeScreen(
                 }
             )
 
-            Spacer(Modifier.height(10.dp))
-
-            HourlyWordWidget(context = context)
-
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(12.dp))
         }
 
         // ── Scrollable apps list — sits below header, above bottom bar ───
         // clock (180) + top pad (48) + spacer (10) + widget (~80) + spacer (8)
-        val clockSectionHeight = 48.dp + 180.dp + 10.dp + 80.dp + 8.dp
+        val clockSectionHeight = 48.dp + 180.dp + 12.dp
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
@@ -987,22 +983,13 @@ fun ClockWithBatteryRing(
                     fontSize = 13.sp
                 )
                 Spacer(Modifier.height(2.dp))
-                // Battery % — charging pulses
+                // Battery %
                 Text(
                     text     = "$battery%",
                     color    = (if (isCharging) chargingColor else DIM).copy(alpha = if (isCharging) pulseAlpha else 0.7f),
                     fontSize = if (isCharging) 14.sp else 11.sp,
                     fontWeight = if (isCharging) FontWeight.Medium else FontWeight.Light
                 )
-                // Screen time label (only when data available)
-                if (screenTimeLabel.isNotBlank()) {
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        text     = screenTimeLabel,
-                        color    = usageArcColor.copy(alpha = 0.8f),
-                        fontSize = 10.sp
-                    )
-                }
             }
         }
     }
