@@ -730,7 +730,9 @@ fun OtpLoginScreen(onLogin: (User) -> Unit) {
                 try {
                     val fcmToken = com.google.firebase.messaging.FirebaseMessaging.getInstance().token.await()
                     if (fcmToken != null) {
-                        db.collection("chat_users").document(mobile).update("fcmToken", fcmToken).await()
+                        // FIX: update() fails if fcmToken field missing — set+merge always works.
+                        db.collection("chat_users").document(mobile)
+                            .set(mapOf("fcmToken" to fcmToken), com.google.firebase.firestore.SetOptions.merge()).await()
                         android.util.Log.d("RasGram_FCM", "FCM token saved on login → ${fcmToken.take(20)}…")
                     }
                 } catch (e: Exception) {
@@ -776,7 +778,9 @@ fun OtpLoginScreen(onLogin: (User) -> Unit) {
                 try {
                     val fcmToken = com.google.firebase.messaging.FirebaseMessaging.getInstance().token.await()
                     if (fcmToken != null) {
-                        db.collection("chat_users").document(mobile).update("fcmToken", fcmToken).await()
+                        // FIX: update() fails if fcmToken field missing — set+merge always works.
+                        db.collection("chat_users").document(mobile)
+                            .set(mapOf("fcmToken" to fcmToken), com.google.firebase.firestore.SetOptions.merge()).await()
                     }
                 } catch (e: Exception) {
                     android.util.Log.e("RasGram_FCM", "FCM token save on OTP login failed: ${e.message}")
@@ -1292,8 +1296,9 @@ fun MainScreen(
             try {
                 val token = com.google.firebase.messaging.FirebaseMessaging.getInstance().token.await()
                 if (token != null) {
+                    // FIX: update() fails if fcmToken field doesn't exist yet — set+merge always works.
                     db.collection("chat_users").document(currentUser.mobile)
-                        .update("fcmToken", token).await()
+                        .set(mapOf("fcmToken" to token), com.google.firebase.firestore.SetOptions.merge()).await()
                     android.util.Log.d("RasGram_FCM", "FCM token refreshed on startup → ${token.take(20)}…")
                 }
             } catch (e: Exception) {

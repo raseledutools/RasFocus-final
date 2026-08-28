@@ -37,10 +37,13 @@ class RasgramMessagingService : FirebaseMessagingService() {
             } catch (_: Exception) { null }
             ?: return
 
+        // FIX: update() fails if document/field doesn't exist — use set+merge instead.
+        // update() throws if the document has no "fcmToken" field yet.
+        // set(merge=true) creates the field if missing, updates if present.
         FirebaseFirestore.getInstance()
             .collection("chat_users")
             .document(mobile)
-            .update("fcmToken", token)
+            .set(mapOf("fcmToken" to token), com.google.firebase.firestore.SetOptions.merge())
     }
 
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
