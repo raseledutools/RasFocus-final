@@ -17,7 +17,10 @@ import android.media.projection.MediaProjectionManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -28,6 +31,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,6 +76,10 @@ fun RemoteDesktopHomeScreen(onBack: () -> Unit) {
     var statusMsg       by remember { mutableStateOf("") }
     var showPermDialog  by remember { mutableStateOf(false) }
     var projectionData  by remember { mutableStateOf<Intent?>(null) }
+    // PC → Phone: connected PC IP for screen viewing
+    var connectedPcIp   by remember { mutableStateOf("") }
+    var showPcViewer    by remember { mutableStateOf(false) }
+    val pcStreamActive  by RemoteDesktopService.pcStreamActive.collectAsState()
 
     // MediaProjection launcher
     val mpm = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
@@ -142,32 +151,34 @@ fun RemoteDesktopHomeScreen(onBack: () -> Unit) {
             )
         }
     ) { padding ->
+        // PC screen viewer overlay (fullscreen when connected)
+        if (showPcViewer && connectedPcIp.isNotEmpty()) {
+            PcViewerScreen(
+                pcIp    = connectedPcIp,
+                onBack  = { showPcViewer = false; connectedPcIp = "" }
+            )
+            return@Scaffold
+        }
+
         when (selectedTab) {
             0 -> ConnectionTab(
                 modifier         = Modifier.padding(padding),
                 myId             = myId,
                 isRunning        = isRunning,
                 remoteIdInput    = remoteIdInput,
-                onRemoteIdChange = { if (it.filter { c -> c.isDigit() }.length <= 9) remoteIdInput = it },
+                onRemoteIdChange = { remoteIdInput = it },
                 statusMsg        = statusMsg,
                 recentList       = RemoteDesktopService.recentConnections,
                 onStartShare     = { startSharing() },
                 onStopShare      = { stopSharing() },
                 onConnect        = {
-                    val cleanId = remoteIdInput.filter { it.isDigit() }
-                    if (cleanId.length < 6) { statusMsg = "⚠️ ID অন্তত 6 digit হতে হবে"; return@ConnectionTab }
-                    // Connect to PC (PC এর WS port এ connect করব RemoteViewerScreen এ)
-                    statusMsg = "🔄 Connecting to $cleanId..."
-                    scope.launch {
-                        // যদি RemoteDesktopService চলছে না — start করতে হবে
-                        if (!isRunning) startSharing()
-                        delay(600)
-                        // রেকর্ড করো recent connections
-                        val ip = RemoteDesktopService.getLocalIp(context) // TODO: resolve by ID
-                        RemoteDesktopService.recentConnections.add(0,
-                            RemoteDesktopService.RecentConn("Desktop", cleanId, ip))
-                        statusMsg = "✅ Connected to $cleanId"
-                    }
+                    // remoteIdInput here = PC IP address (192.168.x.x)
+                    val ip = remoteIdInput.trim()
+                    if (ip.isEmpty()) { statusMsg = "⚠️ PC IP লাও"; return@ConnectionTab }
+                    connectedPcIp = ip
+                    showPcViewer  = true
+                    RemoteDesktopService.recentConnections.add(0,
+                        RemoteDesktopService.RecentConn("Desktop", ip, ip))
                 }
             )
             1 -> ChatTabPlaceholder(Modifier.padding(padding))
@@ -539,4 +550,141 @@ fun RdSettingsTab(modifier: Modifier, context: Context) {
             }
         }
     }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// PC Screen Viewer — Phone এ PC screen live দেখা + touch control
+// RustDesk: Flutter DesktopTabPage → আমরা: Compose + SurfaceView
+// ══════════════════════════════════════════════════════════════════
+@Composable
+fun PcViewerScreen(pcIp: String, onBack: () -> Unit) {
+    val context = LocalContext.current
+    val scope   = rememberCoroutineScope()
+
+    var statusMsg   by remember { mutableStateOf("Connecting to $pcIp...") }
+    var connected   by remember { mutableStateOf(false) }
+    var showControls by remember { mutableStateOf(true) }
+
+    // Hide controls after 3s inactivity (RustDesk behaviour)
+    LaunchedEffect(showControls) {
+        if (showControls) { delay(3000); showControls = false }
+    }
+
+    // PcScreenReceiverView ref
+    val viewRef = remember { mutableStateOf<PcScreenReceiverView?>(null) }
+
+    DisposableEffect(pcIp) {
+        onDispose { viewRef.value?.destroy() }
+    }
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            // Tap to show/hide control bar
+            .clickable { showControls = !showControls }
+    ) {
+        // ── SurfaceView: PC screen renders here ───────────────────
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { ctx ->
+                PcScreenReceiverView(ctx).also { v ->
+                    viewRef.value = v
+                    v.onConnected    = { connected = true; statusMsg = "Connected ✅" }
+                    v.onDisconnected = { connected = false; statusMsg = "Disconnected" }
+                    v.onError        = { statusMsg = "Error: $it" }
+                    v.connectToPc(pcIp, 9225)
+                }
+            }
+        )
+
+        // ── Status overlay (shown when not connected) ─────────────
+        if (!connected) {
+            Box(
+                Modifier.fillMaxSize().background(Color(0xCC000000)),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(color = AccentCyan, modifier = Modifier.size(48.dp))
+                    Spacer(Modifier.height(16.dp))
+                    Text(statusMsg, color = TextPrimary, fontSize = 14.sp, textAlign = TextAlign.Center)
+                    Spacer(Modifier.height(8.dp))
+                    Text("PC তে RasFocus Remote চালু থাকতে হবে", color = TextSecondary, fontSize = 12.sp)
+                    Spacer(Modifier.height(20.dp))
+                    OutlinedButton(
+                        onClick = onBack,
+                        border = BorderStroke(1.dp, Color(0xFF555577))
+                    ) { Text("Back", color = TextSecondary) }
+                }
+            }
+        }
+
+        // ── Control bar (auto-hide) ───────────────────────────────
+        AnimatedVisibility(
+            visible  = showControls,
+            modifier = Modifier.align(Alignment.TopCenter),
+            enter    = fadeIn() + slideInVertically(),
+            exit     = fadeOut() + slideOutVertically()
+        ) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xCC1A1A2E))
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = TextPrimary)
+                }
+                Text(
+                    if (connected) "PC: $pcIp" else statusMsg,
+                    color = if (connected) AccentCyan else TextSecondary,
+                    fontSize = 13.sp, modifier = Modifier.weight(1f)
+                )
+                if (connected) {
+                    Box(Modifier.size(8.dp).clip(CircleShape).background(OnlineDot))
+                    Spacer(Modifier.width(8.dp))
+                }
+            }
+        }
+
+        // ── Bottom quick keys (Back, Home, Win key) ───────────────
+        AnimatedVisibility(
+            visible  = showControls && connected,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            enter    = fadeIn() + slideInVertically { it },
+            exit     = fadeOut() + slideOutVertically { it }
+        ) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xCC1A1A2E))
+                    .padding(8.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                // Win key
+                QuickKeyBtn("⊞ Win") { viewRef.value?.sendKeyEvent(0x5B, 0) }
+                // Ctrl+Alt+Del
+                QuickKeyBtn("Ctrl+Alt+Del") {
+                    viewRef.value?.sendKeyEvent(0x11, 0) // Ctrl
+                    viewRef.value?.sendKeyEvent(0x12, 0) // Alt
+                    viewRef.value?.sendKeyEvent(0x2E, 0) // Del
+                    viewRef.value?.sendKeyEvent(0x2E, 1)
+                    viewRef.value?.sendKeyEvent(0x12, 1)
+                    viewRef.value?.sendKeyEvent(0x11, 1)
+                }
+                // Scroll up / down
+                QuickKeyBtn("↑ Scroll") { viewRef.value?.sendScroll(500, 500, "up") }
+                QuickKeyBtn("↓ Scroll") { viewRef.value?.sendScroll(500, 500, "down") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuickKeyBtn(label: String, onClick: () -> Unit) {
+    TextButton(
+        onClick = onClick,
+        colors  = ButtonDefaults.textButtonColors(contentColor = TextSecondary)
+    ) { Text(label, fontSize = 11.sp) }
 }
