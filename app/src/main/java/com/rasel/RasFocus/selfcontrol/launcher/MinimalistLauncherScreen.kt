@@ -431,6 +431,7 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                 onLongPressClockRing   = { pickerSlot = PickerSlot.CLOCK },
                 onLongPressBtnLeft     = { pickerSlot = PickerSlot.BTN_LEFT },
                 onLongPressBtnRight    = { pickerSlot = PickerSlot.BTN_RIGHT },
+                onShowAllApps  = { showSidebar = true },
                 onReorder = { reorderedApps ->
                     val newOrder = reorderedApps.map { it.packageName }.toMutableList()
                     pinnedPkgs = newOrder

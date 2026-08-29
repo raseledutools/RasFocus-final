@@ -11,7 +11,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.awaitPointerEvent
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.shape.CircleShape
@@ -202,7 +206,8 @@ fun StudyLauncherHome(
     onLongPressClockRing:  () -> Unit,
     onLongPressBtnLeft:    () -> Unit,
     onLongPressBtnRight:   () -> Unit,
-    onReorder:          (List<AppInfo>) -> Unit = {}
+    onReorder:          (List<AppInfo>) -> Unit = {},
+    onShowAllApps:      () -> Unit = {}
 ) {
     val prefs = remember { context.getSharedPreferences(SL_PREFS, Context.MODE_PRIVATE) }
 
@@ -262,12 +267,76 @@ fun StudyLauncherHome(
     }
 
     val scroll = rememberScrollState()
+    val scope  = rememberCoroutineScope()
+
+    // Swipe constants (same sensitivity as main launcher)
+    val SWIPE_SLOP_PX         = 8f
+    val FAST_VEL_PX_MS        = 0.22f   // px/ms threshold for fast flick
+    val UP_SWIPE_MIN_PX       = 120f    // min vertical distance for up-swipe to scroll top
 
     Box(
         Modifier
             .fillMaxSize()
             .background(SL_BG)
             .navigationBarsPadding()
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    var totalX = 0f
+                    var totalY = 0f
+                    var dirLocked  = false
+                    var isHoriz    = false
+                    var consumed   = false
+                    val t0 = System.currentTimeMillis()
+
+                    while (true) {
+                        val event  = awaitPointerEvent()
+                        val change = event.changes.firstOrNull() ?: break
+
+                        if (!change.pressed) {
+                            val ms  = (System.currentTimeMillis() - t0).coerceAtLeast(1L)
+                            val vel = kotlin.math.abs(totalX) / ms.toFloat()
+                            val velY = kotlin.math.abs(totalY) / ms.toFloat()
+
+                            when {
+                                // ── Left swipe → open all apps ──────────────────────
+                                (consumed && isHoriz && totalX < -40f) ||
+                                (vel >= FAST_VEL_PX_MS && totalX < 0 &&
+                                    kotlin.math.abs(totalX) >= kotlin.math.abs(totalY) * 0.8f) -> {
+                                    onShowAllApps()
+                                }
+                                // ── Up swipe → scroll to top ─────────────────────────
+                                !consumed && totalY < -UP_SWIPE_MIN_PX &&
+                                    kotlin.math.abs(totalY) > kotlin.math.abs(totalX) * 1.5f -> {
+                                    scope.launch { scroll.animateScrollTo(0) }
+                                }
+                            }
+                            break
+                        }
+
+                        val dx = change.positionChange().x
+                        val dy = change.positionChange().y
+                        totalX += dx
+                        totalY += dy
+
+                        if (!dirLocked) {
+                            val ax = kotlin.math.abs(totalX)
+                            val ay = kotlin.math.abs(totalY)
+                            if (ax > SWIPE_SLOP_PX || ay > SWIPE_SLOP_PX) {
+                                dirLocked = true
+                                isHoriz   = ax >= ay * 0.75f
+                                // Only consume horizontal left swipe (don't block vertical scroll)
+                                if (isHoriz && totalX < -SWIPE_SLOP_PX) {
+                                    consumed = true
+                                    change.consume()
+                                }
+                            }
+                        } else if (consumed && isHoriz) {
+                            change.consume()
+                        }
+                    }
+                }
+            }
     ) {
         Column(
             Modifier
