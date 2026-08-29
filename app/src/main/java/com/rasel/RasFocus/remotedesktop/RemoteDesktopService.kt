@@ -269,7 +269,7 @@ class RemoteDesktopService : Service() {
             packageManager.getLaunchIntentForPackage(packageName),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_stat_logo)
+            .setSmallIcon(R.drawable.ic_rasgram_notif)
             .setContentTitle("RasFocus Remote")
             .setContentText("ID: ${formatId(deviceId)} • Port $WS_PORT")
             .setOngoing(true).setContentIntent(pi).build()
