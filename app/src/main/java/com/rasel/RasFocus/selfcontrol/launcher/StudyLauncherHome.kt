@@ -216,6 +216,7 @@ fun StudyLauncherHome(
     var showAddPdfPicker  by remember { mutableStateOf(false) }
     var selectedPdfUri    by remember { mutableStateOf<String?>(null) }
     var showWordExpanded  by remember { mutableStateOf(false) }
+    var showAddWordDialog by remember { mutableStateOf(false) }
 
     // ── Image picker ───────────────────────────────────────────────────────
     val imagePicker = rememberLauncherForActivityResult(
@@ -324,12 +325,10 @@ fun StudyLauncherHome(
             )
 
             // ── Section: Word Widget ─────────────────────────────────────
-            StudySectionHeader(
-                icon  = "📖",
-                title = "শব্দ মুখস্ত",
-                color = SL_PURPLE,
-                action = if (showWordExpanded) "Collapse" to { showWordExpanded = false }
-                         else "Expand" to { showWordExpanded = true }
+            WordSectionHeader(
+                isExpanded   = showWordExpanded,
+                onToggle     = { showWordExpanded = !showWordExpanded },
+                onAddWord    = { showAddWordDialog = true }
             )
             StudyWordSection(
                 context      = context,
@@ -401,6 +400,13 @@ fun StudyLauncherHome(
                 showAddMsgDialog = false
             },
             onDismiss = { showAddMsgDialog = false }
+        )
+    }
+
+    if (showAddWordDialog) {
+        AddWordDialog(
+            prefs     = prefs,
+            onDismiss = { showAddWordDialog = false }
         )
     }
 }
@@ -507,6 +513,166 @@ private fun StudyTopBar(
                 .background(Brush.horizontalGradient(listOf(Color.Transparent, SL_AMBER_DIM, Color.Transparent)))
         )
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Word Section Header — with "+ Word" and Expand/Collapse buttons
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+private fun WordSectionHeader(
+    isExpanded: Boolean,
+    onToggle:   () -> Unit,
+    onAddWord:  () -> Unit
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        // Left: icon + title
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("📖", fontSize = 14.sp)
+            Spacer(Modifier.width(6.dp))
+            Text(
+                "শব্দ মুখস্থ",
+                color = SL_PURPLE,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                letterSpacing = 0.3.sp
+            )
+        }
+        // Right: "+ Word" button + Expand/Collapse button
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            // + Word button
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(SL_PURPLE.copy(alpha = 0.13f))
+                    .clickable { onAddWord() }
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+            ) {
+                Text("+ Word", color = SL_PURPLE, fontSize = 11.sp)
+            }
+            // Expand / Collapse
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(SL_PURPLE.copy(alpha = 0.08f))
+                    .clickable { onToggle() }
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    if (isExpanded) "Collapse" else "Expand",
+                    color = SL_PURPLE.copy(alpha = 0.75f),
+                    fontSize = 11.sp
+                )
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Add Word Dialog — user টা নতুন word add করতে পারবে
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+private fun AddWordDialog(
+    prefs:     SharedPreferences,
+    onDismiss: () -> Unit
+) {
+    var english  by remember { mutableStateOf("") }
+    var bangla   by remember { mutableStateOf("") }
+    var example  by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor   = Color(0xFF1C1608),
+        shape            = RoundedCornerShape(16.dp),
+        title = {
+            Text(
+                "নতুন Word যোগ করো",
+                color = SL_PURPLE,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                // English word
+                OutlinedTextField(
+                    value = english,
+                    onValueChange = { english = it },
+                    label = { Text("English Word", color = SL_PARCHMENT2, fontSize = 12.sp) },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor   = SL_PURPLE,
+                        unfocusedBorderColor = SL_PURPLE.copy(alpha = 0.3f),
+                        focusedTextColor     = SL_PARCHMENT,
+                        unfocusedTextColor   = SL_PARCHMENT,
+                        cursorColor          = SL_PURPLE
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                // Bangla meaning
+                OutlinedTextField(
+                    value = bangla,
+                    onValueChange = { bangla = it },
+                    label = { Text("বাংলা অর্থ", color = SL_PARCHMENT2, fontSize = 12.sp) },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor   = SL_PURPLE,
+                        unfocusedBorderColor = SL_PURPLE.copy(alpha = 0.3f),
+                        focusedTextColor     = SL_PARCHMENT,
+                        unfocusedTextColor   = SL_PARCHMENT,
+                        cursorColor          = SL_PURPLE
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                // Example sentence (optional)
+                OutlinedTextField(
+                    value = example,
+                    onValueChange = { example = it },
+                    label = { Text("উদাহরণ বাক্য (optional)", color = SL_PARCHMENT2, fontSize = 12.sp) },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor   = SL_PURPLE.copy(alpha = 0.5f),
+                        unfocusedBorderColor = SL_PURPLE.copy(alpha = 0.2f),
+                        focusedTextColor     = SL_PARCHMENT,
+                        unfocusedTextColor   = SL_PARCHMENT,
+                        cursorColor          = SL_PURPLE
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (english.isNotBlank() && bangla.isNotBlank()) SL_PURPLE else SL_PURPLE.copy(alpha = 0.35f))
+                    .clickable(enabled = english.isNotBlank() && bangla.isNotBlank()) {
+                        // Save to prefs
+                        val saved = prefs.getString("word_widget_custom", "") ?: ""
+                        val newEntry = "${english.trim()}|${bangla.trim()}|${example.trim()}"
+                        val updated = if (saved.isBlank()) newEntry else "$saved;$newEntry"
+                        prefs.edit().putString("word_widget_custom", updated).apply()
+                        onDismiss()
+                    }
+                    .padding(horizontal = 18.dp, vertical = 8.dp)
+            ) {
+                Text("Save", color = SL_BG, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            }
+        },
+        dismissButton = {
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable { onDismiss() }
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
+            ) {
+                Text("বাতিল", color = SL_PARCHMENT2, fontSize = 13.sp)
+            }
+        }
+    )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -793,66 +959,62 @@ private fun StudyWordSection(
     prefs:      SharedPreferences,
     isExpanded: Boolean
 ) {
-    // Reuse existing word infrastructure from MinimalistLauncherScreen
-    var tick by remember { mutableStateOf(0) }
-    LaunchedEffect(Unit) { while (true) { delay(60_000L); tick++ } }
-
-    val wordList: List<WordPair> = remember(tick) {
+    val wordList: List<WordPair> = remember {
         val custom = parseCustomWords(prefs.getString("word_widget_custom", "") ?: "")
         if (custom.isNotEmpty()) custom else SL_DEFAULT_WORDS
     }
 
-    val words: List<WordPair> = remember(tick, wordList) {
-        currentWordsForHour(prefs, wordList, if (isExpanded) 10 else 4)
-    }
-
-    var activeIdx by remember { mutableStateOf(0) }
-    LaunchedEffect(words) { activeIdx = 0 }
-    LaunchedEffect(words) {
-        while (true) { delay(2500L); activeIdx = (activeIdx + 1) % words.size }
+    // Compact: show 2 words side-by-side; Expanded: show all
+    val words: List<WordPair> = remember(wordList) {
+        currentWordsForHour(prefs, wordList, if (isExpanded) wordList.size else 2)
     }
 
     if (!isExpanded) {
-        // Compact horizontal scroll view
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 14.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth()
+        // ── Compact: 2 cards side by side ────────────────────────────────
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            itemsIndexed(words) { i, word ->
-                val isActive = i == activeIdx
-                val cardBg by animateColorAsState(
-                    targetValue = if (isActive) Color(0xFF22183A) else SL_BG3,
-                    animationSpec = tween(400), label = "wBg$i"
-                )
-                val borderAlpha by animateFloatAsState(
-                    targetValue = if (isActive) 0.65f else 0.12f,
-                    animationSpec = tween(400), label = "wBorder$i"
-                )
+            words.take(2).forEach { word ->
                 Column(
                     Modifier
-                        .width(140.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(cardBg)
-                        .border(0.7.dp, SL_PURPLE.copy(alpha = borderAlpha), RoundedCornerShape(12.dp))
-                        .padding(12.dp)
+                        .weight(1f)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(SL_BG3)
+                        .border(0.6.dp, SL_PURPLE.copy(alpha = 0.28f), RoundedCornerShape(14.dp))
+                        .padding(horizontal = 14.dp, vertical = 12.dp)
                 ) {
                     Text(
                         word.english,
-                        color = if (isActive) SL_PARCHMENT else SL_PARCHMENT2,
-                        fontSize = 15.sp,
-                        fontWeight = if (isActive) FontWeight.Normal else FontWeight.Light
+                        color = SL_PARCHMENT,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium,
+                        letterSpacing = 0.2.sp
                     )
-                    Spacer(Modifier.height(4.dp))
-                    Text(word.bangla, color = SL_PURPLE, fontSize = 11.sp)
-                    if (isActive && word.example.isNotBlank()) {
-                        Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        word.bangla,
+                        color = SL_PURPLE,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Normal
+                    )
+                    if (word.example.isNotBlank()) {
+                        Spacer(Modifier.height(6.dp))
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(0.6.dp)
+                                .background(SL_PURPLE.copy(alpha = 0.18f))
+                        )
+                        Spacer(Modifier.height(6.dp))
                         Text(
                             "\"${word.example}\"",
-                            color = SL_PARCHMENT2.copy(alpha = 0.6f),
-                            fontSize = 9.sp,
+                            color = SL_PARCHMENT2.copy(alpha = 0.65f),
+                            fontSize = 10.sp,
                             fontStyle = FontStyle.Italic,
-                            lineHeight = 13.sp,
+                            lineHeight = 14.sp,
                             maxLines = 2
                         )
                     }
@@ -860,52 +1022,66 @@ private fun StudyWordSection(
             }
         }
     } else {
-        // Expanded — full list with quiz mode hint
-        Column(Modifier.padding(horizontal = 14.dp)) {
+        // ── Expanded: all words, clean list ──────────────────────────────
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
             words.forEachIndexed { i, word ->
-                val isActive = i == activeIdx
-                val bg by animateColorAsState(
-                    targetValue = if (isActive) Color(0xFF22183A) else SL_BG3,
-                    animationSpec = tween(400), label = "exBg$i"
-                )
-
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 3.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(bg)
-                        .border(0.5.dp, SL_PURPLE.copy(alpha = if (isActive) 0.5f else 0.1f), RoundedCornerShape(10.dp))
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.Top
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(SL_BG3)
+                        .border(0.5.dp, SL_PURPLE.copy(alpha = 0.18f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 14.dp, vertical = 11.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("${i + 1}.", color = SL_PURPLE.copy(alpha = 0.5f), fontSize = 11.sp, modifier = Modifier.width(20.dp))
+                    // Number badge
+                    Box(
+                        Modifier
+                            .size(22.dp)
+                            .background(SL_PURPLE.copy(alpha = 0.14f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "${i + 1}",
+                            color = SL_PURPLE,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(word.english, color = SL_PARCHMENT, fontSize = 15.sp, fontWeight = FontWeight.Light)
-                        Text(word.bangla, color = SL_PURPLE, fontSize = 11.sp)
+                        Text(
+                            word.english,
+                            color = SL_PARCHMENT,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            word.bangla,
+                            color = SL_PURPLE,
+                            fontSize = 11.sp
+                        )
                         if (word.example.isNotBlank()) {
-                            Spacer(Modifier.height(2.dp))
+                            Spacer(Modifier.height(3.dp))
                             Text(
                                 "\"${word.example}\"",
                                 color = SL_PARCHMENT2.copy(alpha = 0.55f),
-                                fontSize = 9.sp,
+                                fontSize = 10.sp,
                                 fontStyle = FontStyle.Italic,
-                                lineHeight = 13.sp
+                                lineHeight = 14.sp
                             )
                         }
                     }
-                    if (isActive) {
-                        Box(
-                            Modifier.size(6.dp).background(SL_PURPLE, CircleShape)
-                                .align(Alignment.CenterVertically)
-                        )
-                    }
                 }
             }
-            Spacer(Modifier.height(6.dp))
         }
     }
-    Spacer(Modifier.height(6.dp))
+    Spacer(Modifier.height(8.dp))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
