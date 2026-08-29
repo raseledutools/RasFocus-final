@@ -28,6 +28,7 @@ import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import com.rasel.RasFocus.R
 import kotlinx.coroutines.*
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -134,6 +135,8 @@ class RemoteDesktopService : Service() {
 
         startForeground(NOTIFY_ID, buildNotification())
         startWsServer()
+        // Register on Firebase signaling so other devices can find this ID
+        RdSignaling.register(this, deviceId, WS_PORT)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -223,7 +226,7 @@ class RemoteDesktopService : Service() {
         var spsData: ByteArray? = null
         var ppsData: ByteArray? = null
 
-        while (isActive) {
+        while (currentCoroutineContext().isActive) {
             val idx = withContext(Dispatchers.IO) {
                 try { enc.dequeueOutputBuffer(info, 10_000L) }
                 catch (e: Exception) { -1 }
@@ -231,7 +234,8 @@ class RemoteDesktopService : Service() {
             if (idx < 0) continue
             if (idx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) continue
 
-            val buf = enc.getOutputBuffer(idx) ?: run { enc.releaseOutputBuffer(idx, false); continue }
+            val buf = enc.getOutputBuffer(idx)
+            if (buf == null) { enc.releaseOutputBuffer(idx, false); continue }
             val data = ByteArray(info.size).also { buf.get(it) }
             enc.releaseOutputBuffer(idx, false)
 
@@ -426,6 +430,7 @@ class RemoteDesktopService : Service() {
         runCatching { virtualDisplay?.release() }
         runCatching { mediaProjection?.stop() }
         runCatching { wsServer?.stop(1000) }
+        RdSignaling.unregister(deviceId)
         super.onDestroy()
     }
 }

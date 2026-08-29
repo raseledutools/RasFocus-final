@@ -77,9 +77,11 @@ fun RemoteDesktopHomeScreen(onBack: () -> Unit) {
     var showPermDialog  by remember { mutableStateOf(false) }
     var projectionData  by remember { mutableStateOf<Intent?>(null) }
     // PC → Phone: connected PC IP for screen viewing
-    var connectedPcIp   by remember { mutableStateOf("") }
-    var showPcViewer    by remember { mutableStateOf(false) }
-    val pcStreamActive  by RemoteDesktopService.pcStreamActive.collectAsState()
+    var connectedPcIp       by remember { mutableStateOf("") }
+    var showPcViewer        by remember { mutableStateOf(false) }
+    val pcStreamActive      by RemoteDesktopService.pcStreamActive.collectAsState()
+    val connectedPcPort     = remember { mutableStateOf(9224) }
+    val connectedPcPlatform = remember { mutableStateOf("android") }
 
     // MediaProjection launcher
     val mpm = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
@@ -154,8 +156,10 @@ fun RemoteDesktopHomeScreen(onBack: () -> Unit) {
         // PC screen viewer overlay (fullscreen when connected)
         if (showPcViewer && connectedPcIp.isNotEmpty()) {
             PcViewerScreen(
-                pcIp    = connectedPcIp,
-                onBack  = { showPcViewer = false; connectedPcIp = "" }
+                pcIp      = connectedPcIp,
+                pcPort    = connectedPcPort.value,
+                platform  = connectedPcPlatform.value,
+                onBack    = { showPcViewer = false; connectedPcIp = "" }
             )
             return@Scaffold
         }
@@ -166,19 +170,29 @@ fun RemoteDesktopHomeScreen(onBack: () -> Unit) {
                 myId             = myId,
                 isRunning        = isRunning,
                 remoteIdInput    = remoteIdInput,
-                onRemoteIdChange = { remoteIdInput = it },
+                onRemoteIdChange = { if (it.filter { c -> c.isDigit() }.length <= 9) remoteIdInput = it },
                 statusMsg        = statusMsg,
                 recentList       = RemoteDesktopService.recentConnections,
                 onStartShare     = { startSharing() },
                 onStopShare      = { stopSharing() },
                 onConnect        = {
-                    // remoteIdInput here = PC IP address (192.168.x.x)
-                    val ip = remoteIdInput.trim()
-                    if (ip.isEmpty()) { statusMsg = "⚠️ PC IP লাও"; return@ConnectionTab }
-                    connectedPcIp = ip
-                    showPcViewer  = true
-                    RemoteDesktopService.recentConnections.add(0,
-                        RemoteDesktopService.RecentConn("Desktop", ip, ip))
+                    val cleanId = remoteIdInput.filter { it.isDigit() }
+                    if (cleanId.length < 6) { statusMsg = "⚠️ ID অন্তত 6 digit"; return@ConnectionTab }
+                    statusMsg = "🔄 ID $cleanId খুঁজছি..."
+                    scope.launch {
+                        val info = RdSignaling.lookup(cleanId)
+                        if (info == null) {
+                            statusMsg = "❌ ID পাওয়া যায়নি — device online আছে?"
+                            return@launch
+                        }
+                        connectedPcIp = info.ip
+                        connectedPcPort.value = info.port
+                        connectedPcPlatform.value = info.platform
+                        showPcViewer = true
+                        RemoteDesktopService.recentConnections.add(0,
+                            RemoteDesktopService.RecentConn(info.name, cleanId, info.ip))
+                        statusMsg = "✅ Connecting to ${info.name}"
+                    }
                 }
             )
             1 -> ChatTabPlaceholder(Modifier.padding(padding))
@@ -557,7 +571,7 @@ fun RdSettingsTab(modifier: Modifier, context: Context) {
 // RustDesk: Flutter DesktopTabPage → আমরা: Compose + SurfaceView
 // ══════════════════════════════════════════════════════════════════
 @Composable
-fun PcViewerScreen(pcIp: String, onBack: () -> Unit) {
+fun PcViewerScreen(pcIp: String, pcPort: Int = 9224, platform: String = "android", onBack: () -> Unit) {
     val context = LocalContext.current
     val scope   = rememberCoroutineScope()
 
@@ -593,7 +607,9 @@ fun PcViewerScreen(pcIp: String, onBack: () -> Unit) {
                     v.onConnected    = { connected = true; statusMsg = "Connected ✅" }
                     v.onDisconnected = { connected = false; statusMsg = "Disconnected" }
                     v.onError        = { statusMsg = "Error: $it" }
-                    v.connectToPc(pcIp, 9225)
+                    // PC=9225, Android=9224
+                    val port = if (platform == "windows") 9225 else pcPort
+                    v.connectToPc(pcIp, port)
                 }
             }
         )
