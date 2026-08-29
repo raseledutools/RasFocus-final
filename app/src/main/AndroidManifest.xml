@@ -728,7 +728,16 @@
         android:theme="@style/Theme.RasFocus"
         android:launchMode="singleTop" />
 
-    <activity android:name=".selfcontrol.StudyToolsActivity" />
+    <activity
+        android:name=".selfcontrol.StudyToolsActivity"
+        android:exported="true"
+        android:launchMode="singleTop">
+        <!-- Home screen shortcut → diary সরাসরি open করতে -->
+        <intent-filter>
+            <action android:name="com.rasel.RasFocus.ACTION_OPEN_DIARY" />
+            <category android:name="android.intent.category.DEFAULT" />
+        </intent-filter>
+    </activity>
 
     <!-- ✅ Study Tools — PDF Tools, AI Section, Diary & Tasks -->
     <activity

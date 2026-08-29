@@ -51,6 +51,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -800,35 +801,37 @@ fun DiaryListScreen(
     onDeleteEntry: (DiaryEntry) -> Unit = {}
 ) {
     val context = LocalContext.current
-    val magenta  = Color(0xFFE91E8C)
+    val magenta  = Color(0xFF2E7D32)   // green (was pink)
     val calGreen = Color(0xFF3A8C3F)   // WriteDiary green badge
     val bgColor  = Color(0xFFFFFFFF)
 
     // ── Home Screen Shortcut ────────────────────────────────────────────────
+    // FIX: getLaunchIntentForPackage → MainActivity তে যেত, diary open হতো না।
+    //      এখন সরাসরি StudyToolsActivity কে target করা হচ্ছে।
     fun addHomeShortcut() {
         try {
+            // Diary-specific intent: StudyToolsActivity → ACTION_OPEN_DIARY
+            val diaryIntent = Intent("com.rasel.RasFocus.ACTION_OPEN_DIARY").apply {
+                setClassName(context.packageName, "com.rasel.RasFocus.selfcontrol.StudyToolsActivity")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            }
+
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                 val sm = context.getSystemService(android.content.pm.ShortcutManager::class.java)
                 if (sm != null && sm.isRequestPinShortcutSupported) {
-                    val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-                        ?.apply {
-                            action = "com.rasel.RasFocus.ACTION_OPEN_DIARY"
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                        } ?: return
                     val shortcut = android.content.pm.ShortcutInfo.Builder(context, "rasdiary_shortcut")
                         .setShortLabel("RasDiary")
                         .setLongLabel("Open RasDiary")
                         .setIcon(android.graphics.drawable.Icon.createWithResource(context, android.R.drawable.ic_menu_edit))
-                        .setIntent(intent).build()
+                        .setIntent(diaryIntent)
+                        .build()
                     sm.requestPinShortcut(shortcut, null)
                 } else {
                     android.widget.Toast.makeText(context, "Launcher doesn't support shortcuts", android.widget.Toast.LENGTH_SHORT).show()
                 }
             } else {
                 val addIntent = Intent("com.android.launcher.action.INSTALL_SHORTCUT")
-                val shortcutIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-                    ?.apply { action = "com.rasel.RasFocus.ACTION_OPEN_DIARY" }
-                addIntent.putExtra(Intent.EXTRA_SHORTCUT_INTENT, shortcutIntent)
+                addIntent.putExtra(Intent.EXTRA_SHORTCUT_INTENT, diaryIntent)
                 addIntent.putExtra(Intent.EXTRA_SHORTCUT_NAME, "RasDiary")
                 addIntent.putExtra("duplicate", false)
                 context.sendBroadcast(addIntent)
@@ -1213,7 +1216,7 @@ fun ProfessionalDiaryScreen(
                             Text(listBusyMsg, fontSize = 12.sp, color = Color(0xFF888888))
                         }
                         Text("📱 Local Export", fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp, color = Color(0xFFE91E8C))
+                            fontSize = 13.sp, color = Color(0xFF2E7D32))
 
                         // ── Export JSON → Downloads ──────────────────────────
                         OutlinedButton(
@@ -1538,7 +1541,7 @@ fun ProfessionalDiaryScreen(
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black)
                 )
             },
-            containerColor = Color(0xFFDD0099)
+            containerColor = Color(0xFF2E7D32)
         ) { paddingValues ->
             DiaryEditorArea(
                 modifier = Modifier.padding(paddingValues),
@@ -1656,7 +1659,7 @@ fun ProfessionalDiaryScreen(
 
                     // ── LOCAL EXPORT ──────────────────────────────────────
                     Text("📱 Local Export", fontWeight = FontWeight.SemiBold,
-                        fontSize = 13.sp, color = Color(0xFFE91E8C))
+                        fontSize = 13.sp, color = Color(0xFF2E7D32))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(
                             modifier = Modifier.weight(1f),
@@ -1997,7 +2000,7 @@ fun ProfessionalDiaryScreen(
                                 showExportMenu = false
                             },
                             modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE91E8C))
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
                         ) { Text("Export PDF", color = Color.White, fontWeight = FontWeight.Bold) }
                     }
                 }
@@ -2201,7 +2204,7 @@ fun DiaryEditorArea(
     onDateClick: () -> Unit = {}
 ) {
     val wordCount = entry.body.trim().split("\\s+".toRegex()).count { it.isNotEmpty() }
-    val magenta = Color(0xFFDD0099)
+    val magenta = Color(0xFF2E7D32)  // green (was pink/magenta)
     val context = LocalContext.current
     var showMediaSheet by remember { mutableStateOf(false) }
     var isRecording by remember { mutableStateOf(false) }
@@ -2455,6 +2458,19 @@ fun DiaryEditorArea(
                                     contentScale = ContentScale.FillWidth,
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        // ── FIX: photo-এর উপরে swipe করলে parent LazyColumn/verticalScroll
+                                        // scroll না হয়, শুধু image zoom/pan হয় ────────────────────────────
+                                        .pointerInput(index) {
+                                            // awaitPointerEventScope দিয়ে raw events consume করা হচ্ছে
+                                            // যাতে parent scroll propagate না পায়
+                                            awaitPointerEventScope {
+                                                while (true) {
+                                                    val event = awaitPointerEvent()
+                                                    // সব pointer event consume করো — scroll block হবে
+                                                    event.changes.forEach { it.consume() }
+                                                }
+                                            }
+                                        }
                                         .pointerInput(index) {
                                             detectTransformGestures { _, pan, zoom, _ ->
                                                 scale = (scale * zoom).coerceIn(1f, 5f)
