@@ -411,35 +411,66 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
         // ═══════════════════════════════════════════════════════
         // HOME SCREEN
         // ═══════════════════════════════════════════════════════
-        HomeScreen(
-            timeState          = timeState,
-            battery            = battery,
-            isCharging         = isCharging,
-            pinnedApps         = pinnedApps,
-            theme              = theme,
-            appFontSize        = appFontSize,
-            showIcons          = showIcons,
-            renamedMap         = renamedMap,
-            btnLeftPkg         = btnLeftPkg,
-            btnRightPkg        = btnRightPkg,
-            clockPkg           = clockPkg,
-            context            = context,
-            totalScreenMinutes = totalScreenMinutes,
-            onLaunch       = { app -> if (!app.isBlocked) launchApp(context, app.packageName) },
-            onLongPress    = { app -> longPressedApp = app },
-            onSettings     = { showSettings = true },
-            onLongPressClockRing   = { pickerSlot = PickerSlot.CLOCK },
-            onLongPressBtnLeft     = { pickerSlot = PickerSlot.BTN_LEFT },
-            onLongPressBtnRight    = { pickerSlot = PickerSlot.BTN_RIGHT },
-            onReorder = { reorderedApps ->
-                val newOrder = reorderedApps.map { it.packageName }.toMutableList()
-                pinnedPkgs = newOrder
-                prefs.edit()
-                    .putStringSet(KEY_PINNED, newOrder.toSet())
-                    .putString("pinned_order", newOrder.joinToString(","))
-                    .apply()
-            }
-        )
+        // Study theme → dedicated Study Environment home
+        if (theme == LauncherTheme.Study) {
+            StudyLauncherHome(
+                timeState          = timeState,
+                battery            = battery,
+                isCharging         = isCharging,
+                pinnedApps         = pinnedApps,
+                appFontSize        = appFontSize,
+                renamedMap         = renamedMap,
+                btnLeftPkg         = btnLeftPkg,
+                btnRightPkg        = btnRightPkg,
+                clockPkg           = clockPkg,
+                context            = context,
+                totalScreenMinutes = totalScreenMinutes,
+                onLaunch       = { app -> if (!app.isBlocked) launchApp(context, app.packageName) },
+                onLongPress    = { app -> longPressedApp = app },
+                onSettings     = { showSettings = true },
+                onLongPressClockRing   = { pickerSlot = PickerSlot.CLOCK },
+                onLongPressBtnLeft     = { pickerSlot = PickerSlot.BTN_LEFT },
+                onLongPressBtnRight    = { pickerSlot = PickerSlot.BTN_RIGHT },
+                onReorder = { reorderedApps ->
+                    val newOrder = reorderedApps.map { it.packageName }.toMutableList()
+                    pinnedPkgs = newOrder
+                    prefs.edit()
+                        .putStringSet(KEY_PINNED, newOrder.toSet())
+                        .putString("pinned_order", newOrder.joinToString(","))
+                        .apply()
+                }
+            )
+        } else {
+            HomeScreen(
+                timeState          = timeState,
+                battery            = battery,
+                isCharging         = isCharging,
+                pinnedApps         = pinnedApps,
+                theme              = theme,
+                appFontSize        = appFontSize,
+                showIcons          = showIcons,
+                renamedMap         = renamedMap,
+                btnLeftPkg         = btnLeftPkg,
+                btnRightPkg        = btnRightPkg,
+                clockPkg           = clockPkg,
+                context            = context,
+                totalScreenMinutes = totalScreenMinutes,
+                onLaunch       = { app -> if (!app.isBlocked) launchApp(context, app.packageName) },
+                onLongPress    = { app -> longPressedApp = app },
+                onSettings     = { showSettings = true },
+                onLongPressClockRing   = { pickerSlot = PickerSlot.CLOCK },
+                onLongPressBtnLeft     = { pickerSlot = PickerSlot.BTN_LEFT },
+                onLongPressBtnRight    = { pickerSlot = PickerSlot.BTN_RIGHT },
+                onReorder = { reorderedApps ->
+                    val newOrder = reorderedApps.map { it.packageName }.toMutableList()
+                    pinnedPkgs = newOrder
+                    prefs.edit()
+                        .putStringSet(KEY_PINNED, newOrder.toSet())
+                        .putString("pinned_order", newOrder.joinToString(","))
+                        .apply()
+                }
+            )
+        }
 
         // ═══════════════════════════════════════════════════════
         // SIDEBAR OVERLAY — live drag follows finger exactly
