@@ -303,19 +303,22 @@ fun StayFocusedApp(
     var downloadId by remember { mutableStateOf(-1L) }
     var downloadDone by remember { mutableStateOf(false) }
 
-    // App launch এ update info silently fetch — dialog auto-popup নেই
-    // (auto-popup করলে invisible Dialog সব UI touches block করত — bug fix)
-    // User TopHeader-এর update chip বা Sidebar-এর "Check for Updates" থেকে manually open করবে
+    // ★ Periodic update check — প্রতি ৫ মিনিটে একবার
+    // App launch এ সাথে সাথে check হয়, তারপর loop এ থেকে check চলতে থাকে।
+    // Dialog auto-popup নেই — শুধু TopHeader chip update হয়।
     LaunchedEffect(Unit) {
-        withContext(kotlinx.coroutines.Dispatchers.IO) {
-            val currentTag = "v" + com.rasel.RasFocus.BuildConfig.VERSION_NAME
-            val info = com.rasel.RasFocus.AutoUpdater.fetchLatestReleaseInfoSync(context)
-            if (info != null && info.tagName != currentTag) {
-                withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    updateInfo = info
-                    // showUpdateDialog = true  ← REMOVED: Dialog scrim was blocking all touches
+        while (true) {
+            withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val currentTag = "v" + com.rasel.RasFocus.BuildConfig.VERSION_NAME
+                val info = com.rasel.RasFocus.AutoUpdater.fetchLatestReleaseInfoSync(context)
+                if (info != null && info.tagName != currentTag) {
+                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        updateInfo = info
+                        // showUpdateDialog = true  ← REMOVED: Dialog scrim was blocking all touches
+                    }
                 }
             }
+            kotlinx.coroutines.delay(5 * 60 * 1000L) // 5 মিনিট পরপর check
         }
     }
 
