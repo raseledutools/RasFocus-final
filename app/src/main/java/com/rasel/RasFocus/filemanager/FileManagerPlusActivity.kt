@@ -57,6 +57,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.graphics.drawable.IconCompat
+import com.rasel.RasFocus.remotedesktop.RemoteDesktopHomeScreen
 
 
 fun createLauncherShortcut(context: android.content.Context, path: String? = null, title: String? = null, iconRes: Int? = null) {
@@ -1030,7 +1031,7 @@ fun HomeScreen(initialPath: String? = null, sharedUris: List<android.net.Uri> = 
                     is NavState.FtpServer -> FtpServerScreen(
                         onBack = { currentNavState = NavState.Home }
                     )
-                    is NavState.PcRemote -> PcRemoteScreen(
+                    is NavState.PcRemote -> RemoteDesktopHomeScreen(
                         onBack = { currentNavState = NavState.Home }
                     )
                     is NavState.RecycleBin -> RecycleBinScreen(

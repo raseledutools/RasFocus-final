@@ -303,6 +303,8 @@ dependencies {
     implementation("io.getstream:stream-webrtc-android:1.1.1")
     // ✅ RasGram — Cloudinary file upload
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Remote Desktop: WebSocket server (RustDesk approach — browser-free screen stream)
+    implementation("org.java-websocket:Java-WebSocket:1.5.6")
     implementation("com.squareup.okio:okio:3.9.0")
 
     // Biometric

@@ -1007,6 +1007,32 @@
         android:foregroundServiceType="phoneCall" />
 
 
+    <!-- ══════════════════════════════════════════════════════════════════════
+         RasFocus Remote Desktop — RustDesk-style native screen control
+         No browser required. MediaProjection → ImageReader → WebSocket → PC.
+         ═══════════════════════════════════════════════════════════════════ -->
+
+    <!-- RemoteDesktopService: screen capture + WebSocket server (port 9224) -->
+    <service
+        android:name=".remotedesktop.RemoteDesktopService"
+        android:exported="false"
+        android:foregroundServiceType="mediaProjection"
+        android:label="RasFocus Remote Desktop" />
+
+    <!-- RemoteDesktopInputService: inject touch/gesture from PC remote -->
+    <service
+        android:name=".remotedesktop.RemoteDesktopInputService"
+        android:exported="true"
+        android:label="RasFocus Remote Input"
+        android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+        <intent-filter>
+            <action android:name="android.accessibilityservice.AccessibilityService" />
+        </intent-filter>
+        <meta-data
+            android:name="android.accessibilityservice"
+            android:resource="@xml/remote_desktop_input_config" />
+    </service>
+
     <!-- RasGram Screen Share — Remote Input Accessibility Service
          Allows remote peer to inject touch events during a screen share session.
          User must manually enable in Settings > Accessibility > RasGram Remote Input. -->
