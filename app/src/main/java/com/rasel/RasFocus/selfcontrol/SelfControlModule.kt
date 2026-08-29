@@ -303,7 +303,9 @@ fun StayFocusedApp(
     var downloadId by remember { mutableStateOf(-1L) }
     var downloadDone by remember { mutableStateOf(false) }
 
-    // App launch এ update check — শুধু নতুন version থাকলে popup দেখাও
+    // App launch এ update info silently fetch — dialog auto-popup নেই
+    // (auto-popup করলে invisible Dialog সব UI touches block করত — bug fix)
+    // User TopHeader-এর update chip বা Sidebar-এর "Check for Updates" থেকে manually open করবে
     LaunchedEffect(Unit) {
         withContext(kotlinx.coroutines.Dispatchers.IO) {
             val currentTag = "v" + com.rasel.RasFocus.BuildConfig.VERSION_NAME
@@ -311,7 +313,7 @@ fun StayFocusedApp(
             if (info != null && info.tagName != currentTag) {
                 withContext(kotlinx.coroutines.Dispatchers.Main) {
                     updateInfo = info
-                    showUpdateDialog = true
+                    // showUpdateDialog = true  ← REMOVED: Dialog scrim was blocking all touches
                 }
             }
         }
@@ -472,7 +474,7 @@ fun StayFocusedApp(
                     when (selectedTab) {
                         0 -> {
                             Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                                TopHeader(navController) { scope.launch { drawerState.open() } }
+                                TopHeader(navController, onMenuClick = { scope.launch { drawerState.open() } }, updateInfo = updateInfo, onUpdateClick = { showUpdateDialog = true })
                                 Spacer(Modifier.height(16.dp))
                                 FocusLauncherCard(onSessionStart = { bpSessionActive = true })
                                 Spacer(Modifier.height(16.dp))
@@ -500,7 +502,7 @@ fun StayFocusedApp(
                         }
                         1 -> {
                             Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                                TopHeader(navController) { scope.launch { drawerState.open() } }
+                                TopHeader(navController, onMenuClick = { scope.launch { drawerState.open() } }, updateInfo = updateInfo, onUpdateClick = { showUpdateDialog = true })
                                 Spacer(Modifier.height(16.dp))
                                 FocusLauncherCard(onSessionStart = { bpSessionActive = true })
                                 Spacer(Modifier.height(16.dp))
@@ -522,7 +524,7 @@ fun StayFocusedApp(
                         }
                         2 -> {
                             Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                                TopHeader(navController) { scope.launch { drawerState.open() } }
+                                TopHeader(navController, onMenuClick = { scope.launch { drawerState.open() } }, updateInfo = updateInfo, onUpdateClick = { showUpdateDialog = true })
                                 Spacer(Modifier.height(16.dp))
                                 AnalyticsSection(navController)
                                 Spacer(Modifier.height(16.dp))
@@ -550,7 +552,12 @@ fun StayFocusedApp(
 }
 
 @Composable
-fun TopHeader(navController: NavController? = null, onMenuClick: () -> Unit = {}) {
+fun TopHeader(
+    navController: NavController? = null,
+    onMenuClick: () -> Unit = {},
+    updateInfo: com.rasel.RasFocus.ReleaseInfo? = null,
+    onUpdateClick: () -> Unit = {}
+) {
     val context = LocalContext.current
     
     // Initialize trial on first launch
@@ -587,8 +594,24 @@ fun TopHeader(navController: NavController? = null, onMenuClick: () -> Unit = {}
                             Text(trialText, color = badgeColor, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
                     }
-                    Box(Modifier.size(46.dp).background(SoftWhite.copy(alpha = 0.12f), CircleShape), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.Notifications, contentDescription = "Notifications", tint = SoftWhite, modifier = Modifier.size(24.dp))
+                    // Update available chip অথবা Notifications icon
+                    if (updateInfo != null) {
+                        Box(
+                            Modifier
+                                .background(androidx.compose.ui.graphics.Color(0xFF00C853), RoundedCornerShape(50.dp))
+                                .clickable { onUpdateClick() }
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.SystemUpdateAlt, contentDescription = "Update", tint = SoftWhite, modifier = Modifier.size(14.dp))
+                                Spacer(Modifier.width(5.dp))
+                                Text("Update ${updateInfo.tagName}", color = SoftWhite, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                        }
+                    } else {
+                        Box(Modifier.size(46.dp).background(SoftWhite.copy(alpha = 0.12f), CircleShape), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Notifications, contentDescription = "Notifications", tint = SoftWhite, modifier = Modifier.size(24.dp))
+                        }
                     }
                 }
                 Spacer(Modifier.height(32.dp))
