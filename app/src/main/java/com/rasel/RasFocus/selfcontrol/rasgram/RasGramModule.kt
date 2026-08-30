@@ -726,18 +726,12 @@ fun OtpLoginScreen(onLogin: (User) -> Unit) {
                 val freshSnap = docRef.get().await()
                 val savedName = freshSnap.getString("name") ?: userName
                 
-                // FIX: FCM token save — await দিয়ে ensure করা হচ্ছে।
+                // Save FCM token after login
                 try {
-                    val fcmToken = com.google.firebase.messaging.FirebaseMessaging.getInstance().token.await()
-                    if (fcmToken != null) {
-                        // FIX: update() fails if fcmToken field missing — set+merge always works.
-                        db.collection("chat_users").document(mobile)
-                            .set(mapOf("fcmToken" to fcmToken), com.google.firebase.firestore.SetOptions.merge()).await()
-                        android.util.Log.d("RasGram_FCM", "FCM token saved on login → ${fcmToken.take(20)}…")
+                    com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnSuccessListener { fcmToken ->
+                        db.collection("chat_users").document(mobile).update("fcmToken", fcmToken)
                     }
-                } catch (e: Exception) {
-                    android.util.Log.e("RasGram_FCM", "FCM token save on login failed: ${e.message}")
-                }
+                } catch (_: Exception) { }
                 
                 onLogin(User(uid = uid, name = savedName, mobile = mobile, avatarUrl = freshSnap.getString("avatarUrl") ?: ""))
             } catch (e: Exception) {
@@ -774,17 +768,12 @@ fun OtpLoginScreen(onLogin: (User) -> Unit) {
                     docRef.update("lastActive", System.currentTimeMillis(), "uid", uid)
                 }
                 val savedName = snap.getString("name") ?: userName
-                // FIX: FCM token save after OTP login — await দিয়ে ensure।
+                // Save FCM token after OTP login
                 try {
-                    val fcmToken = com.google.firebase.messaging.FirebaseMessaging.getInstance().token.await()
-                    if (fcmToken != null) {
-                        // FIX: update() fails if fcmToken field missing — set+merge always works.
-                        db.collection("chat_users").document(mobile)
-                            .set(mapOf("fcmToken" to fcmToken), com.google.firebase.firestore.SetOptions.merge()).await()
+                    com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnSuccessListener { fcmToken ->
+                        db.collection("chat_users").document(mobile).update("fcmToken", fcmToken)
                     }
-                } catch (e: Exception) {
-                    android.util.Log.e("RasGram_FCM", "FCM token save on OTP login failed: ${e.message}")
-                }
+                } catch (_: Exception) { }
                 onLogin(User(uid = uid, name = savedName, mobile = mobile, avatarUrl = snap.getString("avatarUrl") ?: ""))
             } catch (e: Exception) {
                 errorMsg = "Invalid OTP. Please try again."
@@ -1289,22 +1278,13 @@ fun MainScreen(
             }
         }
 
-        // FIX: FCM token refresh — await দিয়ে ensure করা হচ্ছে token Firestore এ পৌঁছায়।
-        // আগে addOnSuccessListener fire-and-forget ছিল — Android 15 এ app background হলে
-        // callback আসার আগেই process kill হতো → fcmToken Firestore এ stale থাকত।
-        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-            try {
-                val token = com.google.firebase.messaging.FirebaseMessaging.getInstance().token.await()
+        try {
+            com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
                 if (token != null) {
-                    // FIX: update() fails if fcmToken field doesn't exist yet — set+merge always works.
-                    db.collection("chat_users").document(currentUser.mobile)
-                        .set(mapOf("fcmToken" to token), com.google.firebase.firestore.SetOptions.merge()).await()
-                    android.util.Log.d("RasGram_FCM", "FCM token refreshed on startup → ${token.take(20)}…")
+                    db.collection("chat_users").document(currentUser.mobile).update("fcmToken", token)
                 }
-            } catch (e: Exception) {
-                android.util.Log.e("RasGram_FCM", "FCM token startup refresh failed: ${e.message}")
             }
-        }
+        } catch (_: Exception) { }
     }
 
     // Listen for incoming calls when app is open — IncomingCallScreen দেখাও directly
@@ -5362,9 +5342,6 @@ fun CallingScreen(
     var isConnected by remember { mutableStateOf(false) }
     var callSeconds by remember { mutableIntStateOf(0) }
     var callId by remember { mutableStateOf(existingCallId) }
-    // Guard: signaling শুধু একবার চালু হবে — callId key এর কারণে LaunchedEffect
-    // relaunch হলেও double offer/answer create না হয়
-    var signalingStarted by remember { mutableStateOf(false) }
     // Call ended duration summary
     var showEndedSummary by remember { mutableStateOf(false) }
     var finalCallSeconds by remember { mutableIntStateOf(0) }
@@ -5624,23 +5601,8 @@ fun CallingScreen(
     // Kotlin 2.1.x FixStackAnalyzer NullPointerException at instruction #346.
     // Moving them to named top-level functions allocates their bytecode in
     // separate class files, cutting this lambda's bytecode size below the threshold.
-    // FIX: callId যোগ করা হয়েছে LaunchedEffect key তে।
-    // Bug (আগে): callId শুধু peerConnectionFactory LaunchedEffect এ set হত —
-    //   সেই same coroutine এ peerConnection = pc set হত।
-    //   peerConnection change হলে এই LaunchedEffect relaunch হত, কিন্তু
-    //   callId এর Compose state update তখনো propagate হয়নি → callId = "" (empty)।
-    //   handleCallerSignaling("") → Firestore এ calls/"" document write হত →
-    //   receiver এর .whereEqualTo("callee", ...) query miss করত → call আসত না।
-    // Fix: key তে callId যোগ → callId set হওয়ার পরেই এই effect relaunch হবে।
-    //   isReceiver=true: existingCallId দিয়ে initialized, empty হবে না।
-    //   isReceiver=false: callId="" হলে guard দিয়ে skip, set হলে run।
-    LaunchedEffect(peerConnection, isReceiver, callId) {
+    LaunchedEffect(peerConnection, isReceiver) {
         val pc = peerConnection ?: return@LaunchedEffect
-        // Caller side: callId set না হলে wait করো — পরের recomposition এ আবার চলবে
-        if (!isReceiver && callId.isEmpty()) return@LaunchedEffect
-        // Guard: signaling একবারই শুরু হবে — callId key change এ duplicate না হয়
-        if (signalingStarted) return@LaunchedEffect
-        signalingStarted = true
         try {
             if (isReceiver) {
                 handleReceiverSignaling(
@@ -7259,11 +7221,8 @@ suspend fun sendFcmCallNotification(
         }
         android.util.Log.d(TAG, "OAuth2 token OK, sending FCM…")
 
-        // ── Step 4: FCM v1 data + notification message ───────────────────────
-        // notification block: app closed/killed থাকলেও system নিজেই notification দেখায়।
-        // data block: app foreground/background থাকলে onMessageReceived() এ যায়।
-        // HIGH priority + ttl 60s: Doze wakeup করে, 1-minute expiry (stale ring নেই)।
-        val callTitle = if (callType == "video") "📹 Incoming Video Call" else "📞 Incoming Voice Call"
+        // ── Step 4: FCM v1 data message ──────────────────────────────────────
+        // HIGH priority + ttl 60s: Doze wakeup + 1-minute expiry (no stale ring)
         val fcmPayload = org.json.JSONObject().apply {
             put("message", org.json.JSONObject().apply {
                 put("token", fcmToken)
@@ -7276,23 +7235,10 @@ suspend fun sendFcmCallNotification(
                     put("callId", callId)
                     put("direct_boot_ok", "true")
                 })
-                // notification block: app killed হলেও system tray এ দেখায়
-                put("notification", org.json.JSONObject().apply {
-                    put("title", callTitle)
-                    put("body", "$callerName · $callerMobile")
-                })
                 put("android", org.json.JSONObject().apply {
                     put("priority", "HIGH")
                     put("ttl", "60s")
                     put("direct_boot_ok", true)
-                    // notification channel: IMPORTANCE_MAX, CATEGORY_CALL
-                    put("notification", org.json.JSONObject().apply {
-                        put("channel_id", "CALL_CHANNEL")
-                        put("sound", "default")
-                        put("default_vibrate_timings", true)
-                        put("notification_priority", "PRIORITY_MAX")
-                        put("visibility", "PUBLIC")
-                    })
                 })
             })
         }.toString()
@@ -8113,53 +8059,6 @@ fun GroupChatArea(
         }
     }
 
-    // ── Group Folder launcher (OpenDocumentTree) — sub-folder সহ recursive zip → Cloudinary ──
-    val groupFolderLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
-        treeUri?.let { uri ->
-            scope.launch {
-                try {
-                    val docTree = androidx.documentfile.provider.DocumentFile.fromTreeUri(context, uri)
-                    val folderName = docTree?.name ?: "folder_${System.currentTimeMillis()}"
-                    uploadingFileName = "📁 $folderName"
-                    isUploading = true
-                    uploadProgress = 0f
-
-                    val zipFile = java.io.File(context.cacheDir, "${folderName}_${System.currentTimeMillis()}.zip")
-                    val zipOk = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        try {
-                            java.util.zip.ZipOutputStream(
-                                java.io.BufferedOutputStream(java.io.FileOutputStream(zipFile))
-                            ).use { zos -> zipDocumentFile(context, docTree!!, folderName, zos) }
-                            true
-                        } catch (e: Exception) { false }
-                    }
-                    if (!zipOk || !zipFile.exists() || zipFile.length() == 0L) {
-                        Toast.makeText(context, "ফোল্ডার zip করা যায়নি", Toast.LENGTH_SHORT).show()
-                        isUploading = false; uploadingFileName = ""; zipFile.delete(); return@launch
-                    }
-                    val (url, _, _) = uploadToCloudinary(context, zipFile.toUri()) { prog -> uploadProgress = prog }
-                    zipFile.delete()
-                    if (url != null) {
-                        val markedName = "${RASGRAM_FOLDER_PREFIX}${folderName}.zip"
-                        val now = System.currentTimeMillis()
-                        val msgMap = hashMapOf(
-                            "text" to "", "senderMobile" to currentUser.mobile,
-                            "fileUrl" to url, "fileName" to markedName, "fileType" to "application/zip",
-                            "timestamp" to now,
-                            "timeString" to java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(now))
-                        )
-                        db.collection("groups").document(group.id).collection("messages").add(msgMap)
-                        db.collection("groups").document(group.id).update("lastMessageTime", now)
-                        Toast.makeText(context, "📁 ফোল্ডার পাঠানো হয়েছে", Toast.LENGTH_SHORT).show()
-                    } else Toast.makeText(context, "আপলোড ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
-                } catch (e: Exception) {
-                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
-                isUploading = false; uploadProgress = 0f; uploadingFileName = ""
-            }
-        }
-    }
-
     // Document / Audio / Any-file launcher — folder option ও এটাই ব্যবহার করে
     val groupDocLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
@@ -8410,7 +8309,7 @@ fun GroupChatArea(
                 onImageVideo = { groupImageVideoLauncher.launch(arrayOf("image/*", "video/*")); showAttachMenu = false },
                 onDocument = { groupDocLauncher.launch(arrayOf("application/*", "text/*")); showAttachMenu = false },
                 onAudio = { groupDocLauncher.launch(arrayOf("audio/*")); showAttachMenu = false },
-                onFilesFromFolder = { groupFolderLauncher.launch(null); showAttachMenu = false }
+                onFilesFromFolder = { groupDocLauncher.launch(arrayOf("*/*")); showAttachMenu = false }
             )
         }
     }
@@ -8425,32 +8324,22 @@ suspend fun sendFcmMessageNotification(
     db: FirebaseFirestore,
     context: Context
 ) = withContext(Dispatchers.IO) {
-    val TAG = "RasGram_FCM_MSG"
     try {
-        // ── Step 1: receiver FCM token ────────────────────────────────────────
-        android.util.Log.d(TAG, "sendFcmMsg → receiver=$receiverMobile sender=$senderMobile")
         val receiverDoc = db.collection("chat_users").document(receiverMobile).get().await()
-        val fcmToken = receiverDoc.getString("fcmToken")
-        if (fcmToken.isNullOrEmpty()) {
-            android.util.Log.w(TAG, "fcmToken missing/empty for $receiverMobile — message FCM skipped")
-            return@withContext
-        }
+        val fcmToken = receiverDoc.getString("fcmToken") ?: return@withContext
 
-        // ── Step 2: Service Account JSON ─────────────────────────────────────
+        // Message notification সবসময় যাবে — call delivery setting শুধু call এর জন্য
         val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
         val saJsonStr = prefs.getString(PREF_SA_JSON, "")
         val saJson = if (saJsonStr.isNullOrEmpty()) {
-            val resId = context.resources.getIdentifier("service_account", "raw", context.packageName)
-            if (resId == 0) {
-                android.util.Log.e(TAG, "service_account.json raw resource not found — message FCM skipped")
-                return@withContext
-            }
-            org.json.JSONObject(context.resources.openRawResource(resId).bufferedReader().readText())
+            val saStream = context.resources.openRawResource(
+                context.resources.getIdentifier("service_account", "raw", context.packageName)
+            )
+            org.json.JSONObject(saStream.bufferedReader().readText())
         } else {
             org.json.JSONObject(saJsonStr)
         }
 
-        // ── Step 3: JWT + OAuth2 access token ────────────────────────────────
         val privateKeyPem = saJson.getString("private_key")
             .replace("-----BEGIN PRIVATE KEY-----", "")
             .replace("-----END PRIVATE KEY-----", "")
@@ -8461,17 +8350,14 @@ suspend fun sendFcmMessageNotification(
         val keySpec = java.security.spec.PKCS8EncodedKeySpec(keyBytes)
         val privateKey = java.security.KeyFactory.getInstance("RSA").generatePrivate(keySpec)
 
-        val projectId   = saJson.getString("project_id")
+        val projectId = saJson.getString("project_id")
         val clientEmail = saJson.getString("client_email")
-        val now   = System.currentTimeMillis() / 1000
+        val now = System.currentTimeMillis() / 1000
         val scope = "https://www.googleapis.com/auth/firebase.messaging"
 
-        val header = android.util.Base64.encodeToString(
-            """{"alg":"RS256","typ":"JWT"}""".toByteArray(),
-            android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE
-        )
+        val header = android.util.Base64.encodeToString("{\"alg\":\"RS256\",\"typ\":\"JWT\"}".toByteArray(), android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE)
         val claim = android.util.Base64.encodeToString(
-            """{"iss":"$clientEmail","scope":"$scope","aud":"https://oauth2.googleapis.com/token","exp":${now + 3600},"iat":$now}""".toByteArray(),
+            "{\"iss\":\"$clientEmail\",\"scope\":\"$scope\",\"aud\":\"https://oauth2.googleapis.com/token\",\"exp\":${now + 3600},\"iat\":$now}".toByteArray(),
             android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE
         )
         val signatureBytes = java.security.Signature.getInstance("SHA256withRSA").run {
@@ -8479,41 +8365,18 @@ suspend fun sendFcmMessageNotification(
             update("$header.$claim".toByteArray())
             sign()
         }
-        val signature = android.util.Base64.encodeToString(
-            signatureBytes, android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE
-        )
+        val signature = android.util.Base64.encodeToString(signatureBytes, android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE)
         val jwt = "$header.$claim.$signature"
 
-        // FIX: explicit timeouts — default OkHttpClient cellular network এ hang করে
-        val client = okhttp3.OkHttpClient.Builder()
-            .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
-            .writeTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+        val tokenRequest = okhttp3.Request.Builder()
+            .url("https://oauth2.googleapis.com/token")
+            .post(okhttp3.FormBody.Builder().add("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer").add("assertion", jwt).build())
             .build()
 
-        val tokenResp = client.newCall(
-            okhttp3.Request.Builder()
-                .url("https://oauth2.googleapis.com/token")
-                .post(
-                    okhttp3.FormBody.Builder()
-                        .add("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer")
-                        .add("assertion", jwt)
-                        .build()
-                )
-                .build()
-        ).execute()
+        val tokenResponse = okhttp3.OkHttpClient().newCall(tokenRequest).execute()
+        if (!tokenResponse.isSuccessful) return@withContext
+        val accessToken = org.json.JSONObject(tokenResponse.body?.string() ?: "").getString("access_token")
 
-        val tokenBody = tokenResp.body?.string() ?: ""
-        val accessToken = org.json.JSONObject(tokenBody).optString("access_token", "")
-        if (accessToken.isEmpty()) {
-            android.util.Log.e(TAG, "OAuth2 token exchange failed. HTTP ${tokenResp.code} body=$tokenBody")
-            return@withContext
-        }
-        android.util.Log.d(TAG, "OAuth2 token OK, sending message FCM…")
-
-        // ── Step 4: FCM v1 message ────────────────────────────────────────────
-        // data block: onMessageReceived() — app foreground/background এ handle করে
-        // notification block: app killed থাকলে system tray এ দেখায় (FIX: আগে এটা ছিল না)
         val payload = org.json.JSONObject().apply {
             put("message", org.json.JSONObject().apply {
                 put("token", fcmToken)
@@ -8523,44 +8386,20 @@ suspend fun sendFcmMessageNotification(
                     put("senderName", senderName)
                     put("message", messageText)
                 })
-                // FIX: notification block যোগ করা — app killed থাকলেও system tray এ দেখাবে
-                put("notification", org.json.JSONObject().apply {
-                    put("title", senderName.ifBlank { "RasGram" })
-                    put("body", messageText)
-                })
                 put("android", org.json.JSONObject().apply {
-                    put("priority", "HIGH")
-                    put("ttl", "86400s")   // 24 hours — message stale হওয়ার সময় বেশি
-                    put("notification", org.json.JSONObject().apply {
-                        put("channel_id", "MSG_CHANNEL")
-                        put("sound", "default")
-                        put("default_vibrate_timings", true)
-                        put("notification_priority", "PRIORITY_HIGH")
-                        put("visibility", "PUBLIC")
-                    })
+                    put("priority", "high")
                 })
             })
         }
 
-        val fcmResp = client.newCall(
-            okhttp3.Request.Builder()
-                .url("https://fcm.googleapis.com/v1/projects/$projectId/messages:send")
-                .addHeader("Authorization", "Bearer $accessToken")
-                .addHeader("Content-Type", "application/json")
-                .post(okhttp3.RequestBody.create("application/json".toMediaTypeOrNull(), payload.toString()))
-                .build()
-        ).execute()
-
-        val fcmRespBody = fcmResp.body?.string() ?: ""
-        if (fcmResp.isSuccessful) {
-            android.util.Log.i(TAG, "FCM message sent OK → $receiverMobile")
-        } else {
-            android.util.Log.e(TAG, "FCM message send failed HTTP ${fcmResp.code}: $fcmRespBody")
-        }
-    } catch (e: Exception) {
-        // FIX: আগে catch (_: Exception) { } — সম্পূর্ণ silent, debug অসম্ভব ছিল
-        android.util.Log.e(TAG, "sendFcmMessageNotification exception: ${e.javaClass.simpleName}: ${e.message}", e)
-    }
+        val pushRequest = okhttp3.Request.Builder()
+            .url("https://fcm.googleapis.com/v1/projects/$projectId/messages:send")
+            .addHeader("Authorization", "Bearer $accessToken")
+            .addHeader("Content-Type", "application/json")
+            .post(okhttp3.RequestBody.create("application/json".toMediaTypeOrNull(), payload.toString()))
+            .build()
+        okhttp3.OkHttpClient().newCall(pushRequest).execute()
+    } catch (_: Exception) { }
 }
 
 
@@ -8771,4 +8610,3 @@ fun zipDocumentFile(
         }
     }
 }
-
