@@ -385,14 +385,24 @@ class IncomingCallOverlayService : Service(),
             try {
                 startForeground(
                     OVERLAY_NOTIF_ID, notif,
-                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL
+                    1073741824 // FOREGROUND_SERVICE_TYPE_SPECIAL_USE
                 )
             } catch (e: Exception) {
-                android.util.Log.w("RasGram", "phoneCall foreground type failed, fallback: ${e.message}")
-                try { startForeground(OVERLAY_NOTIF_ID, notif) } catch (_: Exception) {}
+                android.util.Log.w("RasGram", "specialUse foreground type failed, fallback: ${e.message}")
+                try { 
+                    startForeground(OVERLAY_NOTIF_ID, notif) 
+                } catch (fallbackEx: Exception) {
+                    android.util.Log.e("RasGram", "Fallback startForeground failed: ${fallbackEx.message}")
+                    stopSelf()
+                }
             }
         } else {
-            startForeground(OVERLAY_NOTIF_ID, notif)
+            try {
+                startForeground(OVERLAY_NOTIF_ID, notif)
+            } catch (e: Exception) {
+                android.util.Log.e("RasGram", "startForeground failed: ${e.message}")
+                stopSelf()
+            }
         }
 
         // Android 14+ (API 34): USE_FULL_SCREEN_INTENT permission runtime check।

@@ -445,62 +445,82 @@ fun StayFocusedApp(
             }
         ) {
         if (isComboMode) {
-            Box(Modifier.fillMaxSize().background(GrayBg)) {
+            Box(Modifier.fillMaxSize().background(MinimalistBg)) {
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                    StudyLauncherHeader()
+                    
                     FocusLauncherCard(onSessionStart = { bpSessionActive = true })
-                    Spacer(Modifier.height(16.dp))
                     ExtremBlockCard(onClick = { navController.navigate("extreme_block") })
-                    Spacer(Modifier.height(16.dp))
                     BlockingPlanCard(navController)
-                    Spacer(Modifier.height(16.dp))
                     FamilyBrowserCard(context)
-                    Spacer(Modifier.height(16.dp))
+                    
+                    MinimalistLauncherRow(
+                        icon = androidx.compose.material.icons.Icons.Default.Folder,
+                        title = "File Manager",
+                        subtitle = "Access local storage & office files",
+                        onClick = {
+                            val intent = Intent(context, com.rasel.RasFocus.filemanager.FileManagerPlusActivity::class.java)
+                            context.startActivity(intent)
+                        },
+                        accentColor = Color(0xFF8B5CF6)
+                    )
+                    
+                    Spacer(Modifier.height(32.dp))
+                    Text("MORE TOOLS", color = MinimalistTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+                    
                     PermissionBanner(context)
-                    Spacer(Modifier.height(20.dp))
                     AnalyticsSection(navController)
-                    Spacer(Modifier.height(20.dp))
                     TakeABreakCard(onSessionStart = { bpSessionActive = true })
-                    Spacer(Modifier.height(16.dp))
                     NormalModeCard()
-                    Spacer(Modifier.height(16.dp))
                     TakeRestCard()
-                    Spacer(Modifier.height(20.dp))
                     QuickActionsSection(viewModel, navController, context)
-                    Spacer(Modifier.height(20.dp))
                     ProfileTemplatesSection(navController)
-                    Spacer(Modifier.height(20.dp))
+                    Spacer(Modifier.height(40.dp))
+                }
+                
+                // Minimalist menu button
+                IconButton(
+                    onClick = { scope.launch { drawerState.open() } },
+                    modifier = Modifier.align(Alignment.TopStart).padding(16.dp)
+                ) {
+                    Icon(Icons.Default.Menu, contentDescription = "Menu", tint = MinimalistTextSecondary)
                 }
             }
         } else {
-            Box(Modifier.fillMaxSize().background(GrayBg)) {
+            Box(Modifier.fillMaxSize().background(MinimalistBg)) {
                 Column(Modifier.fillMaxSize()) {
                     when (selectedTab) {
                         0 -> {
                             Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                                TopHeader(navController, onMenuClick = { scope.launch { drawerState.open() } }, updateInfo = updateInfo, onUpdateClick = { showUpdateDialog = true })
-                                Spacer(Modifier.height(16.dp))
+                                StudyLauncherHeader()
+                                
                                 FocusLauncherCard(onSessionStart = { bpSessionActive = true })
-                                Spacer(Modifier.height(16.dp))
                                 ExtremBlockCard(onClick = { navController.navigate("extreme_block") })
-                                Spacer(Modifier.height(16.dp))
                                 BlockingPlanCard(navController)
-                                Spacer(Modifier.height(16.dp))
                                 FamilyBrowserCard(context)
-                                Spacer(Modifier.height(16.dp))
+                                
+                                MinimalistLauncherRow(
+                                    icon = androidx.compose.material.icons.Icons.Default.Folder,
+                                    title = "File Manager",
+                                    subtitle = "Access local storage & office files",
+                                    onClick = {
+                                        val intent = Intent(context, com.rasel.RasFocus.filemanager.FileManagerPlusActivity::class.java)
+                                        context.startActivity(intent)
+                                    },
+                                    accentColor = Color(0xFF8B5CF6)
+                                )
+                                
+                                Spacer(Modifier.height(32.dp))
+                                Text("MORE TOOLS", color = MinimalistTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+                                
                                 PermissionBanner(context)
-                                Spacer(Modifier.height(20.dp))
                                 AnalyticsSection(navController)
-                                Spacer(Modifier.height(20.dp))
                                 TakeABreakCard(onSessionStart = { bpSessionActive = true })
-                                Spacer(Modifier.height(16.dp))
                                 NormalModeCard()
-                                Spacer(Modifier.height(16.dp))
                                 TakeRestCard()
-                                Spacer(Modifier.height(20.dp))
                                 QuickActionsSection(viewModel, navController, context)
-                                Spacer(Modifier.height(20.dp))
                                 ProfileTemplatesSection(navController)
-                                Spacer(Modifier.height(20.dp))
+                                Spacer(Modifier.height(40.dp))
                             }
                         }
                         1 -> {
@@ -536,10 +556,6 @@ fun StayFocusedApp(
                             }
                         }
                         3 -> {
-                            // Fix: don't keep composing Column/TopHeader while navigating away.
-                            // Previously this caused "CompositionLocal LocalLifecycleOwner not present"
-                            // crashes on release/minified builds due to a race between navigation
-                            // tearing down this composable and it still trying to recompose.
                             LaunchedEffect(Unit) {
                                 onSettingsClick()
                                 selectedTab = 1
@@ -547,6 +563,24 @@ fun StayFocusedApp(
                         }
                     }
                     SelfControlBottomNav(selectedTab) { selectedTab = it }
+                }
+                
+                // Minimalist menu button for non-combo mode
+                IconButton(
+                    onClick = { scope.launch { drawerState.open() } },
+                    modifier = Modifier.align(Alignment.TopStart).padding(16.dp)
+                ) {
+                    Icon(Icons.Default.Menu, contentDescription = "Menu", tint = MinimalistTextSecondary)
+                }
+                
+                // Update Button Overlay if available
+                if (updateInfo != null) {
+                    IconButton(
+                        onClick = { showUpdateDialog = true },
+                        modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
+                    ) {
+                        Icon(Icons.Default.SystemUpdate, contentDescription = "Update", tint = MinimalistAccent)
+                    }
                 }
             }
         }
@@ -971,35 +1005,17 @@ fun NormalModeCard() {
     val prefs = context.getSharedPreferences("rasfocus_prefs", Context.MODE_PRIVATE)
     var isStrict by remember { mutableStateOf(prefs.getBoolean("strict_mode", false)) }
 
-    Card(
-        Modifier.fillMaxWidth().padding(horizontal = 20.dp).clickable {
+    MinimalistLauncherRow(
+        icon = androidx.compose.material.icons.Icons.Default.Security,
+        title = "Strict Mode",
+        subtitle = if (isStrict) "Active: Uninstall Blocked" else "Prevent disabling app",
+        onClick = {
             isStrict = !isStrict
             prefs.edit().putBoolean("strict_mode", isStrict).apply()
             Toast.makeText(context, if (isStrict) "Strict Mode Active: Uninstall Blocked" else "Strict Mode Disabled", Toast.LENGTH_SHORT).show()
         },
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = if (isStrict) SoftRed else OrangeCard)
-    ) {
-        Column(Modifier.padding(20.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Security, contentDescription = null, modifier = Modifier.size(22.dp), tint = if (isStrict) RedAccent else TextDark)
-                    Spacer(Modifier.width(10.dp))
-                    Text("Strict Mode", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = TextDark)
-                }
-                Switch(
-                    checked = isStrict, onCheckedChange = {
-                        isStrict = it
-                        prefs.edit().putBoolean("strict_mode", isStrict).apply()
-                    },
-                    colors = SwitchDefaults.colors(checkedThumbColor = RedAccent, checkedTrackColor = RedAccent.copy(alpha = 0.3f))
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            Text("Cannot disable Accessibility or uninstall the app during active sessions.",
-                fontSize = 13.sp, color = TextDark.copy(alpha = 0.7f))
-        }
-    }
+        accentColor = if (isStrict) Color(0xFFEF4444) else MinimalistTextSecondary
+    )
 }
 
 @Composable
@@ -1368,80 +1384,13 @@ private fun AccountRow(
 
 @Composable
 fun ExtremBlockCard(onClick: () -> Unit) {
-    // Dark red / crimson gradient — বোঝায় এটা সবচেয়ে কঠোর mode
-    val gradientStart = Color(0xFF7B0000)
-    val gradientEnd   = Color(0xFFB71C1C)
-
-    com.rasel.RasFocus.ui.theme.PremiumCard(Modifier.fillMaxWidth().padding(horizontal = 20.dp), onClick = onClick) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    brush = Brush.horizontalGradient(listOf(gradientStart, gradientEnd)),
-                    shape = RoundedCornerShape(20.dp)
-                )
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 18.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Icon box
-                Box(
-                    modifier = Modifier
-                        .size(52.dp)
-                        .background(SoftWhite.copy(alpha = 0.15f), RoundedCornerShape(14.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Shield,
-                        contentDescription = null,
-                        tint = SoftWhite,
-                        modifier = Modifier.size(30.dp)
-                    )
-                }
-                Spacer(Modifier.width(16.dp))
-                Column(Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "Extreme Block",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
-                            color = SoftWhite
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Box(
-                            modifier = Modifier
-                                .background(SoftWhite.copy(alpha = 0.25f), RoundedCornerShape(50.dp))
-                                .padding(horizontal = 8.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                "MAX",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = SoftWhite,
-                                letterSpacing = 1.sp
-                            )
-                        }
-                    }
-                    Spacer(Modifier.height(3.dp))
-                    Text(
-                        "সর্বোচ্চ blocking — Adult, Reels, Apps & Protection",
-                        fontSize = 12.sp,
-                        color = SoftWhite.copy(alpha = 0.78f),
-                        lineHeight = 16.sp
-                    )
-                }
-                Icon(
-                    imageVector = Icons.Default.ChevronRight,
-                    contentDescription = null,
-                    tint = SoftWhite.copy(alpha = 0.6f),
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-        }
-    }
+    MinimalistLauncherRow(
+        icon = androidx.compose.material.icons.Icons.Default.Warning,
+        title = "Extreme Block",
+        subtitle = "Zero access mode for severe distraction",
+        onClick = onClick,
+        accentColor = Color(0xFFEF4444)
+    )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1449,66 +1398,13 @@ fun ExtremBlockCard(onClick: () -> Unit) {
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 fun BlockingPlanCard(navController: NavController) {
-    val gradientStart = Color(0xFF1565C0)
-    val gradientEnd   = Color(0xFF0D47A1)
-
-    com.rasel.RasFocus.ui.theme.PremiumCard(Modifier.fillMaxWidth().padding(horizontal = 20.dp), onClick = { navController.navigate("blocking_plan") }) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    brush = Brush.horizontalGradient(listOf(gradientStart, gradientEnd)),
-                    shape = RoundedCornerShape(20.dp)
-                )
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 18.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(52.dp)
-                        .background(SoftWhite.copy(alpha = 0.15f), RoundedCornerShape(14.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.PlaylistAddCheck,
-                        contentDescription = null,
-                        tint = SoftWhite,
-                        modifier = Modifier.size(30.dp)
-                    )
-                }
-                Spacer(Modifier.width(16.dp))
-                Column(Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "Create Blocking Apps and Website Profile",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
-                            color = SoftWhite,
-                            lineHeight = 20.sp
-                        )
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Apps ও Websites এর জন্য custom blocking profile তৈরি করো",
-                        fontSize = 12.sp,
-                        color = SoftWhite.copy(alpha = 0.78f),
-                        lineHeight = 16.sp
-                    )
-                }
-                Spacer(Modifier.width(8.dp))
-                Icon(
-                    imageVector = Icons.Default.ChevronRight,
-                    contentDescription = null,
-                    tint = SoftWhite.copy(alpha = 0.6f),
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-        }
-    }
+    MinimalistLauncherRow(
+        icon = androidx.compose.material.icons.Icons.Default.CalendarMonth,
+        title = "Blocking Plans",
+        subtitle = "Schedule automated focus times",
+        onClick = { navController.navigate("blocking_plan") },
+        accentColor = Color(0xFFEC4899)
+    )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1517,73 +1413,18 @@ fun BlockingPlanCard(navController: NavController) {
 @Composable
 fun TakeRestCard() {
     val context = LocalContext.current
-    val gradientStart = Color(0xFF1A237E)
-    val gradientEnd   = Color(0xFF3949AB)
 
-    com.rasel.RasFocus.ui.theme.PremiumCard(Modifier.fillMaxWidth().padding(horizontal = 20.dp), onClick = { val intent = Intent(context, com.rasel.RasFocus.selfcontrol.TakeRestActivity::class.java); intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); context.startActivity(intent) }) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    brush = Brush.horizontalGradient(listOf(gradientStart, gradientEnd)),
-                    shape = RoundedCornerShape(20.dp)
-                )
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 18.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(52.dp)
-                        .background(SoftWhite.copy(alpha = 0.15f), RoundedCornerShape(14.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("😴", fontSize = 26.sp)
-                }
-                Spacer(Modifier.width(16.dp))
-                Column(Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "Take Rest",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
-                            color = SoftWhite
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Box(
-                            modifier = Modifier
-                                .background(SoftWhite.copy(alpha = 0.25f), RoundedCornerShape(50.dp))
-                                .padding(horizontal = 8.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                "BREAK",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = SoftWhite,
-                                letterSpacing = 1.sp
-                            )
-                        }
-                    }
-                    Spacer(Modifier.height(3.dp))
-                    Text(
-                        "নির্দিষ্ট সময়ের জন্য ফোন block করে বিশ্রাম নাও",
-                        fontSize = 12.sp,
-                        color = SoftWhite.copy(alpha = 0.78f),
-                        lineHeight = 16.sp
-                    )
-                }
-                Icon(
-                    imageVector = Icons.Default.ChevronRight,
-                    contentDescription = null,
-                    tint = SoftWhite.copy(alpha = 0.6f),
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-        }
-    }
+    MinimalistLauncherRow(
+        icon = androidx.compose.material.icons.Icons.Default.Bedtime,
+        title = "Take Rest",
+        subtitle = "Block all apps for 1-4 hours",
+        onClick = { 
+            val intent = Intent(context, com.rasel.RasFocus.selfcontrol.TakeRestActivity::class.java)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent) 
+        },
+        accentColor = Color(0xFFF59E0B)
+    )
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1594,83 +1435,13 @@ fun TakeRestCard() {
 fun FamilyBrowserCard(context: Context) {
     var showChooser by remember { mutableStateOf(false) }
 
-    com.rasel.RasFocus.ui.theme.PremiumCard(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-        onClick   = { showChooser = true }
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    brush = Brush.linearGradient(
-                        colors = listOf(Color(0xFF0F2847), Color(0xFF0D2240))
-                    ),
-                    shape = RoundedCornerShape(20.dp)
-                )
-                .padding(horizontal = 18.dp, vertical = 16.dp)
-        ) {
-            Column {
-                // ── Title row ──────────────────────────────────────────────
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .background(Color(0xFF60A5FA).copy(alpha = 0.12f), RoundedCornerShape(13.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Language,
-                            contentDescription = null,
-                            tint = Color(0xFF60A5FA),
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-                    Spacer(Modifier.width(14.dp))
-                    Column(Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                "RasBrowser",
-                                fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFFF1F5F9)
-                            )
-                            Spacer(Modifier.width(7.dp))
-                            Box(
-                                modifier = Modifier
-                                    .background(Color(0xFF4ADE80).copy(alpha = 0.18f), RoundedCornerShape(50.dp))
-                                    .padding(horizontal = 7.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    "SAFE",
-                                    fontSize = 9.sp, fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFF4ADE80), letterSpacing = 1.sp
-                                )
-                            }
-                        }
-                        Text(
-                            "Family browser · ad blocking · content filter",
-                            fontSize = 11.sp, color = Color(0xFF64748B), lineHeight = 15.sp
-                        )
-                    }
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = Color(0xFF475569),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-
-                // ── Stats row ──────────────────────────────────────────────
-                Spacer(Modifier.height(10.dp))
-                HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
-                Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    BrowserStatChip(Icons.Default.Shield,      "Adult filter")
-                    BrowserStatChip(Icons.Default.Block,       "Ads blocked")
-                    BrowserStatChip(Icons.Default.Apps,        "3 apps")
-                }
-            }
-        }
-    }
+    MinimalistLauncherRow(
+        icon = androidx.compose.material.icons.Icons.Default.Public,
+        title = "Safe Browser",
+        subtitle = "Distraction-free browsing",
+        onClick = { showChooser = true },
+        accentColor = Color(0xFF14B8A6)
+    )
 
     if (showChooser) {
         BrowserChooserDialog(context = context, onDismiss = { showChooser = false })

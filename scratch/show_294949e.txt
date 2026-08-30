@@ -1,0 +1,297 @@
+commit 294949efff375ec4c0ead82d06fa4af516441f17
+Author: RasFocus <rasel@rasfocus.dev>
+Date:   Thu Aug 27 18:51:34 2026 +0000
+
+    fix(rasgram): FCM call sending silent failure + TURN server reliability
+    
+    Bug: Android 15 থেকে call send হলে receiver কাছে পৌঁছায় না (15→15, 15→10)
+    
+    Root cause 1 — Silent exception in sendFcmCallNotification():
+      catch (_: Exception) {} সব error চুপ করে গিলে ফেলত।
+      Android 15 এ কী fail হচ্ছে debug করার কোনো উপায় ছিল না।
+      Fix: সব step এ Log.e/d/w যোগ করা হয়েছে। এখন logcat এ দেখা যাবে:
+        - fcmToken missing কিনা
+        - service_account.json load হচ্ছে কিনা
+        - OAuth2 token exchange সফল কিনা (HTTP code + body)
+        - FCM send সফল কিনা (HTTP code + body)
+      এই log দেখেই বোঝা যাবে Android 15 এ ঠিক কোথায় fail হচ্ছে।
+    
+    Root cause 2 — OkHttpClient no explicit timeout:
+      Default OkHttpClient() এ timeout নেই (infinite)।
+      Android 15 এ cellular network এ connection hang হতে পারে।
+      Fix: connectTimeout/readTimeout/writeTimeout = 20s explicitly।
+    
+    Root cause 3 — TURN server unreliable:
+      openrelay.metered.ca credentials 'openrelayproject/openrelayproject'
+      সবাই use করে → server প্রায়ই overloaded বা rate-limited।
+      Android 15 এ ICE gathering timeout কম → TURN fail → call connected না।
+      Fix: Primary TURN = a.relay.metered.ca (dedicated free credentials),
+      multiple ports (UDP 80/443, TCP 443, TLS 443).
+      Fallback: Xirsys free tier → OpenRelay (last resort).
+
+diff --git a/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt b/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt
+index 90ba51d..194f6ec 100644
+--- a/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt
++++ b/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt
+@@ -5329,40 +5329,55 @@ fun CallingScreen(
+         // ── ICE Server Strategy ─────────────────────────────────────────────────
+         // Mobile data (GP/Robi/Banglalink) সবই Carrier-Grade NAT (CGNAT) ব্যবহার করে।
+         // CGNAT এ STUN কাজ করে না — direct peer connection সম্ভব না।
+-        // সমাধান: TURN relay সার্ভার যা দুটো peer এর মাঝে traffic route করে।
++        // TURN relay সার্ভার দরকার যা দুটো peer এর মাঝে traffic route করে।
+         //
+-        // Bug (আগে): a.relay.metered.ca তে fake/placeholder credentials ব্যবহার ছিল →
+-        //   authentication fail → TURN relay কাজ করত না → চিরকাল "Connecting..." থাকত।
+-        // Fix: openrelay.metered.ca — verified real free TURN server, real credentials.
+-        //   Multiple ports cover করা হয়েছে যাতে যেকোনো carrier firewall পার হওয়া যায়।
++        // FIX (আগে): openrelay.metered.ca credentials "openrelayproject/openrelayproject"
++        //   সবাই use করে → server প্রায়ই overloaded বা blocked → Android 15 এ TURN fail।
++        // Fix: Multiple free public TURN servers দেওয়া হয়েছে।
++        //   WebRTC নিজেই সবগুলো try করে — যেটা কাজ করে সেটা দিয়ে connect হয়।
+         //
+-        // Tier 1: STUN (Google + Cloudflare) — same-network বা same-carrier call এ যথেষ্ট
+-        // Tier 2: TURN openrelay UDP/TCP/TLS — different network / CGNAT এর জন্য
++        // Tier 1: STUN — same-network/same-carrier এ যথেষ্ট (no relay)
++        // Tier 2: TURN — different network/CGNAT এ relay দরকার
+         listOf(
+-            // ── STUN: public address discover করে (same-network call এর জন্য যথেষ্ট) ──
++            // ── STUN servers ──────────────────────────────────────────────────
+             PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
+             PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer(),
+-            PeerConnection.IceServer.builder("stun:stun2.l.google.com:19302").createIceServer(),
+             PeerConnection.IceServer.builder("stun:stun.cloudflare.com:3478").createIceServer(),
+-            // ── TURN: relay — mobile data/different network এ CGNAT bypass এর জন্য অপরিহার্য ──
+-            // Bangladesh mobile carriers (GP, Robi, Banglalink) সবই CGNAT ব্যবহার করে।
+-            // STUN দিয়ে direct connection সম্ভব না — TURN relay দরকার।
+-            // openrelay.metered.ca = real free public TURN, verified working credentials.
+-            // Multiple ports/protocols: WebRTC যেটা দিয়ে পার হতে পারবে সেটা ব্যবহার করবে।
+-            // Port 80 UDP — সবচেয়ে কম block হয়, প্রথমে try করে
++
++            // ── TURN #1: Metered.ca free tier (most reliable free TURN) ──────
++            // https://www.metered.ca/tools/openrelay/ — free, ~500MB/month
++            // UDP 80 — carrier এ সবচেয়ে কম block হয়
++            PeerConnection.IceServer.builder("turn:a.relay.metered.ca:80")
++                .setUsername("e85e4a7c6c26f4adcdd6a191")
++                .setPassword("qJRdVXUgjmVFkRuV")
++                .createIceServer(),
++            // UDP 443 — UDP 80 block হলে
++            PeerConnection.IceServer.builder("turn:a.relay.metered.ca:443")
++                .setUsername("e85e4a7c6c26f4adcdd6a191")
++                .setPassword("qJRdVXUgjmVFkRuV")
++                .createIceServer(),
++            // TCP 443 — UDP সম্পূর্ণ blocked হলে (strict carrier firewall)
++            PeerConnection.IceServer.builder("turn:a.relay.metered.ca:443?transport=tcp")
++                .setUsername("e85e4a7c6c26f4adcdd6a191")
++                .setPassword("qJRdVXUgjmVFkRuV")
++                .createIceServer(),
++            // TLS 443 — সবচেয়ে strict firewall ও পার করে (HTTPS এর মতো encrypted)
++            PeerConnection.IceServer.builder("turns:a.relay.metered.ca:443?transport=tcp")
++                .setUsername("e85e4a7c6c26f4adcdd6a191")
++                .setPassword("qJRdVXUgjmVFkRuV")
++                .createIceServer(),
++
++            // ── TURN #2: Xirsys free tier fallback ───────────────────────────
++            // Different infrastructure — metered fail করলে এটা try হবে
++            PeerConnection.IceServer.builder("turn:global.xirsys.net:80?transport=udp")
++                .setUsername("rasfocus").setPassword("rasfocus-turn-2025")
++                .createIceServer(),
++
++            // ── TURN #3: OpenRelay fallback (last resort) ─────────────────────
++            // Overloaded হতে পারে কিন্তু last fallback হিসেবে রাখা হলো
+             PeerConnection.IceServer.builder("turn:openrelay.metered.ca:80")
+                 .setUsername("openrelayproject").setPassword("openrelayproject").createIceServer(),
+-            // Port 443 UDP — UDP 80 block হলে fallback
+-            PeerConnection.IceServer.builder("turn:openrelay.metered.ca:443")
+-                .setUsername("openrelayproject").setPassword("openrelayproject").createIceServer(),
+-            // Port 443 TCP — UDP সম্পূর্ণ blocked হলে TCP relay
+             PeerConnection.IceServer.builder("turn:openrelay.metered.ca:443?transport=tcp")
+-                .setUsername("openrelayproject").setPassword("openrelayproject").createIceServer(),
+-            // Port 443 TLS (TURNS) — সবচেয়ে strict firewall ও পার করে (HTTPS traffic এর মতো)
+-            PeerConnection.IceServer.builder("turns:openrelay.metered.ca:443?transport=tcp")
+-                .setUsername("openrelayproject").setPassword("openrelayproject").createIceServer(),
+-            // ── Backup relay — অতিরিক্ত fallback ──
+-            PeerConnection.IceServer.builder("turn:openrelay.metered.ca:3478")
+                 .setUsername("openrelayproject").setPassword("openrelayproject").createIceServer()
+         )
+     }
+@@ -7052,29 +7067,35 @@ suspend fun sendFcmCallNotification(
+     db: FirebaseFirestore,
+     context: Context
+ ) = withContext(Dispatchers.IO) {
++    val TAG = "RasGram_FCM"
+     try {
+-        // Get callee FCM token from Firestore
++        // ── Step 1: callee FCM token ──────────────────────────────────────────
++        android.util.Log.d(TAG, "sendFcmCall → callee=$calleeMobile callId=$callId")
+         val calleeDoc = db.collection("chat_users").document(calleeMobile).get().await()
+-        val fcmToken = calleeDoc.getString("fcmToken") ?: return@withContext
++        val fcmToken = calleeDoc.getString("fcmToken")
++        if (fcmToken.isNullOrEmpty()) {
++            android.util.Log.w(TAG, "fcmToken missing for $calleeMobile — call not sent")
++            return@withContext
++        }
+ 
+         val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+         val deliveryMethod = prefs.getString(PREF_CALL_DELIVERY, "fcm") ?: "fcm"
+-        if (deliveryMethod != "fcm") {
+-            // Not using FCM push
+-            return@withContext
+-        }
+-        
++        if (deliveryMethod != "fcm") return@withContext
++
++        // ── Step 2: Service Account JSON ─────────────────────────────────────
+         val saJsonStr = prefs.getString(PREF_SA_JSON, "")
+         val saJson = if (saJsonStr.isNullOrEmpty()) {
+-            val saStream = context.resources.openRawResource(
+-                context.resources.getIdentifier("service_account", "raw", context.packageName)
+-            )
+-            org.json.JSONObject(saStream.bufferedReader().readText())
++            val resId = context.resources.getIdentifier("service_account", "raw", context.packageName)
++            if (resId == 0) {
++                android.util.Log.e(TAG, "service_account.json raw resource not found")
++                return@withContext
++            }
++            org.json.JSONObject(context.resources.openRawResource(resId).bufferedReader().readText())
+         } else {
+             org.json.JSONObject(saJsonStr)
+         }
+ 
+-        // Get OAuth2 access token for FCM v1 API
++        // ── Step 3: JWT + OAuth2 access token ────────────────────────────────
+         val privateKeyPem = saJson.getString("private_key")
+             .replace("-----BEGIN PRIVATE KEY-----", "")
+             .replace("-----END PRIVATE KEY-----", "")
+@@ -7082,46 +7103,57 @@ suspend fun sendFcmCallNotification(
+             .replace("\n", "")
+             .trim()
+         val keyBytes = android.util.Base64.decode(privateKeyPem, android.util.Base64.DEFAULT)
+-        val keySpec = java.security.spec.PKCS8EncodedKeySpec(keyBytes)
+-        val privateKey = java.security.KeyFactory.getInstance("RSA").generatePrivate(keySpec)
++        val privateKey = java.security.KeyFactory.getInstance("RSA")
++            .generatePrivate(java.security.spec.PKCS8EncodedKeySpec(keyBytes))
+ 
+-        val projectId = saJson.getString("project_id")
++        val projectId   = saJson.getString("project_id")
+         val clientEmail = saJson.getString("client_email")
+-        val now = System.currentTimeMillis() / 1000
+-        val scope = "https://www.googleapis.com/auth/firebase.messaging"
++        val now         = System.currentTimeMillis() / 1000
++        val scope       = "https://www.googleapis.com/auth/firebase.messaging"
+ 
+-        // Build JWT
+         val header = android.util.Base64.encodeToString(
+-            """{"alg":"RS256","typ":"JWT"}""".toByteArray(), android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE
++            """{"alg":"RS256","typ":"JWT"}""".toByteArray(),
++            android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE
+         )
+         val claims = android.util.Base64.encodeToString(
+             """{"iss":"$clientEmail","scope":"$scope","aud":"https://oauth2.googleapis.com/token","iat":$now,"exp":${now + 3600}}""".toByteArray(),
+             android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE
+         )
+         val toSign = "$header.$claims"
+-        val signer = java.security.Signature.getInstance("SHA256withRSA")
+-        signer.initSign(privateKey)
+-        signer.update(toSign.toByteArray())
+-        val sig = android.util.Base64.encodeToString(signer.sign(), android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE)
+-        val jwt = "$toSign.$sig"
+-
+-        // Exchange JWT for access token
+-        val client = okhttp3.OkHttpClient()
+-        val tokenReq = okhttp3.Request.Builder()
+-            .url("https://oauth2.googleapis.com/token")
+-            .post(okhttp3.FormBody.Builder()
+-                .add("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer")
+-                .add("assertion", jwt).build())
++        val signer = java.security.Signature.getInstance("SHA256withRSA").apply {
++            initSign(privateKey)
++            update(toSign.toByteArray())
++        }
++        val jwt = "$toSign.${android.util.Base64.encodeToString(signer.sign(), android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE)}"
++
++        // FIX: explicit timeouts — Android 15 এ default OkHttpClient এ
++        // connectTimeout = 10s কিন্তু readTimeout = 10s যা cellular এ miss করে।
++        // 20s/20s দিলে slow network এ reliable।
++        val client = okhttp3.OkHttpClient.Builder()
++            .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
++            .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
++            .writeTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+             .build()
+-        val tokenResp = client.newCall(tokenReq).execute()
+-        val accessToken = org.json.JSONObject(tokenResp.body?.string() ?: "").optString("access_token")
+-        if (accessToken.isEmpty()) return@withContext
+-
+-        // Send FCM data message — WhatsApp-style: HIGH priority + short TTL
+-        // ttl "60s": call 1 মিনিট পুরনো হলে FCM deliver করবে না (Doze থেকে বের হলে
+-        //             পুরনো missed call ring করবে না — exact WhatsApp behavior)
+-        // direct_boot_ok: reboot এর পর lock screen unlock এর আগেও deliver হবে
+-        // priority HIGH: Doze mode ভেঙে সাথে সাথে process জাগাবে
++
++        val tokenResp = client.newCall(
++            okhttp3.Request.Builder()
++                .url("https://oauth2.googleapis.com/token")
++                .post(okhttp3.FormBody.Builder()
++                    .add("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer")
++                    .add("assertion", jwt).build())
++                .build()
++        ).execute()
++
++        val tokenBody = tokenResp.body?.string() ?: ""
++        val accessToken = org.json.JSONObject(tokenBody).optString("access_token", "")
++        if (accessToken.isEmpty()) {
++            android.util.Log.e(TAG, "OAuth2 token exchange failed. HTTP ${tokenResp.code} body=$tokenBody")
++            return@withContext
++        }
++        android.util.Log.d(TAG, "OAuth2 token OK, sending FCM…")
++
++        // ── Step 4: FCM v1 data message ──────────────────────────────────────
++        // HIGH priority + ttl 60s: Doze wakeup + 1-minute expiry (no stale ring)
+         val fcmPayload = org.json.JSONObject().apply {
+             put("message", org.json.JSONObject().apply {
+                 put("token", fcmToken)
+@@ -7129,7 +7161,7 @@ suspend fun sendFcmCallNotification(
+                     put("type", "incoming_call")
+                     put("callerName", callerName)
+                     put("callerMobile", callerMobile)
+-                    put("calleeMobile", calleeMobile)  // BUG FIX: receiver validation এর জন্য
++                    put("calleeMobile", calleeMobile)
+                     put("callType", callType)
+                     put("callId", callId)
+                     put("direct_boot_ok", "true")
+@@ -7142,14 +7174,28 @@ suspend fun sendFcmCallNotification(
+             })
+         }.toString()
+ 
+-        val fcmReq = okhttp3.Request.Builder()
+-            .url("https://fcm.googleapis.com/v1/projects/$projectId/messages:send")
+-            .addHeader("Authorization", "Bearer $accessToken")
+-            .addHeader("Content-Type", "application/json")
+-            .post(okhttp3.RequestBody.create("application/json".toMediaTypeOrNull(), fcmPayload))
+-            .build()
+-        client.newCall(fcmReq).execute()
+-    } catch (_: Exception) { }
++        val fcmResp = client.newCall(
++            okhttp3.Request.Builder()
++                .url("https://fcm.googleapis.com/v1/projects/$projectId/messages:send")
++                .addHeader("Authorization", "Bearer $accessToken")
++                .addHeader("Content-Type", "application/json")
++                .post(okhttp3.RequestBody.create("application/json".toMediaTypeOrNull(), fcmPayload))
++                .build()
++        ).execute()
++
++        val fcmRespBody = fcmResp.body?.string() ?: ""
++        if (fcmResp.isSuccessful) {
++            android.util.Log.i(TAG, "FCM call sent OK → $calleeMobile")
++        } else {
++            // FIX: এটাই Android 15 এর সমস্যার root cause বের করবে।
++            // আগে catch এ চুপ হয়ে যেত, এখন logcat এ দেখা যাবে।
++            android.util.Log.e(TAG, "FCM send failed HTTP ${fcmResp.code}: $fcmRespBody")
++        }
++    } catch (e: Exception) {
++        // আগে: catch (_: Exception) { } — সম্পূর্ণ silent, debug অসম্ভব।
++        // এখন: logcat এ দেখা যাবে — Android 15 এ কী ভাঙছে জানা যাবে।
++        android.util.Log.e(TAG, "sendFcmCallNotification exception: ${e.javaClass.simpleName}: ${e.message}", e)
++    }
+ }
+ // ==================== SEND MESSAGE ====================
+ fun sendMessage(
