@@ -37,10 +37,13 @@ class RasgramMessagingService : FirebaseMessagingService() {
             } catch (_: Exception) { null }
             ?: return
 
+        // FIX: update() fails if document/field doesn't exist — use set+merge instead.
+        // update() throws if the document has no "fcmToken" field yet.
+        // set(merge=true) creates the field if missing, updates if present.
         FirebaseFirestore.getInstance()
             .collection("chat_users")
             .document(mobile)
-            .update("fcmToken", token)
+            .set(mapOf("fcmToken" to token), com.google.firebase.firestore.SetOptions.merge())
     }
 
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
@@ -65,7 +68,7 @@ class RasgramMessagingService : FirebaseMessagingService() {
                         val chatId = if (myMobile < senderMobile) "${myMobile}_${senderMobile}"
                                      else "${senderMobile}_${myMobile}"
                         FirebaseFirestore.getInstance()
-                            .collection("pvt_msg_${'$'}chatId")
+                            .collection("pvt_msg_${chatId}")
                             .whereEqualTo("senderMobile", senderMobile)
                             .whereEqualTo("delivered", false)
                             .get()
@@ -94,39 +97,21 @@ class RasgramMessagingService : FirebaseMessagingService() {
     ) {
         // BUG FIX: callee validation — এই device এ যে logged in আছে সে-ই callee কিনা check।
         // FCM token কখনো একাধিক device এ বা ভুল user এর কাছে যেতে পারে।
-        // এই check না থাকলে একজনকে call দিলে অন্যজনের কাছেও ring হয়।
         val myMobile = getMobileFromStorage()
         if (myMobile == null || myMobile.isEmpty()) {
             // Not logged in — ignore call
             return
         }
-        // calleeMobile FCM data এ আছে → normalized match।
-        // FIX: strict string equality এর বদলে normalized comparison।
-        // Android 15 এ number format ভিন্ন হতে পারে (leading zero, +880, whitespace)।
-        // normalizeNumber() দিয়ে দুটো কেই canonical form এ আনো তারপর compare করো।
-        if (calleeMobile.isNotEmpty() && normalizeMobile(calleeMobile) != normalizeMobile(myMobile)) {
+
+        // FIX v8: calleeMobile match — Android 15 এ number format issue এর robust fix।
+        // normalizeMobile() last suffix (10 digits) বের করে compare করে।
+        // এতে +880, 880, 0, raw format সব কিছু match করে।
+        if (calleeMobile.isNotEmpty() && !mobilesMatch(calleeMobile, myMobile)) {
             // এই call আমার জন্য না — ignore করো।
+            android.util.Log.d("RasGram", "Call ignored: callee=$calleeMobile myMobile=$myMobile")
             return
         }
 
-        // FIX v7: canDrawOverlays() এখানে check করা হচ্ছে না।
-        //
-        // Bug: Android 10 এ FCM background worker process থেকে
-        // Settings.canDrawOverlays() মাঝে মাঝে false return করে — permission দেওয়া
-        // থাকলেও। এটা Android 10 এর known IPC cross-process timing issue।
-        // ফলে code else branch এ যায় → শুধু notification post হয় →
-        // notification থেকে fullScreenIntent Android 10 এ reliably fire হয় না
-        // (app killed থাকলে) → call notification আসে না।
-        //
-        // Fix: IncomingCallOverlayService.start() সবসময় call করো।
-        // Service এর নিজের onStartCommand() এ canDrawOverlays() check করা হয়
-        // (সেখানে UI process, reliable result পাওয়া যায়):
-        //   → screen off/locked → notification fullScreenIntent path
-        //   → screen on + overlay ok → floating card
-        //   → overlay নেই → notification-only
-        //
-        // FIX: try-catch — Android 14/15 এ MANAGE_OWN_CALLS বা
-        // USE_FULL_SCREEN_INTENT grant না থাকলে SecurityException আসতে পারে।
         var serviceStarted = false
         try {
             IncomingCallOverlayService.start(this, callId, callerName, callerMobile, callType)
@@ -156,9 +141,32 @@ class RasgramMessagingService : FirebaseMessagingService() {
         } catch (_: Exception) { null }
 
     /**
-     * FIX: Mobile number normalize — Bangladesh format canonical form।
-     * "01711223344", "+8801711223344", "8801711223344", " 01711223344 " → "8801711223344"
-     * Android 15 এ number format ভিন্ন হতে পারে → calleeMobile vs myMobile mismatch।
+     * FIX v8: Mobile number matching — suffix-based comparison।
+     *
+     * কেন আগেরটা ভেঙেছিল (Android 15):
+     * normalizeMobile("01711223344") → "8801711223344"  (880 + 10 digits)
+     * normalizeMobile("1711223344")  → "1711223344"     (কোনো prefix নেই, 10 digits)
+     * এই দুটো match হয় না → call ignore হয়।
+     *
+     * Fix: দুটো number এর শেষ 10 digit compare করো।
+     * BD number এর last 10 digit সবসময় unique identifier।
+     * "01711223344".last10 = "1711223344"
+     * "+8801711223344".last10 = "1711223344"
+     * "8801711223344".last10 = "1711223344"
+     * সব case এ match হয়।
+     */
+    private fun mobilesMatch(a: String, b: String): Boolean {
+        val aDigits = a.trim().replace(Regex("[^0-9]"), "")
+        val bDigits = b.trim().replace(Regex("[^0-9]"), "")
+        if (aDigits.isEmpty() || bDigits.isEmpty()) return false
+        // শেষ 10 digit compare — BD mobile number এর subscriber number part
+        val aSuffix = aDigits.takeLast(10)
+        val bSuffix = bDigits.takeLast(10)
+        return aSuffix == bSuffix
+    }
+
+    /**
+     * Legacy: normalizeMobile — এখনো ব্যবহার নেই, backward compat এর জন্য রাখা।
      */
     private fun normalizeMobile(raw: String): String {
         val digits = raw.trim().replace(Regex("[^0-9]"), "")
@@ -166,9 +174,7 @@ class RasgramMessagingService : FirebaseMessagingService() {
             digits.startsWith("880") && digits.length >= 12 -> digits
             digits.startsWith("0") && digits.length == 11  -> "880${digits.substring(1)}"
             digits.length == 10 && digits.startsWith("1")  -> "880$digits"
-            else -> digits.takeLast(11).let { tail ->
-                if (tail.startsWith("1") && tail.length == 11) "880${tail.substring(1)}" else digits
-            }
+            else -> digits
         }
     }
 
@@ -359,13 +365,10 @@ class RasgramMessagingService : FirebaseMessagingService() {
                 description          = "Incoming RasGram calls"
                 setSound(ringtoneUri, audioAttr)
                 enableVibration(true)
-                // Strong call pattern: 800ms on, 600ms off — সবসময় vibrate (ringer mode নির্বিশেষে)
                 vibrationPattern     = longArrayOf(0, 800, 600)
                 lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
                 enableLights(true)
                 lightColor           = Color.parseColor("#25D366")
-                // FIX: DND (Do Not Disturb) mode এ call notification আসে না।
-                // setBypassDnd(true) — CATEGORY_CALL থাকলেও explicit bypass দরকার।
                 setBypassDnd(true)
             }
         )
@@ -375,7 +378,6 @@ class RasgramMessagingService : FirebaseMessagingService() {
             NotificationChannel(MSG_CHANNEL, "RasGram Messages", NotificationManager.IMPORTANCE_HIGH).apply {
                 description          = "New RasGram messages"
                 enableVibration(true)
-                // Message pattern: double pulse — সবসময় vibrate
                 vibrationPattern     = longArrayOf(0, 400, 200, 400)
                 setShowBadge(true)
                 lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
