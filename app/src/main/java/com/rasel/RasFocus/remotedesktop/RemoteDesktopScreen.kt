@@ -47,6 +47,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.awaitPointerEvent
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -867,16 +873,16 @@ fun RustDeskGestureLayer(
                             val dx0 = c0.position.x - c0.previousPosition.x
                             val dx1 = c1.position.x - c1.previousPosition.x
                             val avgDx = (dx0 + dx1) / 2f
-                            if (kotlin.math.abs(avgDy) > kotlin.math.abs(avgDx)) {
-                                if (kotlin.math.abs(avgDy) > 2f)
+                            if (kotlin.math.abs(avgDy.toDouble()) > kotlin.math.abs(avgDx.toDouble())) {
+                                if (kotlin.math.abs(avgDy.toDouble()) > 2.0)
                                     onScroll(if (avgDy < 0) "up" else "down", centerX, centerY)
                             } else {
-                                if (kotlin.math.abs(avgDx) > 2f)
+                                if (kotlin.math.abs(avgDx.toDouble()) > 2.0)
                                     onScroll(if (avgDx < 0) "left" else "right", centerX, centerY)
                             }
                         }
-                        evt.changes.forEach { it.consume() }
-                    } while (evt.changes.any { it.pressed })
+                        evt.changes.forEach { change -> change.consume() }
+                    } while (evt.changes.any { change -> change.pressed })
 
                     // UP
                     onUp(lastPointerPos.x, lastPointerPos.y)

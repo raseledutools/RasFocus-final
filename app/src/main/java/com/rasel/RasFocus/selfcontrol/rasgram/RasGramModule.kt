@@ -5362,6 +5362,9 @@ fun CallingScreen(
     var isConnected by remember { mutableStateOf(false) }
     var callSeconds by remember { mutableIntStateOf(0) }
     var callId by remember { mutableStateOf(existingCallId) }
+    // Guard: signaling শুধু একবার চালু হবে — callId key এর কারণে LaunchedEffect
+    // relaunch হলেও double offer/answer create না হয়
+    var signalingStarted by remember { mutableStateOf(false) }
     // Call ended duration summary
     var showEndedSummary by remember { mutableStateOf(false) }
     var finalCallSeconds by remember { mutableIntStateOf(0) }
@@ -5621,8 +5624,23 @@ fun CallingScreen(
     // Kotlin 2.1.x FixStackAnalyzer NullPointerException at instruction #346.
     // Moving them to named top-level functions allocates their bytecode in
     // separate class files, cutting this lambda's bytecode size below the threshold.
-    LaunchedEffect(peerConnection, isReceiver) {
+    // FIX: callId যোগ করা হয়েছে LaunchedEffect key তে।
+    // Bug (আগে): callId শুধু peerConnectionFactory LaunchedEffect এ set হত —
+    //   সেই same coroutine এ peerConnection = pc set হত।
+    //   peerConnection change হলে এই LaunchedEffect relaunch হত, কিন্তু
+    //   callId এর Compose state update তখনো propagate হয়নি → callId = "" (empty)।
+    //   handleCallerSignaling("") → Firestore এ calls/"" document write হত →
+    //   receiver এর .whereEqualTo("callee", ...) query miss করত → call আসত না।
+    // Fix: key তে callId যোগ → callId set হওয়ার পরেই এই effect relaunch হবে।
+    //   isReceiver=true: existingCallId দিয়ে initialized, empty হবে না।
+    //   isReceiver=false: callId="" হলে guard দিয়ে skip, set হলে run।
+    LaunchedEffect(peerConnection, isReceiver, callId) {
         val pc = peerConnection ?: return@LaunchedEffect
+        // Caller side: callId set না হলে wait করো — পরের recomposition এ আবার চলবে
+        if (!isReceiver && callId.isEmpty()) return@LaunchedEffect
+        // Guard: signaling একবারই শুরু হবে — callId key change এ duplicate না হয়
+        if (signalingStarted) return@LaunchedEffect
+        signalingStarted = true
         try {
             if (isReceiver) {
                 handleReceiverSignaling(
