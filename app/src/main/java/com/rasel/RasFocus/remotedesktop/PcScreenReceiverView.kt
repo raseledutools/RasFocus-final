@@ -31,7 +31,7 @@ class PcScreenReceiverView @JvmOverloads constructor(
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var surfaceReady = false
 
-    var onConnected: (() -> Unit)? = null
+    var onConnected: ((width: Int, height: Int) -> Unit)? = null
     var onDisconnected: (() -> Unit)? = null
     var onError: ((String) -> Unit)? = null
 
@@ -57,14 +57,16 @@ class PcScreenReceiverView @JvmOverloads constructor(
         wsClient = client.newWebSocket(req, object : WebSocketListener() {
             override fun onOpen(ws: WebSocket, response: Response) {
                 Log.d(TAG, "Connected to PC at $pcIp:$pcPort")
-                onConnected?.invoke()
+                // Width/height will be set when info frame arrives
             }
             override fun onMessage(ws: WebSocket, text: String) {
-                // JSON info from PC
                 try {
                     val j = JSONObject(text)
                     if (j.optString("type") == "info") {
-                        Log.d(TAG, "PC info: ${j.optString("name")} ${j.optInt("width")}x${j.optInt("height")}")
+                        val w = j.optInt("width", 1920)
+                        val h = j.optInt("height", 1080)
+                        Log.d(TAG, "PC info: ${j.optString("name")} ${w}x${h}")
+                        onConnected?.invoke(w, h)
                     }
                 } catch (_: Exception) {}
             }

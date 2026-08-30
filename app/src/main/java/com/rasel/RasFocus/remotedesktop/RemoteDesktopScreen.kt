@@ -570,72 +570,170 @@ fun RdSettingsTab(modifier: Modifier, context: Context) {
 // PC Screen Viewer — Phone এ PC screen live দেখা + touch control
 // RustDesk: Flutter DesktopTabPage → আমরা: Compose + SurfaceView
 // ══════════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PcViewerScreen — RustDesk-style fullscreen remote viewer with proper input
+//
+// RustDesk input_model.dart approach:
+//   1-finger tap     → mouse left click (down + up)
+//   1-finger move    → mouse move (normalized coords → remote coords)
+//   1-finger drag    → mouse move with left button held (drag)
+//   2-finger scroll  → mouse wheel (vertical/horizontal)
+//   2-finger pinch   → zoom (scale canvas) — future
+//   Long press       → right click
+//   Double tap       → double click
+// ══════════════════════════════════════════════════════════════════════════════
 @Composable
-fun PcViewerScreen(pcIp: String, pcPort: Int = 9224, platform: String = "android", onBack: () -> Unit) {
+fun PcViewerScreen(
+    pcIp: String,
+    pcPort: Int = 9224,
+    platform: String = "android",
+    onBack: () -> Unit
+) {
     val context = LocalContext.current
     val scope   = rememberCoroutineScope()
 
-    var statusMsg   by remember { mutableStateOf("Connecting to $pcIp...") }
-    var connected   by remember { mutableStateOf(false) }
+    var statusMsg    by remember { mutableStateOf("Connecting...") }
+    var connected    by remember { mutableStateOf(false) }
     var showControls by remember { mutableStateOf(true) }
 
-    // Hide controls after 3s inactivity (RustDesk behaviour)
-    LaunchedEffect(showControls) {
-        if (showControls) { delay(3000); showControls = false }
-    }
+    // Remote screen dimensions (from device info)
+    var remoteW by remember { mutableStateOf(1920) }
+    var remoteH by remember { mutableStateOf(1080) }
 
-    // PcScreenReceiverView ref
+    // Canvas offset for letterboxing
+    var canvasX by remember { mutableStateOf(0f) }
+    var canvasY by remember { mutableStateOf(0f) }
+    var canvasW by remember { mutableStateOf(0f) }
+    var canvasH by remember { mutableStateOf(0f) }
+
+    // Mouse button state (RustDesk: _lastButtons)
+    var leftDown by remember { mutableStateOf(false) }
+
     val viewRef = remember { mutableStateOf<PcScreenReceiverView?>(null) }
+
+    // Auto-hide controls (RustDesk: toolbar auto-hide)
+    var controlsTimer by remember { mutableStateOf(0L) }
+    LaunchedEffect(showControls) {
+        if (showControls) {
+            delay(3500)
+            showControls = false
+        }
+    }
 
     DisposableEffect(pcIp) {
         onDispose { viewRef.value?.destroy() }
+    }
+
+    // ── Coordinate mapping helper ─────────────────────────────────
+    // Screen touch (x,y) → normalized 0..1 → remote pixel coords
+    fun toRemote(touchX: Float, touchY: Float): Pair<Int, Int> {
+        val rx = ((touchX - canvasX) / canvasW).coerceIn(0f, 1f)
+        val ry = ((touchY - canvasY) / canvasH).coerceIn(0f, 1f)
+        return (rx * remoteW).toInt() to (ry * remoteH).toInt()
+    }
+
+    // ── Input send helpers (RustDesk: sendMouse / tap / scroll) ──
+    fun sendMove(tx: Float, ty: Float) {
+        if (!connected || canvasW == 0f) return
+        val (rx, ry) = toRemote(tx, ty)
+        viewRef.value?.sendMouseEvent(0, rx, ry)   // mask=0 → move
+    }
+    fun sendDown(tx: Float, ty: Float) {
+        if (!connected || canvasW == 0f) return
+        val (rx, ry) = toRemote(tx, ty)
+        viewRef.value?.sendMouseEvent(1, rx, ry)   // mask=1 → down
+        leftDown = true
+    }
+    fun sendUp(tx: Float, ty: Float) {
+        if (!connected || canvasW == 0f) return
+        val (rx, ry) = toRemote(tx, ty)
+        viewRef.value?.sendMouseEvent(2, rx, ry)   // mask=2 → up
+        leftDown = false
+    }
+    fun sendRightClick(tx: Float, ty: Float) {
+        if (!connected || canvasW == 0f) return
+        val (rx, ry) = toRemote(tx, ty)
+        viewRef.value?.sendMouseEvent(3, rx, ry)   // mask=3 → right down
+        viewRef.value?.sendMouseEvent(4, rx, ry)   // mask=4 → right up
+    }
+    fun sendScroll(dir: String, tx: Float, ty: Float) {
+        if (!connected || canvasW == 0f) return
+        val (rx, ry) = toRemote(tx, ty)
+        viewRef.value?.sendScroll(rx, ry, dir)
     }
 
     Box(
         Modifier
             .fillMaxSize()
             .background(Color.Black)
-            // Tap to show/hide control bar
-            .clickable { showControls = !showControls }
+            .onSizeChanged { size ->
+                // Update canvas letterbox area when layout changes
+                val localW = size.width.toFloat()
+                val localH = size.height.toFloat()
+                val ar = remoteW.toFloat() / remoteH.toFloat()
+                val boxAr = localW / localH
+                if (ar > boxAr) {
+                    canvasW = localW; canvasH = localW / ar
+                    canvasX = 0f; canvasY = (localH - canvasH) / 2f
+                } else {
+                    canvasH = localH; canvasW = localH * ar
+                    canvasY = 0f; canvasX = (localW - canvasW) / 2f
+                }
+            }
     ) {
-        // ── SurfaceView: PC screen renders here ───────────────────
+        // ── SurfaceView ───────────────────────────────────────────
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
                 PcScreenReceiverView(ctx).also { v ->
                     viewRef.value = v
-                    v.onConnected    = { connected = true; statusMsg = "Connected ✅" }
+                    v.onConnected = { w, h ->
+                        connected = true
+                        if (w > 0) remoteW = w
+                        if (h > 0) remoteH = h
+                        statusMsg = "Connected"
+                    }
                     v.onDisconnected = { connected = false; statusMsg = "Disconnected" }
                     v.onError        = { statusMsg = "Error: $it" }
-                    // PC=9225, Android=9224
                     val port = if (platform == "windows") 9225 else pcPort
                     v.connectToPc(pcIp, port)
                 }
             }
         )
 
-        // ── Status overlay (shown when not connected) ─────────────
+        // ── Gesture layer — OVER the SurfaceView ─────────────────
+        if (connected) {
+            RustDeskGestureLayer(
+                modifier = Modifier.fillMaxSize(),
+                onMove        = { x, y    -> sendMove(x, y) },
+                onDown        = { x, y    -> sendDown(x, y) },
+                onUp          = { x, y    -> sendUp(x, y) },
+                onRightClick  = { x, y    -> sendRightClick(x, y) },
+                onScroll      = { dir,x,y -> sendScroll(dir, x, y) },
+                onShowControls = { showControls = true }
+            )
+        }
+
+        // ── Status overlay ────────────────────────────────────────
         if (!connected) {
-            Box(
-                Modifier.fillMaxSize().background(Color(0xCC000000)),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(color = AccentCyan, modifier = Modifier.size(48.dp))
-                    Spacer(Modifier.height(16.dp))
+            Box(Modifier.fillMaxSize().background(Color(0xCC000000)),
+                contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally,
+                       verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    CircularProgressIndicator(color = AccentCyan, modifier = Modifier.size(44.dp))
                     Text(statusMsg, color = TextPrimary, fontSize = 14.sp, textAlign = TextAlign.Center)
-                    Spacer(Modifier.height(8.dp))
-                    Text("PC তে RasFocus Remote চালু থাকতে হবে", color = TextSecondary, fontSize = 12.sp)
-                    Spacer(Modifier.height(20.dp))
-                    OutlinedButton(
-                        onClick = onBack,
-                        border = BorderStroke(1.dp, Color(0xFF555577))
-                    ) { Text("Back", color = TextSecondary) }
+                    Text("$pcIp:${if(platform=="windows") 9225 else pcPort}",
+                        color = TextSecondary, fontSize = 12.sp)
+                    OutlinedButton(onClick = onBack,
+                        border = BorderStroke(1.dp, Color(0xFF555577))) {
+                        Text("Back", color = TextSecondary)
+                    }
                 }
             }
         }
 
-        // ── Control bar (auto-hide) ───────────────────────────────
+        // ── Top bar (auto-hide) ───────────────────────────────────
         AnimatedVisibility(
             visible  = showControls,
             modifier = Modifier.align(Alignment.TopCenter),
@@ -643,28 +741,25 @@ fun PcViewerScreen(pcIp: String, pcPort: Int = 9224, platform: String = "android
             exit     = fadeOut() + slideOutVertically()
         ) {
             Row(
-                Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xCC1A1A2E))
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                Modifier.fillMaxWidth().background(Color(0xDD101020))
+                    .padding(horizontal = 4.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onBack) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = TextPrimary)
                 }
                 Text(
-                    if (connected) "PC: $pcIp" else statusMsg,
-                    color = if (connected) AccentCyan else TextSecondary,
-                    fontSize = 13.sp, modifier = Modifier.weight(1f)
+                    if (connected) "$pcIp  ${remoteW}×${remoteH}" else statusMsg,
+                    color = AccentCyan, fontSize = 13.sp, modifier = Modifier.weight(1f)
                 )
                 if (connected) {
                     Box(Modifier.size(8.dp).clip(CircleShape).background(OnlineDot))
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(10.dp))
                 }
             }
         }
 
-        // ── Bottom quick keys (Back, Home, Win key) ───────────────
+        // ── Bottom toolbar (auto-hide) ────────────────────────────
         AnimatedVisibility(
             visible  = showControls && connected,
             modifier = Modifier.align(Alignment.BottomCenter),
@@ -672,35 +767,150 @@ fun PcViewerScreen(pcIp: String, pcPort: Int = 9224, platform: String = "android
             exit     = fadeOut() + slideOutVertically { it }
         ) {
             Row(
-                Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xCC1A1A2E))
-                    .padding(8.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly
+                Modifier.fillMaxWidth().background(Color(0xDD101020)).padding(4.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // Win key
-                QuickKeyBtn("⊞ Win") { viewRef.value?.sendKeyEvent(0x5B, 0) }
-                // Ctrl+Alt+Del
-                QuickKeyBtn("Ctrl+Alt+Del") {
-                    viewRef.value?.sendKeyEvent(0x11, 0) // Ctrl
-                    viewRef.value?.sendKeyEvent(0x12, 0) // Alt
-                    viewRef.value?.sendKeyEvent(0x2E, 0) // Del
-                    viewRef.value?.sendKeyEvent(0x2E, 1)
-                    viewRef.value?.sendKeyEvent(0x12, 1)
-                    viewRef.value?.sendKeyEvent(0x11, 1)
+                // RustDesk mobile toolbar buttons
+                RdToolbarBtn("⊞ Win")   { viewRef.value?.sendKeyEvent(0x5B, 0); viewRef.value?.sendKeyEvent(0x5B, 1) }
+                RdToolbarBtn("Esc")     { viewRef.value?.sendKeyEvent(0x1B, 0); viewRef.value?.sendKeyEvent(0x1B, 1) }
+                RdToolbarBtn("Tab")     { viewRef.value?.sendKeyEvent(0x09, 0); viewRef.value?.sendKeyEvent(0x09, 1) }
+                RdToolbarBtn("Alt+F4") {
+                    viewRef.value?.sendKeyEvent(0x12, 0) // Alt down
+                    viewRef.value?.sendKeyEvent(0x73, 0) // F4 down
+                    viewRef.value?.sendKeyEvent(0x73, 1); viewRef.value?.sendKeyEvent(0x12, 1)
                 }
-                // Scroll up / down
-                QuickKeyBtn("↑ Scroll") { viewRef.value?.sendScroll(500, 500, "up") }
-                QuickKeyBtn("↓ Scroll") { viewRef.value?.sendScroll(500, 500, "down") }
+                RdToolbarBtn("Ctrl+C") {
+                    viewRef.value?.sendKeyEvent(0x11, 0)
+                    viewRef.value?.sendKeyEvent(0x43, 0)
+                    viewRef.value?.sendKeyEvent(0x43, 1); viewRef.value?.sendKeyEvent(0x11, 1)
+                }
+                RdToolbarBtn("Ctrl+V") {
+                    viewRef.value?.sendKeyEvent(0x11, 0)
+                    viewRef.value?.sendKeyEvent(0x56, 0)
+                    viewRef.value?.sendKeyEvent(0x56, 1); viewRef.value?.sendKeyEvent(0x11, 1)
+                }
             }
         }
     }
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// RustDeskGestureLayer — exact same gesture → mouse mapping as RustDesk
+//
+// RustDesk input_model.dart rules:
+//   onPointerDown  → sendMouse('down', left)
+//   onPointerMove  → sendMouse('move') [only if moved > threshold]
+//   onPointerUp    → sendMouse('up', left)  — completes tap
+//   onDoubleTap    → two down+up in quick succession
+//   onLongPress    → right click (down+up right button)
+//   2-finger scroll → wheel event
+// ══════════════════════════════════════════════════════════════════════════════
 @Composable
-private fun QuickKeyBtn(label: String, onClick: () -> Unit) {
+fun RustDeskGestureLayer(
+    modifier: Modifier = Modifier,
+    onMove:        (Float, Float) -> Unit,
+    onDown:        (Float, Float) -> Unit,
+    onUp:          (Float, Float) -> Unit,
+    onRightClick:  (Float, Float) -> Unit,
+    onScroll:      (String, Float, Float) -> Unit,
+    onShowControls: () -> Unit
+) {
+    // Track pointer state (RustDesk: _lastButtons, _moveThreshold)
+    var pointerDownPos   by remember { mutableStateOf(Offset.Zero) }
+    var hasMoved         by remember { mutableStateOf(false) }
+    var lastPointerPos   by remember { mutableStateOf(Offset.Zero) }
+    var pointerCount     by remember { mutableStateOf(0) }
+    // Two-finger scroll tracking
+    var prevScrollY      by remember { mutableStateOf(0f) }
+
+    val moveThreshold = 8f  // px — same as RustDesk _moveThreshold
+
+    Box(
+        modifier
+            // ── RustDesk: Pointer listener for move (raw, bypasses GestureDetector) ──
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    // DOWN
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    pointerDownPos = down.position
+                    lastPointerPos = down.position
+                    hasMoved = false
+                    pointerCount = 1
+                    onDown(down.position.x, down.position.y)
+
+                    // MOVE + UP loop
+                    do {
+                        val evt = awaitPointerEvent()
+                        val count = evt.changes.count { it.pressed }
+                        pointerCount = count
+
+                        if (count == 1) {
+                            // Single finger — mouse move
+                            val change = evt.changes.first()
+                            val dx = change.position.x - lastPointerPos.x
+                            val dy = change.position.y - lastPointerPos.y
+                            if (dx * dx + dy * dy > moveThreshold * moveThreshold) {
+                                hasMoved = true
+                                onMove(change.position.x, change.position.y)
+                                lastPointerPos = change.position
+                            }
+                        } else if (count == 2) {
+                            // Two-finger scroll (RustDesk: onPointerSignalImage PointerScrollEvent)
+                            val c0 = evt.changes[0]; val c1 = evt.changes[1]
+                            val centerY = (c0.position.y + c1.position.y) / 2f
+                            val centerX = (c0.position.x + c1.position.x) / 2f
+                            val dy0 = c0.position.y - c0.previousPosition.y
+                            val dy1 = c1.position.y - c1.previousPosition.y
+                            val avgDy = (dy0 + dy1) / 2f
+                            val dx0 = c0.position.x - c0.previousPosition.x
+                            val dx1 = c1.position.x - c1.previousPosition.x
+                            val avgDx = (dx0 + dx1) / 2f
+                            if (kotlin.math.abs(avgDy) > kotlin.math.abs(avgDx)) {
+                                if (kotlin.math.abs(avgDy) > 2f)
+                                    onScroll(if (avgDy < 0) "up" else "down", centerX, centerY)
+                            } else {
+                                if (kotlin.math.abs(avgDx) > 2f)
+                                    onScroll(if (avgDx < 0) "left" else "right", centerX, centerY)
+                            }
+                        }
+                        evt.changes.forEach { it.consume() }
+                    } while (evt.changes.any { it.pressed })
+
+                    // UP
+                    onUp(lastPointerPos.x, lastPointerPos.y)
+                }
+            }
+            // ── GestureDetector: tap, double-tap, long-press ──────
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { offset ->
+                        // Single tap — RustDesk: tap(MouseButtons.left) = down+up
+                        // Already sent by pointerInput above (down+up with no move)
+                        // onShowControls for toolbar visibility toggle area
+                        if (offset.y < 80f) onShowControls()
+                    },
+                    onDoubleTap = { offset ->
+                        // RustDesk: double click = two down+up
+                        onDown(offset.x, offset.y); onUp(offset.x, offset.y)
+                        onDown(offset.x, offset.y); onUp(offset.x, offset.y)
+                    },
+                    onLongPress = { offset ->
+                        // RustDesk: onMobileBack() → right click
+                        onRightClick(offset.x, offset.y)
+                    }
+                )
+            }
+    )
+}
+
+@Composable
+private fun RdToolbarBtn(label: String, onClick: () -> Unit) {
     TextButton(
-        onClick = onClick,
-        colors  = ButtonDefaults.textButtonColors(contentColor = TextSecondary)
-    ) { Text(label, fontSize = 11.sp) }
+        onClick  = onClick,
+        modifier = Modifier.height(36.dp),
+        colors   = ButtonDefaults.textButtonColors(contentColor = Color(0xFFB0B0C8))
+    ) {
+        Text(label, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+    }
 }
