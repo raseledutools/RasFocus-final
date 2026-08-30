@@ -52,7 +52,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.ui.input.pointer.awaitPointerEvent
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
