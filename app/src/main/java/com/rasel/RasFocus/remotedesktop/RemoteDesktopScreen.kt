@@ -824,12 +824,12 @@ fun RustDeskGestureLayer(
     onShowControls: () -> Unit
 ) {
     // Track pointer state (RustDesk: _lastButtons, _moveThreshold)
-    var pointerDownPos   by remember { mutableStateOf(Offset.Zero) }
-    var hasMoved         by remember { mutableStateOf(false) }
-    var lastPointerPos   by remember { mutableStateOf(Offset.Zero) }
-    var pointerCount     by remember { mutableStateOf(0) }
+    var pointerDownPos   by remember { mutableStateOf<Offset>(Offset.Zero) }
+    var hasMoved         by remember { mutableStateOf<Boolean>(false) }
+    var lastPointerPos   by remember { mutableStateOf<Offset>(Offset.Zero) }
+    var pointerCount     by remember { mutableStateOf<Int>(0) }
     // Two-finger scroll tracking
-    var prevScrollY      by remember { mutableStateOf(0f) }
+    var prevScrollY      by remember { mutableStateOf<Float>(0f) }
 
     val moveThreshold = 8f  // px — same as RustDesk _moveThreshold
 
@@ -873,16 +873,16 @@ fun RustDeskGestureLayer(
                             val dx0 = c0.position.x - c0.previousPosition.x
                             val dx1 = c1.position.x - c1.previousPosition.x
                             val avgDx = (dx0 + dx1) / 2f
-                            if (kotlin.math.abs(avgDy.toDouble()) > kotlin.math.abs(avgDx.toDouble())) {
-                                if (kotlin.math.abs(avgDy.toDouble()) > 2.0)
+                            if (kotlin.math.abs(avgDy) > kotlin.math.abs(avgDx)) {
+                                if (kotlin.math.abs(avgDy) > 2f)
                                     onScroll(if (avgDy < 0) "up" else "down", centerX, centerY)
                             } else {
-                                if (kotlin.math.abs(avgDx.toDouble()) > 2.0)
+                                if (kotlin.math.abs(avgDx) > 2f)
                                     onScroll(if (avgDx < 0) "left" else "right", centerX, centerY)
                             }
                         }
-                        evt.changes.forEach { change -> change.consume() }
-                    } while (evt.changes.any { change -> change.pressed })
+                        evt.changes.forEach { change: androidx.compose.ui.input.pointer.PointerInputChange -> change.consume() }
+                    } while (evt.changes.any { change: androidx.compose.ui.input.pointer.PointerInputChange -> change.pressed })
 
                     // UP
                     onUp(lastPointerPos.x, lastPointerPos.y)
@@ -891,18 +891,18 @@ fun RustDeskGestureLayer(
             // ── GestureDetector: tap, double-tap, long-press ──────
             .pointerInput(Unit) {
                 detectTapGestures(
-                    onTap = { offset ->
+                    onTap = { offset: Offset ->
                         // Single tap — RustDesk: tap(MouseButtons.left) = down+up
                         // Already sent by pointerInput above (down+up with no move)
                         // onShowControls for toolbar visibility toggle area
                         if (offset.y < 80f) onShowControls()
                     },
-                    onDoubleTap = { offset ->
+                    onDoubleTap = { offset: Offset ->
                         // RustDesk: double click = two down+up
                         onDown(offset.x, offset.y); onUp(offset.x, offset.y)
                         onDown(offset.x, offset.y); onUp(offset.x, offset.y)
                     },
-                    onLongPress = { offset ->
+                    onLongPress = { offset: Offset ->
                         // RustDesk: onMobileBack() → right click
                         onRightClick(offset.x, offset.y)
                     }
