@@ -4,92 +4,55 @@
 ╚══════════════════════════════════════════╝
 
 === KOTLIN ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:821:29 Not enough information to infer type variable T
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:821:29 Property delegate must have a 'getValue(Nothing?, KProperty<*>)' method. None of the following functions is suitable: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:821:55 Unresolved reference: Offset
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:823:29 Not enough information to infer type variable T
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:823:29 Property delegate must have a 'getValue(Nothing?, KProperty<*>)' method. None of the following functions is suitable: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:823:55 Unresolved reference: Offset
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:833:14 Unresolved reference: pointerInput
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:834:17 Unresolved reference: awaitEachGesture
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:836:32 Unresolved reference: awaitFirstDown
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:845:35 Unresolved reference: awaitPointerEvent
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:846:57 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:870:45 Overload resolution ambiguity: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:870:70 Overload resolution ambiguity: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:871:49 Overload resolution ambiguity: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:874:49 Overload resolution ambiguity: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:878:37 Overload resolution ambiguity: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:878:47 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:879:48 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:887:17 Unresolved reference: detectTapGestures
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:888:31 Cannot infer a type for this parameter. Please specify it explicitly.
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:894:37 Cannot infer a type for this parameter. Please specify it explicitly.
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:899:37 Cannot infer a type for this parameter. Please specify it explicitly.
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:55:42 Unresolved reference: awaitPointerEvent
 
 === UNRESOLVED / TYPE ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:821:29 Property delegate must have a 'getValue(Nothing?, KProperty<*>)' method. None of the following functions is suitable: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:821:55 Unresolved reference: Offset
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:823:29 Property delegate must have a 'getValue(Nothing?, KProperty<*>)' method. None of the following functions is suitable: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:823:55 Unresolved reference: Offset
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:833:14 Unresolved reference: pointerInput
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:834:17 Unresolved reference: awaitEachGesture
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:836:32 Unresolved reference: awaitFirstDown
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:845:35 Unresolved reference: awaitPointerEvent
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:846:57 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:870:45 Overload resolution ambiguity: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:870:70 Overload resolution ambiguity: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:871:49 Overload resolution ambiguity: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:874:49 Overload resolution ambiguity: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:878:37 Overload resolution ambiguity: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:878:47 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:879:48 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:887:17 Unresolved reference: detectTapGestures
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:55:42 Unresolved reference: awaitPointerEvent
 
 === BUILD FAILURE ===
 > Task :app:compileFullReleaseKotlin FAILED
 * What went wrong:
 Execution failed for task ':app:compileFullReleaseKotlin'.
-BUILD FAILED in 3m 47s
+BUILD FAILED in 3m 49s
 
 === LAST 60 LINES ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:833:14 Unresolved reference: pointerInput
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:834:17 Unresolved reference: awaitEachGesture
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:836:32 Unresolved reference: awaitFirstDown
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:845:35 Unresolved reference: awaitPointerEvent
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:846:57 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:870:45 Overload resolution ambiguity: 
-public inline fun abs(x: Double): Double defined in kotlin.math
-public inline fun abs(x: Float): Float defined in kotlin.math
-public inline fun abs(n: Int): Int defined in kotlin.math
-public inline fun abs(n: Long): Long defined in kotlin.math
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:870:70 Overload resolution ambiguity: 
-public inline fun abs(x: Double): Double defined in kotlin.math
-public inline fun abs(x: Float): Float defined in kotlin.math
-public inline fun abs(n: Int): Int defined in kotlin.math
-public inline fun abs(n: Long): Long defined in kotlin.math
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:871:49 Overload resolution ambiguity: 
-public inline fun abs(x: Double): Double defined in kotlin.math
-public inline fun abs(x: Float): Float defined in kotlin.math
-public inline fun abs(n: Int): Int defined in kotlin.math
-public inline fun abs(n: Long): Long defined in kotlin.math
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:874:49 Overload resolution ambiguity: 
-public inline fun abs(x: Double): Double defined in kotlin.math
-public inline fun abs(x: Float): Float defined in kotlin.math
-public inline fun abs(n: Int): Int defined in kotlin.math
-public inline fun abs(n: Long): Long defined in kotlin.math
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:878:37 Overload resolution ambiguity: 
-public inline fun <T> Iterable<TypeVariable(T)>.forEach(action: (TypeVariable(T)) -> Unit): Unit defined in kotlin.collections
-public inline fun <K, V> Map<out TypeVariable(K), TypeVariable(V)>.forEach(action: (Map.Entry<TypeVariable(K), TypeVariable(V)>) -> Unit): Unit defined in kotlin.collections
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:878:47 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:879:48 Unresolved reference: it
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:887:17 Unresolved reference: detectTapGestures
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:888:31 Cannot infer a type for this parameter. Please specify it explicitly.
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:894:37 Cannot infer a type for this parameter. Please specify it explicitly.
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:899:37 Cannot infer a type for this parameter. Please specify it explicitly.
+> Task :app:extractDeepLinksFullRelease FROM-CACHE
+> Task :app:generateFullReleaseBuildConfig
+> Task :app:packageFullReleaseResources FROM-CACHE
+> Task :app:parseFullReleaseLocalResources FROM-CACHE
+> Task :app:mapFullReleaseSourceSetPaths
+> Task :app:checkFullReleaseAarMetadata
+> Task :app:mergeFullReleaseArtProfile
+> Task :app:validateSigningFullRelease
+> Task :app:writeFullReleaseAppMetadata
+> Task :app:writeFullReleaseSigningConfigVersions
+> Task :app:mergeFullReleaseAssets FROM-CACHE
+> Task :app:checkFullReleaseDuplicateClasses
+> Task :app:compressFullReleaseAssets FROM-CACHE
+> Task :app:collectFullReleaseDependencies
+> Task :app:mergeFullReleaseNativeLibs
+> Task :app:mergeFullReleaseResources FROM-CACHE
+> Task :app:sdkFullReleaseDependencyData
+
+> Task :app:stripFullReleaseDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libbarhopper_v3.so, libimage_processing_util_jni.so, libjingle_peerconnection_so.so, libpdfium.so, libpdfiumandroid.so.
+
+> Task :app:extractFullReleaseNativeSymbolTables FROM-CACHE
+> Task :app:mergeFullReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:processFullReleaseMainManifest
+> Task :app:processFullReleaseManifest
+> Task :app:processFullReleaseManifestForPackage
+note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
+
+note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
+
+> Task :app:processFullReleaseResources
+> Task :app:kspFullReleaseKotlin
+> Task :app:compileFullReleaseKotlin
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/remotedesktop/RemoteDesktopScreen.kt:55:42 Unresolved reference: awaitPointerEvent
 
 > Task :app:compileFullReleaseKotlin FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1788099934500.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1788100746692.json
 
 FAILURE: Build failed with an exception.
 
@@ -110,6 +73,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 3m 47s
+BUILD FAILED in 3m 49s
 32 actionable tasks: 22 executed, 10 from cache
 Configuration cache entry stored.
