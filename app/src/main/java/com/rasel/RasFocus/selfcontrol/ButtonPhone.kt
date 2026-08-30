@@ -247,13 +247,23 @@ private fun BpAppIconImage(drawable: android.graphics.drawable.Drawable?, modifi
 @Composable
 fun FocusLauncherCard(onSessionStart: () -> Unit) {
     var showSetup by remember { mutableStateOf(false) }
-    com.rasel.RasFocus.selfcontrol.MinimalistLauncherRow(
-        icon = androidx.compose.material.icons.Icons.Default.PhoneLocked,
-        title = "Start Focus Session",
-        subtitle = "Lock yourself to minimal apps only",
-        onClick = { showSetup = true },
-        accentColor = androidx.compose.ui.graphics.Color(0xFF0EA5E9)
-    )
+    com.rasel.RasFocus.ui.theme.PremiumCard(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), onClick = { showSetup = true },
+        colors = CardDefaults.cardColors(containerColor = BpTealMid),
+        elevation = CardDefaults.cardElevation(4.dp)
+    ) {
+        Row(modifier = Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(52.dp).background(Color.White, RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.PhoneLocked, contentDescription = null, tint = BpTealDark, modifier = Modifier.size(28.dp))
+            }
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Button Phone Mode", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.White)
+                Spacer(Modifier.height(2.dp))
+                Text("Lock yourself to minimal apps only", fontSize = 12.sp, color = Color.White.copy(alpha = 0.7f))
+            }
+            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.White.copy(alpha = 0.5f))
+        }
+    }
     if (showSetup) {
         BpSetupDialog(onDismiss = { showSetup = false }, onSessionStart = { showSetup = false; onSessionStart() })
     }
@@ -270,13 +280,22 @@ fun TakeABreakCard(onSessionStart: () -> Unit = {}) {
     val endMs = context.getSharedPreferences(BpC.PREFS, Context.MODE_PRIVATE).getLong(BpC.KEY_BREAK_END, 0L)
     var isActive by remember { mutableStateOf(endMs > System.currentTimeMillis()) }
 
-    com.rasel.RasFocus.selfcontrol.MinimalistLauncherRow(
-        icon = androidx.compose.material.icons.Icons.Default.Timer,
-        title = if (isActive) "Session Active" else "Take a Break",
-        subtitle = if (isActive) "Tap to stop active session" else "Custom break / Pomodoro timer",
-        onClick = { showDialog = true },
-        accentColor = if (isActive) androidx.compose.ui.graphics.Color(0xFF10B981) else androidx.compose.ui.graphics.Color(0xFF8B5CF6)
-    )
+    com.rasel.RasFocus.ui.theme.PremiumCard(Modifier.fillMaxWidth().padding(horizontal = 20.dp), onClick = { showDialog = true },
+        colors = CardDefaults.cardColors(containerColor = if (isActive) BpTealMid else Color(0xFFE8D5F5)),
+        elevation = CardDefaults.cardElevation(4.dp)
+    ) {
+        Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(50.dp).background(if (isActive) Color.White.copy(0.15f) else BpTealMid.copy(0.12f), RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
+                Text("☕", fontSize = 24.sp)
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(if (isActive) "Session Active" else "Take a Break", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = if (isActive) Color.White else BpTextDark)
+                Text(if (isActive) "চলছে — tap করে বন্ধ বা পরিবর্তন করো" else "Custom break / Pomodoro timer", fontSize = 12.sp, color = if (isActive) Color.White.copy(0.75f) else BpTextDark.copy(0.65f))
+            }
+            Icon(if (isActive) Icons.Default.Timer else Icons.Default.ChevronRight, contentDescription = null, tint = if (isActive) BpTealAccent else BpTextGray)
+        }
+    }
     if (showDialog) {
         BpBreakDialog(
             onDismiss = { showDialog = false },

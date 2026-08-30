@@ -7264,7 +7264,7 @@ suspend fun sendFcmCallNotification(
                     put("body", "$callerName · $callerMobile")
                 })
                 put("android", org.json.JSONObject().apply {
-                    put("priority", "high")
+                    put("priority", "HIGH")
                     put("ttl", "60s")
                     put("direct_boot_ok", true)
                     // notification channel: IMPORTANCE_MAX, CATEGORY_CALL
@@ -8415,12 +8415,10 @@ suspend fun sendFcmMessageNotification(
         val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
         val saJsonStr = prefs.getString(PREF_SA_JSON, "")
         val saJson = if (saJsonStr.isNullOrEmpty()) {
-            val resId = context.resources.getIdentifier("service_account", "raw", context.packageName)
-            if (resId == 0) {
-                android.util.Log.e("RasGram_FCM", "service_account.json raw resource not found for message")
-                return@withContext
-            }
-            org.json.JSONObject(context.resources.openRawResource(resId).bufferedReader().readText())
+            val saStream = context.resources.openRawResource(
+                context.resources.getIdentifier("service_account", "raw", context.packageName)
+            )
+            org.json.JSONObject(saStream.bufferedReader().readText())
         } else {
             org.json.JSONObject(saJsonStr)
         }
@@ -8453,25 +8451,14 @@ suspend fun sendFcmMessageNotification(
         val signature = android.util.Base64.encodeToString(signatureBytes, android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE)
         val jwt = "$header.$claim.$signature"
 
-        val client = okhttp3.OkHttpClient.Builder()
-            .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
-            .writeTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
-            .build()
-
         val tokenRequest = okhttp3.Request.Builder()
             .url("https://oauth2.googleapis.com/token")
             .post(okhttp3.FormBody.Builder().add("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer").add("assertion", jwt).build())
             .build()
 
-        val tokenResponse = client.newCall(tokenRequest).execute()
-        val tokenBody = tokenResponse.body?.string() ?: ""
-        if (!tokenResponse.isSuccessful) {
-            android.util.Log.e("RasGram_FCM", "Message token exchange failed HTTP ${tokenResponse.code}: $tokenBody")
-            return@withContext
-        }
-        val accessToken = org.json.JSONObject(tokenBody).optString("access_token", "")
-        if (accessToken.isEmpty()) return@withContext
+        val tokenResponse = okhttp3.OkHttpClient().newCall(tokenRequest).execute()
+        if (!tokenResponse.isSuccessful) return@withContext
+        val accessToken = org.json.JSONObject(tokenResponse.body?.string() ?: "").getString("access_token")
 
         val payload = org.json.JSONObject().apply {
             put("message", org.json.JSONObject().apply {
@@ -8494,17 +8481,8 @@ suspend fun sendFcmMessageNotification(
             .addHeader("Content-Type", "application/json")
             .post(okhttp3.RequestBody.create("application/json".toMediaTypeOrNull(), payload.toString()))
             .build()
-            
-        val fcmResp = client.newCall(pushRequest).execute()
-        val fcmRespBody = fcmResp.body?.string() ?: ""
-        if (!fcmResp.isSuccessful) {
-            android.util.Log.e("RasGram_FCM", "Message send failed HTTP ${fcmResp.code}: $fcmRespBody")
-        } else {
-            android.util.Log.i("RasGram_FCM", "Message FCM sent OK → $receiverMobile")
-        }
-    } catch (e: Exception) {
-        android.util.Log.e("RasGram_FCM", "sendFcmMessageNotification exception: ${e.message}", e)
-    }
+        okhttp3.OkHttpClient().newCall(pushRequest).execute()
+    } catch (_: Exception) { }
 }
 
 
