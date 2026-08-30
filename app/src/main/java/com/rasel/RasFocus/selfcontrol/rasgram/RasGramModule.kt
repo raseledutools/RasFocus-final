@@ -8407,22 +8407,32 @@ suspend fun sendFcmMessageNotification(
     db: FirebaseFirestore,
     context: Context
 ) = withContext(Dispatchers.IO) {
+    val TAG = "RasGram_FCM_MSG"
     try {
+        // ── Step 1: receiver FCM token ────────────────────────────────────────
+        android.util.Log.d(TAG, "sendFcmMsg → receiver=$receiverMobile sender=$senderMobile")
         val receiverDoc = db.collection("chat_users").document(receiverMobile).get().await()
-        val fcmToken = receiverDoc.getString("fcmToken") ?: return@withContext
+        val fcmToken = receiverDoc.getString("fcmToken")
+        if (fcmToken.isNullOrEmpty()) {
+            android.util.Log.w(TAG, "fcmToken missing/empty for $receiverMobile — message FCM skipped")
+            return@withContext
+        }
 
-        // Message notification সবসময় যাবে — call delivery setting শুধু call এর জন্য
+        // ── Step 2: Service Account JSON ─────────────────────────────────────
         val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
         val saJsonStr = prefs.getString(PREF_SA_JSON, "")
         val saJson = if (saJsonStr.isNullOrEmpty()) {
-            val saStream = context.resources.openRawResource(
-                context.resources.getIdentifier("service_account", "raw", context.packageName)
-            )
-            org.json.JSONObject(saStream.bufferedReader().readText())
+            val resId = context.resources.getIdentifier("service_account", "raw", context.packageName)
+            if (resId == 0) {
+                android.util.Log.e(TAG, "service_account.json raw resource not found — message FCM skipped")
+                return@withContext
+            }
+            org.json.JSONObject(context.resources.openRawResource(resId).bufferedReader().readText())
         } else {
             org.json.JSONObject(saJsonStr)
         }
 
+        // ── Step 3: JWT + OAuth2 access token ────────────────────────────────
         val privateKeyPem = saJson.getString("private_key")
             .replace("-----BEGIN PRIVATE KEY-----", "")
             .replace("-----END PRIVATE KEY-----", "")
@@ -8433,14 +8443,17 @@ suspend fun sendFcmMessageNotification(
         val keySpec = java.security.spec.PKCS8EncodedKeySpec(keyBytes)
         val privateKey = java.security.KeyFactory.getInstance("RSA").generatePrivate(keySpec)
 
-        val projectId = saJson.getString("project_id")
+        val projectId   = saJson.getString("project_id")
         val clientEmail = saJson.getString("client_email")
-        val now = System.currentTimeMillis() / 1000
+        val now   = System.currentTimeMillis() / 1000
         val scope = "https://www.googleapis.com/auth/firebase.messaging"
 
-        val header = android.util.Base64.encodeToString("{\"alg\":\"RS256\",\"typ\":\"JWT\"}".toByteArray(), android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE)
+        val header = android.util.Base64.encodeToString(
+            """{"alg":"RS256","typ":"JWT"}""".toByteArray(),
+            android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE
+        )
         val claim = android.util.Base64.encodeToString(
-            "{\"iss\":\"$clientEmail\",\"scope\":\"$scope\",\"aud\":\"https://oauth2.googleapis.com/token\",\"exp\":${now + 3600},\"iat\":$now}".toByteArray(),
+            """{"iss":"$clientEmail","scope":"$scope","aud":"https://oauth2.googleapis.com/token","exp":${now + 3600},"iat":$now}""".toByteArray(),
             android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE
         )
         val signatureBytes = java.security.Signature.getInstance("SHA256withRSA").run {
@@ -8448,18 +8461,41 @@ suspend fun sendFcmMessageNotification(
             update("$header.$claim".toByteArray())
             sign()
         }
-        val signature = android.util.Base64.encodeToString(signatureBytes, android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE)
+        val signature = android.util.Base64.encodeToString(
+            signatureBytes, android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE
+        )
         val jwt = "$header.$claim.$signature"
 
-        val tokenRequest = okhttp3.Request.Builder()
-            .url("https://oauth2.googleapis.com/token")
-            .post(okhttp3.FormBody.Builder().add("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer").add("assertion", jwt).build())
+        // FIX: explicit timeouts — default OkHttpClient cellular network এ hang করে
+        val client = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+            .writeTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
             .build()
 
-        val tokenResponse = okhttp3.OkHttpClient().newCall(tokenRequest).execute()
-        if (!tokenResponse.isSuccessful) return@withContext
-        val accessToken = org.json.JSONObject(tokenResponse.body?.string() ?: "").getString("access_token")
+        val tokenResp = client.newCall(
+            okhttp3.Request.Builder()
+                .url("https://oauth2.googleapis.com/token")
+                .post(
+                    okhttp3.FormBody.Builder()
+                        .add("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer")
+                        .add("assertion", jwt)
+                        .build()
+                )
+                .build()
+        ).execute()
 
+        val tokenBody = tokenResp.body?.string() ?: ""
+        val accessToken = org.json.JSONObject(tokenBody).optString("access_token", "")
+        if (accessToken.isEmpty()) {
+            android.util.Log.e(TAG, "OAuth2 token exchange failed. HTTP ${tokenResp.code} body=$tokenBody")
+            return@withContext
+        }
+        android.util.Log.d(TAG, "OAuth2 token OK, sending message FCM…")
+
+        // ── Step 4: FCM v1 message ────────────────────────────────────────────
+        // data block: onMessageReceived() — app foreground/background এ handle করে
+        // notification block: app killed থাকলে system tray এ দেখায় (FIX: আগে এটা ছিল না)
         val payload = org.json.JSONObject().apply {
             put("message", org.json.JSONObject().apply {
                 put("token", fcmToken)
@@ -8469,20 +8505,44 @@ suspend fun sendFcmMessageNotification(
                     put("senderName", senderName)
                     put("message", messageText)
                 })
+                // FIX: notification block যোগ করা — app killed থাকলেও system tray এ দেখাবে
+                put("notification", org.json.JSONObject().apply {
+                    put("title", senderName.ifBlank { "RasGram" })
+                    put("body", messageText)
+                })
                 put("android", org.json.JSONObject().apply {
-                    put("priority", "high")
+                    put("priority", "HIGH")
+                    put("ttl", "86400s")   // 24 hours — message stale হওয়ার সময় বেশি
+                    put("notification", org.json.JSONObject().apply {
+                        put("channel_id", "MSG_CHANNEL")
+                        put("sound", "default")
+                        put("default_vibrate_timings", true)
+                        put("notification_priority", "PRIORITY_HIGH")
+                        put("visibility", "PUBLIC")
+                    })
                 })
             })
         }
 
-        val pushRequest = okhttp3.Request.Builder()
-            .url("https://fcm.googleapis.com/v1/projects/$projectId/messages:send")
-            .addHeader("Authorization", "Bearer $accessToken")
-            .addHeader("Content-Type", "application/json")
-            .post(okhttp3.RequestBody.create("application/json".toMediaTypeOrNull(), payload.toString()))
-            .build()
-        okhttp3.OkHttpClient().newCall(pushRequest).execute()
-    } catch (_: Exception) { }
+        val fcmResp = client.newCall(
+            okhttp3.Request.Builder()
+                .url("https://fcm.googleapis.com/v1/projects/$projectId/messages:send")
+                .addHeader("Authorization", "Bearer $accessToken")
+                .addHeader("Content-Type", "application/json")
+                .post(okhttp3.RequestBody.create("application/json".toMediaTypeOrNull(), payload.toString()))
+                .build()
+        ).execute()
+
+        val fcmRespBody = fcmResp.body?.string() ?: ""
+        if (fcmResp.isSuccessful) {
+            android.util.Log.i(TAG, "FCM message sent OK → $receiverMobile")
+        } else {
+            android.util.Log.e(TAG, "FCM message send failed HTTP ${fcmResp.code}: $fcmRespBody")
+        }
+    } catch (e: Exception) {
+        // FIX: আগে catch (_: Exception) { } — সম্পূর্ণ silent, debug অসম্ভব ছিল
+        android.util.Log.e(TAG, "sendFcmMessageNotification exception: ${e.javaClass.simpleName}: ${e.message}", e)
+    }
 }
 
 
