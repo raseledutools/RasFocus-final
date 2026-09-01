@@ -1,77 +1,8 @@
 ╔══════════════════════════════════════════╗
-║      LAST BUILD: ERROR ❌                ║
-║   Push করার আগে এই error fix করুন।     ║
+║        LAST BUILD: SUCCESS ✅            ║
 ╚══════════════════════════════════════════╝
 
-=== KOTLIN ERRORS ===
-e: org.jetbrains.kotlin.backend.common.BackendException: Backend Internal error: Exception during IR lowering
+Build passed at: 2026-09-01 17:45:23 UTC
+Run: #1133  |  Commit: 89464329d722810458f67565dccaad2cc5f71089
 
-=== UNRESOLVED / TYPE ERRORS ===
-
-=== BUILD FAILURE ===
-> Task :app:compileFullReleaseKotlin FAILED
-* What went wrong:
-Execution failed for task ':app:compileFullReleaseKotlin'.
-BUILD FAILED in 4m 22s
-
-=== LAST 60 LINES ===
-	at org.jetbrains.kotlin.backend.jvm.codegen.ExpressionCodegen.visitBlock(ExpressionCodegen.kt:134)
-	at org.jetbrains.kotlin.ir.expressions.IrBlock.accept(IrBlock.kt:20)
-	at org.jetbrains.kotlin.backend.jvm.codegen.ExpressionCodegen.gen(ExpressionCodegen.kt:205)
-	at org.jetbrains.kotlin.backend.jvm.codegen.IrCallGenerator.genValueAndPut(IrCallGenerator.kt:48)
-	at org.jetbrains.kotlin.backend.jvm.codegen.ExpressionCodegen.visitCall$handleValueParameter(ExpressionCodegen.kt:606)
-	at org.jetbrains.kotlin.backend.jvm.codegen.ExpressionCodegen.visitCall(ExpressionCodegen.kt:619)
-	at org.jetbrains.kotlin.backend.jvm.codegen.ExpressionCodegen.visitCall(ExpressionCodegen.kt:134)
-	at org.jetbrains.kotlin.ir.expressions.IrCall.accept(IrCall.kt:26)
-	at org.jetbrains.kotlin.backend.jvm.codegen.ExpressionCodegen.visitReturn(ExpressionCodegen.kt:1018)
-	at org.jetbrains.kotlin.backend.jvm.codegen.ExpressionCodegen.visitReturn(ExpressionCodegen.kt:134)
-	at org.jetbrains.kotlin.ir.expressions.IrReturn.accept(IrReturn.kt:26)
-	at org.jetbrains.kotlin.backend.jvm.codegen.ExpressionCodegen.visitStatementContainer(ExpressionCodegen.kt:562)
-	at org.jetbrains.kotlin.backend.jvm.codegen.ExpressionCodegen.visitBlockBody(ExpressionCodegen.kt:567)
-	at org.jetbrains.kotlin.backend.jvm.codegen.ExpressionCodegen.visitBlockBody(ExpressionCodegen.kt:134)
-	at org.jetbrains.kotlin.ir.expressions.IrBlockBody.accept(IrBlockBody.kt:25)
-	at org.jetbrains.kotlin.backend.jvm.codegen.ExpressionCodegen.generate(ExpressionCodegen.kt:228)
-	at org.jetbrains.kotlin.backend.jvm.codegen.FunctionCodegen.doGenerate(FunctionCodegen.kt:122)
-	at org.jetbrains.kotlin.backend.jvm.codegen.FunctionCodegen.generate(FunctionCodegen.kt:47)
-	... 54 more
-Caused by: org.jetbrains.org.objectweb.asm.tree.analysis.AnalyzerException: Error at instruction #346 INVOKESTATIC kotlin/jvm/internal/InlineMarker.afterInlineCall ()V: null
-	at org.jetbrains.kotlin.codegen.optimization.fixStack.FastStackAnalyzer.analyze(FastStackAnalyzer.kt:131)
-	at org.jetbrains.kotlin.codegen.optimization.fixStack.FixStackAnalyzer.analyze(FixStackAnalyzer.kt:77)
-	at org.jetbrains.kotlin.codegen.optimization.fixStack.FixStackMethodTransformer.analyzeAndTransformBreakContinueGotos(FixStackMethodTransformer.kt:55)
-	at org.jetbrains.kotlin.codegen.optimization.fixStack.FixStackMethodTransformer.transform(FixStackMethodTransformer.kt:44)
-	at org.jetbrains.kotlin.codegen.coroutines.CoroutineTransformerMethodVisitor.performTransformations(CoroutineTransformerMethodVisitor.kt:82)
-	at org.jetbrains.kotlin.codegen.TransformationMethodVisitor.visitEnd(TransformationMethodVisitor.kt:67)
-	... 84 more
-Caused by: java.lang.NullPointerException
-	at org.jetbrains.kotlin.codegen.optimization.fixStack.FixStackAnalyzer$InternalAnalyzer.executeAfterInlineCallMarker(FixStackAnalyzer.kt:200)
-	at org.jetbrains.kotlin.codegen.optimization.fixStack.FixStackAnalyzer$InternalAnalyzer.access$executeAfterInlineCallMarker(FixStackAnalyzer.kt:92)
-	at org.jetbrains.kotlin.codegen.optimization.fixStack.FixStackAnalyzer$InternalAnalyzer$FixStackFrame.execute(FixStackAnalyzer.kt:132)
-	at org.jetbrains.kotlin.codegen.optimization.fixStack.FastStackAnalyzer.analyze(FastStackAnalyzer.kt:100)
-	... 89 more
-
-
-> Task :app:compileFullReleaseKotlin FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1788279390518.json
-
-FAILURE: Build failed with an exception.
-
-* What went wrong:
-Execution failed for task ':app:compileFullReleaseKotlin'.
-> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
-   > Internal compiler error. See log for more details
-
-* Try:
-> Run with --stacktrace option to get the stack trace.
-> Run with --info or --debug option to get more log output.
-> Run with --scan to get full insights.
-> Get more help at https://help.gradle.org.
-
-Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
-
-You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
-
-For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
-
-BUILD FAILED in 4m 22s
-32 actionable tasks: 22 executed, 10 from cache
-Configuration cache entry stored.
+No errors. Safe to push.
