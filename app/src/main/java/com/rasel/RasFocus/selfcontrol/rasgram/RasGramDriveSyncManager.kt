@@ -531,9 +531,9 @@ object RasGramDriveSyncEngine {
             var totalCld   = 0; var totalDownloaded = 0
 
             // ── Phase 1: UPLOAD (Room → Drive) ────────────────────────────
-            for ((idx, preview) in previews.withIndex()) {
+            previews.forEachIndexed { idx, preview ->
                 val chatId = repo.messageDao.getChatIdByContactMobile(preview.contactMobile)
-                    ?: continue
+                    ?: return@forEachIndexed
                 onProgress(idx + 1, total, "Uploading: ${preview.contactName.ifBlank { preview.contactMobile }}")
                 val (msgs, media, cld) = uploadChat(
                     drive, rasGramFolder, chatId, preview.contactMobile, repo, db

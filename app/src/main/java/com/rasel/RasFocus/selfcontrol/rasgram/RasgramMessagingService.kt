@@ -37,13 +37,10 @@ class RasgramMessagingService : FirebaseMessagingService() {
             } catch (_: Exception) { null }
             ?: return
 
-        // FIX: update() fails if document/field doesn't exist — use set+merge instead.
-        // update() throws if the document has no "fcmToken" field yet.
-        // set(merge=true) creates the field if missing, updates if present.
         FirebaseFirestore.getInstance()
             .collection("chat_users")
             .document(mobile)
-            .set(mapOf("fcmToken" to token), com.google.firebase.firestore.SetOptions.merge())
+            .update("fcmToken", token)
     }
 
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
@@ -68,7 +65,7 @@ class RasgramMessagingService : FirebaseMessagingService() {
                         val chatId = if (myMobile < senderMobile) "${myMobile}_${senderMobile}"
                                      else "${senderMobile}_${myMobile}"
                         FirebaseFirestore.getInstance()
-                            .collection("pvt_msg_${chatId}")
+                            .collection("pvt_msg_${'$'}chatId")
                             .whereEqualTo("senderMobile", senderMobile)
                             .whereEqualTo("delivered", false)
                             .get()
@@ -97,30 +94,52 @@ class RasgramMessagingService : FirebaseMessagingService() {
     ) {
         // BUG FIX: callee validation — এই device এ যে logged in আছে সে-ই callee কিনা check।
         // FCM token কখনো একাধিক device এ বা ভুল user এর কাছে যেতে পারে।
+        // এই check না থাকলে একজনকে call দিলে অন্যজনের কাছেও ring হয়।
         val myMobile = getMobileFromStorage()
         if (myMobile == null || myMobile.isEmpty()) {
             // Not logged in — ignore call
             return
         }
-
-        // FIX v8: calleeMobile match — Android 15 এ number format issue এর robust fix।
-        // normalizeMobile() last suffix (10 digits) বের করে compare করে।
-        // এতে +880, 880, 0, raw format সব কিছু match করে।
-        if (calleeMobile.isNotEmpty() && !mobilesMatch(calleeMobile, myMobile)) {
+        // calleeMobile FCM data এ আছে → strict match।
+        // না থাকলে (পুরনো FCM format) → accept করো (backward compatibility)।
+        if (calleeMobile.isNotEmpty() && calleeMobile != myMobile) {
             // এই call আমার জন্য না — ignore করো।
-            android.util.Log.d("RasGram", "Call ignored: callee=$calleeMobile myMobile=$myMobile")
+            // এটা ঘটে যখন FCM token ভুল user এর কাছে route হয়
+            // বা একই device এ account switch হয়েছে।
             return
         }
 
-        var serviceStarted = false
-        try {
-            IncomingCallOverlayService.start(this, callId, callerName, callerMobile, callType)
-            serviceStarted = true
-        } catch (e: Exception) {
-            android.util.Log.e("RasGram", "IncomingCallOverlayService start failed: ${e.message}")
-        }
-        if (!serviceStarted) {
-            // Service start হয়নি — plain notification fallback
+        // foreground চেক নেই — app open থাকলেও, screen off থাকলেও, যেকোনো অবস্থায়
+        // WhatsApp style: সবসময় full page overlay দেখাতে হবে।
+
+        val hasOverlay = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+                         Settings.canDrawOverlays(this)
+
+        if (hasOverlay) {
+            // IncomingCallOverlayService নিজেই:
+            // → startForeground notification দেয় (Answer/Decline সহ)
+            // → screen off/locked হলে fullScreenIntent OS fire করে (full page)
+            // → screen on+unlocked হলে floating overlay card দেখায়
+            //
+            // FIX: try-catch — Android 14/15 এ MANAGE_OWN_CALLS বা
+            // USE_FULL_SCREEN_INTENT grant না থাকলে SecurityException আসতে পারে।
+            // সেক্ষেত্রে plain notification fallback দিয়ে কাজ চালাও।
+            var serviceStarted = false
+            try {
+                IncomingCallOverlayService.start(this, callId, callerName, callerMobile, callType)
+                serviceStarted = true
+            } catch (e: Exception) {
+                android.util.Log.e("RasGram", "IncomingCallOverlayService start failed: ${e.message}")
+            }
+            if (!serviceStarted) {
+                // Service start হয়নি — plain notification দাও
+                val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                createChannels(nm)
+                postFullScreenCallNotification(nm, callerName, callerMobile, callType, callId)
+            }
+        } else {
+            // Overlay permission নেই — fullScreenIntent notification fallback
+            // Android নিজেই notification থেকে Activity খুলবে (HUD বা full screen)
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             createChannels(nm)
             postFullScreenCallNotification(nm, callerName, callerMobile, callType, callId)
@@ -139,44 +158,6 @@ class RasgramMessagingService : FirebaseMessagingService() {
                     .getString(PREF_MOBILE, null)
             else null
         } catch (_: Exception) { null }
-
-    /**
-     * FIX v8: Mobile number matching — suffix-based comparison।
-     *
-     * কেন আগেরটা ভেঙেছিল (Android 15):
-     * normalizeMobile("01711223344") → "8801711223344"  (880 + 10 digits)
-     * normalizeMobile("1711223344")  → "1711223344"     (কোনো prefix নেই, 10 digits)
-     * এই দুটো match হয় না → call ignore হয়।
-     *
-     * Fix: দুটো number এর শেষ 10 digit compare করো।
-     * BD number এর last 10 digit সবসময় unique identifier।
-     * "01711223344".last10 = "1711223344"
-     * "+8801711223344".last10 = "1711223344"
-     * "8801711223344".last10 = "1711223344"
-     * সব case এ match হয়।
-     */
-    private fun mobilesMatch(a: String, b: String): Boolean {
-        val aDigits = a.trim().replace(Regex("[^0-9]"), "")
-        val bDigits = b.trim().replace(Regex("[^0-9]"), "")
-        if (aDigits.isEmpty() || bDigits.isEmpty()) return false
-        // শেষ 10 digit compare — BD mobile number এর subscriber number part
-        val aSuffix = aDigits.takeLast(10)
-        val bSuffix = bDigits.takeLast(10)
-        return aSuffix == bSuffix
-    }
-
-    /**
-     * Legacy: normalizeMobile — এখনো ব্যবহার নেই, backward compat এর জন্য রাখা।
-     */
-    private fun normalizeMobile(raw: String): String {
-        val digits = raw.trim().replace(Regex("[^0-9]"), "")
-        return when {
-            digits.startsWith("880") && digits.length >= 12 -> digits
-            digits.startsWith("0") && digits.length == 11  -> "880${digits.substring(1)}"
-            digits.length == 10 && digits.startsWith("1")  -> "880$digits"
-            else -> digits
-        }
-    }
 
     private fun postFullScreenCallNotification(
         nm: NotificationManager,
@@ -365,11 +346,11 @@ class RasgramMessagingService : FirebaseMessagingService() {
                 description          = "Incoming RasGram calls"
                 setSound(ringtoneUri, audioAttr)
                 enableVibration(true)
+                // Strong call pattern: 800ms on, 600ms off — সবসময় vibrate (ringer mode নির্বিশেষে)
                 vibrationPattern     = longArrayOf(0, 800, 600)
                 lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
                 enableLights(true)
                 lightColor           = Color.parseColor("#25D366")
-                setBypassDnd(true)
             }
         )
 
@@ -378,6 +359,7 @@ class RasgramMessagingService : FirebaseMessagingService() {
             NotificationChannel(MSG_CHANNEL, "RasGram Messages", NotificationManager.IMPORTANCE_HIGH).apply {
                 description          = "New RasGram messages"
                 enableVibration(true)
+                // Message pattern: double pulse — সবসময় vibrate
                 vibrationPattern     = longArrayOf(0, 400, 200, 400)
                 setShowBadge(true)
                 lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC

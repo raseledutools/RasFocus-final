@@ -38,7 +38,6 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.foundation.layout.*
@@ -726,18 +725,12 @@ fun OtpLoginScreen(onLogin: (User) -> Unit) {
                 val freshSnap = docRef.get().await()
                 val savedName = freshSnap.getString("name") ?: userName
                 
-                // FIX: FCM token save — await দিয়ে ensure করা হচ্ছে।
+                // Save FCM token after login
                 try {
-                    val fcmToken = com.google.firebase.messaging.FirebaseMessaging.getInstance().token.await()
-                    if (fcmToken != null) {
-                        // FIX: update() fails if fcmToken field missing — set+merge always works.
-                        db.collection("chat_users").document(mobile)
-                            .set(mapOf("fcmToken" to fcmToken), com.google.firebase.firestore.SetOptions.merge()).await()
-                        android.util.Log.d("RasGram_FCM", "FCM token saved on login → ${fcmToken.take(20)}…")
+                    com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnSuccessListener { fcmToken ->
+                        db.collection("chat_users").document(mobile).update("fcmToken", fcmToken)
                     }
-                } catch (e: Exception) {
-                    android.util.Log.e("RasGram_FCM", "FCM token save on login failed: ${e.message}")
-                }
+                } catch (_: Exception) { }
                 
                 onLogin(User(uid = uid, name = savedName, mobile = mobile, avatarUrl = freshSnap.getString("avatarUrl") ?: ""))
             } catch (e: Exception) {
@@ -774,17 +767,12 @@ fun OtpLoginScreen(onLogin: (User) -> Unit) {
                     docRef.update("lastActive", System.currentTimeMillis(), "uid", uid)
                 }
                 val savedName = snap.getString("name") ?: userName
-                // FIX: FCM token save after OTP login — await দিয়ে ensure।
+                // Save FCM token after OTP login
                 try {
-                    val fcmToken = com.google.firebase.messaging.FirebaseMessaging.getInstance().token.await()
-                    if (fcmToken != null) {
-                        // FIX: update() fails if fcmToken field missing — set+merge always works.
-                        db.collection("chat_users").document(mobile)
-                            .set(mapOf("fcmToken" to fcmToken), com.google.firebase.firestore.SetOptions.merge()).await()
+                    com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnSuccessListener { fcmToken ->
+                        db.collection("chat_users").document(mobile).update("fcmToken", fcmToken)
                     }
-                } catch (e: Exception) {
-                    android.util.Log.e("RasGram_FCM", "FCM token save on OTP login failed: ${e.message}")
-                }
+                } catch (_: Exception) { }
                 onLogin(User(uid = uid, name = savedName, mobile = mobile, avatarUrl = snap.getString("avatarUrl") ?: ""))
             } catch (e: Exception) {
                 errorMsg = "Invalid OTP. Please try again."
@@ -1272,39 +1260,13 @@ fun MainScreen(
             showOverlayPermissionDialog = true
         }
 
-        // FIX: Android 14+ (API 34) — USE_FULL_SCREEN_INTENT permission।
-        // এই permission ছাড়া lock screen এ full-screen call UI দেখা যায় না।
-        // শুধু overlay permission grant করলেই হয় না — এটাও আলাদা করে grant করতে হয়।
-        // canUseFullScreenIntent() false হলে Settings এ পাঠাও।
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            val nm = context.getSystemService(android.app.NotificationManager::class.java)
-            if (!nm.canUseFullScreenIntent()) {
-                try {
-                    val intent = android.content.Intent(
-                        android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
-                        android.net.Uri.parse("package:${context.packageName}")
-                    ).apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) }
-                    context.startActivity(intent)
-                } catch (_: Exception) {}
-            }
-        }
-
-        // FIX: FCM token refresh — await দিয়ে ensure করা হচ্ছে token Firestore এ পৌঁছায়।
-        // আগে addOnSuccessListener fire-and-forget ছিল — Android 15 এ app background হলে
-        // callback আসার আগেই process kill হতো → fcmToken Firestore এ stale থাকত।
-        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-            try {
-                val token = com.google.firebase.messaging.FirebaseMessaging.getInstance().token.await()
+        try {
+            com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
                 if (token != null) {
-                    // FIX: update() fails if fcmToken field doesn't exist yet — set+merge always works.
-                    db.collection("chat_users").document(currentUser.mobile)
-                        .set(mapOf("fcmToken" to token), com.google.firebase.firestore.SetOptions.merge()).await()
-                    android.util.Log.d("RasGram_FCM", "FCM token refreshed on startup → ${token.take(20)}…")
+                    db.collection("chat_users").document(currentUser.mobile).update("fcmToken", token)
                 }
-            } catch (e: Exception) {
-                android.util.Log.e("RasGram_FCM", "FCM token startup refresh failed: ${e.message}")
             }
-        }
+        } catch (_: Exception) { }
     }
 
     // Listen for incoming calls when app is open — IncomingCallScreen দেখাও directly
@@ -2535,53 +2497,16 @@ fun ChatArea(
                         // ── LAN: Cloudinary নয়, সরাসরি TCP দিয়ে ────────────────
                         val tempFile = uriToTempFile(context, it, uploadingFileName)
                         if (tempFile != null) {
-                            // FIX: onProgress দিয়ে LAN upload % UI তে দেখাও
-                            lanManager.sendFile(lanPeer, tempFile, mimeType, chatId) { prog ->
-                                kotlinx.coroutines.runBlocking {
-                                    withContext(Dispatchers.Main) { uploadProgress = prog }
-                                }
-                            }
+                            lanManager.sendFile(lanPeer, tempFile, mimeType, chatId)
+                            Toast.makeText(context, "📶 LAN দিয়ে পাঠানো হয়েছে", Toast.LENGTH_SHORT).show()
                         }
                     } else {
-                        // FIX: WhatsApp style — attach করলেই সাথে সাথে pending bubble দেখাও।
-                        // আগে: upload শেষ হওয়ার পরে sendMessage call হত → UI তে দেরিতে দেখাত।
-                        // এখন: আগে pending message Room এ save করো (instant bubble),
-                        //       তারপর background এ upload করো, upload শেষে Firestore update করো।
-                        val pendingId = "pending_${System.currentTimeMillis()}_upload"
-                        val attachedFileName = uploadingFileName
-
-                        // Step 1: সাথে সাথে pending bubble দেখাও (placeholder URL দিয়ে)
-                        sendMessage(
-                            db, chatId, currentUser.mobile, currentUser.name, contact.mobile,
-                            "", context,
-                            fileUrl  = "uploading://$pendingId",   // placeholder
-                            fileName = attachedFileName,
-                            fileType = mimeType
-                        )
-
-                        // Step 2: background upload
-                        val (url, uploadedFileName, fileType) = uploadToCloudinary(context, it) { prog ->
-                            uploadProgress = prog
-                        }
-
+                        val (url, fileName, fileType) = uploadToCloudinary(context, it) { prog -> uploadProgress = prog }
                         if (url != null) {
-                            // Step 3: pending message কে real URL দিয়ে update করো
-                            // Firestore এ pending doc খুঁজে update — Room এ isPending=false হবে Firestore listener এ
-                            try {
-                                val snap = db.collection("messages").document(chatId)
-                                    .collection("msgs")
-                                    .whereEqualTo("fileUrl", "uploading://$pendingId")
-                                    .limit(1).get().await()
-                                snap.documents.firstOrNull()?.reference?.update(
-                                    "fileUrl", url,
-                                    "fileName", uploadedFileName,
-                                    "fileType", fileType,
-                                    "isPending", false
-                                )
-                            } catch (_: Exception) {}
-                        } else {
-                            Toast.makeText(context, "আপলোড ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
-                        }
+                            sendMessage(db, chatId, currentUser.mobile, currentUser.name, contact.mobile, "", context, url, fileName, fileType)
+                            val label = if (mimeType.startsWith("video/")) "ভিডিও" else "ছবি"
+                            Toast.makeText(context, "$label পাঠানো হয়েছে", Toast.LENGTH_SHORT).show()
+                        } else Toast.makeText(context, "আপলোড ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
                     }
                 } catch (e: Exception) {
                     Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -2603,45 +2528,15 @@ fun ChatArea(
                     if (isLanAvailable && lanPeer != null) {
                         val tempFile = uriToTempFile(context, it, uploadingFileName)
                         if (tempFile != null) {
-                            lanManager.sendFile(lanPeer, tempFile, mimeType, chatId) { prog ->
-                                kotlinx.coroutines.runBlocking {
-                                    withContext(Dispatchers.Main) { uploadProgress = prog }
-                                }
-                            }
+                            lanManager.sendFile(lanPeer, tempFile, mimeType, chatId)
+                            Toast.makeText(context, "📶 LAN দিয়ে ফাইল পাঠানো হয়েছে", Toast.LENGTH_SHORT).show()
                         }
                     } else {
-                        val pendingId = "pending_${System.currentTimeMillis()}_upload"
-                        val attachedFileName = uploadingFileName
-                        val mimeType2 = context.contentResolver.getType(it) ?: "application/octet-stream"
-
-                        sendMessage(
-                            db, chatId, currentUser.mobile, currentUser.name, contact.mobile,
-                            "", context,
-                            fileUrl  = "uploading://$pendingId",
-                            fileName = attachedFileName,
-                            fileType = mimeType2
-                        )
-
-                        val (url, uploadedFileName, fileType) = uploadToCloudinary(context, it) { prog ->
-                            uploadProgress = prog
-                        }
-
+                        val (url, fileName, fileType) = uploadToCloudinary(context, it) { prog -> uploadProgress = prog }
                         if (url != null) {
-                            try {
-                                val snap = db.collection("messages").document(chatId)
-                                    .collection("msgs")
-                                    .whereEqualTo("fileUrl", "uploading://$pendingId")
-                                    .limit(1).get().await()
-                                snap.documents.firstOrNull()?.reference?.update(
-                                    "fileUrl", url,
-                                    "fileName", uploadedFileName,
-                                    "fileType", fileType,
-                                    "isPending", false
-                                )
-                            } catch (_: Exception) {}
-                        } else {
-                            Toast.makeText(context, "আপলোড ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
-                        }
+                            sendMessage(db, chatId, currentUser.mobile, currentUser.name, contact.mobile, "", context, url, fileName, fileType)
+                            Toast.makeText(context, "ফাইল পাঠানো হয়েছে", Toast.LENGTH_SHORT).show()
+                        } else Toast.makeText(context, "আপলোড ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
                     }
                 } catch (e: Exception) {
                     Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -2814,7 +2709,6 @@ fun ChatArea(
                             msg.senderMobile == contact.mobile &&  // শুধু received (আমার পাঠানো না)
                             !msg.fileUrl.isNullOrEmpty() &&
                             !msg.isDeleted &&
-                            !msg.fileUrl!!.startsWith("local://") && // LAN file: already local, skip
                             (msg.fileType?.startsWith("image/") == true ||
                              msg.fileType?.startsWith("audio/") == true)
                         }.forEach { msg ->
@@ -2954,44 +2848,9 @@ fun ChatArea(
         if (text.isBlank()) return
 
         if (isLanAvailable && lanPeer != null) {
-            // ── LAN Mode: 100% offline — TCP পাঠাও + Room এ sender copy save ──
+            // ── LAN Mode: Firebase ছাড়াই সরাসরি peer এ পাঠাও ────────────────
             scope.launch {
-                // 1. TCP দিয়ে peer এ পাঠাও
                 lanManager.sendText(lanPeer, text, chatId)
-                // 2. Sender নিজের copy Room এ save করো (Firebase নয়)
-                val now       = System.currentTimeMillis()
-                val timeStr   = java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault())
-                                    .format(java.util.Date(now))
-                val tempId    = "lan_out_${now}_${currentUser.mobile.takeLast(4)}"
-                val rasRepo   = RasGramRepository.getInstance(context)
-                rasRepo.messageDao.upsertMessage(
-                    CachedMessage(
-                        id             = tempId,
-                        chatId         = chatId,
-                        text           = text,
-                        senderMobile   = currentUser.mobile,
-                        receiverMobile = contact.mobile,
-                        timestamp      = now,
-                        timeString     = timeStr,
-                        read           = true,
-                        delivered      = true,
-                        isPending      = false
-                    )
-                )
-                // Chat preview update
-                val existing = rasRepo.chatPreviewDao.getPreview(contact.mobile)
-                rasRepo.chatPreviewDao.upsertPreview(
-                    CachedChatPreview(
-                        contactMobile     = contact.mobile,
-                        contactName       = contact.name,
-                        contactAvatarUrl  = contact.avatarUrl,
-                        lastMessageText   = text,
-                        lastMessageSender = currentUser.mobile,
-                        lastTimestamp     = now,
-                        lastTimeString    = timeStr,
-                        unreadCount       = existing?.unreadCount ?: 0
-                    )
-                )
             }
         } else {
             // ── Normal Mode: Firebase Firestore ────────────────────────────────
@@ -3610,18 +3469,14 @@ fun ChatInputBar(
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                             keyboardActions = KeyboardActions(onSend = { onSend() })
                         )
-                        // Attach icon — full Box tappable (44dp hit area)
+                        // Attach icon — ছোট করা
                         Box(
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clickable { onAttachClick() },
+                            modifier = Modifier.size(44.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                Icons.Default.AttachFile, null,
+                            Icon(Icons.Default.AttachFile, null,
                                 tint = RasGramTheme.TextMuted,
-                                modifier = Modifier.size(22.dp)
-                            )
+                                modifier = Modifier.size(22.dp).clickable { onAttachClick() })
                         }
                     }
                 }
@@ -4120,14 +3975,8 @@ fun ImageMessageContent(url: String, context: Context) {
     var isSaving by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    // LAN mode: local:// URL → java.io.File → Coil কে File pass করো
-    val imageModel: Any = remember(url) {
-        if (url.startsWith("local://")) java.io.File(url.removePrefix("local://"))
-        else url
-    }
-
     AsyncImage(
-        model = imageModel,
+        model = url,
         contentDescription = "Image",
         modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp, max = 220.dp)
             .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 4.dp, bottomEnd = 4.dp))
@@ -4137,30 +3986,28 @@ fun ImageMessageContent(url: String, context: Context) {
     if (showFullScreen) {
         Dialog(onDismissRequest = { showFullScreen = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
             Box(modifier = Modifier.fillMaxSize().background(Color.Black).clickable { showFullScreen = false }, contentAlignment = Alignment.Center) {
-                AsyncImage(model = imageModel, contentDescription = null, modifier = Modifier.fillMaxWidth(), contentScale = ContentScale.Fit)
+                AsyncImage(model = url, contentDescription = null, modifier = Modifier.fillMaxWidth(), contentScale = ContentScale.Fit)
                 IconButton(onClick = { showFullScreen = false }, modifier = Modifier.align(Alignment.TopStart).padding(16.dp)) {
                     Icon(Icons.Default.Close, null, tint = Color.White)
                 }
-                // LAN file: already local — no download needed
-                if (!url.startsWith("local://")) {
-                    IconButton(
-                        onClick = {
-                            scope.launch {
-                                isSaving = true
-                                val saved = downloadToRasgramFolder(context, url, null, "image/jpeg")
-                                isSaving = false
-                                if (saved != null) {
-                                    Toast.makeText(context, "Rasgram ফোল্ডারে সেভ হয়েছে", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    Toast.makeText(context, "সেভ করা যায়নি", Toast.LENGTH_SHORT).show()
-                                }
+                // Download to Rasgram folder
+                IconButton(
+                    onClick = {
+                        scope.launch {
+                            isSaving = true
+                            val saved = downloadToRasgramFolder(context, url, null, "image/jpeg")
+                            isSaving = false
+                            if (saved != null) {
+                                Toast.makeText(context, "Rasgram ফোল্ডারে সেভ হয়েছে", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "সেভ করা যায়নি", Toast.LENGTH_SHORT).show()
                             }
-                        },
-                        modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
-                    ) {
-                        if (isSaving) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White, strokeWidth = 2.dp)
-                        else Icon(Icons.Default.Download, null, tint = Color.White)
-                    }
+                        }
+                    },
+                    modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
+                ) {
+                    if (isSaving) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White, strokeWidth = 2.dp)
+                    else Icon(Icons.Default.Download, null, tint = Color.White)
                 }
             }
         }
@@ -4292,12 +4139,7 @@ fun AudioMessageContent(url: String, fileName: String?, duration: Int) {
                 if (!isPlaying) {
                     try {
                         mediaPlayer.reset()
-                        // LAN mode: local:// → File path দিয়ে setDataSource
-                        if (url.startsWith("local://")) {
-                            mediaPlayer.setDataSource(url.removePrefix("local://"))
-                        } else {
-                            mediaPlayer.setDataSource(url)
-                        }
+                        mediaPlayer.setDataSource(url)
                         mediaPlayer.prepareAsync()
                         mediaPlayer.setOnPreparedListener { mp ->
                             mp.start()
@@ -5362,38 +5204,11 @@ fun CallingScreen(
     var isConnected by remember { mutableStateOf(false) }
     var callSeconds by remember { mutableIntStateOf(0) }
     var callId by remember { mutableStateOf(existingCallId) }
-    // Guard: signaling শুধু একবার চালু হবে — callId key এর কারণে LaunchedEffect
-    // relaunch হলেও double offer/answer create না হয়
-    var signalingStarted by remember { mutableStateOf(false) }
     // Call ended duration summary
     var showEndedSummary by remember { mutableStateOf(false) }
     var finalCallSeconds by remember { mutableIntStateOf(0) }
     // ICE DISCONNECTED grace period job — cancel if CONNECTED comes back within 8s
     var iceDisconnectJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-
-    // ── Screen Share state ────────────────────────────────────────────────────
-    val isSharingScreen   by ScreenShareManager.isSharingScreen.collectAsState()
-    val isRemoteSharing   by ScreenShareManager.isRemoteSharing.collectAsState()
-    val remoteInputGranted by ScreenShareManager.remoteInputGranted.collectAsState()
-    val incomingInputRequest by ScreenShareManager.incomingInputRequest.collectAsState()
-    var showInputRequestDialog by remember { mutableStateOf(false) }
-
-    // MediaProjection permission launcher
-    val mediaProjectionManager = remember {
-        context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
-    }
-    val screenShareLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == android.app.Activity.RESULT_OK && result.data != null) {
-            ScreenShareManager.startScreenShare(context, result.data!!)
-        }
-    }
-
-    // Incoming input request from peer
-    LaunchedEffect(incomingInputRequest) {
-        if (incomingInputRequest) showInputRequestDialog = true
-    }
 
     // FIX: EglBase.create() and PeerConnectionFactory.initialize() are heavy
     // native calls. Running them inside remember {} executes on the Compose
@@ -5419,63 +5234,51 @@ fun CallingScreen(
         // ── ICE Server Strategy ─────────────────────────────────────────────────
         // Mobile data (GP/Robi/Banglalink) সবই Carrier-Grade NAT (CGNAT) ব্যবহার করে।
         // CGNAT এ STUN কাজ করে না — direct peer connection সম্ভব না।
-        // TURN relay সার্ভার দরকার যা দুটো peer এর মাঝে traffic route করে।
+        // সমাধান: TURN relay সার্ভার যা দুটো peer এর মাঝে traffic route করে।
         //
-        // FIX (আগে): openrelay.metered.ca credentials "openrelayproject/openrelayproject"
-        //   সবাই use করে → server প্রায়ই overloaded বা blocked → Android 15 এ TURN fail।
-        // Fix: Multiple free public TURN servers দেওয়া হয়েছে।
-        //   WebRTC নিজেই সবগুলো try করে — যেটা কাজ করে সেটা দিয়ে connect হয়।
+        // Bug (আগে): a.relay.metered.ca তে fake/placeholder credentials ব্যবহার ছিল →
+        //   authentication fail → TURN relay কাজ করত না → চিরকাল "Connecting..." থাকত।
+        // Fix: openrelay.metered.ca — verified real free TURN server, real credentials.
+        //   Multiple ports cover করা হয়েছে যাতে যেকোনো carrier firewall পার হওয়া যায়।
         //
-        // Tier 1: STUN — same-network/same-carrier এ যথেষ্ট (no relay)
-        // Tier 2: TURN — different network/CGNAT এ relay দরকার
+        // Tier 1: STUN (Google + Cloudflare) — same-network বা same-carrier call এ যথেষ্ট
+        // Tier 2: TURN openrelay UDP/TCP/TLS — different network / CGNAT এর জন্য
         listOf(
-            // ── STUN servers ──────────────────────────────────────────────────
+            // ── STUN: public address discover করে (same-network call এর জন্য যথেষ্ট) ──
             PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
             PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer(),
+            PeerConnection.IceServer.builder("stun:stun2.l.google.com:19302").createIceServer(),
             PeerConnection.IceServer.builder("stun:stun.cloudflare.com:3478").createIceServer(),
-
-            // ── TURN #1: Metered.ca free tier (most reliable free TURN) ──────
-            // https://www.metered.ca/tools/openrelay/ — free, ~500MB/month
-            // UDP 80 — carrier এ সবচেয়ে কম block হয়
-            PeerConnection.IceServer.builder("turn:a.relay.metered.ca:80")
-                .setUsername("e85e4a7c6c26f4adcdd6a191")
-                .setPassword("qJRdVXUgjmVFkRuV")
-                .createIceServer(),
-            // UDP 443 — UDP 80 block হলে
-            PeerConnection.IceServer.builder("turn:a.relay.metered.ca:443")
-                .setUsername("e85e4a7c6c26f4adcdd6a191")
-                .setPassword("qJRdVXUgjmVFkRuV")
-                .createIceServer(),
-            // TCP 443 — UDP সম্পূর্ণ blocked হলে (strict carrier firewall)
-            PeerConnection.IceServer.builder("turn:a.relay.metered.ca:443?transport=tcp")
-                .setUsername("e85e4a7c6c26f4adcdd6a191")
-                .setPassword("qJRdVXUgjmVFkRuV")
-                .createIceServer(),
-            // TLS 443 — সবচেয়ে strict firewall ও পার করে (HTTPS এর মতো encrypted)
-            PeerConnection.IceServer.builder("turns:a.relay.metered.ca:443?transport=tcp")
-                .setUsername("e85e4a7c6c26f4adcdd6a191")
-                .setPassword("qJRdVXUgjmVFkRuV")
-                .createIceServer(),
-
-            // ── TURN #2: Xirsys free tier fallback ───────────────────────────
-            // Different infrastructure — metered fail করলে এটা try হবে
-            PeerConnection.IceServer.builder("turn:global.xirsys.net:80?transport=udp")
-                .setUsername("rasfocus").setPassword("rasfocus-turn-2025")
-                .createIceServer(),
-
-            // ── TURN #3: OpenRelay fallback (last resort) ─────────────────────
-            // Overloaded হতে পারে কিন্তু last fallback হিসেবে রাখা হলো
+            // ── TURN: relay — mobile data/different network এ CGNAT bypass এর জন্য অপরিহার্য ──
+            // Bangladesh mobile carriers (GP, Robi, Banglalink) সবই CGNAT ব্যবহার করে।
+            // STUN দিয়ে direct connection সম্ভব না — TURN relay দরকার।
+            // openrelay.metered.ca = real free public TURN, verified working credentials.
+            // Multiple ports/protocols: WebRTC যেটা দিয়ে পার হতে পারবে সেটা ব্যবহার করবে।
+            // Port 80 UDP — সবচেয়ে কম block হয়, প্রথমে try করে
             PeerConnection.IceServer.builder("turn:openrelay.metered.ca:80")
                 .setUsername("openrelayproject").setPassword("openrelayproject").createIceServer(),
+            // Port 443 UDP — UDP 80 block হলে fallback
+            PeerConnection.IceServer.builder("turn:openrelay.metered.ca:443")
+                .setUsername("openrelayproject").setPassword("openrelayproject").createIceServer(),
+            // Port 443 TCP — UDP সম্পূর্ণ blocked হলে TCP relay
             PeerConnection.IceServer.builder("turn:openrelay.metered.ca:443?transport=tcp")
+                .setUsername("openrelayproject").setPassword("openrelayproject").createIceServer(),
+            // Port 443 TLS (TURNS) — সবচেয়ে strict firewall ও পার করে (HTTPS traffic এর মতো)
+            PeerConnection.IceServer.builder("turns:openrelay.metered.ca:443?transport=tcp")
+                .setUsername("openrelayproject").setPassword("openrelayproject").createIceServer(),
+            // ── Backup relay — অতিরিক্ত fallback ──
+            PeerConnection.IceServer.builder("turn:openrelay.metered.ca:3478")
                 .setUsername("openrelayproject").setPassword("openrelayproject").createIceServer()
         )
     }
 
-    // ── Step 1: IO thread — init WebRTC native libs ──────────────────────────
-    // Split into a separate LaunchedEffect to avoid JVM bytecode method size limit.
-    // When done, peerConnectionFactory.value becomes non-null, triggering Step 2+3.
     LaunchedEffect(Unit) {
+        // ── Step 1: IO thread — init WebRTC native libs ──────────────────────
+        // MUST complete before WebRTC session starts. Running EglBase.create()
+        // or PeerConnectionFactory.initialize() on the Compose main thread
+        // blocks the UI and causes ANR / "app keeps stopping" on cold start.
+        val base: EglBase
+        val factory: PeerConnectionFactory
         try {
             val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 val b = EglBase.create()
@@ -5490,21 +5293,18 @@ fun CallingScreen(
                     .createPeerConnectionFactory()
                 Pair(b, f)
             }
-            eglBase.value             = result.first
-            peerConnectionFactory.value = result.second
+            base    = result.first
+            factory = result.second
+            eglBase.value             = base
+            peerConnectionFactory.value = factory
         } catch (e: Exception) {
             android.util.Log.e("RasGram", "WebRTC init failed: ${e.message}", e)
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                 Toast.makeText(context, "Call setup failed. Please restart the app.", Toast.LENGTH_LONG).show()
             }
             onEndCall()
+            return@LaunchedEffect
         }
-    }
-
-    // ── Step 2+3: Permission check + WebRTC session ───────────────────────────
-    // Runs only after Step 1 completes (peerConnectionFactory.value becomes non-null).
-    LaunchedEffect(peerConnectionFactory.value) {
-        val factory = peerConnectionFactory.value ?: return@LaunchedEffect
 
         // ── Step 2: Permission check ─────────────────────────────────────────
         val hasMicPerm = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
@@ -5560,111 +5360,250 @@ fun CallingScreen(
                 iceTransportsType = PeerConnection.IceTransportsType.ALL
             }
 
-            // FIX: observer object extracted to buildPeerConnectionObserver() top-level function.
-            // Kotlin 2.1.x IR backend NullPointerException at instruction #346
-            // (FixStackAnalyzer / coroutine state machine bytecode overflow) —
-            // the anonymous object declaration inside this LaunchedEffect was pushing
-            // the suspend lambda past the JVM 64KB method bytecode limit.
-            // Moving it to a named top-level function allocates its bytecode in a
-            // separate class file, cutting this lambda's size below the threshold.
-            val observer = buildPeerConnectionObserver(
-                isReceiver           = isReceiver,
-                scope                = scope,
-                db                   = db,
-                getCallId            = { callId },
-                setCallStatus        = { callStatus = it },
-                setIsConnected       = { isConnected = it },
-                getIceDisconnectJob  = { iceDisconnectJob },
-                setIceDisconnectJob  = { iceDisconnectJob = it },
-                onEndCall            = onEndCall,
-                getRemoteVideoTrack  = { remoteVideoTrack },
-                setRemoteVideoTrack  = { remoteVideoTrack = it },
-                getRemoteSurfaceView = { remoteSurfaceView }
-            )
+            val observer = object : PeerConnection.Observer {
+                override fun onIceCandidate(candidate: IceCandidate?) {
+                    candidate?.let { c ->
+                        scope.launch {
+                            // Caller ICE → caller_ice, Receiver ICE → callee_ice
+                            val iceCollection = if (isReceiver) "callee_ice" else "caller_ice"
+                            db.collection("calls").document(callId).collection(iceCollection).add(
+                                mapOf("sdpMid" to c.sdpMid, "sdpMLineIndex" to c.sdpMLineIndex, "candidate" to c.sdp)
+                            )
+                        }
+                    }
+                }
+                override fun onIceCandidatesRemoved(c: Array<out IceCandidate>?) {}
+                override fun onSignalingChange(s: PeerConnection.SignalingState?) {}
+                override fun onIceConnectionChange(state: PeerConnection.IceConnectionState?) {
+                    // WebRTC internal thread থেকে আসে — Compose state Main thread এ সেট করতে হবে।
+                    // scope.launch {} ছাড়া isConnected = true করলে LaunchedEffect(isConnected)
+                    // recompose trigger নাও হতে পারে → timer শুরু হয় না।
+                    //
+                    // ICE DISCONNECTED grace period fix:
+                    // DISCONNECTED = transient state — mobile network packet loss বা brief hiccup এ আসে।
+                    // Initial negotiation: CHECKING → DISCONNECTED (brief) → CONNECTED
+                    // Reconnect:          CONNECTED → DISCONNECTED → CONNECTED
+                    // তাই DISCONNECTED এ সাথে সাথে cut না করে 8s grace দিতে হবে।
+                    // Grace period এ CONNECTED আসলে cancel, না আসলে তখন endCall।
+                    // শুধু FAILED এ immediate cut।
+                    when (state) {
+                        PeerConnection.IceConnectionState.CONNECTED -> scope.launch {
+                            iceDisconnectJob?.cancel()
+                            iceDisconnectJob = null
+                            callStatus = "Connected"
+                            isConnected = true
+                        }
+                        PeerConnection.IceConnectionState.DISCONNECTED -> scope.launch {
+                            // Reconnect হতে পারে — 8s দাও
+                            if (iceDisconnectJob?.isActive != true) {
+                                callStatus = "Reconnecting..."
+                                iceDisconnectJob = scope.launch {
+                                    kotlinx.coroutines.delay(8_000L)
+                                    onEndCall()
+                                }
+                            }
+                        }
+                        PeerConnection.IceConnectionState.FAILED -> scope.launch {
+                            iceDisconnectJob?.cancel()
+                            onEndCall()
+                        }
+                        else -> {}
+                    }
+                }
+                override fun onIceConnectionReceivingChange(b: Boolean) {}
+                override fun onIceGatheringChange(s: PeerConnection.IceGatheringState?) {}
+                // Bug Fix #1: onAddStream (Plan B) ও onAddTrack (UNIFIED_PLAN) দুটোই handle করো।
+                // আগে remoteVideoTrack set হচ্ছিল কিন্তু SurfaceViewRenderer তখনও
+                // compose হয়নি — তাই sink কখনো attach হয়নি → black screen।
+                // Fix: track set করার সাথে সাথে remoteSurfaceView এ sink করো।
+                override fun onAddStream(s: MediaStream?) {
+                    s?.videoTracks?.firstOrNull()?.let { track ->
+                        remoteVideoTrack = track
+                        remoteSurfaceView?.let { track.addSink(it) }
+                    }
+                }
+                override fun onRemoveStream(s: MediaStream?) {}
+                override fun onDataChannel(d: DataChannel?) {}
+                override fun onRenegotiationNeeded() {}
+                override fun onAddTrack(r: RtpReceiver?, streams: Array<out MediaStream>?) {
+                    r?.track()?.let { track ->
+                        if (track is VideoTrack) {
+                            remoteVideoTrack = track
+                            remoteSurfaceView?.let { track.addSink(it) }
+                        }
+                    }
+                }
+            }
 
             val pc = factory.createPeerConnection(rtcConfig, observer)
             stream.audioTracks.forEach { pc?.addTrack(it, listOf("localStream")) }
             if (callType == "video") stream.videoTracks.forEach { pc?.addTrack(it, listOf("localStream")) }
             peerConnection = pc
-            // FIX: receiver/caller signaling paths moved to LaunchedEffect(peerConnection) below.
-            // This splits the single 300+ line LaunchedEffect into two smaller ones,
-            // reducing per-method bytecode size below the threshold that triggers
-            // the Kotlin 2.1.x FixStackAnalyzer NullPointerException at instruction #346.
-        } catch (e: Exception) {
-            Toast.makeText(context, "Call error: ${e.message}", Toast.LENGTH_SHORT).show()
-            onEndCall()
-        }
-    }
 
-    // ── ScreenShareManager attach — separate LaunchedEffect to avoid IR bytecode overflow ──
-    // Keeping this out of LaunchedEffect(peerConnection) below prevents the Kotlin 2.1.x
-    // FixStackAnalyzer NullPointerException at instruction #346 (same fix pattern as before).
-    LaunchedEffect(peerConnection, callId) {
-        val pc = peerConnection ?: return@LaunchedEffect
-        val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        val isLan = prefs.getBoolean(PREF_LAN_MODE, false)
-        val stream = localStream ?: return@LaunchedEffect
-        val factory = peerConnectionFactory.value ?: return@LaunchedEffect
-        val egl = eglBase.value ?: return@LaunchedEffect
-        ScreenShareManager.attachCall(
-            peerConnection = pc,
-            factory        = factory,
-            eglBase        = egl,
-            localStream    = stream,
-            callDocId      = callId,
-            lanMode        = isLan,
-            lanManager     = if (isLan) LanCallManager.getInstance(context) else null
-        )
-    }
-
-    // FIX: Receiver/caller signaling paths extracted to top-level suspend functions
-    // handleReceiverSignaling() and handleCallerSignaling() below.
-    // Each anonymous SdpObserver + nested coroutine block was pushing this
-    // LaunchedEffect lambda past the JVM 64KB method bytecode limit, triggering
-    // Kotlin 2.1.x FixStackAnalyzer NullPointerException at instruction #346.
-    // Moving them to named top-level functions allocates their bytecode in
-    // separate class files, cutting this lambda's bytecode size below the threshold.
-    // FIX: callId যোগ করা হয়েছে LaunchedEffect key তে।
-    // Bug (আগে): callId শুধু peerConnectionFactory LaunchedEffect এ set হত —
-    //   সেই same coroutine এ peerConnection = pc set হত।
-    //   peerConnection change হলে এই LaunchedEffect relaunch হত, কিন্তু
-    //   callId এর Compose state update তখনো propagate হয়নি → callId = "" (empty)।
-    //   handleCallerSignaling("") → Firestore এ calls/"" document write হত →
-    //   receiver এর .whereEqualTo("callee", ...) query miss করত → call আসত না।
-    // Fix: key তে callId যোগ → callId set হওয়ার পরেই এই effect relaunch হবে।
-    //   isReceiver=true: existingCallId দিয়ে initialized, empty হবে না।
-    //   isReceiver=false: callId="" হলে guard দিয়ে skip, set হলে run।
-    LaunchedEffect(peerConnection, isReceiver, callId) {
-        val pc = peerConnection ?: return@LaunchedEffect
-        // Caller side: callId set না হলে wait করো — পরের recomposition এ আবার চলবে
-        if (!isReceiver && callId.isEmpty()) return@LaunchedEffect
-        // Guard: signaling একবারই শুরু হবে — callId key change এ duplicate না হয়
-        if (signalingStarted) return@LaunchedEffect
-        signalingStarted = true
-        try {
             if (isReceiver) {
-                handleReceiverSignaling(
-                    pc = pc,
-                    db = db,
-                    callId = callId,
-                    callType = callType,
-                    scope = scope,
-                    setCallStatus = { callStatus = it },
-                    onEndCall = onEndCall
-                )
+                // ── RECEIVER PATH ─────────────────────────────────────────────────────
+                callStatus = "Connecting..."
+                val callDoc = db.collection("calls").document(callId).get().await()
+                val offerMap = callDoc.data?.get("offer") as? Map<*, *>
+                    ?: run { onEndCall(); return@LaunchedEffect }
+                val offerSdp = offerMap["sdp"] as? String
+                    ?: run { onEndCall(); return@LaunchedEffect }
+
+                pc?.setRemoteDescription(object : SdpObserver {
+                    override fun onCreateSuccess(s: SessionDescription?) {}
+                    override fun onSetSuccess() {
+                        val answerConstraints = MediaConstraints().apply {
+                            mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
+                            if (callType == "video") mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
+                        }
+                        pc.createAnswer(object : SdpObserver {
+                            override fun onCreateSuccess(sdp: SessionDescription?) {
+                                sdp?.let { s ->
+                                    pc.setLocalDescription(object : SdpObserver {
+                                        override fun onCreateSuccess(s2: SessionDescription?) {}
+                                        override fun onSetSuccess() {
+                                            scope.launch {
+                                                db.collection("calls").document(callId).update(
+                                                    "status", "answered",
+                                                    "answer", mapOf("type" to s.type.canonicalForm(), "sdp" to s.description)
+                                                )
+                                                // Bug Fix #2: ICE candidates এর জন্য one-time get() ব্যবহার করা ছিল।
+                                                // Problem: receiver answer পাঠানোর আগেই caller ICE candidates
+                                                // Firestore এ আসে, কিন্তু get() তখন empty ছিল।
+                                                // Fix: snapshot listener দিয়ে ICE continuously শোনো —
+                                                // যখনই নতুন candidate আসুক, সাথে সাথে addIceCandidate করো।
+                                                db.collection("calls").document(callId)
+                                                    .collection("caller_ice")
+                                                    .addSnapshotListener { snap, _ ->
+                                                        snap?.documentChanges?.forEach { change ->
+                                                            if (change.type == com.google.firebase.firestore.DocumentChange.Type.ADDED) {
+                                                                val d = change.document.data
+                                                                pc?.addIceCandidate(
+                                                                    IceCandidate(
+                                                                        d["sdpMid"] as? String ?: "",
+                                                                        (d["sdpMLineIndex"] as? Long)?.toInt() ?: 0,
+                                                                        d["candidate"] as? String ?: ""
+                                                                    )
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                // NOTE: isConnected = true এখানে সেট করা হচ্ছে না।
+                                                // ICE negotiation এখনো চলছে — audio এখনো flow করছে না।
+                                                // isConnected সেট হবে শুধু onIceConnectionChange(CONNECTED)
+                                                // callback এ — তখনই actual audio পথ খোলে।
+                                                // এখানে সেট করলে caller দেখায় "Connected" কিন্তু কোনো
+                                                // audio আসে না (ICE not yet done)।
+                                                callStatus = "Connecting..."
+                                            }
+                                        }
+                                        override fun onCreateFailure(e: String?) {}
+                                        override fun onSetFailure(e: String?) {}
+                                    }, s)
+                                }
+                            }
+                            override fun onSetSuccess() {}
+                            override fun onCreateFailure(e: String?) {}
+                            override fun onSetFailure(e: String?) {}
+                        }, answerConstraints)
+                    }
+                    override fun onCreateFailure(e: String?) {}
+                    override fun onSetFailure(e: String?) {}
+                }, SessionDescription(SessionDescription.Type.OFFER, offerSdp))
+
+                // Call ended/rejected by caller → screen বন্ধ করো
+                db.collection("calls").document(callId).addSnapshotListener { snapshot, _ ->
+                    val status = snapshot?.data?.get("status") as? String ?: return@addSnapshotListener
+                    if (status == "ended" || status == "rejected") scope.launch { onEndCall() }
+                }
             } else {
-                handleCallerSignaling(
-                    pc = pc,
-                    db = db,
-                    callId = callId,
-                    callType = callType,
-                    currentUser = currentUser,
-                    contact = contact,
-                    context = context,
-                    scope = scope,
-                    setCallStatus = { callStatus = it },
-                    onEndCall = onEndCall
-                )
+                // ── CALLER PATH ───────────────────────────────────────────────────────
+                val offerConstraints = MediaConstraints().apply {
+                    mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
+                    if (callType == "video") mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
+                }
+
+                pc?.createOffer(object : SdpObserver {
+                    override fun onCreateSuccess(sdp: SessionDescription?) {
+                        sdp?.let { s ->
+                            pc.setLocalDescription(object : SdpObserver {
+                                override fun onCreateSuccess(s2: SessionDescription?) {}
+                                override fun onSetSuccess() {
+                                    scope.launch {
+                                        db.collection("calls").document(callId).set(hashMapOf(
+                                            "caller" to currentUser.mobile,
+                                            "callerName" to currentUser.name,
+                                            "callee" to contact.mobile,
+                                            "type" to callType, "status" to "calling",
+                                            "timestamp" to System.currentTimeMillis(),
+                                            "offer" to mapOf("type" to s.type.canonicalForm(), "sdp" to s.description)
+                                        ))
+                                        // Send FCM push to callee so call arrives even if app is closed
+                                        sendFcmCallNotification(
+                                            calleeMobile = contact.mobile,
+                                            callerMobile = currentUser.mobile,
+                                            callerName = currentUser.name,
+                                            callType = callType,
+                                            callId = callId,
+                                            db = db,
+                                            context = context
+                                        )
+                                    }
+                                }
+                                override fun onCreateFailure(e: String?) {}
+                                override fun onSetFailure(e: String?) {}
+                            }, s)
+                        }
+                    }
+                    override fun onSetSuccess() {}
+                    override fun onCreateFailure(e: String?) {}
+                    override fun onSetFailure(e: String?) {}
+                }, offerConstraints)
+
+                db.collection("calls").document(callId).addSnapshotListener { snapshot, _ ->
+                    val data = snapshot?.data ?: return@addSnapshotListener
+                    when (data["status"] as? String) {
+                        "answered" -> {
+                            (data["answer"] as? Map<*, *>)?.let { ans ->
+                                val sdpStr = ans["sdp"] as? String ?: return@addSnapshotListener
+                                pc?.setRemoteDescription(object : SdpObserver {
+                                    override fun onCreateSuccess(s: SessionDescription?) {}
+                                    override fun onSetSuccess() {
+                                        // NOTE: isConnected = true এখানে সেট করা হচ্ছে না।
+                                        // setRemoteDescription success মানে SDP exchange শেষ,
+                                        // কিন্তু ICE negotiation এখনো চলছে — audio/video flow করছে না।
+                                        // isConnected = true → onIceConnectionChange(CONNECTED) callback এ,
+                                        // তখনই actual media path খোলে। এখানে সেট করলে premature
+                                        // "Connected" দেখায় কিন্তু audio আসে না।
+                                        scope.launch { callStatus = "Connecting..." }
+                                        // Caller side ও snapshot listener — same fix as receiver
+                                        scope.launch {
+                                            db.collection("calls").document(callId)
+                                                .collection("callee_ice")
+                                                .addSnapshotListener { snap, _ ->
+                                                    snap?.documentChanges?.forEach { change ->
+                                                        if (change.type == com.google.firebase.firestore.DocumentChange.Type.ADDED) {
+                                                            val d = change.document.data
+                                                            pc?.addIceCandidate(
+                                                                IceCandidate(
+                                                                    d["sdpMid"] as? String ?: "",
+                                                                    (d["sdpMLineIndex"] as? Long)?.toInt() ?: 0,
+                                                                    d["candidate"] as? String ?: ""
+                                                                )
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                        }
+                                    }
+                                    override fun onCreateFailure(e: String?) {}
+                                    override fun onSetFailure(e: String?) {}
+                                }, SessionDescription(SessionDescription.Type.ANSWER, sdpStr))
+                            }
+                        }
+                        "ended", "rejected" -> scope.launch { onEndCall() }
+                    }
+                }
             }
         } catch (e: Exception) {
             Toast.makeText(context, "Call error: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -5699,28 +5638,7 @@ fun CallingScreen(
             audioManager.mode = AudioManager.MODE_NORMAL
             audioManager.isSpeakerphoneOn = false
             try { eglBase.value?.release() } catch (_: Exception) {}
-            // Screen share cleanup
-            ScreenShareManager.reset()
         }
-    }
-
-    // ── Screen share: Firestore signal listener (normal mode) ─────────────────
-    // LAN mode: signals come via LanCallManager TCP socket (already handled in processSignalMessage)
-    LaunchedEffect(callId) {
-        if (callId.isEmpty()) return@LaunchedEffect
-        val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        if (prefs.getBoolean(PREF_LAN_MODE, false)) return@LaunchedEffect   // LAN: TCP handles it
-        db.collection("calls").document(callId).collection("screenShare")
-            .addSnapshotListener { snap, _ ->
-                snap?.documentChanges?.forEach { change ->
-                    if (change.type == com.google.firebase.firestore.DocumentChange.Type.ADDED) {
-                        try {
-                            val payload = change.document.getString("payload") ?: return@forEach
-                            ScreenShareManager.handleSignal(context, org.json.JSONObject(payload))
-                        } catch (_: Exception) {}
-                    }
-                }
-            }
     }
 
     // Pulsing animation for outgoing/calling state
@@ -5769,49 +5687,13 @@ fun CallingScreen(
                             }
                         },
                         update = { renderer ->
+                            // track এসে গেলে attach নিশ্চিত করো
                             remoteVideoTrack?.let { track ->
                                 try { track.addSink(renderer) } catch (_: Exception) {}
                             }
                         },
                         modifier = Modifier.fillMaxSize()
                     )
-
-                    // ── Remote touch forwarding overlay (normal mode) ─────────
-                    if (remoteInputGranted) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .pointerInput(Unit) {
-                                    detectDragGestures(
-                                        onDragStart = { offset ->
-                                            ScreenShareManager.sendTouchEvent(context,
-                                                offset.x / size.width.toFloat(),
-                                                offset.y / size.height.toFloat(),
-                                                android.view.MotionEvent.ACTION_DOWN)
-                                        },
-                                        onDrag = { change, _ ->
-                                            ScreenShareManager.sendTouchEvent(context,
-                                                change.position.x / size.width.toFloat(),
-                                                change.position.y / size.height.toFloat(),
-                                                android.view.MotionEvent.ACTION_MOVE)
-                                        },
-                                        onDragEnd = {
-                                            ScreenShareManager.sendTouchEvent(context, 0f, 0f, android.view.MotionEvent.ACTION_UP)
-                                        }
-                                    )
-                                }
-                        ) {
-                            Surface(
-                                modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
-                                color = Color(0xFFFF9800).copy(0.9f),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Text("✋ Touch Mode", color = Color.White, fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
-                            }
-                        }
-                    }
 
                     // Local video — PiP (Picture-in-Picture), top-right corner
                     AndroidView(
@@ -5971,71 +5853,13 @@ fun CallingScreen(
                                     localStream?.videoTracks?.firstOrNull()?.setEnabled(!isCameraOff)
                                 }
                                 CallControlButton(icon = Icons.Default.Cameraswitch, label = "Flip", isActive = false, activeColor = RasGramTheme.Green) {
+                                    // Camera2 capturer: switchCamera() দিয়ে front/back flip করো
                                     try {
                                         (videoCapturer as? org.webrtc.Camera2Capturer)?.switchCamera(null)
                                         ?: (videoCapturer as? org.webrtc.Camera1Capturer)?.switchCamera(null)
                                     } catch (_: Exception) {}
                                 }
-                                // ── Screen Share button ───────────────────────
-                                CallControlButton(
-                                    icon = if (isSharingScreen) Icons.Default.StopScreenShare else Icons.Default.ScreenShare,
-                                    label = if (isSharingScreen) "Stop Share" else "Share Screen",
-                                    isActive = isSharingScreen,
-                                    activeColor = Color(0xFF00BCD4)
-                                ) {
-                                    if (isSharingScreen) {
-                                        ScreenShareManager.stopScreenShare(context)
-                                    } else {
-                                        screenShareLauncher.launch(mediaProjectionManager.createScreenCaptureIntent())
-                                    }
-                                }
-                                // ── Remote Input button (viewer side) ────────
-                                // দেখায় যখন peer screen share করছে
-                                if (isRemoteSharing) {
-                                    CallControlButton(
-                                        icon = if (remoteInputGranted) Icons.Default.TouchApp else Icons.Default.PanTool,
-                                        label = if (remoteInputGranted) "Touch On" else "Request Touch",
-                                        isActive = remoteInputGranted,
-                                        activeColor = Color(0xFFFF9800)
-                                    ) {
-                                        if (!remoteInputGranted) {
-                                            // Check Accessibility first
-                                            if (RemoteInputAccessibilityService.isServiceEnabled(context)) {
-                                                ScreenShareManager.requestRemoteInput(context)
-                                            } else {
-                                                RemoteInputAccessibilityService.openAccessibilitySettings(context)
-                                            }
-                                        }
-                                    }
-                                }
                             }
-                        }
-
-                        // ── Remote input permission dialog (sharer side) ──────
-                        if (showInputRequestDialog) {
-                            AlertDialog(
-                                onDismissRequest = { showInputRequestDialog = false },
-                                containerColor = RasGramTheme.DarkPanel,
-                                icon = { Icon(Icons.Default.TouchApp, null, tint = Color(0xFFFF9800)) },
-                                title = { Text("Remote Touch Request", color = RasGramTheme.TextPrimary, fontWeight = FontWeight.Bold) },
-                                text = {
-                                    Text(
-                                        "${contact.name} আপনার স্ক্রিনে ট্যাচ করার অনুমতি চাইছে।\nতারা screen share দেখার সাথে সাথে আপনার ডিভাইস নিয়ন্ত্রণ করতে পারবে।",
-                                        color = RasGramTheme.TextMuted
-                                    )
-                                },
-                                confirmButton = {
-                                    Button(
-                                        onClick = { showInputRequestDialog = false; ScreenShareManager.grantRemoteInput(context) },
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))
-                                    ) { Text("অনুমতি দিন") }
-                                },
-                                dismissButton = {
-                                    OutlinedButton(onClick = { showInputRequestDialog = false; ScreenShareManager.denyRemoteInput(context) }) {
-                                        Text("না", color = RasGramTheme.TextMuted)
-                                    }
-                                }
-                            )
                         }
                     }
                 }
@@ -6661,9 +6485,9 @@ fun LanModeSettingsTab(
                     Spacer(Modifier.height(4.dp))
                     Text(
                         if (lanModeEnabled)
-                            "✅ চালু — ১০০% অফলাইন। চ্যাট, ফাইল, কল সব শুধু WiFi/Hotspot এ। Firebase/ইন্টারনেট কিছুই লাগবে না।"
+                            "✅ চালু — ইন্টারনেট ছাড়াই একই WiFi তে চ্যাট হচ্ছে"
                         else
-                            "বন্ধ — স্বাভাবিক মোড (Firebase + ইন্টারনেট ব্যবহার হচ্ছে)",
+                            "বন্ধ — Firebase ও Cloudinary ব্যবহার হচ্ছে (স্বাভাবিক মোড)",
                         color = RasGramTheme.TextMuted,
                         fontSize = 12.sp,
                         lineHeight = 16.sp,
@@ -6979,10 +6803,6 @@ fun rasgramLocalFileName(url: String, fileName: String?, fileType: String?): Str
  * থাকলে File object ফেরত দেয়, না থাকলে null।
  */
 fun getRasgramCachedFile(context: Context, url: String, fileName: String?, fileType: String?): java.io.File {
-    // LAN mode: local:// URL মানে file already local disk এ আছে
-    if (url.startsWith("local://")) {
-        return java.io.File(url.removePrefix("local://"))
-    }
     val folder = getRasgramFolder(context)
     val name = rasgramLocalFileName(url, fileName, fileType)
     return java.io.File(folder, name)
@@ -7130,11 +6950,9 @@ suspend fun uploadToCloudinary(
             }
         }
 
-        // FIX: fileBody এর বদলে progressBody use করো — আগে progressBody বানানো হত
-        // কিন্তু request এ fileBody পাঠানো হত, তাই progress কখনো update হত না।
         val requestBody = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
-            .addFormDataPart("file", fileName, progressBody)
+            .addFormDataPart("file", fileName, fileBody)
             .addFormDataPart("upload_preset", CLOUDINARY_UPLOAD_PRESET)
             .build()
 
@@ -7174,35 +6992,29 @@ suspend fun sendFcmCallNotification(
     db: FirebaseFirestore,
     context: Context
 ) = withContext(Dispatchers.IO) {
-    val TAG = "RasGram_FCM"
     try {
-        // ── Step 1: callee FCM token ──────────────────────────────────────────
-        android.util.Log.d(TAG, "sendFcmCall → callee=$calleeMobile callId=$callId")
+        // Get callee FCM token from Firestore
         val calleeDoc = db.collection("chat_users").document(calleeMobile).get().await()
-        val fcmToken = calleeDoc.getString("fcmToken")
-        if (fcmToken.isNullOrEmpty()) {
-            android.util.Log.w(TAG, "fcmToken missing for $calleeMobile — call not sent")
-            return@withContext
-        }
+        val fcmToken = calleeDoc.getString("fcmToken") ?: return@withContext
 
         val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
         val deliveryMethod = prefs.getString(PREF_CALL_DELIVERY, "fcm") ?: "fcm"
-        if (deliveryMethod != "fcm") return@withContext
-
-        // ── Step 2: Service Account JSON ─────────────────────────────────────
+        if (deliveryMethod != "fcm") {
+            // Not using FCM push
+            return@withContext
+        }
+        
         val saJsonStr = prefs.getString(PREF_SA_JSON, "")
         val saJson = if (saJsonStr.isNullOrEmpty()) {
-            val resId = context.resources.getIdentifier("service_account", "raw", context.packageName)
-            if (resId == 0) {
-                android.util.Log.e(TAG, "service_account.json raw resource not found")
-                return@withContext
-            }
-            org.json.JSONObject(context.resources.openRawResource(resId).bufferedReader().readText())
+            val saStream = context.resources.openRawResource(
+                context.resources.getIdentifier("service_account", "raw", context.packageName)
+            )
+            org.json.JSONObject(saStream.bufferedReader().readText())
         } else {
             org.json.JSONObject(saJsonStr)
         }
 
-        // ── Step 3: JWT + OAuth2 access token ────────────────────────────────
+        // Get OAuth2 access token for FCM v1 API
         val privateKeyPem = saJson.getString("private_key")
             .replace("-----BEGIN PRIVATE KEY-----", "")
             .replace("-----END PRIVATE KEY-----", "")
@@ -7210,60 +7022,46 @@ suspend fun sendFcmCallNotification(
             .replace("\n", "")
             .trim()
         val keyBytes = android.util.Base64.decode(privateKeyPem, android.util.Base64.DEFAULT)
-        val privateKey = java.security.KeyFactory.getInstance("RSA")
-            .generatePrivate(java.security.spec.PKCS8EncodedKeySpec(keyBytes))
+        val keySpec = java.security.spec.PKCS8EncodedKeySpec(keyBytes)
+        val privateKey = java.security.KeyFactory.getInstance("RSA").generatePrivate(keySpec)
 
-        val projectId   = saJson.getString("project_id")
+        val projectId = saJson.getString("project_id")
         val clientEmail = saJson.getString("client_email")
-        val now         = System.currentTimeMillis() / 1000
-        val scope       = "https://www.googleapis.com/auth/firebase.messaging"
+        val now = System.currentTimeMillis() / 1000
+        val scope = "https://www.googleapis.com/auth/firebase.messaging"
 
+        // Build JWT
         val header = android.util.Base64.encodeToString(
-            """{"alg":"RS256","typ":"JWT"}""".toByteArray(),
-            android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE
+            """{"alg":"RS256","typ":"JWT"}""".toByteArray(), android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE
         )
         val claims = android.util.Base64.encodeToString(
             """{"iss":"$clientEmail","scope":"$scope","aud":"https://oauth2.googleapis.com/token","iat":$now,"exp":${now + 3600}}""".toByteArray(),
             android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE
         )
         val toSign = "$header.$claims"
-        val signer = java.security.Signature.getInstance("SHA256withRSA").apply {
-            initSign(privateKey)
-            update(toSign.toByteArray())
-        }
-        val jwt = "$toSign.${android.util.Base64.encodeToString(signer.sign(), android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE)}"
+        val signer = java.security.Signature.getInstance("SHA256withRSA")
+        signer.initSign(privateKey)
+        signer.update(toSign.toByteArray())
+        val sig = android.util.Base64.encodeToString(signer.sign(), android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE)
+        val jwt = "$toSign.$sig"
 
-        // FIX: explicit timeouts — Android 15 এ default OkHttpClient এ
-        // connectTimeout = 10s কিন্তু readTimeout = 10s যা cellular এ miss করে।
-        // 20s/20s দিলে slow network এ reliable।
-        val client = okhttp3.OkHttpClient.Builder()
-            .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
-            .writeTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+        // Exchange JWT for access token
+        val client = okhttp3.OkHttpClient()
+        val tokenReq = okhttp3.Request.Builder()
+            .url("https://oauth2.googleapis.com/token")
+            .post(okhttp3.FormBody.Builder()
+                .add("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer")
+                .add("assertion", jwt).build())
             .build()
+        val tokenResp = client.newCall(tokenReq).execute()
+        val accessToken = org.json.JSONObject(tokenResp.body?.string() ?: "").optString("access_token")
+        if (accessToken.isEmpty()) return@withContext
 
-        val tokenResp = client.newCall(
-            okhttp3.Request.Builder()
-                .url("https://oauth2.googleapis.com/token")
-                .post(okhttp3.FormBody.Builder()
-                    .add("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer")
-                    .add("assertion", jwt).build())
-                .build()
-        ).execute()
-
-        val tokenBody = tokenResp.body?.string() ?: ""
-        val accessToken = org.json.JSONObject(tokenBody).optString("access_token", "")
-        if (accessToken.isEmpty()) {
-            android.util.Log.e(TAG, "OAuth2 token exchange failed. HTTP ${tokenResp.code} body=$tokenBody")
-            return@withContext
-        }
-        android.util.Log.d(TAG, "OAuth2 token OK, sending FCM…")
-
-        // ── Step 4: FCM v1 data + notification message ───────────────────────
-        // notification block: app closed/killed থাকলেও system নিজেই notification দেখায়।
-        // data block: app foreground/background থাকলে onMessageReceived() এ যায়।
-        // HIGH priority + ttl 60s: Doze wakeup করে, 1-minute expiry (stale ring নেই)।
-        val callTitle = if (callType == "video") "📹 Incoming Video Call" else "📞 Incoming Voice Call"
+        // Send FCM data message — WhatsApp-style: HIGH priority + short TTL
+        // ttl "60s": call 1 মিনিট পুরনো হলে FCM deliver করবে না (Doze থেকে বের হলে
+        //             পুরনো missed call ring করবে না — exact WhatsApp behavior)
+        // direct_boot_ok: reboot এর পর lock screen unlock এর আগেও deliver হবে
+        // priority HIGH: Doze mode ভেঙে সাথে সাথে process জাগাবে
         val fcmPayload = org.json.JSONObject().apply {
             put("message", org.json.JSONObject().apply {
                 put("token", fcmToken)
@@ -7271,54 +7069,27 @@ suspend fun sendFcmCallNotification(
                     put("type", "incoming_call")
                     put("callerName", callerName)
                     put("callerMobile", callerMobile)
-                    put("calleeMobile", calleeMobile)
+                    put("calleeMobile", calleeMobile)  // BUG FIX: receiver validation এর জন্য
                     put("callType", callType)
                     put("callId", callId)
                     put("direct_boot_ok", "true")
-                })
-                // notification block: app killed হলেও system tray এ দেখায়
-                put("notification", org.json.JSONObject().apply {
-                    put("title", callTitle)
-                    put("body", "$callerName · $callerMobile")
                 })
                 put("android", org.json.JSONObject().apply {
                     put("priority", "HIGH")
                     put("ttl", "60s")
                     put("direct_boot_ok", true)
-                    // notification channel: IMPORTANCE_MAX, CATEGORY_CALL
-                    put("notification", org.json.JSONObject().apply {
-                        put("channel_id", "CALL_CHANNEL")
-                        put("sound", "default")
-                        put("default_vibrate_timings", true)
-                        put("notification_priority", "PRIORITY_MAX")
-                        put("visibility", "PUBLIC")
-                    })
                 })
             })
         }.toString()
 
-        val fcmResp = client.newCall(
-            okhttp3.Request.Builder()
-                .url("https://fcm.googleapis.com/v1/projects/$projectId/messages:send")
-                .addHeader("Authorization", "Bearer $accessToken")
-                .addHeader("Content-Type", "application/json")
-                .post(okhttp3.RequestBody.create("application/json".toMediaTypeOrNull(), fcmPayload))
-                .build()
-        ).execute()
-
-        val fcmRespBody = fcmResp.body?.string() ?: ""
-        if (fcmResp.isSuccessful) {
-            android.util.Log.i(TAG, "FCM call sent OK → $calleeMobile")
-        } else {
-            // FIX: এটাই Android 15 এর সমস্যার root cause বের করবে।
-            // আগে catch এ চুপ হয়ে যেত, এখন logcat এ দেখা যাবে।
-            android.util.Log.e(TAG, "FCM send failed HTTP ${fcmResp.code}: $fcmRespBody")
-        }
-    } catch (e: Exception) {
-        // আগে: catch (_: Exception) { } — সম্পূর্ণ silent, debug অসম্ভব।
-        // এখন: logcat এ দেখা যাবে — Android 15 এ কী ভাঙছে জানা যাবে।
-        android.util.Log.e(TAG, "sendFcmCallNotification exception: ${e.javaClass.simpleName}: ${e.message}", e)
-    }
+        val fcmReq = okhttp3.Request.Builder()
+            .url("https://fcm.googleapis.com/v1/projects/$projectId/messages:send")
+            .addHeader("Authorization", "Bearer $accessToken")
+            .addHeader("Content-Type", "application/json")
+            .post(okhttp3.RequestBody.create("application/json".toMediaTypeOrNull(), fcmPayload))
+            .build()
+        client.newCall(fcmReq).execute()
+    } catch (_: Exception) { }
 }
 // ==================== SEND MESSAGE ====================
 fun sendMessage(
@@ -7626,318 +7397,6 @@ fun normalizeNumber(raw: String): String {
         }
     }
 }
-// ── IR bytecode overflow fix ─────────────────────────────────────────────────
-// Extracted from LaunchedEffect(peerConnectionFactory.value) in CallingScreen.
-// Kotlin 2.1.x FixStackAnalyzer crashes when a single suspend lambda exceeds
-// the JVM 64KB bytecode limit (instruction #346 NullPointerException).
-// ── Signaling helpers — extracted from CallingScreen LaunchedEffect(peerConnection, isReceiver) ──
-// Each SdpObserver anonymous object + nested coroutine block was pushing that single
-// suspend lambda past the JVM 64KB method bytecode limit, causing Kotlin 2.1.x IR crash
-// (FixStackAnalyzer NullPointerException at instruction #346).
-// Extracting them to named top-level functions puts their bytecode in separate class files.
-
-suspend fun handleReceiverSignaling(
-    pc: PeerConnection,
-    db: FirebaseFirestore,
-    callId: String,
-    callType: String,
-    scope: kotlinx.coroutines.CoroutineScope,
-    setCallStatus: (String) -> Unit,
-    onEndCall: () -> Unit
-) {
-    setCallStatus("Connecting...")
-    val callDoc = db.collection("calls").document(callId).get().await()
-    val offerMap = callDoc.data?.get("offer") as? Map<*, *>
-        ?: run { onEndCall(); return }
-    val offerSdp = offerMap["sdp"] as? String
-        ?: run { onEndCall(); return }
-
-    // ── FIX: caller_ice listener আগে attach করো — BEFORE setRemoteDescription ──
-    // Bug (আগে): listener শুধু setLocalDescription.onSetSuccess callback এর ভেতরে attach হত।
-    // Race condition: caller ICE candidates Firestore-এ আসে offer post করার সাথে সাথেই।
-    // Receiver এর setRemoteDescription + createAnswer + setLocalDescription async chain
-    // শেষ হওয়ার আগেই caller এর candidates চলে আসত — সব miss হত।
-    // Fix: listener আগে attach করো। Remote description set হওয়ার আগে আসা candidates
-    // WebRTC নিজেই queue করে রাখে এবং remote set হলে apply করে।
-    var remoteDescriptionSet = false
-    val pendingCallerCandidates = mutableListOf<IceCandidate>()
-
-    db.collection("calls").document(callId)
-        .collection("caller_ice")
-        .addSnapshotListener { snap, _ ->
-            snap?.documentChanges?.forEach { change ->
-                if (change.type == com.google.firebase.firestore.DocumentChange.Type.ADDED) {
-                    val d = change.document.data
-                    val candidate = IceCandidate(
-                        d["sdpMid"] as? String ?: "",
-                        (d["sdpMLineIndex"] as? Long)?.toInt() ?: 0,
-                        d["candidate"] as? String ?: ""
-                    )
-                    if (remoteDescriptionSet) {
-                        // Remote description ready — সরাসরি add করো
-                        pc.addIceCandidate(candidate)
-                    } else {
-                        // Remote description এখনো set হয়নি — queue করে রাখো
-                        synchronized(pendingCallerCandidates) {
-                            pendingCallerCandidates.add(candidate)
-                        }
-                    }
-                }
-            }
-        }
-
-    pc.setRemoteDescription(object : SdpObserver {
-        override fun onCreateSuccess(s: SessionDescription?) {}
-        override fun onSetSuccess() {
-            // Remote description set হয়েছে — pending candidates apply করো
-            remoteDescriptionSet = true
-            synchronized(pendingCallerCandidates) {
-                pendingCallerCandidates.forEach { pc.addIceCandidate(it) }
-                pendingCallerCandidates.clear()
-            }
-
-            val answerConstraints = MediaConstraints().apply {
-                mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
-                if (callType == "video") mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
-            }
-            pc.createAnswer(object : SdpObserver {
-                override fun onCreateSuccess(sdp: SessionDescription?) {
-                    sdp?.let { s ->
-                        pc.setLocalDescription(object : SdpObserver {
-                            override fun onCreateSuccess(s2: SessionDescription?) {}
-                            override fun onSetSuccess() {
-                                scope.launch {
-                                    db.collection("calls").document(callId).update(
-                                        "status", "answered",
-                                        "answer", mapOf("type" to s.type.canonicalForm(), "sdp" to s.description)
-                                    )
-                                    setCallStatus("Connecting...")
-                                }
-                            }
-                            override fun onCreateFailure(e: String?) {}
-                            override fun onSetFailure(e: String?) {}
-                        }, s)
-                    }
-                }
-                override fun onSetSuccess() {}
-                override fun onCreateFailure(e: String?) {}
-                override fun onSetFailure(e: String?) {}
-            }, answerConstraints)
-        }
-        override fun onCreateFailure(e: String?) {}
-        override fun onSetFailure(e: String?) {}
-    }, SessionDescription(SessionDescription.Type.OFFER, offerSdp))
-
-    db.collection("calls").document(callId).addSnapshotListener { snapshot, _ ->
-        val status = snapshot?.data?.get("status") as? String ?: return@addSnapshotListener
-        if (status == "ended" || status == "rejected") scope.launch { onEndCall() }
-    }
-}
-
-suspend fun handleCallerSignaling(
-    pc: PeerConnection,
-    db: FirebaseFirestore,
-    callId: String,
-    callType: String,
-    currentUser: User,
-    contact: User,
-    context: android.content.Context,
-    scope: kotlinx.coroutines.CoroutineScope,
-    setCallStatus: (String) -> Unit,
-    onEndCall: () -> Unit
-) {
-    val offerConstraints = MediaConstraints().apply {
-        mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
-        if (callType == "video") mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
-    }
-
-    pc.createOffer(object : SdpObserver {
-        override fun onCreateSuccess(sdp: SessionDescription?) {
-            sdp?.let { s ->
-                pc.setLocalDescription(object : SdpObserver {
-                    override fun onCreateSuccess(s2: SessionDescription?) {}
-                    override fun onSetSuccess() {
-                        // FIX: Android 15 deadlock — এই callback WebRTC internal
-                        // thread এ আসে। scope.launch করলে Compose Main dispatcher
-                        // এ যায়, কিন্তু sendFcmCallNotification এর ভেতরে
-                        // withContext(Dispatchers.IO) করার সময় Firestore internal
-                        // executor কে block করে → .get().await() কখনো return করে না।
-                        //
-                        // Fix: Dispatchers.IO explicitly দিয়ে launch করো।
-                        // Firestore এবং OkHttp দুটোই IO dispatcher এ নিরাপদ।
-                        // callId capture করা হলো — SdpObserver callback এ
-                        // outer scope এর mutable var access unsafe।
-                        val capturedCallId = callId
-                        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                            try {
-                                db.collection("calls").document(capturedCallId).set(hashMapOf(
-                                    "caller" to currentUser.mobile,
-                                    "callerName" to currentUser.name,
-                                    "callee" to contact.mobile,
-                                    "type" to callType, "status" to "calling",
-                                    "timestamp" to System.currentTimeMillis(),
-                                    "offer" to mapOf("type" to s.type.canonicalForm(), "sdp" to s.description)
-                                )).await()
-                            } catch (e: Exception) {
-                                android.util.Log.e("RasGram_Call", "Firestore call doc set failed: ${e.message}")
-                                return@launch
-                            }
-                            sendFcmCallNotification(
-                                calleeMobile = contact.mobile,
-                                callerMobile = currentUser.mobile,
-                                callerName = currentUser.name,
-                                callType = callType,
-                                callId = capturedCallId,
-                                db = db,
-                                context = context
-                            )
-                        }
-                    }
-                    override fun onCreateFailure(e: String?) {}
-                    override fun onSetFailure(e: String?) {}
-                }, s)
-            }
-        }
-        override fun onSetSuccess() {}
-        override fun onCreateFailure(e: String?) {}
-        override fun onSetFailure(e: String?) {}
-    }, offerConstraints)
-
-    db.collection("calls").document(callId).addSnapshotListener { snapshot, _ ->
-        val data = snapshot?.data ?: return@addSnapshotListener
-        when (data["status"] as? String) {
-            "answered" -> {
-                (data["answer"] as? Map<*, *>)?.let { ans ->
-                    val sdpStr = ans["sdp"] as? String ?: return@addSnapshotListener
-
-                    // ── FIX: callee_ice listener আগে attach করো — BEFORE setRemoteDescription ──
-                    // Bug (আগে): listener শুধু setRemoteDescription.onSetSuccess এর ভেতরে attach হত।
-                    // Race: receiver answer post করার সাথে সাথে callee ICE candidates ও Firestore-এ আসে।
-                    // Caller এর setRemoteDescription async callback শেষ হওয়ার আগেই miss হত।
-                    // Fix: listener আগে attach করো, remote set হলে pending candidates flush করো।
-                    var remoteAnswerSet = false
-                    val pendingCalleeCandidates = mutableListOf<IceCandidate>()
-
-                    db.collection("calls").document(callId)
-                        .collection("callee_ice")
-                        .addSnapshotListener { snap, _ ->
-                            snap?.documentChanges?.forEach { change ->
-                                if (change.type == com.google.firebase.firestore.DocumentChange.Type.ADDED) {
-                                    val d = change.document.data
-                                    val candidate = IceCandidate(
-                                        d["sdpMid"] as? String ?: "",
-                                        (d["sdpMLineIndex"] as? Long)?.toInt() ?: 0,
-                                        d["candidate"] as? String ?: ""
-                                    )
-                                    if (remoteAnswerSet) {
-                                        pc.addIceCandidate(candidate)
-                                    } else {
-                                        synchronized(pendingCalleeCandidates) {
-                                            pendingCalleeCandidates.add(candidate)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                    pc.setRemoteDescription(object : SdpObserver {
-                        override fun onCreateSuccess(s: SessionDescription?) {}
-                        override fun onSetSuccess() {
-                            // Remote answer set হয়েছে — pending candidates flush করো
-                            remoteAnswerSet = true
-                            synchronized(pendingCalleeCandidates) {
-                                pendingCalleeCandidates.forEach { pc.addIceCandidate(it) }
-                                pendingCalleeCandidates.clear()
-                            }
-                            scope.launch { setCallStatus("Connecting...") }
-                        }
-                        override fun onCreateFailure(e: String?) {}
-                        override fun onSetFailure(e: String?) {}
-                    }, SessionDescription(SessionDescription.Type.ANSWER, sdpStr))
-                }
-            }
-            "ended", "rejected" -> scope.launch { onEndCall() }
-        }
-    }
-}
-
-// Putting the PeerConnection.Observer in a separate top-level function causes
-// the compiler to emit its bytecode in a distinct class file, keeping the
-// calling LaunchedEffect lambda small enough to compile cleanly.
-fun buildPeerConnectionObserver(
-    isReceiver:           Boolean,
-    scope:                kotlinx.coroutines.CoroutineScope,
-    db:                   FirebaseFirestore,
-    getCallId:            () -> String,
-    setCallStatus:        (String) -> Unit,
-    setIsConnected:       (Boolean) -> Unit,
-    getIceDisconnectJob:  () -> kotlinx.coroutines.Job?,
-    setIceDisconnectJob:  (kotlinx.coroutines.Job?) -> Unit,
-    onEndCall:            () -> Unit,
-    getRemoteVideoTrack:  () -> VideoTrack?,
-    setRemoteVideoTrack:  (VideoTrack) -> Unit,
-    getRemoteSurfaceView: () -> SurfaceViewRenderer?
-): PeerConnection.Observer = object : PeerConnection.Observer {
-    override fun onIceCandidate(candidate: IceCandidate?) {
-        candidate?.let { c ->
-            scope.launch {
-                val iceCollection = if (isReceiver) "callee_ice" else "caller_ice"
-                db.collection("calls").document(getCallId()).collection(iceCollection).add(
-                    mapOf("sdpMid" to c.sdpMid, "sdpMLineIndex" to c.sdpMLineIndex, "candidate" to c.sdp)
-                )
-            }
-        }
-    }
-    override fun onIceCandidatesRemoved(c: Array<out IceCandidate>?) {}
-    override fun onSignalingChange(s: PeerConnection.SignalingState?) {}
-    override fun onIceConnectionChange(state: PeerConnection.IceConnectionState?) {
-        when (state) {
-            PeerConnection.IceConnectionState.CONNECTED -> scope.launch {
-                getIceDisconnectJob()?.cancel()
-                setIceDisconnectJob(null)
-                setCallStatus("Connected")
-                setIsConnected(true)
-            }
-            PeerConnection.IceConnectionState.DISCONNECTED -> scope.launch {
-                if (getIceDisconnectJob()?.isActive != true) {
-                    setCallStatus("Reconnecting...")
-                    // FIX: 8s → 15s — mobile data network switch (WiFi ↔ data) এ
-                    // ICE restart নিতে 10-12s পর্যন্ত সময় লাগতে পারে।
-                    // 8s এ prematurely end হয়ে যাচ্ছিল।
-                    setIceDisconnectJob(scope.launch {
-                        kotlinx.coroutines.delay(15_000L)
-                        onEndCall()
-                    })
-                }
-            }
-            PeerConnection.IceConnectionState.FAILED -> scope.launch {
-                getIceDisconnectJob()?.cancel()
-                onEndCall()
-            }
-            else -> {}
-        }
-    }
-    override fun onIceConnectionReceivingChange(b: Boolean) {}
-    override fun onIceGatheringChange(s: PeerConnection.IceGatheringState?) {}
-    override fun onAddStream(s: MediaStream?) {
-        s?.videoTracks?.firstOrNull()?.let { track ->
-            setRemoteVideoTrack(track)
-            getRemoteSurfaceView()?.let { track.addSink(it) }
-        }
-    }
-    override fun onRemoveStream(s: MediaStream?) {}
-    override fun onDataChannel(d: DataChannel?) {}
-    override fun onRenegotiationNeeded() {}
-    override fun onAddTrack(r: RtpReceiver?, streams: Array<out MediaStream>?) {
-        r?.track()?.let { track ->
-            if (track is VideoTrack) {
-                setRemoteVideoTrack(track)
-                getRemoteSurfaceView()?.let { track.addSink(it) }
-            }
-        }
-    }
-}
-
 fun getVideoCapturer(context: Context): VideoCapturer? = try {
     val e2 = Camera2Enumerator(context)
     e2.deviceNames.firstOrNull { e2.isFrontFacing(it) }?.let { e2.createCapturer(it, null) }
@@ -8108,53 +7567,6 @@ fun GroupChatArea(
                         db.collection("groups").document(group.id).update("lastMessageTime", now)
                     } else Toast.makeText(context, "আপলোড ব্যর্থ", Toast.LENGTH_SHORT).show()
                 } catch (e: Exception) { Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show() }
-                isUploading = false; uploadProgress = 0f; uploadingFileName = ""
-            }
-        }
-    }
-
-    // ── Group Folder launcher (OpenDocumentTree) — sub-folder সহ recursive zip → Cloudinary ──
-    val groupFolderLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
-        treeUri?.let { uri ->
-            scope.launch {
-                try {
-                    val docTree = androidx.documentfile.provider.DocumentFile.fromTreeUri(context, uri)
-                    val folderName = docTree?.name ?: "folder_${System.currentTimeMillis()}"
-                    uploadingFileName = "📁 $folderName"
-                    isUploading = true
-                    uploadProgress = 0f
-
-                    val zipFile = java.io.File(context.cacheDir, "${folderName}_${System.currentTimeMillis()}.zip")
-                    val zipOk = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        try {
-                            java.util.zip.ZipOutputStream(
-                                java.io.BufferedOutputStream(java.io.FileOutputStream(zipFile))
-                            ).use { zos -> zipDocumentFile(context, docTree!!, folderName, zos) }
-                            true
-                        } catch (e: Exception) { false }
-                    }
-                    if (!zipOk || !zipFile.exists() || zipFile.length() == 0L) {
-                        Toast.makeText(context, "ফোল্ডার zip করা যায়নি", Toast.LENGTH_SHORT).show()
-                        isUploading = false; uploadingFileName = ""; zipFile.delete(); return@launch
-                    }
-                    val (url, _, _) = uploadToCloudinary(context, zipFile.toUri()) { prog -> uploadProgress = prog }
-                    zipFile.delete()
-                    if (url != null) {
-                        val markedName = "${RASGRAM_FOLDER_PREFIX}${folderName}.zip"
-                        val now = System.currentTimeMillis()
-                        val msgMap = hashMapOf(
-                            "text" to "", "senderMobile" to currentUser.mobile,
-                            "fileUrl" to url, "fileName" to markedName, "fileType" to "application/zip",
-                            "timestamp" to now,
-                            "timeString" to java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(now))
-                        )
-                        db.collection("groups").document(group.id).collection("messages").add(msgMap)
-                        db.collection("groups").document(group.id).update("lastMessageTime", now)
-                        Toast.makeText(context, "📁 ফোল্ডার পাঠানো হয়েছে", Toast.LENGTH_SHORT).show()
-                    } else Toast.makeText(context, "আপলোড ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
-                } catch (e: Exception) {
-                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
                 isUploading = false; uploadProgress = 0f; uploadingFileName = ""
             }
         }
@@ -8410,7 +7822,7 @@ fun GroupChatArea(
                 onImageVideo = { groupImageVideoLauncher.launch(arrayOf("image/*", "video/*")); showAttachMenu = false },
                 onDocument = { groupDocLauncher.launch(arrayOf("application/*", "text/*")); showAttachMenu = false },
                 onAudio = { groupDocLauncher.launch(arrayOf("audio/*")); showAttachMenu = false },
-                onFilesFromFolder = { groupFolderLauncher.launch(null); showAttachMenu = false }
+                onFilesFromFolder = { groupDocLauncher.launch(arrayOf("*/*")); showAttachMenu = false }
             )
         }
     }
@@ -8425,32 +7837,22 @@ suspend fun sendFcmMessageNotification(
     db: FirebaseFirestore,
     context: Context
 ) = withContext(Dispatchers.IO) {
-    val TAG = "RasGram_FCM_MSG"
     try {
-        // ── Step 1: receiver FCM token ────────────────────────────────────────
-        android.util.Log.d(TAG, "sendFcmMsg → receiver=$receiverMobile sender=$senderMobile")
         val receiverDoc = db.collection("chat_users").document(receiverMobile).get().await()
-        val fcmToken = receiverDoc.getString("fcmToken")
-        if (fcmToken.isNullOrEmpty()) {
-            android.util.Log.w(TAG, "fcmToken missing/empty for $receiverMobile — message FCM skipped")
-            return@withContext
-        }
+        val fcmToken = receiverDoc.getString("fcmToken") ?: return@withContext
 
-        // ── Step 2: Service Account JSON ─────────────────────────────────────
+        // Message notification সবসময় যাবে — call delivery setting শুধু call এর জন্য
         val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
         val saJsonStr = prefs.getString(PREF_SA_JSON, "")
         val saJson = if (saJsonStr.isNullOrEmpty()) {
-            val resId = context.resources.getIdentifier("service_account", "raw", context.packageName)
-            if (resId == 0) {
-                android.util.Log.e(TAG, "service_account.json raw resource not found — message FCM skipped")
-                return@withContext
-            }
-            org.json.JSONObject(context.resources.openRawResource(resId).bufferedReader().readText())
+            val saStream = context.resources.openRawResource(
+                context.resources.getIdentifier("service_account", "raw", context.packageName)
+            )
+            org.json.JSONObject(saStream.bufferedReader().readText())
         } else {
             org.json.JSONObject(saJsonStr)
         }
 
-        // ── Step 3: JWT + OAuth2 access token ────────────────────────────────
         val privateKeyPem = saJson.getString("private_key")
             .replace("-----BEGIN PRIVATE KEY-----", "")
             .replace("-----END PRIVATE KEY-----", "")
@@ -8461,17 +7863,14 @@ suspend fun sendFcmMessageNotification(
         val keySpec = java.security.spec.PKCS8EncodedKeySpec(keyBytes)
         val privateKey = java.security.KeyFactory.getInstance("RSA").generatePrivate(keySpec)
 
-        val projectId   = saJson.getString("project_id")
+        val projectId = saJson.getString("project_id")
         val clientEmail = saJson.getString("client_email")
-        val now   = System.currentTimeMillis() / 1000
+        val now = System.currentTimeMillis() / 1000
         val scope = "https://www.googleapis.com/auth/firebase.messaging"
 
-        val header = android.util.Base64.encodeToString(
-            """{"alg":"RS256","typ":"JWT"}""".toByteArray(),
-            android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE
-        )
+        val header = android.util.Base64.encodeToString("{\"alg\":\"RS256\",\"typ\":\"JWT\"}".toByteArray(), android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE)
         val claim = android.util.Base64.encodeToString(
-            """{"iss":"$clientEmail","scope":"$scope","aud":"https://oauth2.googleapis.com/token","exp":${now + 3600},"iat":$now}""".toByteArray(),
+            "{\"iss\":\"$clientEmail\",\"scope\":\"$scope\",\"aud\":\"https://oauth2.googleapis.com/token\",\"exp\":${now + 3600},\"iat\":$now}".toByteArray(),
             android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE
         )
         val signatureBytes = java.security.Signature.getInstance("SHA256withRSA").run {
@@ -8479,41 +7878,18 @@ suspend fun sendFcmMessageNotification(
             update("$header.$claim".toByteArray())
             sign()
         }
-        val signature = android.util.Base64.encodeToString(
-            signatureBytes, android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE
-        )
+        val signature = android.util.Base64.encodeToString(signatureBytes, android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE)
         val jwt = "$header.$claim.$signature"
 
-        // FIX: explicit timeouts — default OkHttpClient cellular network এ hang করে
-        val client = okhttp3.OkHttpClient.Builder()
-            .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
-            .writeTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+        val tokenRequest = okhttp3.Request.Builder()
+            .url("https://oauth2.googleapis.com/token")
+            .post(okhttp3.FormBody.Builder().add("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer").add("assertion", jwt).build())
             .build()
 
-        val tokenResp = client.newCall(
-            okhttp3.Request.Builder()
-                .url("https://oauth2.googleapis.com/token")
-                .post(
-                    okhttp3.FormBody.Builder()
-                        .add("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer")
-                        .add("assertion", jwt)
-                        .build()
-                )
-                .build()
-        ).execute()
+        val tokenResponse = okhttp3.OkHttpClient().newCall(tokenRequest).execute()
+        if (!tokenResponse.isSuccessful) return@withContext
+        val accessToken = org.json.JSONObject(tokenResponse.body?.string() ?: "").getString("access_token")
 
-        val tokenBody = tokenResp.body?.string() ?: ""
-        val accessToken = org.json.JSONObject(tokenBody).optString("access_token", "")
-        if (accessToken.isEmpty()) {
-            android.util.Log.e(TAG, "OAuth2 token exchange failed. HTTP ${tokenResp.code} body=$tokenBody")
-            return@withContext
-        }
-        android.util.Log.d(TAG, "OAuth2 token OK, sending message FCM…")
-
-        // ── Step 4: FCM v1 message ────────────────────────────────────────────
-        // data block: onMessageReceived() — app foreground/background এ handle করে
-        // notification block: app killed থাকলে system tray এ দেখায় (FIX: আগে এটা ছিল না)
         val payload = org.json.JSONObject().apply {
             put("message", org.json.JSONObject().apply {
                 put("token", fcmToken)
@@ -8523,44 +7899,20 @@ suspend fun sendFcmMessageNotification(
                     put("senderName", senderName)
                     put("message", messageText)
                 })
-                // FIX: notification block যোগ করা — app killed থাকলেও system tray এ দেখাবে
-                put("notification", org.json.JSONObject().apply {
-                    put("title", senderName.ifBlank { "RasGram" })
-                    put("body", messageText)
-                })
                 put("android", org.json.JSONObject().apply {
-                    put("priority", "HIGH")
-                    put("ttl", "86400s")   // 24 hours — message stale হওয়ার সময় বেশি
-                    put("notification", org.json.JSONObject().apply {
-                        put("channel_id", "MSG_CHANNEL")
-                        put("sound", "default")
-                        put("default_vibrate_timings", true)
-                        put("notification_priority", "PRIORITY_HIGH")
-                        put("visibility", "PUBLIC")
-                    })
+                    put("priority", "high")
                 })
             })
         }
 
-        val fcmResp = client.newCall(
-            okhttp3.Request.Builder()
-                .url("https://fcm.googleapis.com/v1/projects/$projectId/messages:send")
-                .addHeader("Authorization", "Bearer $accessToken")
-                .addHeader("Content-Type", "application/json")
-                .post(okhttp3.RequestBody.create("application/json".toMediaTypeOrNull(), payload.toString()))
-                .build()
-        ).execute()
-
-        val fcmRespBody = fcmResp.body?.string() ?: ""
-        if (fcmResp.isSuccessful) {
-            android.util.Log.i(TAG, "FCM message sent OK → $receiverMobile")
-        } else {
-            android.util.Log.e(TAG, "FCM message send failed HTTP ${fcmResp.code}: $fcmRespBody")
-        }
-    } catch (e: Exception) {
-        // FIX: আগে catch (_: Exception) { } — সম্পূর্ণ silent, debug অসম্ভব ছিল
-        android.util.Log.e(TAG, "sendFcmMessageNotification exception: ${e.javaClass.simpleName}: ${e.message}", e)
-    }
+        val pushRequest = okhttp3.Request.Builder()
+            .url("https://fcm.googleapis.com/v1/projects/$projectId/messages:send")
+            .addHeader("Authorization", "Bearer $accessToken")
+            .addHeader("Content-Type", "application/json")
+            .post(okhttp3.RequestBody.create("application/json".toMediaTypeOrNull(), payload.toString()))
+            .build()
+        okhttp3.OkHttpClient().newCall(pushRequest).execute()
+    } catch (_: Exception) { }
 }
 
 
@@ -8771,4 +8123,3 @@ fun zipDocumentFile(
         }
     }
 }
-

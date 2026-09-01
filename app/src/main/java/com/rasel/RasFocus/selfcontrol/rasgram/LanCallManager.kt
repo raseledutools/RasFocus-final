@@ -48,11 +48,6 @@ class LanCallManager private constructor(private val context: Context) {
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: LanCallManager(context.applicationContext).also { INSTANCE = it }
             }
-
-        /** Send a screen-share signal over the active LAN TCP connection */
-        fun sendScreenShareSignal(msg: org.json.JSONObject) {
-            INSTANCE?.sendSignal(msg)
-        }
     }
 
     // ── Incoming call state (observed by UI) ──────────────────────────────────
@@ -88,13 +83,14 @@ class LanCallManager private constructor(private val context: Context) {
     private var signalServer: ServerSocket? = null
     private var signalSocket: Socket? = null          // active call signaling socket
     private var signalOut: PrintWriter? = null
-    internal var peerConnection: PeerConnection? = null
-    internal var eglBase: EglBase? = null
-    internal var factory: PeerConnectionFactory? = null
-    internal var localStream: MediaStream? = null
+    private var peerConnection: PeerConnection? = null
+    private var eglBase: EglBase? = null
+    fun getEglBase(): EglBase? = eglBase
+    private var factory: PeerConnectionFactory? = null
+    private var localStream: MediaStream? = null
     private var videoCapturer: VideoCapturer? = null
     private var isRunning = false
-    var currentCallId = ""
+    private var currentCallId = ""
     private var isCallerRole = false                  // true = we initiated
     private val pendingIceCandidates = ConcurrentLinkedQueue<IceCandidate>()
 
@@ -497,14 +493,6 @@ class LanCallManager private constructor(private val context: Context) {
                 } else {
                     pendingIceCandidates.add(candidate)
                 }
-            }
-            // ── Screen share + remote input signals ────────────────────────
-            ScreenShareManager.SIG_SCREEN_SHARE_START,
-            ScreenShareManager.SIG_SCREEN_SHARE_STOP,
-            ScreenShareManager.SIG_REMOTE_INPUT,
-            ScreenShareManager.SIG_REMOTE_INPUT_GRANT,
-            ScreenShareManager.SIG_REMOTE_INPUT_DENY -> {
-                ScreenShareManager.handleSignal(context, msg)
             }
         }
     }
