@@ -521,6 +521,9 @@ class LanCallManager private constructor(private val context: Context) {
         }
     }
 
+    // ── Public entry point for ScreenShareManager ─────────────────────────────
+    fun sendScreenShareSignal(msg: JSONObject) = sendSignal(msg)
+
     // ── Cleanup WebRTC resources ──────────────────────────────────────────────
     private fun cleanupWebRtc() {
         try { videoCapturer?.stopCapture(); videoCapturer?.dispose() } catch (_: Exception) {}

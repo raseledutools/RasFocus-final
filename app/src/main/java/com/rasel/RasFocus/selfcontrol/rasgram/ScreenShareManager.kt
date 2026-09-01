@@ -282,8 +282,7 @@ object ScreenShareManager {
         if (isLanMode) {
             // LAN: reuse existing LanCallManager TCP connection
             lanCallManager?.let { lcm ->
-                // Expose a sendRawSignal method in LanCallManager via companion
-                LanCallManager.sendScreenShareSignal(msg)
+                lcm.sendScreenShareSignal(msg)
             }
         } else {
             // Normal: write to Firestore "calls/{callId}/signals" subcollection
