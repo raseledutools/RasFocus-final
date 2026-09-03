@@ -66,6 +66,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.app.NotificationCompat
@@ -607,6 +610,7 @@ fun PremiumPermissionItem(title: String, desc: String, icon: androidx.compose.ui
 @Composable
 fun ChildStatusScreen(context: Context) {
     var rules by remember { mutableStateOf(ChildRuleManager.load(context)) }
+    var showModeChangeDialog by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
         val receiver = object : BroadcastReceiver() {
@@ -617,6 +621,14 @@ fun ChildStatusScreen(context: Context) {
             context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else context.registerReceiver(receiver, filter)
         onDispose { context.unregisterReceiver(receiver) }
+    }
+
+    // Mode Change Dialog
+    if (showModeChangeDialog) {
+        ModeChangeDialog(
+            context = context,
+            onDismiss = { showModeChangeDialog = false }
+        )
     }
 
     // Bottom nav selection state (Home / Connection / Filters / Settings)
@@ -786,7 +798,224 @@ fun ChildStatusScreen(context: Context) {
         }
 
         // ══ FOOTER — RasFocus brand NavigationBar (matches SelfControlModule) ══
-        ChildBottomNav(selected = selectedNavTab, onSelect = { selectedNavTab = it })
+        ChildBottomNav(
+            selected = selectedNavTab,
+            onSelect = { tab ->
+                if (tab == 3) {
+                    showModeChangeDialog = true
+                } else {
+                    selectedNavTab = tab
+                }
+            }
+        )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// MODE CHANGE DIALOG — Settings tab থেকে খোলে, mode change বা
+// unpair করার জন্য PIN verification সহ
+// ─────────────────────────────────────────────────────────────
+@Composable
+private fun ModeChangeDialog(context: Context, onDismiss: () -> Unit) {
+    var pinInput by remember { mutableStateOf("") }
+    var step by remember { mutableStateOf("menu") } // menu | pin | confirm
+    var pendingAction by remember { mutableStateOf("") }
+    var pinError by remember { mutableStateOf(false) }
+
+    // Parent PIN (stored by parent via ParentalModule)
+    val parentPin = remember {
+        context.getSharedPreferences("toggle_locks", Context.MODE_PRIVATE)
+            .getString("child_mode_pin", "") ?: ""
+    }
+    val hasPin = parentPin.isNotEmpty()
+
+    fun verifyAndProceed() {
+        if (!hasPin || pinInput == parentPin) {
+            step = "confirm"
+        } else {
+            pinError = true
+            pinInput = ""
+        }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(dismissOnBackPress = true, dismissOnClickOutside = true)
+    ) {
+        Card(
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                when (step) {
+                    "menu" -> {
+                        // ── Menu step ──
+                        Icon(Icons.Default.Settings, null, tint = PremiumTealAccent,
+                            modifier = Modifier.size(40.dp))
+                        Spacer(Modifier.height(12.dp))
+                        Text("Settings", fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, color = Color(0xFF1A1A2E))
+                        Spacer(Modifier.height(6.dp))
+                        Text("এই device-এর mode পরিবর্তন করতে পারবে।",
+                            fontSize = 13.sp, color = Color(0xFF8A8A9A), textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(24.dp))
+
+                        // Unpair option
+                        OutlinedButton(
+                            onClick = {
+                                pendingAction = "unpair"
+                                if (hasPin) step = "pin" else step = "confirm"
+                            },
+                            modifier = Modifier.fillMaxWidth().height(52.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.5.dp, Color(0xFFEF4444)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF4444))
+                        ) {
+                            Icon(Icons.Default.LinkOff, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Unpair / Remove Supervision", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+                        Spacer(Modifier.height(12.dp))
+
+                        // Switch mode option  
+                        Button(
+                            onClick = {
+                                pendingAction = "switch_mode"
+                                if (hasPin) step = "pin" else step = "confirm"
+                            },
+                            modifier = Modifier.fillMaxWidth().height(52.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = PremiumTealAccent)
+                        ) {
+                            Icon(Icons.Default.SwapHoriz, null, tint = Color.White,
+                                modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Switch App Mode", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.White)
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                            Text("Cancel", color = Color(0xFF8A8A9A))
+                        }
+                    }
+
+                    "pin" -> {
+                        // ── PIN verification step ──
+                        Icon(Icons.Default.Lock, null, tint = PremiumTealAccent,
+                            modifier = Modifier.size(40.dp))
+                        Spacer(Modifier.height(12.dp))
+                        Text("Enter Parent PIN", fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, color = Color(0xFF1A1A2E))
+                        Spacer(Modifier.height(6.dp))
+                        Text("এই action টি PIN দিয়ে সুরক্ষিত।",
+                            fontSize = 13.sp, color = Color(0xFF8A8A9A), textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(20.dp))
+
+                        OutlinedTextField(
+                            value = pinInput,
+                            onValueChange = { pinInput = it; pinError = false },
+                            label = { Text("Parent PIN") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            isError = pinError,
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.NumberPassword
+                            ),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = PremiumTealAccent,
+                                unfocusedBorderColor = Color(0xFFDDE6FF)
+                            )
+                        )
+                        if (pinError) {
+                            Spacer(Modifier.height(4.dp))
+                            Text("Incorrect PIN", color = Color(0xFFEF4444), fontSize = 12.sp)
+                        }
+                        Spacer(Modifier.height(20.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            OutlinedButton(
+                                onClick = { step = "menu"; pinInput = ""; pinError = false },
+                                modifier = Modifier.weight(1f).height(48.dp),
+                                shape = RoundedCornerShape(12.dp)
+                            ) { Text("Back") }
+                            Button(
+                                onClick = { verifyAndProceed() },
+                                modifier = Modifier.weight(1f).height(48.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = PremiumTealAccent)
+                            ) { Text("Verify", color = Color.White, fontWeight = FontWeight.Bold) }
+                        }
+                    }
+
+                    "confirm" -> {
+                        // ── Confirm step ──
+                        val isUnpair = pendingAction == "unpair"
+                        Icon(
+                            if (isUnpair) Icons.Default.Warning else Icons.Default.SwapHoriz,
+                            null,
+                            tint = if (isUnpair) Color(0xFFEF4444) else PremiumTealAccent,
+                            modifier = Modifier.size(40.dp)
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            if (isUnpair) "Remove Supervision?" else "Switch App Mode?",
+                            fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, color = Color(0xFF1A1A2E),
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            if (isUnpair)
+                                "এটি এই device থেকে parental supervision সম্পূর্ণ সরিয়ে দেবে। RasFocus+ আবার fresh start-এ ফিরে যাবে।"
+                            else
+                                "App টি মূল home screen-এ ফিরে যাবে যেখান থেকে যেকোনো mode select করা যাবে।",
+                            fontSize = 13.sp, color = Color(0xFF8A8A9A), textAlign = TextAlign.Center, lineHeight = 18.sp
+                        )
+                        Spacer(Modifier.height(24.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            OutlinedButton(
+                                onClick = { step = "menu"; pinInput = "" },
+                                modifier = Modifier.weight(1f).height(48.dp),
+                                shape = RoundedCornerShape(12.dp)
+                            ) { Text("Cancel") }
+                            Button(
+                                onClick = {
+                                    when (pendingAction) {
+                                        "unpair" -> {
+                                            ChildPairingManager.unpair(context)
+                                            context.stopService(Intent(context, ChildFirebaseService::class.java))
+                                            onDismiss()
+                                            // Restart the app activity to go to PAIRING screen
+                                            val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+                                            intent?.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            context.startActivity(intent)
+                                        }
+                                        "switch_mode" -> {
+                                            onDismiss()
+                                            // Navigate back to role selection
+                                            val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+                                            intent?.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            context.startActivity(intent)
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.weight(1f).height(48.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isUnpair) Color(0xFFEF4444) else PremiumTealAccent
+                                )
+                            ) {
+                                Text(
+                                    if (isUnpair) "Remove" else "Switch",
+                                    color = Color.White, fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
