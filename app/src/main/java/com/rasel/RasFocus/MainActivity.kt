@@ -1124,6 +1124,13 @@ fun RasFocusApp(viewModel: MainViewModel) {
             com.rasel.RasFocus.selfcontrol.StatisticsScreen(navController = navController)
         }
 
+        composable("pc_control") {
+            com.rasel.RasFocus.combo.selfcontrol.PcControlScreen(
+                navController = navController,
+                viewModel     = viewModel
+            )
+        }
+
         composable("launcher") {
             com.rasel.RasFocus.selfcontrol.launcher.MinimalistLauncherScreen(navController = navController)
         }
