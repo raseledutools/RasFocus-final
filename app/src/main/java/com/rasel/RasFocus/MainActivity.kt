@@ -1125,9 +1125,31 @@ fun RasFocusApp(viewModel: MainViewModel) {
         }
 
         composable("pc_control") {
-            com.rasel.RasFocus.combo.selfcontrol.PcControlScreen(
-                navController = navController,
-                viewModel     = viewModel
+            val pcPin      by viewModel.connectionPin.collectAsState()
+            val allDevices by viewModel.devices.collectAsState()
+            val pcDevices  = allDevices.filter { it.type == DeviceType.PC }
+            var selectedId by remember { mutableStateOf(pcDevices.firstOrNull()?.id ?: "") }
+
+            val pairedId = viewModel.pairedPcDeviceId.collectAsState(null).value
+            LaunchedEffect(pairedId) {
+                pairedId?.let {
+                    selectedId = it
+                    viewModel.stopPcPairingListener()
+                    viewModel.clearPairedPcDeviceId()
+                }
+            }
+
+            com.rasel.RasFocus.combo.selfcontrol.ParentControlScreen(
+                onBack         = { navController.popBackStack() },
+                deviceId       = selectedId.ifEmpty { null },
+                viewModel      = viewModel,
+                pin            = pcPin,
+                devices        = pcDevices.map { it.id to it.isOnline },
+                selectedDevice = selectedId.ifEmpty { null },
+                onRefreshPin   = { viewModel.refreshPin() },
+                onSelectDevice = { selectedId = it },
+                onLogout       = { navController.popBackStack() },
+                onPaired       = { selectedId = it }
             )
         }
 

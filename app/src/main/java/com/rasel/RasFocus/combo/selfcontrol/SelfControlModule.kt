@@ -336,6 +336,59 @@ fun StayFocusedApp(
                     QuickActionsSection(viewModel, navController, context)
                     Spacer(Modifier.height(20.dp))
                     ProfileTemplatesSection(navController)
+                    Spacer(Modifier.height(16.dp))
+                    // ── PC Control Card (combo mode) ──────────────────
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .clickable { navController.navigate("pc_control") },
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F1E3D)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+                    ) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    Brush.horizontalGradient(
+                                        listOf(Color(0xFF0F1E3D), Color(0xFF1A3560))
+                                    )
+                                )
+                                .padding(horizontal = 20.dp, vertical = 16.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    Modifier
+                                        .size(48.dp)
+                                        .background(Color(0xFF4FC3F7).copy(alpha = 0.15f), RoundedCornerShape(14.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Default.Computer,
+                                        contentDescription = null,
+                                        tint = Color(0xFF4FC3F7),
+                                        modifier = Modifier.size(26.dp)
+                                    )
+                                }
+                                Spacer(Modifier.width(16.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text("PC Control", color = White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                    Text("Control Windows PC remotely", color = White.copy(alpha = 0.65f), fontSize = 12.sp)
+                                }
+                                Row(
+                                    Modifier
+                                        .background(Color(0xFF4FC3F7).copy(alpha = 0.15f), RoundedCornerShape(20.dp))
+                                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(Modifier.size(6.dp).background(Color(0xFF4FC3F7), CircleShape))
+                                    Spacer(Modifier.width(5.dp))
+                                    Text("Open", color = Color(0xFF4FC3F7), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                        }
+                    }
                     Spacer(Modifier.height(20.dp))
                 }
             }
