@@ -94,8 +94,11 @@ class RemoteDesktopService : Service() {
     }
 
     data class RecentConn(
-        val name: String, val id: String, val ip: String,
-        val ts: Long = System.currentTimeMillis(), val online: Boolean = true
+        val name: String,
+        val id: String,       // stores PC IP address
+        val ip: String,       // stores auth code (6-digit) when connecting to PC
+        val ts: Long   = System.currentTimeMillis(),
+        val online: Boolean = true
     )
 
     private val TAG = "RDService"
