@@ -30,6 +30,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -37,6 +38,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.input.pointer.awaitPointerEventScope
+import androidx.compose.ui.input.pointer.awaitPointerEvent
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -650,26 +653,57 @@ fun PcViewerScreen(code: String, onBack: () -> Unit) {
     val context = LocalContext.current
     val scope   = rememberCoroutineScope()
 
-    val pcActive by RemoteDesktopService.pcStreamActive.collectAsState()
+    val pcActive   by RemoteDesktopService.pcStreamActive.collectAsState()
     var statusText by remember { mutableStateOf("Connecting...") }
     var showControls by remember { mutableStateOf(true) }
+    var showKeyboard by remember { mutableStateOf(false) }
+    var isRightClickMode by remember { mutableStateOf(false) }  // toggle: tap = right-click
+    var showDisconnectDialog by remember { mutableStateOf(false) }
 
+    // Auto-hide toolbar after 3s
     LaunchedEffect(showControls) {
         if (showControls) { delay(3000); showControls = false }
     }
 
+    // Connect on open
     LaunchedEffect(code) {
-        statusText = "Firestore lookup: code $code..."
+        statusText = "Connecting..."
         val devInfo = RdSignaling.lookup(code)
         if (devInfo == null) {
             statusText = "❌ Code not found — PC এ \"Generate Code\" চাপো"
             return@LaunchedEffect
         }
-        statusText = "Connecting to ${devInfo.name} (${devInfo.ip}:${devInfo.port})..."
+        statusText = "Connecting to ${devInfo.name}..."
         RemoteDesktopService.getInstance()?.connectToPC(devInfo, code)
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+    // Disconnect confirm dialog
+    if (showDisconnectDialog) {
+        AlertDialog(
+            onDismissRequest = { showDisconnectDialog = false },
+            title = { Text("Disconnect?", color = TextPrimary) },
+            text  = { Text("PC থেকে disconnect করবে?", color = TextSecondary) },
+            containerColor = BgCard,
+            confirmButton = {
+                TextButton(onClick = {
+                    showDisconnectDialog = false
+                    RemoteDesktopService.getInstance()?.disconnectFromPC()
+                    onBack()
+                }) { Text("Disconnect", color = AccentRed) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDisconnectDialog = false }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            }
+        )
+    }
+
+    Box(modifier = Modifier
+        .fillMaxSize()
+        .background(Color.Black)
+    ) {
+        // ── Video surface ─────────────────────────────────────────
         if (pcActive) {
             AndroidView(
                 factory = { ctx ->
@@ -679,91 +713,286 @@ fun PcViewerScreen(code: String, onBack: () -> Unit) {
                 },
                 modifier = Modifier
                     .fillMaxSize()
+                    .pointerInput(isRightClickMode) {
+                        // Drag = mouse move, press/release = click
+                        awaitPointerEventScope {
+                            while (true) {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                val normX = down.position.x / size.width
+                                val normY = down.position.y / size.height
+                                val btn   = if (isRightClickMode) 2 else 0
+
+                                // Mouse down
+                                val downMask = if (btn == 0) 1 else 2  // left=1, right=2
+                                RemoteDesktopService.getInstance()
+                                    ?.sendMouseEvent(nx = normX, ny = normY, mask = downMask)
+
+                                // Drag tracking
+                                var lastX = normX
+                                var lastY = normY
+                                var isDragging = false
+
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull() ?: break
+                                    if (!change.pressed) {
+                                        // Mouse up
+                                        val upMask = if (btn == 0) 2 else 8
+                                        RemoteDesktopService.getInstance()
+                                            ?.sendMouseEvent(nx = lastX, ny = lastY, mask = upMask)
+                                        break
+                                    }
+                                    // Move
+                                    val mx = change.position.x / size.width
+                                    val my = change.position.y / size.height
+                                    if (kotlin.math.abs(mx - lastX) > 0.002f ||
+                                        kotlin.math.abs(my - lastY) > 0.002f) {
+                                        isDragging = true
+                                        RemoteDesktopService.getInstance()
+                                            ?.sendMouseEvent(nx = mx, ny = my, mask = if (btn == 0) 1 else 2)
+                                        lastX = mx; lastY = my
+                                    }
+                                    change.consume()
+                                }
+                            }
+                        }
+                    }
                     .pointerInput(Unit) {
+                        // Long press = right-click (single shot)
                         detectTapGestures(
-                            onPress = { offset ->
-                                showControls = false
-                                val normX = offset.x / size.width
-                                val normY = offset.y / size.height
-                                RemoteDesktopService.getInstance()?.sendMouseEvent(nx = normX, ny = normY, mask = 1)
-                                tryAwaitRelease()
-                                RemoteDesktopService.getInstance()?.sendMouseEvent(nx = normX, ny = normY, mask = 2)
+                            onLongPress = { offset ->
+                                val nx = offset.x / size.width
+                                val ny = offset.y / size.height
+                                // Right click down + up
+                                RemoteDesktopService.getInstance()?.sendMouseEvent(nx = nx, ny = ny, mask = 2)
+                                scope.launch {
+                                    delay(50)
+                                    RemoteDesktopService.getInstance()?.sendMouseEvent(nx = nx, ny = ny, mask = 8)
+                                }
+                            },
+                            onDoubleTap = {
+                                // Double tap = show toolbar
+                                showControls = true
                             }
                         )
                     }
             )
         } else {
+            // ── Connecting / error state ───────────────────────────
             Column(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                CircularProgressIndicator(color = AccentBlue)
-                Spacer(Modifier.height(16.dp))
-                Text(statusText, color = TextPrimary, fontSize = 13.sp,
-                    textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 24.dp))
+                if (!statusText.startsWith("❌")) {
+                    CircularProgressIndicator(color = AccentCyan, modifier = Modifier.size(48.dp))
+                    Spacer(Modifier.height(20.dp))
+                } else {
+                    Icon(Icons.Default.ErrorOutline, contentDescription = null,
+                        tint = AccentRed, modifier = Modifier.size(48.dp))
+                    Spacer(Modifier.height(20.dp))
+                }
+                Text(
+                    statusText,
+                    color = if (statusText.startsWith("❌")) AccentRed else TextPrimary,
+                    fontSize = 14.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 32.dp)
+                )
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "Double-tap screen = toolbar দেখাবে\nLong press = right-click\nDrag = mouse move",
+                    color = TextSecondary,
+                    fontSize = 11.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 32.dp)
+                )
+                if (statusText.startsWith("❌")) {
+                    Spacer(Modifier.height(20.dp))
+                    Button(
+                        onClick = { onBack() },
+                        colors = ButtonDefaults.buttonColors(containerColor = BgCard)
+                    ) {
+                        Text("← Back", color = TextPrimary)
+                    }
+                }
             }
         }
 
-        AnimatedVisibility(visible = showControls, enter = fadeIn(), exit = fadeOut()) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                Surface(
-                    color = Color.Black.copy(alpha = 0.7f),
-                    modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter)
+        // ── Overlay toolbar (auto-hide) ───────────────────────────
+        AnimatedVisibility(
+            visible = showControls,
+            enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+            exit  = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+            modifier = Modifier.align(Alignment.TopCenter)
+        ) {
+            Surface(
+                color = Color(0xCC000000),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(4.dp, 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        modifier = Modifier.padding(8.dp, 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = {
-                            RemoteDesktopService.getInstance()?.disconnectFromPC()
-                            onBack()
-                        }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White)
-                        }
-                        Text("PC Remote  •  ID: ${formatRdId(code)}", color = Color.White,
-                            fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    // Back / disconnect
+                    IconButton(onClick = { showDisconnectDialog = true }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White)
+                    }
+
+                    // ID + status
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "PC Remote  •  ${formatRdId(code)}",
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
                         if (pcActive) {
-                            Box(Modifier.size(8.dp).clip(CircleShape).background(AccentGreen))
+                            Text("Connected", color = AccentGreen, fontSize = 10.sp)
                         }
                     }
-                }
 
-                Surface(
-                    color = Color.Black.copy(alpha = 0.7f),
-                    modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter)
-                ) {
+                    // Right-click mode toggle
+                    IconButton(onClick = { isRightClickMode = !isRightClickMode }) {
+                        Icon(
+                            Icons.Default.Mouse,
+                            contentDescription = "Right-click mode",
+                            tint = if (isRightClickMode) AccentCyan else TextSecondary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+
+                    // Keyboard toggle
+                    IconButton(onClick = { showKeyboard = !showKeyboard }) {
+                        Icon(
+                            Icons.Default.Keyboard,
+                            contentDescription = "Keyboard",
+                            tint = if (showKeyboard) AccentCyan else TextSecondary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        // ── Bottom keyboard bar ───────────────────────────────────
+        AnimatedVisibility(
+            visible = showKeyboard,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit  = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            Surface(color = Color(0xDD111111)) {
+                Column {
+                    // Modifier keys row
                     Row(
-                        modifier = Modifier.padding(8.dp, 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 6.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
                         listOf(
-                            "Esc" to 27, "Win" to 91, "Alt" to 18,
-                            "Ctrl" to 17, "Tab" to 9, "Del" to 46, "Enter" to 13
+                            "Esc" to 27, "F1" to 112, "F2" to 113, "F3" to 114,
+                            "F4" to 115, "F5" to 116, "Win" to 91
                         ).forEach { (label, vk) ->
-                            SmallKeyButton(label) {
+                            SmallKeyButton(label, color = Color(0xFF333333)) {
                                 RemoteDesktopService.getInstance()?.sendKeyEvent(vk, "down")
-                                scope.launch {
-                                    delay(50)
-                                    RemoteDesktopService.getInstance()?.sendKeyEvent(vk, "up")
-                                }
+                                scope.launch { delay(50); RemoteDesktopService.getInstance()?.sendKeyEvent(vk, "up") }
                             }
                         }
                     }
+                    // Common keys row
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 6.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        listOf(
+                            "Ctrl" to 17, "Alt" to 18, "Tab" to 9,
+                            "Del" to 46, "Home" to 36, "End" to 35,
+                            "PgUp" to 33, "PgDn" to 34, "Enter" to 13, "⌫" to 8
+                        ).forEach { (label, vk) ->
+                            SmallKeyButton(label, color = Color(0xFF2A2A50)) {
+                                RemoteDesktopService.getInstance()?.sendKeyEvent(vk, "down")
+                                scope.launch { delay(50); RemoteDesktopService.getInstance()?.sendKeyEvent(vk, "up") }
+                            }
+                        }
+                    }
+                    // Arrow keys
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(6.dp, 4.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Spacer(Modifier.weight(1f))
+                        listOf("↑" to 38, "↓" to 40, "←" to 37, "→" to 39).take(1).forEach { (l, vk) ->
+                            SmallKeyButton(l, color = Color(0xFF1A3A1A)) {
+                                RemoteDesktopService.getInstance()?.sendKeyEvent(vk, "down")
+                                scope.launch { delay(50); RemoteDesktopService.getInstance()?.sendKeyEvent(vk, "up") }
+                            }
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            SmallKeyButton("↑", color = Color(0xFF1A3A1A)) {
+                                RemoteDesktopService.getInstance()?.sendKeyEvent(38, "down")
+                                scope.launch { delay(50); RemoteDesktopService.getInstance()?.sendKeyEvent(38, "up") }
+                            }
+                            Spacer(Modifier.height(3.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                                SmallKeyButton("←", color = Color(0xFF1A3A1A)) {
+                                    RemoteDesktopService.getInstance()?.sendKeyEvent(37, "down")
+                                    scope.launch { delay(50); RemoteDesktopService.getInstance()?.sendKeyEvent(37, "up") }
+                                }
+                                SmallKeyButton("↓", color = Color(0xFF1A3A1A)) {
+                                    RemoteDesktopService.getInstance()?.sendKeyEvent(40, "down")
+                                    scope.launch { delay(50); RemoteDesktopService.getInstance()?.sendKeyEvent(40, "up") }
+                                }
+                                SmallKeyButton("→", color = Color(0xFF1A3A1A)) {
+                                    RemoteDesktopService.getInstance()?.sendKeyEvent(39, "down")
+                                    scope.launch { delay(50); RemoteDesktopService.getInstance()?.sendKeyEvent(39, "up") }
+                                }
+                            }
+                        }
+                        Spacer(Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.height(8.dp))
                 }
             }
         }
 
-        if (!showControls && pcActive) {
-            Box(modifier = Modifier.fillMaxSize().clickable { showControls = true })
+        // ── Right-click mode indicator pill ──────────────────────
+        if (isRightClickMode) {
+            Surface(
+                color = AccentCyan.copy(alpha = 0.85f),
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = if (showControls) 56.dp else 8.dp)
+            ) {
+                Text(
+                    "Right-click mode ON  —  tap anywhere",
+                    color = Color.Black,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp)
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun SmallKeyButton(label: String, onClick: () -> Unit) {
+private fun SmallKeyButton(
+    label: String,
+    color: Color = Color(0xFF2A2A2A),
+    onClick: () -> Unit
+) {
     Surface(
-        color = Color(0xFF2A2A2A),
+        color = color,
         shape = RoundedCornerShape(5.dp),
         modifier = Modifier.clickable(onClick = onClick)
     ) {
