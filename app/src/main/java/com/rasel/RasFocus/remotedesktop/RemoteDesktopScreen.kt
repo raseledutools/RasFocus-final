@@ -1,27 +1,29 @@
 package com.rasel.RasFocus.remotedesktop
 
 /**
- * RemoteDesktopScreen — RustDesk-style UI, PC-compatible protocol
+ * RemoteDesktopScreen — RustDesk-style UI v2
  *
  * ┌─────────────────────────────────────────────────────────────────┐
- * │  দুটো mode:                                                      │
- * │  A) Connect to PC  — PC এ "Generate Code" চাপলে 6-digit code   │
- * │     + PC IP পাওয়া যায়, সেটা phone এ দিলে PC screen চলে আসে।  │
- * │  B) Share Screen   — Phone screen অন্য device এ দেখাতে পারে।   │
+ * │  Screenshot (RustDesk) এর মতো layout:                          │
+ * │                                                                  │
+ * │  Left panel:  "Your Desktop" — এই device এর ID + password      │
+ * │  Right panel: "Control Remote Desktop" — code input + Connect   │
+ * │  Bottom grid: Recent connections (Android + Windows cards)       │
+ * │                                                                  │
+ * │  Modes:                                                          │
+ * │  A) Phone → PC:  PC এ "Generate Code" চাপলে 6-digit code আসে.  │
+ * │     Phone এ code দিলে Firestore lookup → PC IP → direct connect │
+ * │     LAN miss → relay.rasfocus.com/relay/<code> bridge          │
+ * │  B) Share Screen: Phone screen → অন্য device                   │
  * └─────────────────────────────────────────────────────────────────┘
  *
- * PC protocol (tab_phone_remote.cpp):
- *   port 9224, WebSocket
- *   auth:  phone → {"type":"auth","code":"XXXXXX","device":"Phone"}
- *   ready: PC   → {"type":"ready","width":W,"height":H,"fps":30}
- *   error: PC   → {"type":"error","msg":"wrong code"}
- *   video: PC   → binary [flags 1B | pts 4B | H264 NAL]
- *   input: phone → {"type":"mouse","mask":M,"x":X,"y":Y}
- *                   {"type":"key","vk":V,"action":A}
- *                   {"type":"scroll","x":X,"y":Y,"dir":"up"/"down"}
+ * Protocol: ws://pc-ip:9224, H264 NAL binary frames, JSON control
+ * Relay:    wss://relay.rasfocus.com/relay/<code>
  */
 
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
@@ -33,9 +35,8 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -49,10 +50,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -63,18 +67,33 @@ import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-// ── Colour palette (RustDesk inspired) ──────────────────────────────────────
-private val BgDark        = Color(0xFF1A1A2E)
-private val BgCard        = Color(0xFF242436)
+// ── Colour palette (RustDesk dark theme) ────────────────────────────────────
+private val BgDark        = Color(0xFF17171F)
+private val BgSidebar     = Color(0xFF1E1E2A)
+private val BgCard        = Color(0xFF252535)
+private val BgCardHover   = Color(0xFF2E2E42)
+private val AccentBlue    = Color(0xFF1A73E8)   // RustDesk blue
 private val AccentCyan    = Color(0xFF00C0EF)
 private val AccentGreen   = Color(0xFF2ECC71)
 private val AccentRed     = Color(0xFFE74C3C)
+private val AccentPurple  = Color(0xFF9B59B6)
 private val TextPrimary   = Color(0xFFEEEEEE)
 private val TextSecondary = Color(0xFF9A9AB0)
 private val OnlineDot     = Color(0xFF00D26A)
 private val OfflineDot    = Color(0xFF888888)
+private val DividerColor  = Color(0xFF2A2A3A)
+
+// ── Recent connection model ──────────────────────────────────────────────────
+data class RecentDevice(
+    val id: String,
+    val displayName: String,
+    val platform: String,   // "android" or "windows"
+    val isOnline: Boolean = false,
+    val cardColor: Color = BgCard
+)
 
 // ─────────────────────────────────────────────────────────────────────────────
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RemoteDesktopHomeScreen(onBack: () -> Unit) {
     val context = LocalContext.current
@@ -84,17 +103,15 @@ fun RemoteDesktopHomeScreen(onBack: () -> Unit) {
     val myId      by RemoteDesktopService.myId.collectAsState()
     val clients   by RemoteDesktopService.connectedClients.collectAsState()
 
-    var selectedTab by remember { mutableIntStateOf(0) }
+    // ── "Connect to PC" state ──────────────────────────────────────
+    var codeInput    by remember { mutableStateOf("") }
+    var statusMsg    by remember { mutableStateOf("") }
+    var isConnecting by remember { mutableStateOf(false) }
+    var showViewer   by remember { mutableStateOf(false) }
+    var viewerCode   by remember { mutableStateOf("") }
+    var connectError by remember { mutableStateOf("") }
 
-    // ── "Connect to PC" state ─────────────────────────────────────
-    // IP দিতে হবে না — UDP broadcast দিয়ে PC খুঁজে নেওয়া হয়
-    var codeInput   by remember { mutableStateOf("") }
-    var statusMsg   by remember { mutableStateOf("") }
-    var showViewer  by remember { mutableStateOf(false) }
-    var viewerCode  by remember { mutableStateOf("") }
-
-    // ── "Share Screen" (phone → other device) state ──────────────
-    var showPermDialog by remember { mutableStateOf(false) }
+    // ── "Share Screen" state ──────────────────────────────────────
     val mpm = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
     val projectionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -113,820 +130,783 @@ fun RemoteDesktopHomeScreen(onBack: () -> Unit) {
         }
     }
 
-    fun startSharing() {
-        if (!isRunning) projectionLauncher.launch(mpm.createScreenCaptureIntent())
-        else statusMsg = "✅ Already running — ID: ${RemoteDesktopService.formatId(myId)}"
-    }
-    fun stopSharing() {
-        context.stopService(Intent(context, RemoteDesktopService::class.java))
-        statusMsg = "⏹ Service বন্ধ হয়েছে"
+    // ── Recent connections (persisted in SharedPrefs) ─────────────
+    val recentPrefs = remember { context.getSharedPreferences("rd_recent", Context.MODE_PRIVATE) }
+    var recentDevices by remember {
+        mutableStateOf(loadRecentDevices(recentPrefs))
     }
 
-    // ── Fullscreen PC viewer overlay ──────────────────────────────
-    if (showViewer && viewerCode.isNotEmpty()) {
+    // ── If showing PC viewer ───────────────────────────────────────
+    if (showViewer) {
         PcViewerScreen(
-            code   = viewerCode,
-            onBack = {
-                showViewer = false
-                viewerCode = ""
-                statusMsg  = ""
-            }
+            code = viewerCode,
+            onBack = { showViewer = false; viewerCode = "" }
         )
         return
     }
 
-    Scaffold(
-        containerColor = BgDark,
-        topBar = {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .background(BgDark)
-                    .padding(horizontal = 4.dp, vertical = 8.dp)
+    // ── Main layout ────────────────────────────────────────────────
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(BgDark)
+    ) {
+        // ── Top bar ────────────────────────────────────────────────
+        TopBar(onBack = onBack)
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // ── Main two-column area ──────────────────────────────
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                IconButton(onClick = onBack, Modifier.align(Alignment.CenterStart)) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = TextPrimary)
-                }
-                Text(
-                    "RasFocus Remote",
-                    color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp,
-                    modifier = Modifier.align(Alignment.Center)
-                )
-                if (isRunning) {
-                    Row(
-                        Modifier.align(Alignment.CenterEnd).padding(end = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(Modifier.size(8.dp).clip(CircleShape).background(OnlineDot))
-                        Spacer(Modifier.width(4.dp))
-                        Text("$clients", color = OnlineDot, fontSize = 12.sp)
+                // Left panel: Your Desktop (this phone's ID)
+                YourDesktopPanel(
+                    modifier = Modifier.weight(1f),
+                    isRunning = isRunning,
+                    myId = myId,
+                    clients = clients,
+                    context = context,
+                    onStartSharing = {
+                        if (!isRunning) projectionLauncher.launch(mpm.createScreenCaptureIntent())
+                        else statusMsg = "Already running — ID: ${RemoteDesktopService.formatId(myId)}"
+                    },
+                    onStopSharing = {
+                        context.startService(Intent(context, RemoteDesktopService::class.java).apply {
+                            action = RemoteDesktopService.ACTION_STOP
+                        })
+                        statusMsg = "Screen sharing বন্ধ হয়েছে"
                     }
-                }
+                )
+
+                // Right panel: Connect to Remote
+                ConnectPanel(
+                    modifier = Modifier.weight(1.2f),
+                    codeInput = codeInput,
+                    onCodeChange = { v ->
+                        codeInput = v.filter { it.isDigit() }.take(6)
+                        connectError = ""
+                    },
+                    isConnecting = isConnecting,
+                    connectError = connectError,
+                    onConnect = {
+                        if (codeInput.length == 6) {
+                            isConnecting = true
+                            connectError = ""
+                            scope.launch {
+                                val result = connectToRemote(context, codeInput)
+                                isConnecting = false
+                                when {
+                                    result.success -> {
+                                        // Save to recent
+                                        val dev = RecentDevice(
+                                            id = codeInput,
+                                            displayName = result.deviceName,
+                                            platform = result.platform,
+                                            isOnline = true,
+                                            cardColor = if(result.platform=="windows")
+                                                Color(0xFF5B4EAB) else Color(0xFF2B4A6F)
+                                        )
+                                        recentDevices = saveAndGetRecent(recentPrefs, dev)
+                                        viewerCode = codeInput
+                                        showViewer = true
+                                    }
+                                    else -> {
+                                        connectError = result.error
+                                    }
+                                }
+                                codeInput = ""
+                            }
+                        }
+                    }
+                )
+            }
+
+            // Status message
+            if (statusMsg.isNotEmpty()) {
+                StatusBanner(statusMsg)
+            }
+
+            // ── Recent / saved connections grid ───────────────────
+            if (recentDevices.isNotEmpty()) {
+                RecentConnectionsSection(
+                    devices = recentDevices,
+                    onConnect = { dev ->
+                        viewerCode = dev.id
+                        showViewer = true
+                    },
+                    onRemove = { dev ->
+                        recentDevices = removeRecent(recentPrefs, dev)
+                    }
+                )
+            }
+
+            // ── Info card ─────────────────────────────────────────
+            RelayInfoCard()
+
+            Spacer(Modifier.height(32.dp))
+        }
+    }
+}
+
+// ── Top app bar ───────────────────────────────────────────────────────────────
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TopBar(onBack: () -> Unit) {
+    TopAppBar(
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Default.ScreenShare, contentDescription = null, tint = AccentBlue, modifier = Modifier.size(20.dp))
+                Text("Remote Desktop", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
             }
         },
-        bottomBar = {
-            RdBottomNav(selected = selectedTab, onSelect = { selectedTab = it })
-        }
-    ) { padding ->
-        when (selectedTab) {
-            0 -> ConnectToPcTab(
-                modifier     = Modifier.padding(padding),
-                codeInput    = codeInput,
-                statusMsg    = statusMsg,
-                recentList   = RemoteDesktopService.recentConnections,
-                onCodeChange = { if (it.filter { c -> c.isDigit() }.length <= 6) codeInput = it },
-                onConnect    = {
-                    val code = codeInput.filter { it.isDigit() }
-                    if (code.length != 6) { statusMsg = "⚠️ 6-digit code দাও"; return@ConnectToPcTab }
-                    viewerCode = code
-                    showViewer = true
-                    RemoteDesktopService.recentConnections.add(
-                        0, RemoteDesktopService.RecentConn("PC", "", code)
-                    )
-                },
-                onConnectRecent = { conn ->
-                    viewerCode = conn.ip   // ip field = auth code
-                    showViewer = true
-                }
-            )
-            1 -> ChatTabPlaceholder(Modifier.padding(padding))
-            2 -> ShareScreenTab(
-                modifier  = Modifier.padding(padding),
-                isRunning = isRunning,
-                myId      = myId,
-                statusMsg = statusMsg,
-                onStart   = { startSharing() },
-                onStop    = { stopSharing() }
-            )
-            3 -> RdSettingsTab(Modifier.padding(padding), context)
-        }
-    }
+        navigationIcon = {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextSecondary)
+            }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = BgSidebar),
+    )
 }
 
-// ── Tab 0: Connect to PC ─────────────────────────────────────────────────────
+// ── Left panel: "Your Desktop" ────────────────────────────────────────────────
 @Composable
-fun ConnectToPcTab(
-    modifier: Modifier,
-    codeInput: String,
-    statusMsg: String,
-    recentList: List<RemoteDesktopService.RecentConn>,
-    onCodeChange: (String) -> Unit,
-    onConnect: () -> Unit,
-    onConnectRecent: (RemoteDesktopService.RecentConn) -> Unit
-) {
-    LazyColumn(
-        modifier = modifier.fillMaxSize().background(BgDark),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        // ── How-to card ───────────────────────────────────────────
-        item {
-            Card(
-                shape  = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1A2540)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Computer, null,
-                            tint = AccentCyan, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("PC কে Control করো", color = AccentCyan,
-                            fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    }
-                    Text("১. PC তে RasFocus Desktop খোলো",
-                        color = TextSecondary, fontSize = 13.sp)
-                    Text("২. \"Phone Remote\" ট্যাব → \"Generate Code\" চাপো",
-                        color = TextSecondary, fontSize = 13.sp)
-                    Text("৩. PC এবং Phone একই WiFi তে থাকো",
-                        color = TextSecondary, fontSize = 13.sp)
-                    Text("৪. নিচে শুধু 6-digit code টাইপ করো — IP দিতে হবে না",
-                        color = AccentCyan, fontSize = 13.sp)
-                    Text("৫. Connect চাপলে PC screen phone এ আসবে",
-                        color = TextSecondary, fontSize = 13.sp)
-                }
-            }
-        }
-
-        // ── IP + Code input card ──────────────────────────────────
-        item {
-            Card(
-                shape  = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = BgCard),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    Modifier.padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text("PC এর Code টাইপ করো", color = TextSecondary, fontSize = 13.sp)
-
-                    // 6-digit code field — big digits like RustDesk
-                    OutlinedTextField(
-                        value         = codeInput,
-                        onValueChange = onCodeChange,
-                        label         = { Text("6-digit Code (PC থেকে)", color = TextSecondary) },
-                        placeholder   = {
-                            Text("000000", color = TextSecondary.copy(alpha = .4f),
-                                fontSize = 26.sp, letterSpacing = 6.sp)
-                        },
-                        textStyle     = androidx.compose.ui.text.TextStyle(
-                            fontSize      = 28.sp,
-                            fontWeight    = FontWeight.Bold,
-                            color         = AccentCyan,
-                            letterSpacing = 6.sp,
-                            textAlign     = TextAlign.Center
-                        ),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                        singleLine    = true,
-                        modifier      = Modifier.fillMaxWidth(),
-                        shape         = RoundedCornerShape(12.dp),
-                        colors        = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor   = AccentCyan,
-                            unfocusedBorderColor = Color(0xFF3A3A50),
-                            focusedTextColor     = AccentCyan,
-                            unfocusedTextColor   = AccentCyan,
-                            cursorColor          = AccentCyan
-                        )
-                    )
-
-                    Button(
-                        onClick  = onConnect,
-                        enabled  = codeInput.filter { it.isDigit() }.length == 6,
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
-                        shape    = RoundedCornerShape(12.dp),
-                        colors   = ButtonDefaults.buttonColors(
-                            containerColor         = AccentCyan,
-                            disabledContainerColor = Color(0xFF2E2E44)
-                        )
-                    ) {
-                        Icon(Icons.Default.PlayArrow, null,
-                            tint = BgDark, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Connect", color = BgDark,
-                            fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    }
-                }
-            }
-        }
-
-        // ── Status message ────────────────────────────────────────
-        if (statusMsg.isNotEmpty()) {
-            item {
-                Card(
-                    shape  = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = when {
-                            statusMsg.startsWith("✅") -> Color(0xFF1A3A2A)
-                            statusMsg.startsWith("❌") -> Color(0xFF3A1A1A)
-                            else                       -> Color(0xFF1A1A3A)
-                        }
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(statusMsg, Modifier.padding(14.dp),
-                        color = TextPrimary, fontSize = 13.sp)
-                }
-            }
-        }
-
-        // ── Recent connections ─────────────────────────────────────
-        if (recentList.isNotEmpty()) {
-            item {
-                Text("Recent", color = TextSecondary,
-                    fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            }
-            items(recentList.take(5)) { conn ->
-                RecentPcItem(conn = conn, onClick = { onConnectRecent(conn) })
-            }
-        }
-    }
-}
-
-// ── Recent PC Row ─────────────────────────────────────────────────────────────
-@Composable
-fun RecentPcItem(
-    conn: RemoteDesktopService.RecentConn,
-    onClick: () -> Unit
-) {
-    Card(
-        shape  = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = BgCard),
-        modifier = Modifier.fillMaxWidth().clickable { onClick() }
-    ) {
-        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.size(48.dp).clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFF1A3A5C)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.Computer, null,
-                    tint = AccentCyan, modifier = Modifier.size(26.dp))
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(conn.name, color = TextPrimary,
-                    fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Spacer(Modifier.height(2.dp))
-                Text("Code: ${conn.ip}", color = TextSecondary, fontSize = 12.sp)
-            }
-            Icon(Icons.Default.ArrowForward, null,
-                tint = TextSecondary, modifier = Modifier.size(18.dp))
-        }
-    }
-}
-
-// ── Bottom navigation ────────────────────────────────────────────────────────
-@Composable
-fun RdBottomNav(selected: Int, onSelect: (Int) -> Unit) {
-    NavigationBar(containerColor = BgCard, tonalElevation = 0.dp) {
-        listOf(
-            Triple(Icons.Default.Computer,    "Connect PC", 0),
-            Triple(Icons.Default.Chat,         "Chat",        1),
-            Triple(Icons.Default.ScreenShare,  "Share",       2),
-            Triple(Icons.Default.Settings,     "Settings",    3)
-        ).forEach { (icon, label, idx) ->
-            NavigationBarItem(
-                selected = selected == idx,
-                onClick  = { onSelect(idx) },
-                icon     = { Icon(icon, null) },
-                label    = { Text(label, fontSize = 11.sp) },
-                colors   = NavigationBarItemDefaults.colors(
-                    selectedIconColor   = AccentCyan,
-                    selectedTextColor   = AccentCyan,
-                    unselectedIconColor = TextSecondary,
-                    unselectedTextColor = TextSecondary,
-                    indicatorColor      = Color(0xFF1E1E32)
-                )
-            )
-        }
-    }
-}
-
-// ── Tab 2: Share Screen (phone → PC) ────────────────────────────────────────
-@Composable
-fun ShareScreenTab(
+private fun YourDesktopPanel(
     modifier: Modifier,
     isRunning: Boolean,
     myId: String,
-    statusMsg: String,
-    onStart: () -> Unit,
-    onStop: () -> Unit
+    clients: Int,
+    context: Context,
+    onStartSharing: () -> Unit,
+    onStopSharing: () -> Unit
 ) {
-    Column(
-        modifier.fillMaxSize().background(BgDark).padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterVertically)
+    val formattedId = if (myId.isNotEmpty()) RemoteDesktopService.formatId(myId) else "---"
+
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = BgSidebar),
+        shape = RoundedCornerShape(12.dp)
     ) {
-        Icon(
-            Icons.Default.ScreenShare, null,
-            tint     = if (isRunning) AccentGreen else TextSecondary,
-            modifier = Modifier.size(72.dp)
-        )
-        Text(
-            if (isRunning) "Sharing Active" else "Not Sharing",
-            color = if (isRunning) AccentGreen else TextSecondary,
-            fontSize = 20.sp, fontWeight = FontWeight.Bold
-        )
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Your Desktop", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            Text("এই device কে অন্য device থেকে control করতে দিন",
+                color = TextSecondary, fontSize = 11.sp)
 
-        Button(
-            onClick  = if (isRunning) onStop else onStart,
-            modifier = Modifier.fillMaxWidth().height(54.dp),
-            shape    = RoundedCornerShape(14.dp),
-            colors   = ButtonDefaults.buttonColors(
-                containerColor = if (isRunning) AccentRed else AccentCyan
-            )
-        ) {
-            Icon(
-                if (isRunning) Icons.Default.StopCircle else Icons.Default.PlayCircle,
-                null, tint = Color.White
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                if (isRunning) "Stop Sharing" else "Start Sharing",
-                color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp
-            )
-        }
+            HorizontalDivider(color = DividerColor)
 
-        if (isRunning && myId.isNotEmpty()) {
-            Card(
-                shape  = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1A3A2A)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(Modifier.padding(16.dp)) {
-                    Text("অন্য device এ এই ID দিয়ে connect করো:",
-                        color = TextSecondary, fontSize = 13.sp)
-                    Spacer(Modifier.height(6.dp))
+            // ID row
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("ID", color = TextSecondary, fontSize = 11.sp)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        RemoteDesktopService.formatId(myId),
-                        color = AccentCyan, fontSize = 28.sp,
-                        fontWeight = FontWeight.Bold, letterSpacing = 2.sp
+                        text = formattedId,
+                        color = if (isRunning) AccentCyan else TextPrimary,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp,
+                        modifier = Modifier.weight(1f)
                     )
-                    Spacer(Modifier.height(4.dp))
-                    Text("Port: ${RemoteDesktopService.WS_PORT}",
-                        color = TextSecondary, fontSize = 12.sp)
-                }
-            }
-        }
-
-        if (statusMsg.isNotEmpty()) {
-            Text(statusMsg, color = TextSecondary,
-                fontSize = 13.sp, textAlign = TextAlign.Center)
-        }
-    }
-}
-
-// ── Tab 1: Chat placeholder ──────────────────────────────────────────────────
-@Composable
-fun ChatTabPlaceholder(modifier: Modifier) {
-    Box(modifier.fillMaxSize().background(BgDark), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(Icons.Default.Chat, null,
-                tint = TextSecondary, modifier = Modifier.size(56.dp))
-            Spacer(Modifier.height(12.dp))
-            Text("Chat — Coming soon", color = TextSecondary, fontSize = 15.sp)
-        }
-    }
-}
-
-// ── Tab 3: Settings ──────────────────────────────────────────────────────────
-@Composable
-fun RdSettingsTab(modifier: Modifier, context: Context) {
-    var quality by remember { mutableIntStateOf(65) }
-    LazyColumn(
-        modifier.fillMaxSize().background(BgDark),
-        contentPadding   = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            Text("Settings", color = TextPrimary,
-                fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        }
-        item {
-            Card(
-                shape  = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = BgCard),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(Modifier.padding(16.dp)) {
-                    Text("Video Quality: $quality%", color = TextPrimary, fontSize = 14.sp)
-                    Slider(
-                        value         = quality.toFloat(),
-                        onValueChange = { quality = it.toInt() },
-                        valueRange    = 20f..95f,
-                        colors = SliderDefaults.colors(
-                            thumbColor      = AccentCyan,
-                            activeTrackColor = AccentCyan
-                        )
-                    )
-                    Text("Low = smoother, High = sharper",
-                        color = TextSecondary, fontSize = 12.sp)
-                }
-            }
-        }
-        item {
-            Card(
-                shape  = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = BgCard),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text("Connection Info", color = TextPrimary,
-                        fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    Text("WebSocket port: ${RemoteDesktopService.WS_PORT}",
-                        color = TextSecondary, fontSize = 13.sp)
-                    Text("Local IP: ${RemoteDesktopService.getLocalIp(context)}",
-                        color = TextSecondary, fontSize = 13.sp)
-                    Text("Protocol: WebSocket + H264 (same as PC side)",
-                        color = TextSecondary, fontSize = 12.sp)
-                }
-            }
-        }
-        item {
-            Card(
-                shape  = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = BgCard),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text("Accessibility Service", color = TextPrimary,
-                        fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    val inputEnabled by RemoteDesktopInputService.isEnabled.collectAsState()
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            Modifier.size(8.dp).clip(CircleShape)
-                                .background(if (inputEnabled) OnlineDot else OfflineDot)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            if (inputEnabled) "Active — input control ready"
-                            else "Disabled — enable for remote input",
-                            color = if (inputEnabled) OnlineDot else TextSecondary,
-                            fontSize = 13.sp
-                        )
-                    }
-                    if (!inputEnabled) {
-                        OutlinedButton(
+                    if (myId.isNotEmpty()) {
+                        IconButton(
                             onClick = {
-                                context.startActivity(
-                                    Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                                )
+                                val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                cm.setPrimaryClip(ClipData.newPlainText("RD ID", myId))
                             },
-                            shape  = RoundedCornerShape(10.dp),
-                            border = BorderStroke(1.dp, AccentCyan)
+                            modifier = Modifier.size(28.dp)
                         ) {
-                            Text("Enable Accessibility", color = AccentCyan, fontSize = 13.sp)
+                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy ID",
+                                tint = TextSecondary, modifier = Modifier.size(16.dp))
                         }
                     }
                 }
             }
+
+            // Online/offline dot
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(if (isRunning) OnlineDot else OfflineDot))
+                Text(
+                    text = when {
+                        isRunning && clients > 0 -> "$clients device connected"
+                        isRunning -> "Sharing — waiting for connection"
+                        else -> "Not sharing"
+                    },
+                    color = if (isRunning) AccentGreen else TextSecondary,
+                    fontSize = 11.sp
+                )
+            }
+
+            // Share / Stop button
+            Button(
+                onClick = if (isRunning) onStopSharing else onStartSharing,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isRunning) AccentRed else AccentGreen
+                ),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Icon(
+                    if (isRunning) Icons.Default.Stop else Icons.Default.ScreenShare,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(if (isRunning) "Stop Sharing" else "Share Screen",
+                    fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            }
         }
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// PcViewerScreen — Fullscreen remote viewer
-// Phone এ PC screen live দেখা + touch → PC mouse/keyboard input
-// ═══════════════════════════════════════════════════════════════════════════════
+// ── Right panel: "Control Remote Desktop" ────────────────────────────────────
 @Composable
-fun PcViewerScreen(
-    code:   String,
-    onBack: () -> Unit
+private fun ConnectPanel(
+    modifier: Modifier,
+    codeInput: String,
+    onCodeChange: (String) -> Unit,
+    isConnecting: Boolean,
+    connectError: String,
+    onConnect: () -> Unit
 ) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = BgSidebar),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Control Remote Desktop", color = TextPrimary,
+                    fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                Icon(Icons.Default.Help, contentDescription = null,
+                    tint = TextSecondary, modifier = Modifier.size(16.dp))
+            }
+            Text("PC এ \"Generate Code\" চাপলে 6-digit code পাবে। সেটা এখানে দাও।",
+                color = TextSecondary, fontSize = 11.sp)
+
+            // Code input — 6 digit boxes
+            CodeInputField(
+                code = codeInput,
+                onCodeChange = onCodeChange,
+                onConnect = onConnect
+            )
+
+            // Error message
+            if (connectError.isNotEmpty()) {
+                Text(connectError, color = AccentRed, fontSize = 11.sp)
+            }
+
+            // Connect button
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = onConnect,
+                    enabled = codeInput.length == 6 && !isConnecting,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentBlue),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    if (isConnecting) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text("Connecting...", fontSize = 13.sp)
+                    } else {
+                        Icon(Icons.Default.ConnectWithoutContact, contentDescription = null,
+                            modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Connect", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                }
+
+                // Dropdown arrow (for future: file transfer mode, etc.)
+                OutlinedButton(
+                    onClick = {},
+                    modifier = Modifier.size(44.dp),
+                    contentPadding = PaddingValues(0.dp),
+                    border = BorderStroke(1.dp, DividerColor),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary)
+                ) {
+                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Options",
+                        modifier = Modifier.size(18.dp))
+                }
+            }
+        }
+    }
+}
+
+// ── 6-digit code input (split boxes like RustDesk) ───────────────────────────
+@Composable
+private fun CodeInputField(
+    code: String,
+    onCodeChange: (String) -> Unit,
+    onConnect: () -> Unit
+) {
+    // Single text field styled as split boxes
+    Column {
+        OutlinedTextField(
+            value = code,
+            onValueChange = onCodeChange,
+            placeholder = { Text("6-digit code", color = TextSecondary, fontSize = 13.sp) },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = AccentBlue,
+                unfocusedBorderColor = DividerColor,
+                focusedTextColor = TextPrimary,
+                unfocusedTextColor = TextPrimary,
+                cursorColor = AccentBlue,
+                focusedContainerColor = BgCard,
+                unfocusedContainerColor = BgCard,
+            ),
+            shape = RoundedCornerShape(8.dp),
+            textStyle = LocalTextStyle.current.copy(
+                fontFamily = FontFamily.Monospace,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 6.sp
+            )
+        )
+
+        // Digit hint
+        if (code.isNotEmpty()) {
+            Text("${code.length}/6 digits", color = TextSecondary, fontSize = 10.sp,
+                modifier = Modifier.padding(top = 2.dp, start = 4.dp))
+        }
+    }
+}
+
+// ── Recent connections section ────────────────────────────────────────────────
+@Composable
+private fun RecentConnectionsSection(
+    devices: List<RecentDevice>,
+    onConnect: (RecentDevice) -> Unit,
+    onRemove: (RecentDevice) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // Tab bar (History active by default, like RustDesk screenshot)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            // Clock / history tab
+            TabChip(icon = Icons.Default.History, label = "Recent", isSelected = true)
+            TabChip(icon = Icons.Default.Star, label = "Favourites", isSelected = false)
+            TabChip(icon = Icons.Default.Explore, label = "Discover", isSelected = false)
+            Spacer(Modifier.weight(1f))
+            IconButton(onClick = {}, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Default.Search, contentDescription = "Search",
+                    tint = TextSecondary, modifier = Modifier.size(18.dp))
+            }
+        }
+
+        // Device cards grid (LazyRow for now, matches screenshot)
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(horizontal = 0.dp)
+        ) {
+            items(devices) { dev ->
+                DeviceCard(
+                    device = dev,
+                    onClick = { onConnect(dev) },
+                    onLongClick = { onRemove(dev) }
+                )
+            }
+        }
+    }
+}
+
+// ── Tab chip ─────────────────────────────────────────────────────────────────
+@Composable
+private fun TabChip(icon: ImageVector, label: String, isSelected: Boolean) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(if (isSelected) BgCard else Color.Transparent)
+            .padding(horizontal = 8.dp, vertical = 5.dp)
+    ) {
+        Icon(icon, contentDescription = label,
+            tint = if (isSelected) AccentCyan else TextSecondary,
+            modifier = Modifier.size(16.dp))
+        if (isSelected) {
+            Text(label, color = AccentCyan, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+// ── Device card (matches screenshot design) ───────────────────────────────────
+@Composable
+private fun DeviceCard(
+    device: RecentDevice,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    var isHovered by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = Modifier
+            .width(160.dp)
+            .height(120.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(device.cardColor)
+            .clickable(onClick = onClick)
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val longPress = withTimeoutOrNull(500L) {
+                        waitForUpOrCancellation()
+                    }
+                    if (longPress == null) onLongClick()
+                }
+            }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            // Platform icon
+            Icon(
+                imageVector = if (device.platform == "windows") Icons.Default.Computer else Icons.Default.PhoneAndroid,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.9f),
+                modifier = Modifier.size(40.dp)
+            )
+
+            // Name + ID row
+            Column {
+                Text(
+                    device.displayName,
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(if (device.isOnline) OnlineDot else OfflineDot)
+                    )
+                    Text(
+                        text = formatDisplayId(device.id),
+                        color = Color.White.copy(alpha = 0.8f),
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Icon(Icons.Default.MoreVert, contentDescription = "Options",
+                        tint = Color.White.copy(alpha = 0.6f),
+                        modifier = Modifier.size(14.dp))
+                }
+            }
+        }
+    }
+}
+
+// ── Relay info card ───────────────────────────────────────────────────────────
+@Composable
+private fun RelayInfoCard() {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A2E)),
+        shape = RoundedCornerShape(10.dp),
+        border = BorderStroke(1.dp, Color(0xFF2A2A50))
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(Icons.Default.CloudDone, contentDescription = null,
+                tint = AccentCyan, modifier = Modifier.size(20.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Relay Server Active", color = AccentCyan,
+                    fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                Text("Code দিলেই connect হবে — PC IP দিতে হবে না। " +
+                     "LAN direct + internet relay দুটোই support করে।",
+                    color = TextSecondary, fontSize = 11.sp)
+            }
+        }
+    }
+}
+
+// ── Status banner ─────────────────────────────────────────────────────────────
+@Composable
+private fun StatusBanner(message: String) {
+    val isError = message.startsWith("❌")
+    Surface(
+        color = if (isError) Color(0xFF3A1A1A) else Color(0xFF1A3A2A),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Text(
+            text = message,
+            color = if (isError) AccentRed else AccentGreen,
+            modifier = Modifier.padding(10.dp, 8.dp),
+            fontSize = 12.sp
+        )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  PC Viewer Screen (full-screen H264 decode + touch input)
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+fun PcViewerScreen(code: String, onBack: () -> Unit) {
     val context = LocalContext.current
     val scope   = rememberCoroutineScope()
 
-    var statusMsg    by remember { mutableStateOf("🔍 PC খোঁজা হচ্ছে...") }
-    var connected    by remember { mutableStateOf(false) }
-    var authFailed   by remember { mutableStateOf(false) }
+    val pcActive by RemoteDesktopService.pcStreamActive.collectAsState()
+    var statusText by remember { mutableStateOf("Connecting...") }
     var showControls by remember { mutableStateOf(true) }
 
-    var remoteW by remember { mutableStateOf(1920) }
-    var remoteH by remember { mutableStateOf(1080) }
-
-    // Letterbox canvas bounds
-    var canvasX by remember { mutableStateOf(0f) }
-    var canvasY by remember { mutableStateOf(0f) }
-    var canvasW by remember { mutableStateOf(0f) }
-    var canvasH by remember { mutableStateOf(0f) }
-
-    val viewRef = remember { mutableStateOf<PcScreenReceiverView?>(null) }
-
-    // Auto-hide toolbar after 3.5s
+    // Auto-hide controls after 3s
     LaunchedEffect(showControls) {
         if (showControls) {
-            delay(3500)
+            delay(3000)
             showControls = false
         }
     }
 
-    DisposableEffect(code) {
-        onDispose { viewRef.value?.destroy() }
+    // Connect using relay lookup
+    LaunchedEffect(code) {
+        statusText = "Firestore lookup: code $code..."
+        val devInfo = RdSignaling.lookup(code)
+        if (devInfo == null) {
+            statusText = "❌ Code not found — PC এ \"Generate Code\" চাপো"
+            return@LaunchedEffect
+        }
+        statusText = "Connecting to ${devInfo.name} (${devInfo.ip}:${devInfo.port})..."
+        RemoteDesktopService.getInstance()?.connectToPC(devInfo, code)
     }
 
-    // ── Coordinate mapping ─────────────────────────────────────────
-    // Returns normalized 0..1 floats — PC InjectMouse multiplies by 65535
-    fun toNorm(touchX: Float, touchY: Float): Pair<Float, Float> {
-        val nx = ((touchX - canvasX) / canvasW).coerceIn(0f, 1f)
-        val ny = ((touchY - canvasY) / canvasH).coerceIn(0f, 1f)
-        return nx to ny
-    }
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+        // Video surface
+        if (pcActive) {
+            AndroidView(
+                factory = { ctx ->
+                    PcScreenReceiverView(ctx).also { view ->
+                        RemoteDesktopService.getInstance()?.attachPcView(view)
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        // Touch → mouse events (sent to PC via WebSocket JSON)
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            showControls = false
 
-    // ── Input helpers ─────────────────────────────────────────────
-    fun sendMove(tx: Float, ty: Float) {
-        if (!connected || canvasW == 0f) return
-        val (nx, ny) = toNorm(tx, ty)
-        viewRef.value?.sendMouseNorm(0, nx, ny)
-    }
-    fun sendDown(tx: Float, ty: Float) {
-        if (!connected || canvasW == 0f) return
-        val (nx, ny) = toNorm(tx, ty)
-        viewRef.value?.sendMouseNorm(1, nx, ny)
-    }
-    fun sendUp(tx: Float, ty: Float) {
-        if (!connected || canvasW == 0f) return
-        val (nx, ny) = toNorm(tx, ty)
-        viewRef.value?.sendMouseNorm(2, nx, ny)
-    }
-    fun sendRightClick(tx: Float, ty: Float) {
-        if (!connected || canvasW == 0f) return
-        val (nx, ny) = toNorm(tx, ty)
-        viewRef.value?.sendMouseNorm(3, nx, ny)
-        viewRef.value?.sendMouseNorm(4, nx, ny)
-    }
-    fun sendScroll(dir: String, tx: Float, ty: Float) {
-        if (!connected || canvasW == 0f) return
-        val (nx, ny) = toNorm(tx, ty)
-        viewRef.value?.sendScrollNorm(nx, ny, dir)
-    }
-
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            .onSizeChanged { size ->
-                val localW = size.width.toFloat()
-                val localH = size.height.toFloat()
-                val ar     = remoteW.toFloat() / remoteH.toFloat()
-                val boxAr  = localW / localH
-                if (ar > boxAr) {
-                    canvasW = localW;   canvasH = localW / ar
-                    canvasX = 0f;       canvasY = (localH - canvasH) / 2f
-                } else {
-                    canvasH = localH;   canvasW = localH * ar
-                    canvasY = 0f;       canvasX = (localW - canvasW) / 2f
-                }
-            }
-    ) {
-        // ── SurfaceView (H264 decode → render) ────────────────────
-        AndroidView(
-            modifier = Modifier.fillMaxSize(),
-            factory  = { ctx ->
-                PcScreenReceiverView(ctx).also { v ->
-                    viewRef.value = v
-                    v.onDiscovering  = {
-                        statusMsg = "🔍 PC খোঁজা হচ্ছে... (একই WiFi তে থাকো)"
+                            // Calculate normalized coords and send to PC
+                            val normX = down.position.x / size.width
+                            val normY = down.position.y / size.height
+                            RemoteDesktopService.getInstance()?.sendMouseEvent(
+                                nx = normX, ny = normY, mask = 1 /* left down */
+                            )
+                            val up = waitForUpOrCancellation()
+                            RemoteDesktopService.getInstance()?.sendMouseEvent(
+                                nx = normX, ny = normY, mask = 2 /* left up */
+                            )
+                        }
                     }
-                    v.onConnected    = { w, h ->
-                        connected  = true
-                        authFailed = false
-                        if (w > 0) remoteW = w
-                        if (h > 0) remoteH = h
-                        statusMsg = "Connected — ${w}×${h}"
-                    }
-                    v.onDisconnected = {
-                        connected = false
-                        statusMsg = "Disconnected"
-                    }
-                    v.onAuthFailed   = {
-                        authFailed = true
-                        statusMsg  = "❌ Code ভুল — PC তে নতুন code generate করো"
-                    }
-                    v.onError        = { msg ->
-                        statusMsg = msg
-                    }
-                    // শুধু code দিলেই হবে — UDP দিয়ে PC খুঁজে নেবে
-                    v.connectByCode(code)
-                }
-            }
-        )
-
-        // ── Gesture layer (only when connected) ───────────────────
-        if (connected) {
-            RustDeskGestureLayer(
-                modifier       = Modifier.fillMaxSize(),
-                onMove         = { x, y     -> sendMove(x, y) },
-                onDown         = { x, y     -> sendDown(x, y) },
-                onUp           = { x, y     -> sendUp(x, y) },
-                onRightClick   = { x, y     -> sendRightClick(x, y) },
-                onScroll       = { dir, x, y -> sendScroll(dir, x, y) },
-                onShowControls = { showControls = true }
             )
+        } else {
+            // Loading state
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                CircularProgressIndicator(color = AccentBlue)
+                Spacer(Modifier.height(16.dp))
+                Text(statusText, color = TextPrimary, fontSize = 13.sp, textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 24.dp))
+            }
         }
 
-        // ── Status / connecting overlay ────────────────────────────
-        if (!connected) {
-            Box(
-                Modifier.fillMaxSize().background(Color(0xCC000000)),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+        // Overlay controls (auto-hide)
+        AnimatedVisibility(
+            visible = showControls,
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                // Top bar
+                Surface(
+                    color = Color.Black.copy(alpha = 0.7f),
+                    modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter)
                 ) {
-                    if (!authFailed) {
-                        CircularProgressIndicator(
-                            color    = AccentCyan,
-                            modifier = Modifier.size(44.dp)
-                        )
-                    } else {
-                        Icon(Icons.Default.Error, null,
-                            tint = AccentRed, modifier = Modifier.size(48.dp))
-                    }
-                    Text(statusMsg, color = TextPrimary,
-                        fontSize = 14.sp, textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(horizontal = 24.dp))
-                    Text("Code: $code  ·  WiFi LAN discovery",
-                        color = TextSecondary, fontSize = 12.sp)
-                    OutlinedButton(
-                        onClick = onBack,
-                        border  = BorderStroke(1.dp, Color(0xFF555577))
+                    Row(
+                        modifier = Modifier.padding(8.dp, 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Back", color = TextSecondary)
+                        IconButton(onClick = {
+                            RemoteDesktopService.getInstance()?.disconnectFromPC()
+                            onBack()
+                        }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White)
+                        }
+                        Text("PC Remote  •  Code: $code", color = Color.White, fontSize = 13.sp,
+                            modifier = Modifier.weight(1f))
+                        if (pcActive) {
+                            Box(Modifier.size(8.dp).clip(CircleShape).background(OnlineDot))
+                        }
                     }
                 }
-            }
-        }
 
-        // ── Auto-hide top bar ─────────────────────────────────────
-        AnimatedVisibility(
-            visible  = showControls,
-            modifier = Modifier.align(Alignment.TopCenter),
-            enter    = fadeIn() + slideInVertically(),
-            exit     = fadeOut() + slideOutVertically()
-        ) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xDD101020))
-                    .padding(horizontal = 4.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = TextPrimary)
-                }
-                Text(
-                    if (connected) "PC  ${remoteW}×${remoteH}" else statusMsg,
-                    color = AccentCyan, fontSize = 13.sp, modifier = Modifier.weight(1f)
-                )
-                if (connected) {
-                    Box(Modifier.size(8.dp).clip(CircleShape).background(OnlineDot))
-                    Spacer(Modifier.width(10.dp))
-                }
-            }
-        }
-
-        // ── Auto-hide bottom toolbar (keyboard shortcuts) ─────────
-        AnimatedVisibility(
-            visible  = showControls && connected,
-            modifier = Modifier.align(Alignment.BottomCenter),
-            enter    = fadeIn() + slideInVertically { it },
-            exit     = fadeOut() + slideOutVertically { it }
-        ) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xDD101020))
-                    .padding(4.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment     = Alignment.CenterVertically
-            ) {
-                RdToolbarBtn("⊞ Win") {
-                    viewRef.value?.sendKeyEvent(0x5B, 0)
-                    viewRef.value?.sendKeyEvent(0x5B, 1)
-                }
-                RdToolbarBtn("Esc") {
-                    viewRef.value?.sendKeyEvent(0x1B, 0)
-                    viewRef.value?.sendKeyEvent(0x1B, 1)
-                }
-                RdToolbarBtn("Tab") {
-                    viewRef.value?.sendKeyEvent(0x09, 0)
-                    viewRef.value?.sendKeyEvent(0x09, 1)
-                }
-                RdToolbarBtn("Alt+F4") {
-                    viewRef.value?.sendKeyEvent(0x12, 0)
-                    viewRef.value?.sendKeyEvent(0x73, 0)
-                    viewRef.value?.sendKeyEvent(0x73, 1)
-                    viewRef.value?.sendKeyEvent(0x12, 1)
-                }
-                RdToolbarBtn("Ctrl+C") {
-                    viewRef.value?.sendKeyEvent(0x11, 0)
-                    viewRef.value?.sendKeyEvent(0x43, 0)
-                    viewRef.value?.sendKeyEvent(0x43, 1)
-                    viewRef.value?.sendKeyEvent(0x11, 1)
-                }
-                RdToolbarBtn("Ctrl+V") {
-                    viewRef.value?.sendKeyEvent(0x11, 0)
-                    viewRef.value?.sendKeyEvent(0x56, 0)
-                    viewRef.value?.sendKeyEvent(0x56, 1)
-                    viewRef.value?.sendKeyEvent(0x11, 1)
-                }
-            }
-        }
-    }
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-// RustDeskGestureLayer — gesture → mouse/keyboard mapping
-// 1-finger tap/drag → mouse left
-// Long press        → right click
-// Double tap        → double click
-// 2-finger scroll   → mouse wheel
-// ══════════════════════════════════════════════════════════════════════════════
-@Composable
-fun RustDeskGestureLayer(
-    modifier:       Modifier = Modifier,
-    onMove:         (Float, Float) -> Unit,
-    onDown:         (Float, Float) -> Unit,
-    onUp:           (Float, Float) -> Unit,
-    onRightClick:   (Float, Float) -> Unit,
-    onScroll:       (String, Float, Float) -> Unit,
-    onShowControls: () -> Unit
-) {
-    var lastPointerPos by remember { mutableStateOf(Offset.Zero) }
-    var hasMoved       by remember { mutableStateOf(false) }
-    val moveThreshold  = 8f
-
-    Box(
-        modifier
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    lastPointerPos = down.position
-                    hasMoved = false
-                    onDown(down.position.x, down.position.y)
-
-                    do {
-                        val evt   = awaitPointerEvent()
-                        val count = evt.changes.count { it.pressed }
-
-                        if (count == 1) {
-                            val ch = evt.changes.first()
-                            val dx = ch.position.x - lastPointerPos.x
-                            val dy = ch.position.y - lastPointerPos.y
-                            if (dx * dx + dy * dy > moveThreshold * moveThreshold) {
-                                hasMoved = true
-                                onMove(ch.position.x, ch.position.y)
-                                lastPointerPos = ch.position
-                            }
-                        } else if (count == 2) {
-                            val c0 = evt.changes[0]; val c1 = evt.changes[1]
-                            val cx = (c0.position.x + c1.position.x) / 2f
-                            val cy = (c0.position.y + c1.position.y) / 2f
-                            val avgDy = ((c0.position.y - c0.previousPosition.y) +
-                                        (c1.position.y - c1.previousPosition.y)) / 2f
-                            val avgDx = ((c0.position.x - c0.previousPosition.x) +
-                                        (c1.position.x - c1.previousPosition.x)) / 2f
-                            if (kotlin.math.abs(avgDy) > kotlin.math.abs(avgDx)) {
-                                if (kotlin.math.abs(avgDy) > 2f)
-                                    onScroll(if (avgDy < 0) "up" else "down", cx, cy)
-                            } else {
-                                if (kotlin.math.abs(avgDx) > 2f)
-                                    onScroll(if (avgDx < 0) "left" else "right", cx, cy)
+                // Bottom keyboard/special keys bar
+                Surface(
+                    color = Color.Black.copy(alpha = 0.7f),
+                    modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(8.dp, 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(
+                            "Esc" to 27, "Win" to 91, "Alt" to 18,
+                            "Ctrl" to 17, "Tab" to 9, "Del" to 46, "Enter" to 13
+                        ).forEach { (label, vk) ->
+                            SmallKeyButton(label) {
+                                RemoteDesktopService.getInstance()?.sendKeyEvent(vk, "down")
+                                scope.launch {
+                                    delay(50)
+                                    RemoteDesktopService.getInstance()?.sendKeyEvent(vk, "up")
+                                }
                             }
                         }
-                        evt.changes.forEach { it.consume() }
-                    } while (evt.changes.any { it.pressed })
-
-                    onUp(lastPointerPos.x, lastPointerPos.y)
+                    }
                 }
             }
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onTap         = { if (it.y < 80f) onShowControls() },
-                    onDoubleTap   = { onDown(it.x, it.y); onUp(it.x, it.y)
-                                     onDown(it.x, it.y); onUp(it.x, it.y) },
-                    onLongPress   = { onRightClick(it.x, it.y) }
-                )
-            }
-    )
+        }
+
+        // Tap anywhere to show controls
+        if (!showControls && pcActive) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable { showControls = true }
+            )
+        }
+    }
 }
 
+// ── Small key button ──────────────────────────────────────────────────────────
 @Composable
-private fun RdToolbarBtn(label: String, onClick: () -> Unit) {
-    TextButton(
-        onClick  = onClick,
-        modifier = Modifier.height(36.dp),
-        colors   = ButtonDefaults.textButtonColors(contentColor = Color(0xFFB0B0C8))
+private fun SmallKeyButton(label: String, onClick: () -> Unit) {
+    Surface(
+        color = Color(0xFF2A2A2A),
+        shape = RoundedCornerShape(5.dp),
+        modifier = Modifier.clickable(onClick = onClick)
     ) {
-        Text(label, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        Text(
+            label, color = Color.White,
+            fontSize = 11.sp, fontWeight = FontWeight.Medium,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+        )
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Connect logic: Firestore lookup → direct WS → relay fallback
+// ─────────────────────────────────────────────────────────────────────────────
+data class ConnectResult(
+    val success: Boolean,
+    val deviceName: String = "",
+    val platform: String = "windows",
+    val error: String = ""
+)
+
+private suspend fun connectToRemote(context: Context, code: String): ConnectResult {
+    // 1. Lookup in Firestore by code
+    val devInfo = RdSignaling.lookup(code)
+        ?: return ConnectResult(false, error = "Code পাওয়া যায়নি — PC এ code generate করা হয়েছে কিনা দেখো")
+
+    // 2. Try direct LAN connection first
+    val svc = RemoteDesktopService.getInstance()
+        ?: return ConnectResult(false, error = "Remote Desktop Service চলছে না")
+
+    val ok = svc.connectToPC(devInfo, code)
+    return if (ok) {
+        ConnectResult(true, deviceName = devInfo.name, platform = devInfo.platform)
+    } else {
+        ConnectResult(false, error = "Connect করা যায়নি — Relay চেষ্টা করছে...")
+        // TODO: relay fallback via wss://relay.rasfocus.com/relay/<code>
+        // This is handled inside RemoteDesktopService.connectToPC() already
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Recent device persistence
+// ─────────────────────────────────────────────────────────────────────────────
+private fun formatDisplayId(id: String): String {
+    return if (id.length == 6)
+        "${id.take(3)} ${id.drop(3)}"
+    else id
+}
+
+private fun loadRecentDevices(prefs: android.content.SharedPreferences): List<RecentDevice> {
+    val json = prefs.getString("recent_json", null) ?: return emptyList()
+    return try {
+        // Simple manual parse — no Gson needed
+        val items = mutableListOf<RecentDevice>()
+        val lines = json.split("|")
+        for (line in lines) {
+            val parts = line.split(",")
+            if (parts.size >= 3) {
+                val cardColor = when (parts.getOrNull(2)) {
+                    "windows" -> Color(0xFF5B4EAB)
+                    else -> Color(0xFF2B4A6F)
+                }
+                items.add(RecentDevice(
+                    id = parts[0],
+                    displayName = parts[1],
+                    platform = parts[2],
+                    cardColor = cardColor
+                ))
+            }
+        }
+        items.take(8)
+    } catch (e: Exception) { emptyList() }
+}
+
+private fun saveAndGetRecent(
+    prefs: android.content.SharedPreferences,
+    newDev: RecentDevice
+): List<RecentDevice> {
+    val existing = loadRecentDevices(prefs).filter { it.id != newDev.id }
+    val updated = listOf(newDev) + existing
+    val trimmed = updated.take(8)
+    val json = trimmed.joinToString("|") { "${it.id},${it.displayName},${it.platform}" }
+    prefs.edit().putString("recent_json", json).apply()
+    return trimmed
+}
+
+private fun removeRecent(
+    prefs: android.content.SharedPreferences,
+    dev: RecentDevice
+): List<RecentDevice> {
+    val existing = loadRecentDevices(prefs).filter { it.id != dev.id }
+    val json = existing.joinToString("|") { "${it.id},${it.displayName},${it.platform}" }
+    prefs.edit().putString("recent_json", json).apply()
+    return existing
 }
