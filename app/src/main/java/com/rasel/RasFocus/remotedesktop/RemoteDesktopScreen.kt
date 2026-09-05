@@ -33,8 +33,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -565,13 +564,9 @@ private fun DeviceCard(
             .background(device.cardColor)
             .clickable(onClick = onClick)
             .pointerInput(Unit) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    val longPress = withTimeoutOrNull(500L) {
-                        waitForUpOrCancellation()
-                    }
-                    if (longPress == null) onLongClick()
-                }
+                detectTapGestures(
+                    onLongPress = { onLongClick() }
+                )
             }
     ) {
         Column(
@@ -712,21 +707,20 @@ fun PcViewerScreen(code: String, onBack: () -> Unit) {
                     .fillMaxSize()
                     .pointerInput(Unit) {
                         // Touch → mouse events (sent to PC via WebSocket JSON)
-                        awaitEachGesture {
-                            val down = awaitFirstDown(requireUnconsumed = false)
-                            showControls = false
-
-                            // Calculate normalized coords and send to PC
-                            val normX = down.position.x / size.width
-                            val normY = down.position.y / size.height
-                            RemoteDesktopService.getInstance()?.sendMouseEvent(
-                                nx = normX, ny = normY, mask = 1 /* left down */
-                            )
-                            val up = waitForUpOrCancellation()
-                            RemoteDesktopService.getInstance()?.sendMouseEvent(
-                                nx = normX, ny = normY, mask = 2 /* left up */
-                            )
-                        }
+                        detectTapGestures(
+                            onPress = { offset ->
+                                showControls = false
+                                val normX = offset.x / size.width
+                                val normY = offset.y / size.height
+                                RemoteDesktopService.getInstance()?.sendMouseEvent(
+                                    nx = normX, ny = normY, mask = 1 /* left down */
+                                )
+                                tryAwaitRelease()
+                                RemoteDesktopService.getInstance()?.sendMouseEvent(
+                                    nx = normX, ny = normY, mask = 2 /* left up */
+                                )
+                            }
+                        )
                     }
             )
         } else {
