@@ -3,12 +3,17 @@ package com.rasel.RasFocus.remotedesktop
 /**
  * RemoteDesktopService — RustDesk-style bidirectional remote desktop
  *
- * Phone → PC:  MediaProjection → MediaCodec H264 encode → WebSocket binary → PC decode & render
- * PC   → Phone: WebSocket binary H264 NAL units → MediaCodec decode → SurfaceView
- * Input:        Both sides send JSON control messages over same WebSocket
+ * UPDATED: Added connectToPC() for Phone→PC direction with relay support.
+ * The service now handles BOTH directions:
+ *
+ *   Phone → PC (new):
+ *     user types 6-digit code → Firebase lookup → ws://pc-ip:9224
+ *     relay fallback → wss://relay.rasfocus.com/relay/<code>
+ *
+ *   Phone → Other phone (existing):
+ *     MediaProjection → H264 encode → WebSocket server on port 9224
  *
  * Inspired by RustDesk MainService.kt (MIT License)
- * https://github.com/rustdesk/rustdesk
  */
 
 import android.app.*
@@ -32,26 +37,29 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import okhttp3.*
+import okio.ByteString
 import org.java_websocket.WebSocket
 import org.java_websocket.handshake.ClientHandshake
 import org.java_websocket.server.WebSocketServer
 import org.json.JSONObject
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
+import java.util.concurrent.TimeUnit
 
 class RemoteDesktopService : Service() {
 
     companion object {
         const val ACTION_START       = "com.rasel.RasFocus.remotedesktop.START"
+        const val ACTION_STOP        = "com.rasel.RasFocus.remotedesktop.STOP"
         const val EXTRA_RESULT_DATA  = "result_data"
         const val WS_PORT            = 9224
         const val NOTIFY_ID          = 5501
         const val CHANNEL_ID         = "rd_channel"
 
-        // H264 settings (RustDesk: VP9 on Rust side, we use H264 via MediaCodec)
         private const val MIME        = "video/avc"   // H264
         private const val TARGET_FPS  = 30
-        private const val TARGET_BPS  = 2_000_000     // 2 Mbps — smooth on LAN
+        private const val TARGET_BPS  = 2_000_000
         private const val MAX_DIM     = 1280
 
         // ── Observable state ──────────────────────────────────────
@@ -64,7 +72,7 @@ class RemoteDesktopService : Service() {
         private val _myId             = MutableStateFlow("")
         val myId: StateFlow<String>   = _myId.asStateFlow()
 
-        // PC → Phone stream state (phone receives PC screen)
+        // PC→Phone stream active (phone is viewing a PC)
         private val _pcStreamActive   = MutableStateFlow(false)
         val pcStreamActive: StateFlow<Boolean> = _pcStreamActive.asStateFlow()
 
@@ -95,31 +103,32 @@ class RemoteDesktopService : Service() {
 
     data class RecentConn(
         val name: String,
-        val id: String,       // stores PC IP address
-        val ip: String,       // stores auth code (6-digit) when connecting to PC
-        val ts: Long   = System.currentTimeMillis(),
+        val id: String,
+        val ip: String,
+        val ts: Long = System.currentTimeMillis(),
         val online: Boolean = true
     )
 
     private val TAG = "RDService"
 
-    // ── MediaProjection (Phone → PC stream) ───────────────────────
+    // ── Phone→Other: MediaProjection encoding ─────────────────────
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay:  VirtualDisplay?  = null
-    private var encoder:         MediaCodec?      = null  // H264 encoder
+    private var encoder:         MediaCodec?      = null
 
-    // ── MediaCodec decoder (PC → Phone stream) ───────────────────
-    private var decoder:         MediaCodec?      = null
-    private var decoderSurface:  Surface?         = null  // set by RemoteDesktopScreen
+    // ── Phone→PC: OkHttp WebSocket client ────────────────────────
+    private var pcWsClient:      WebSocket? = null   // java_websocket direction (unused here)
+    private var pcOkClient:      okhttp3.WebSocket? = null
+    private var pcOkHttp:        OkHttpClient? = null
+    private var pcView:          PcScreenReceiverView? = null
 
     // Screen dimensions
     private var sw = 0; private var sh = 0; private var dpi = 0
 
-    // WebSocket server
+    // WebSocket server (phone is host)
     private var wsServer: RasWsServer? = null
     private val svcScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    // Encode thread
     private var encodeJob: Job? = null
     private var deviceId = ""
 
@@ -138,26 +147,83 @@ class RemoteDesktopService : Service() {
 
         startForeground(NOTIFY_ID, buildNotification())
         startWsServer()
-        // Register on Firebase signaling so other devices can find this ID
         RdSignaling.register(this, deviceId, WS_PORT)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_START) {
-            val data: Intent? = if (Build.VERSION.SDK_INT >= 33)
-                intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
-            else @Suppress("DEPRECATION") intent.getParcelableExtra(EXTRA_RESULT_DATA)
-            data?.let { initProjection(it) }
+        when (intent?.action) {
+            ACTION_START -> {
+                val data: Intent? = if (Build.VERSION.SDK_INT >= 33)
+                    intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
+                else @Suppress("DEPRECATION") intent.getParcelableExtra(EXTRA_RESULT_DATA)
+                data?.let { initProjection(it) }
+            }
+            ACTION_STOP -> {
+                stopProjection()
+            }
         }
         return START_NOT_STICKY
     }
 
-    // ── MediaProjection init ──────────────────────────────────────
+    // ── Phone→PC: connect to a PC by code (uses PcScreenReceiverView) ─
+    // Called from the UI when user taps "Connect"
+    // devInfo comes from Firebase (RdSignaling.lookupSession(code))
+    fun connectToPC(devInfo: RdSignaling.DeviceInfo, code: String): Boolean {
+        // Delegate to PcScreenReceiverView which handles WS+H264 decode
+        pcView?.connectByCode(code, devInfo.ip, devInfo.port)
+        return true // connection result is async via callbacks
+    }
+
+    fun disconnectFromPC() {
+        _pcStreamActive.value = false
+        pcView?.disconnect()
+        pcView = null
+    }
+
+    // Attach the SurfaceView from the Compose screen
+    fun attachPcView(view: PcScreenReceiverView) {
+        pcView = view
+        view.onConnected = { _, _ -> _pcStreamActive.value = true }
+        view.onDisconnected = { _pcStreamActive.value = false }
+        view.onError = { Log.e(TAG, "PcView error: $it") }
+        view.onAuthFailed = {
+            _pcStreamActive.value = false
+            Log.e(TAG, "Auth failed on PC connection")
+        }
+    }
+
+    // ── Input forwarding to PC ─────────────────────────────────────
+    fun sendMouseEvent(nx: Float, ny: Float, mask: Int) {
+        pcView?.sendMouseNorm(mask, nx, ny)
+    }
+
+    fun sendKeyEvent(vk: Int, action: String) {
+        val actionInt = if (action == "down") 1 else 0
+        pcView?.sendKeyEvent(vk, actionInt)
+    }
+
+    fun sendScrollEvent(nx: Float, ny: Float, dir: String) {
+        pcView?.sendScrollNorm(nx, ny, dir)
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Phone→Other direction (existing screen sharing logic)
+    // ─────────────────────────────────────────────────────────────
+
     private fun initProjection(data: Intent) {
         val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         mediaProjection = mpm.getMediaProjection(Activity.RESULT_OK, data)
         updateScreenInfo()
         startH264Encoder()
+    }
+
+    private fun stopProjection() {
+        encodeJob?.cancel()
+        runCatching { encoder?.stop(); encoder?.release() }
+        runCatching { virtualDisplay?.release() }
+        runCatching { mediaProjection?.stop() }
+        encoder = null; virtualDisplay = null; mediaProjection = null
+        _isRunning.value = false
     }
 
     private fun updateScreenInfo() {
@@ -171,20 +237,16 @@ class RemoteDesktopService : Service() {
             @Suppress("DEPRECATION") wm.defaultDisplay.getRealMetrics(dm)
             sw = dm.widthPixels; sh = dm.heightPixels; dpi = dm.densityDpi
         }
-        // Scale down (RustDesk: MAX_SCREEN_SIZE cap)
         val maxDim = maxOf(sw, sh)
         if (maxDim > MAX_DIM) {
             val s = maxDim.toFloat() / MAX_DIM
             sw = (sw / s).toInt().let { if (it % 2 == 0) it else it - 1 }
             sh = (sh / s).toInt().let { if (it % 2 == 0) it else it - 1 }
         }
-        // Must be multiple of 16 for H264
         sw = (sw / 16) * 16
         sh = (sh / 16) * 16
-        Log.d(TAG, "Screen: ${sw}x${sh} dpi=$dpi")
     }
 
-    // ── H264 Encoder (RustDesk: MediaCodec H264 encode → send NAL units) ──
     private fun startH264Encoder() {
         val mp = mediaProjection ?: return
         try {
@@ -193,11 +255,9 @@ class RemoteDesktopService : Service() {
                     MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
                 setInteger(MediaFormat.KEY_BIT_RATE, TARGET_BPS)
                 setInteger(MediaFormat.KEY_FRAME_RATE, TARGET_FPS)
-                setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)  // keyframe every 1s
-                // Low-latency encoding (RustDesk approach)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
                     setInteger(MediaFormat.KEY_LATENCY, 0)
-                }
             }
 
             encoder = MediaCodec.createEncoderByType(MIME).also { enc ->
@@ -205,34 +265,25 @@ class RemoteDesktopService : Service() {
                 val encSurface: Surface = enc.createInputSurface()
                 enc.start()
 
-                // VirtualDisplay renders directly to encoder surface (RustDesk: createOrSetVirtualDisplay)
                 virtualDisplay = mp.createVirtualDisplay(
                     "RasFocusRD", sw, sh, dpi,
                     DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                     encSurface, null, null
                 )
 
-                // Drain encoded NAL units and send via WebSocket
-                encodeJob = svcScope.launch(Dispatchers.IO) {
-                    drainEncoder(enc)
-                }
+                encodeJob = svcScope.launch(Dispatchers.IO) { drainEncoder(enc) }
             }
-            Log.d(TAG, "H264 encoder started ${sw}x${sh}")
+            _isRunning.value = true
         } catch (e: Exception) {
             Log.e(TAG, "startH264Encoder: ${e.message}")
         }
     }
 
-    // ── Drain encoded H264 NAL units → WebSocket broadcast ────────
     private suspend fun drainEncoder(enc: MediaCodec) {
         val info = MediaCodec.BufferInfo()
-        var spsData: ByteArray? = null
-        var ppsData: ByteArray? = null
-
         while (currentCoroutineContext().isActive) {
             val idx = withContext(Dispatchers.IO) {
-                try { enc.dequeueOutputBuffer(info, 10_000L) }
-                catch (e: Exception) { -1 }
+                try { enc.dequeueOutputBuffer(info, 10_000L) } catch (e: Exception) { -1 }
             }
             if (idx < 0) continue
             if (idx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) continue
@@ -241,22 +292,10 @@ class RemoteDesktopService : Service() {
             if (buf == null) { enc.releaseOutputBuffer(idx, false); continue }
             val data = ByteArray(info.size).also { buf.get(it) }
             enc.releaseOutputBuffer(idx, false)
-
             if (data.isEmpty()) continue
 
-            // Detect SPS/PPS (config frame) — must send to new clients
             val isConfig = (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0
-            if (isConfig) {
-                // Parse SPS and PPS from config frame
-                parseSpsPs(data)?.let { (sps, pps) ->
-                    spsData = sps; ppsData = pps
-                }
-            }
-
             val isKeyFrame = (info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0
-
-            // Wrap: 1 byte flags | 4 byte pts | NAL data
-            // flags: bit0=keyframe, bit1=config
             val flags = ((if (isKeyFrame) 1 else 0) or (if (isConfig) 2 else 0)).toByte()
             val pts = info.presentationTimeUs
             val packet = ByteArray(5 + data.size)
@@ -266,41 +305,11 @@ class RemoteDesktopService : Service() {
             packet[3] = (pts shr  8 and 0xFF).toByte()
             packet[4] = (pts        and 0xFF).toByte()
             data.copyInto(packet, 5)
-
             wsServer?.broadcastStream(ByteBuffer.wrap(packet))
         }
     }
 
-    private fun parseSpsPs(config: ByteArray): Pair<ByteArray, ByteArray>? {
-        // Find 0x00 0x00 0x00 0x01 start codes and split SPS/PPS
-        var spsStart = -1; var ppsStart = -1
-        for (i in 0..config.size - 4) {
-            if (config[i] == 0.toByte() && config[i+1] == 0.toByte() &&
-                config[i+2] == 0.toByte() && config[i+3] == 1.toByte()) {
-                if (spsStart == -1) spsStart = i
-                else if (ppsStart == -1) ppsStart = i
-            }
-        }
-        if (spsStart == -1 || ppsStart == -1) return null
-        val sps = config.copyOfRange(spsStart, ppsStart)
-        val pps = config.copyOfRange(ppsStart, config.size)
-        return Pair(sps, pps)
-    }
-
-    // ── H264 Decoder (PC → Phone) ─────────────────────────────────
-    // NOTE: Decoder is now self-contained in PcScreenReceiverView.
-    // These stubs remain for source compatibility only.
-    fun initDecoder(surface: Surface) {
-        decoderSurface = surface
-        // No-op: PcScreenReceiverView.initDecoder() handles this directly
-        // using the actual PC resolution from the "ready" message
-    }
-
-    fun feedDecoderFrame(nalData: ByteArray, pts: Long, isConfig: Boolean) {
-        // No-op: PcScreenReceiverView.handleBinaryFrame() handles this directly
-    }
-
-    // ── WebSocket Server ──────────────────────────────────────────
+    // ── WebSocket Server (phone is host — other devices connect) ──
     private fun startWsServer() {
         try { wsServer = RasWsServer(WS_PORT).also { it.start() } }
         catch (e: Exception) { Log.e(TAG, "ws: ${e.message}") }
@@ -308,18 +317,14 @@ class RemoteDesktopService : Service() {
 
     inner class RasWsServer(port: Int) : WebSocketServer(InetSocketAddress(port)) {
 
-        // Send H264 stream only to stream-subscribed clients
         fun broadcastStream(data: ByteBuffer) {
             connections.forEach { conn ->
-                try {
-                    if (conn.isOpen) conn.send(data.duplicate())
-                } catch (_: Exception) {}
+                try { if (conn.isOpen) conn.send(data.duplicate()) } catch (_: Exception) {}
             }
         }
 
         override fun onOpen(conn: WebSocket, h: ClientHandshake) {
             _connectedClients.value = connections.size
-            // Send device info
             conn.send(JSONObject().apply {
                 put("type", "info")
                 put("id", deviceId)
@@ -328,34 +333,28 @@ class RemoteDesktopService : Service() {
                 put("fps", TARGET_FPS)
                 put("codec", "h264")
             }.toString())
-            Log.d(TAG, "Client connected: ${conn.remoteSocketAddress}")
         }
 
         override fun onClose(conn: WebSocket, code: Int, reason: String, remote: Boolean) {
             _connectedClients.value = connections.size
-            if (connections.isEmpty()) _pcStreamActive.value = false
         }
 
         override fun onMessage(conn: WebSocket, msg: String) {
-            // JSON control messages
             try {
                 val j = JSONObject(msg)
                 when (j.optString("type")) {
-                    // Input from PC → inject to phone (Phone→PC direction)
                     "touch", "mouse" -> RemoteDesktopInputService.onPointer(
                         j.optInt("mask"), j.optInt("x"), j.optInt("y"))
                     "key"    -> RemoteDesktopInputService.onKey(j.optInt("code"), j.optInt("action"))
                     "scroll" -> RemoteDesktopInputService.onScroll(
                         j.optInt("x"), j.optInt("y"), j.optString("dir"))
                     "quality" -> {
-                        // Adjust bitrate dynamically
                         val mbps = j.optInt("value", 2)
                         encoder?.setParameters(Bundle().apply {
                             putInt(MediaCodec.PARAMETER_KEY_VIDEO_BITRATE, mbps * 1_000_000)
                         })
                     }
                     "keyframe" -> {
-                        // Force keyframe (PC requests after new connect)
                         encoder?.setParameters(Bundle().apply {
                             putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0)
                         })
@@ -365,22 +364,12 @@ class RemoteDesktopService : Service() {
             } catch (_: Exception) {}
         }
 
-        // Binary message = H264 frame from PC (PC → Phone direction)
         override fun onMessage(conn: WebSocket, msg: ByteBuffer) {
-            if (msg.remaining() < 5) return
-            val flags   = msg.get().toInt()
-            val isConfig = (flags and 2) != 0
-            val pts     = ((msg.get().toLong() and 0xFF) shl 24) or
-                          ((msg.get().toLong() and 0xFF) shl 16) or
-                          ((msg.get().toLong() and 0xFF) shl  8) or
-                           (msg.get().toLong() and 0xFF)
-            val nal     = ByteArray(msg.remaining())
-            msg.get(nal)
-            feedDecoderFrame(nal, pts, isConfig)
+            // Incoming binary from another device viewing us — not used in host mode
         }
 
         override fun onError(conn: WebSocket?, ex: Exception) { Log.e(TAG, "ws: ${ex.message}") }
-        override fun onStart() { Log.d(TAG, "WS ready :$WS_PORT") }
+        override fun onStart() { Log.d(TAG, "WS server ready :$WS_PORT") }
     }
 
     // ── Notification ──────────────────────────────────────────────
@@ -395,7 +384,7 @@ class RemoteDesktopService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_rasgram_notif)
             .setContentTitle("RasFocus Remote")
-            .setContentText("ID: ${formatId(deviceId)} • H264 stream ready")
+            .setContentText("ID: ${formatId(deviceId)} • Ready")
             .setOngoing(true).setContentIntent(pi).build()
     }
 
@@ -405,12 +394,16 @@ class RemoteDesktopService : Service() {
         _isRunning.value = false; _connectedClients.value = 0
         _pcStreamActive.value = false; instance = null
         svcScope.cancel()
+        disconnectFromPC()
         runCatching { encoder?.stop(); encoder?.release() }
-        runCatching { decoder?.stop(); decoder?.release() }
         runCatching { virtualDisplay?.release() }
         runCatching { mediaProjection?.stop() }
         runCatching { wsServer?.stop(1000) }
         RdSignaling.unregister(deviceId)
         super.onDestroy()
     }
+
+    // Compat stubs
+    fun initDecoder(surface: Surface) {}
+    fun feedDecoderFrame(nalData: ByteArray, pts: Long, isConfig: Boolean) {}
 }
