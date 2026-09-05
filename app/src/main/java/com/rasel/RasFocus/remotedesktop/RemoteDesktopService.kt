@@ -287,40 +287,17 @@ class RemoteDesktopService : Service() {
         return Pair(sps, pps)
     }
 
-    // ── H264 Decoder (PC → Phone) — init when PC connects ────────
+    // ── H264 Decoder (PC → Phone) ─────────────────────────────────
+    // NOTE: Decoder is now self-contained in PcScreenReceiverView.
+    // These stubs remain for source compatibility only.
     fun initDecoder(surface: Surface) {
         decoderSurface = surface
-        try {
-            decoder = MediaCodec.createDecoderByType(MIME).also { dec ->
-                val fmt = MediaFormat.createVideoFormat(MIME, 1920, 1080) // PC resolution
-                dec.configure(fmt, surface, null, 0)
-                dec.start()
-                Log.d(TAG, "H264 decoder started (PC→Phone)")
-                _pcStreamActive.value = true
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "initDecoder: ${e.message}")
-        }
+        // No-op: PcScreenReceiverView.initDecoder() handles this directly
+        // using the actual PC resolution from the "ready" message
     }
 
-    // Feed PC H264 NAL unit to decoder
     fun feedDecoderFrame(nalData: ByteArray, pts: Long, isConfig: Boolean) {
-        val dec = decoder ?: return
-        try {
-            val idx = dec.dequeueInputBuffer(10_000L)
-            if (idx < 0) return
-            val buf = dec.getInputBuffer(idx) ?: return
-            buf.clear(); buf.put(nalData)
-            val flags = if (isConfig) MediaCodec.BUFFER_FLAG_CODEC_CONFIG else 0
-            dec.queueInputBuffer(idx, 0, nalData.size, pts, flags)
-
-            // Render decoded frame to surface
-            val info = MediaCodec.BufferInfo()
-            val outIdx = dec.dequeueOutputBuffer(info, 0)
-            if (outIdx >= 0) dec.releaseOutputBuffer(outIdx, true)
-        } catch (e: Exception) {
-            Log.e(TAG, "feedDecoder: ${e.message}")
-        }
+        // No-op: PcScreenReceiverView.handleBinaryFrame() handles this directly
     }
 
     // ── WebSocket Server ──────────────────────────────────────────
