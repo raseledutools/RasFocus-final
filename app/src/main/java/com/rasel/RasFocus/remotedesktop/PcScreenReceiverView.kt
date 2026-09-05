@@ -1,20 +1,22 @@
 package com.rasel.RasFocus.remotedesktop
 
 /**
- * PcScreenReceiverView — Self-contained PC screen receiver
+ * PcScreenReceiverView — Code-only connection (no IP needed)
  *
- * Service এর উপর নির্ভর করে না। নিজেই:
- *   1. WebSocket connect → auth
- *   2. MediaCodec H264 decoder init (PC ready message থেকে actual resolution নেয়)
- *   3. Binary NAL frames decode → SurfaceView render
- *   4. Mouse/key/scroll send
+ * User শুধু 6-digit code দেয়।
+ * Phone LAN এ UDP broadcast শুনে (port 9225), code match হলে
+ * সেই IP তে WebSocket connect করে।
  *
- * Flow:
- *   Phone → ws://pcIp:9224  (connect)
+ * PC broadcast (প্রতি 1s):
+ *   UDP 255.255.255.255:9225 →
+ *   {"type":"rd_announce","code":"XXXXXX","port":9224,"ip":"192.168.x.x"}
+ *
+ * তারপর WS flow:
+ *   Phone → ws://pcIp:9224
  *   Phone → {"type":"auth","code":"XXXXXX","device":"Model"}
- *   PC   → {"type":"ready","width":W,"height":H,"fps":30,"codec":"h264"}
- *   PC   → binary [flags 1B | pts_ms 4B | H264 NAL...]
- *   Phone → {"type":"mouse","mask":M,"x":NX,"y":NY}  (NX,NY = 0..1 normalized)
+ *   PC    → {"type":"ready","width":W,"height":H,"fps":30}
+ *   PC    → binary H264 NAL frames
+ *   Phone → {"type":"mouse","mask":M,"x":NX,"y":NY}  (NX,NY = 0..1)
  */
 
 import android.content.Context
@@ -27,6 +29,9 @@ import android.view.SurfaceView
 import kotlinx.coroutines.*
 import okhttp3.*
 import okio.ByteString
+import org.json.JSONObject
+import java.net.DatagramPacket
+import java.net.DatagramSocket
 import java.util.concurrent.TimeUnit
 
 class PcScreenReceiverView @JvmOverloads constructor(
@@ -34,17 +39,19 @@ class PcScreenReceiverView @JvmOverloads constructor(
 ) : SurfaceView(context, attrs), SurfaceHolder.Callback {
 
     private val TAG = "PcScreenReceiver"
+    private val UDP_PORT = 9225      // PC broadcast port
+    private val WS_PORT  = 9224      // PC WebSocket port
 
-    // WebSocket
     private var wsClient:    WebSocket? = null
+    private var udpSocket:   DatagramSocket? = null
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    // H264 decoder — owned by this view, not by Service
-    private var decoder: MediaCodec? = null
+    private var decoder:     MediaCodec? = null
     private var decoderReady = false
     private var surfaceReady = false
 
-    // Callbacks → PcViewerScreen
+    // Callbacks
+    var onDiscovering:  (() -> Unit)?                        = null  // UDP scan শুরু
     var onConnected:    ((width: Int, height: Int) -> Unit)? = null
     var onDisconnected: (() -> Unit)?                        = null
     var onError:        ((String) -> Unit)?                  = null
@@ -52,7 +59,6 @@ class PcScreenReceiverView @JvmOverloads constructor(
 
     init { holder.addCallback(this) }
 
-    // ── SurfaceHolder.Callback ─────────────────────────────────────
     override fun surfaceCreated(h: SurfaceHolder)  { surfaceReady = true }
     override fun surfaceChanged(h: SurfaceHolder, f: Int, w: Int, ht: Int) {}
     override fun surfaceDestroyed(h: SurfaceHolder) {
@@ -60,12 +66,69 @@ class PcScreenReceiverView @JvmOverloads constructor(
         releaseDecoder()
     }
 
-    // ── Connect to PC ──────────────────────────────────────────────
-    fun connectToPc(pcIp: String, authCode: String, pcPort: Int = 9224) {
+    // ── Entry point — শুধু 6-digit code দিলেই হবে ─────────────────
+    fun connectByCode(authCode: String) {
         disconnect()
+        onDiscovering?.invoke()
+        scope.launch { discoverAndConnect(authCode) }
+    }
+
+    // ── UDP Discovery — PC এর broadcast শোনো ──────────────────────
+    private suspend fun discoverAndConnect(authCode: String) {
+        try {
+            udpSocket = DatagramSocket(UDP_PORT).apply {
+                soTimeout    = 15_000   // 15s timeout
+                reuseAddress = true
+            }
+            val buf = ByteArray(512)
+            val pkt = DatagramPacket(buf, buf.size)
+
+            Log.d(TAG, "UDP listening on port $UDP_PORT for code $authCode")
+
+            while (currentCoroutineContext().isActive) {
+                try {
+                    udpSocket?.receive(pkt) ?: break
+                    val msg = String(pkt.data, 0, pkt.length)
+                    Log.d(TAG, "UDP recv: $msg")
+
+                    val j = JSONObject(msg)
+                    if (j.optString("type") == "rd_announce" &&
+                        j.optString("code") == authCode) {
+
+                        val pcIp   = j.optString("ip",   pkt.address.hostAddress ?: "")
+                        val pcPort = j.optInt("port", WS_PORT)
+
+                        Log.d(TAG, "PC found at $pcIp:$pcPort via UDP")
+                        udpSocket?.close()
+                        udpSocket = null
+
+                        // WS connect এ switch করো
+                        withContext(Dispatchers.Main) {
+                            connectWs(pcIp, pcPort, authCode)
+                        }
+                        return
+                    }
+                } catch (e: java.net.SocketTimeoutException) {
+                    Log.w(TAG, "UDP timeout — PC not found in 15s")
+                    withContext(Dispatchers.Main) {
+                        onError?.invoke("⏱ PC পাওয়া যায়নি — PC তে 'Generate Code' চাপো, একই WiFi তে আছো কি?")
+                    }
+                    return
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "UDP discovery error: ${e.message}")
+            withContext(Dispatchers.Main) {
+                onError?.invoke("UDP error: ${e.message}")
+            }
+        }
+    }
+
+    // ── WebSocket connect (IP পাওয়ার পর) ─────────────────────────
+    private fun connectWs(pcIp: String, pcPort: Int, authCode: String) {
         val client = OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(0,   TimeUnit.SECONDS)
+            .readTimeout(0, TimeUnit.SECONDS)
             .build()
 
         val req = Request.Builder().url("ws://$pcIp:$pcPort").build()
@@ -92,29 +155,21 @@ class PcScreenReceiverView @JvmOverloads constructor(
 
             override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
                 Log.e(TAG, "WS failure: ${t.message}")
-                onError?.invoke(t.message ?: "Connection failed")
+                onError?.invoke("Connect failed: ${t.message}")
                 onDisconnected?.invoke()
             }
         })
     }
 
-    // ── Handle PC text messages ───────────────────────────────────
+    // ── PC text messages ──────────────────────────────────────────
     private fun handleTextMessage(text: String) {
         try {
-            val j = org.json.JSONObject(text)
+            val j = JSONObject(text)
             when (j.optString("type")) {
-                "ready" -> {
-                    val w   = j.optInt("width",  1280)
-                    val h   = j.optInt("height",  720)
+                "ready", "info" -> {
+                    val w = j.optInt("width",  1280)
+                    val h = j.optInt("height",  720)
                     Log.d(TAG, "PC ready: ${w}x${h}")
-                    // Init decoder with ACTUAL PC resolution
-                    initDecoder(w, h)
-                    onConnected?.invoke(w, h)
-                }
-                "info"  -> {
-                    // Legacy compat — some builds send "info" instead of "ready"
-                    val w = j.optInt("width", 1280)
-                    val h = j.optInt("height", 720)
                     initDecoder(w, h)
                     onConnected?.invoke(w, h)
                 }
@@ -126,28 +181,27 @@ class PcScreenReceiverView @JvmOverloads constructor(
                         msg.contains("auth",       ignoreCase = true) ->
                             onAuthFailed?.invoke()
                         msg.contains("busy", ignoreCase = true) ->
-                            onError?.invoke("PC এ already অন্য device connected আছে")
+                            onError?.invoke("PC তে already অন্য device connected")
                         else -> onError?.invoke(msg)
                     }
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "JSON parse error: ${e.message}")
+            Log.e(TAG, "JSON parse: ${e.message}")
         }
     }
 
-    // ── Init MediaCodec H264 decoder with PC's actual resolution ──
+    // ── H264 decoder — PC resolution দিয়ে init ────────────────────
     private fun initDecoder(width: Int, height: Int) {
         releaseDecoder()
         val surface = holder.surface
         if (!surfaceReady || surface == null || !surface.isValid) {
-            Log.w(TAG, "Surface not ready for decoder init")
-            onError?.invoke("Surface not ready — try again")
+            Log.w(TAG, "Surface not ready")
+            onError?.invoke("Surface not ready")
             return
         }
         try {
             val fmt = MediaFormat.createVideoFormat("video/avc", width, height).apply {
-                // Low-latency hints
                 setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
             }
             decoder = MediaCodec.createDecoderByType("video/avc").also { dec ->
@@ -155,38 +209,34 @@ class PcScreenReceiverView @JvmOverloads constructor(
                 dec.start()
                 decoderReady = true
                 Log.d(TAG, "Decoder started ${width}x${height}")
-                // Start output drain loop
                 scope.launch(Dispatchers.IO) { drainDecoder(dec) }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "initDecoder failed: ${e.message}")
+            Log.e(TAG, "initDecoder: ${e.message}")
             decoderReady = false
-            onError?.invoke("Decoder init failed: ${e.message}")
+            onError?.invoke("Decoder error: ${e.message}")
         }
     }
 
-    // ── Drain decoder output → render to Surface ──────────────────
     private suspend fun drainDecoder(dec: MediaCodec) {
         val info = MediaCodec.BufferInfo()
         while (currentCoroutineContext().isActive && decoderReady) {
             try {
                 val idx = dec.dequeueOutputBuffer(info, 5_000L)
-                if (idx >= 0) {
-                    dec.releaseOutputBuffer(idx, true) // render=true → draws to Surface
-                }
+                if (idx >= 0) dec.releaseOutputBuffer(idx, true)
             } catch (e: Exception) {
-                if (decoderReady) Log.e(TAG, "drainDecoder: ${e.message}")
+                if (decoderReady) Log.e(TAG, "drain: ${e.message}")
                 break
             }
         }
     }
 
-    // ── Handle binary H264 NAL packet from PC ────────────────────
-    // Packet format: [flags 1B][pts_ms 4B][NAL data...]
+    // ── Binary H264 NAL packet ─────────────────────────────────────
+    // Format: [flags 1B][pts_ms 4B][NAL...]
     private fun handleBinaryFrame(data: ByteArray) {
         if (data.size < 5) return
-        val dec = decoder
-        if (dec == null || !decoderReady) return
+        val dec = decoder ?: return
+        if (!decoderReady) return
 
         val flags    = data[0].toInt()
         val isConfig = (flags and 2) != 0
@@ -200,46 +250,37 @@ class PcScreenReceiverView @JvmOverloads constructor(
             val idx = dec.dequeueInputBuffer(10_000L)
             if (idx < 0) return
             val buf = dec.getInputBuffer(idx) ?: return
-            buf.clear()
-            buf.put(nal)
+            buf.clear(); buf.put(nal)
             val codecFlags = if (isConfig) MediaCodec.BUFFER_FLAG_CODEC_CONFIG else 0
-            // pts_ms থেকে microseconds convert করে decoder এ দাও
             dec.queueInputBuffer(idx, 0, nal.size, pts * 1000L, codecFlags)
         } catch (e: Exception) {
             Log.e(TAG, "feedDecoder: ${e.message}")
         }
     }
 
-    // ── Mouse input (normalized 0..1 coords) ─────────────────────
-    // PC InjectMouse: inp.mi.dx = (LONG)(rx * 65535)
+    // ── Input send ────────────────────────────────────────────────
     fun sendMouseNorm(mask: Int, nx: Float, ny: Float) {
         wsClient?.send("""{"type":"mouse","mask":$mask,"x":$nx,"y":$ny}""")
     }
-
     fun sendScrollNorm(nx: Float, ny: Float, dir: String) {
         wsClient?.send("""{"type":"scroll","x":$nx,"y":$ny,"dir":"$dir"}""")
     }
-
     fun sendKeyEvent(vk: Int, action: Int) {
         wsClient?.send("""{"type":"key","vk":$vk,"action":$action}""")
     }
 
     // ── Cleanup ───────────────────────────────────────────────────
     fun disconnect() {
-        wsClient?.close(1000, "Disconnected")
-        wsClient = null
+        udpSocket?.close(); udpSocket = null
+        wsClient?.close(1000, "Disconnected"); wsClient = null
     }
-
     private fun releaseDecoder() {
         decoderReady = false
-        try { decoder?.stop();    } catch (_: Exception) {}
-        try { decoder?.release(); } catch (_: Exception) {}
+        try { decoder?.stop()    } catch (_: Exception) {}
+        try { decoder?.release() } catch (_: Exception) {}
         decoder = null
     }
-
     fun destroy() {
-        disconnect()
-        releaseDecoder()
-        scope.cancel()
+        disconnect(); releaseDecoder(); scope.cancel()
     }
 }

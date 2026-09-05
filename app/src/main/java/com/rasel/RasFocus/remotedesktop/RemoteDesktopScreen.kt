@@ -87,11 +87,10 @@ fun RemoteDesktopHomeScreen(onBack: () -> Unit) {
     var selectedTab by remember { mutableIntStateOf(0) }
 
     // ── "Connect to PC" state ─────────────────────────────────────
-    var pcIpInput   by remember { mutableStateOf("") }
+    // IP দিতে হবে না — UDP broadcast দিয়ে PC খুঁজে নেওয়া হয়
     var codeInput   by remember { mutableStateOf("") }
     var statusMsg   by remember { mutableStateOf("") }
     var showViewer  by remember { mutableStateOf(false) }
-    var viewerIp    by remember { mutableStateOf("") }
     var viewerCode  by remember { mutableStateOf("") }
 
     // ── "Share Screen" (phone → other device) state ──────────────
@@ -124,16 +123,13 @@ fun RemoteDesktopHomeScreen(onBack: () -> Unit) {
     }
 
     // ── Fullscreen PC viewer overlay ──────────────────────────────
-    if (showViewer && viewerIp.isNotEmpty()) {
+    if (showViewer && viewerCode.isNotEmpty()) {
         PcViewerScreen(
-            pcIp   = viewerIp,
             code   = viewerCode,
-            pcPort = 9224,
             onBack = {
-                showViewer  = false
-                viewerIp    = ""
-                viewerCode  = ""
-                statusMsg   = ""
+                showViewer = false
+                viewerCode = ""
+                statusMsg  = ""
             }
         )
         return
@@ -174,28 +170,22 @@ fun RemoteDesktopHomeScreen(onBack: () -> Unit) {
     ) { padding ->
         when (selectedTab) {
             0 -> ConnectToPcTab(
-                modifier    = Modifier.padding(padding),
-                pcIpInput   = pcIpInput,
-                codeInput   = codeInput,
-                statusMsg   = statusMsg,
-                recentList  = RemoteDesktopService.recentConnections,
-                onIpChange  = { pcIpInput = it },
+                modifier     = Modifier.padding(padding),
+                codeInput    = codeInput,
+                statusMsg    = statusMsg,
+                recentList   = RemoteDesktopService.recentConnections,
                 onCodeChange = { if (it.filter { c -> c.isDigit() }.length <= 6) codeInput = it },
-                onConnect   = {
-                    val ip   = pcIpInput.trim()
+                onConnect    = {
                     val code = codeInput.filter { it.isDigit() }
-                    if (ip.isEmpty()) { statusMsg = "⚠️ PC এর IP দাও"; return@ConnectToPcTab }
                     if (code.length != 6) { statusMsg = "⚠️ 6-digit code দাও"; return@ConnectToPcTab }
-                    viewerIp   = ip
                     viewerCode = code
                     showViewer = true
                     RemoteDesktopService.recentConnections.add(
-                        0, RemoteDesktopService.RecentConn("PC ($ip)", ip, code)
+                        0, RemoteDesktopService.RecentConn("PC", "", code)
                     )
                 },
                 onConnectRecent = { conn ->
-                    viewerIp   = conn.id      // id  = PC IP address
-                    viewerCode = conn.ip      // ip  = 6-digit auth code
+                    viewerCode = conn.ip   // ip field = auth code
                     showViewer = true
                 }
             )
@@ -217,11 +207,9 @@ fun RemoteDesktopHomeScreen(onBack: () -> Unit) {
 @Composable
 fun ConnectToPcTab(
     modifier: Modifier,
-    pcIpInput: String,
     codeInput: String,
     statusMsg: String,
     recentList: List<RemoteDesktopService.RecentConn>,
-    onIpChange: (String) -> Unit,
     onCodeChange: (String) -> Unit,
     onConnect: () -> Unit,
     onConnectRecent: (RemoteDesktopService.RecentConn) -> Unit
@@ -250,9 +238,11 @@ fun ConnectToPcTab(
                         color = TextSecondary, fontSize = 13.sp)
                     Text("২. \"Phone Remote\" ট্যাব → \"Generate Code\" চাপো",
                         color = TextSecondary, fontSize = 13.sp)
-                    Text("৩. 6-digit code এবং PC IP নিচে দাও",
+                    Text("৩. PC এবং Phone একই WiFi তে থাকো",
                         color = TextSecondary, fontSize = 13.sp)
-                    Text("৪. Connect চাপলে PC screen phone এ আসবে",
+                    Text("৪. নিচে শুধু 6-digit code টাইপ করো — IP দিতে হবে না",
+                        color = AccentCyan, fontSize = 13.sp)
+                    Text("৫. Connect চাপলে PC screen phone এ আসবে",
                         color = TextSecondary, fontSize = 13.sp)
                 }
             }
@@ -269,32 +259,7 @@ fun ConnectToPcTab(
                     Modifier.padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text("PC Connect করো", color = TextSecondary, fontSize = 13.sp)
-
-                    // IP field
-                    OutlinedTextField(
-                        value         = pcIpInput,
-                        onValueChange = onIpChange,
-                        label         = { Text("PC IP Address", color = TextSecondary) },
-                        placeholder   = {
-                            Text("192.168.1.100", color = TextSecondary.copy(alpha = .4f))
-                        },
-                        singleLine    = true,
-                        modifier      = Modifier.fillMaxWidth(),
-                        shape         = RoundedCornerShape(12.dp),
-                        colors        = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor   = AccentCyan,
-                            unfocusedBorderColor = Color(0xFF3A3A50),
-                            focusedTextColor     = TextPrimary,
-                            unfocusedTextColor   = TextPrimary,
-                            cursorColor          = AccentCyan
-                        ),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        leadingIcon   = {
-                            Icon(Icons.Default.Computer, null,
-                                tint = TextSecondary, modifier = Modifier.size(20.dp))
-                        }
-                    )
+                    Text("PC এর Code টাইপ করো", color = TextSecondary, fontSize = 13.sp)
 
                     // 6-digit code field — big digits like RustDesk
                     OutlinedTextField(
@@ -327,8 +292,7 @@ fun ConnectToPcTab(
 
                     Button(
                         onClick  = onConnect,
-                        enabled  = pcIpInput.isNotBlank() &&
-                                   codeInput.filter { it.isDigit() }.length == 6,
+                        enabled  = codeInput.filter { it.isDigit() }.length == 6,
                         modifier = Modifier.fillMaxWidth().height(52.dp),
                         shape    = RoundedCornerShape(12.dp),
                         colors   = ButtonDefaults.buttonColors(
@@ -634,15 +598,13 @@ fun RdSettingsTab(modifier: Modifier, context: Context) {
 // ═══════════════════════════════════════════════════════════════════════════════
 @Composable
 fun PcViewerScreen(
-    pcIp:   String,
     code:   String,
-    pcPort: Int    = 9224,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
     val scope   = rememberCoroutineScope()
 
-    var statusMsg    by remember { mutableStateOf("Connecting...") }
+    var statusMsg    by remember { mutableStateOf("🔍 PC খোঁজা হচ্ছে...") }
     var connected    by remember { mutableStateOf(false) }
     var authFailed   by remember { mutableStateOf(false) }
     var showControls by remember { mutableStateOf(true) }
@@ -666,7 +628,7 @@ fun PcViewerScreen(
         }
     }
 
-    DisposableEffect(pcIp) {
+    DisposableEffect(code) {
         onDispose { viewRef.value?.destroy() }
     }
 
@@ -730,6 +692,9 @@ fun PcViewerScreen(
             factory  = { ctx ->
                 PcScreenReceiverView(ctx).also { v ->
                     viewRef.value = v
+                    v.onDiscovering  = {
+                        statusMsg = "🔍 PC খোঁজা হচ্ছে... (একই WiFi তে থাকো)"
+                    }
                     v.onConnected    = { w, h ->
                         connected  = true
                         authFailed = false
@@ -746,10 +711,10 @@ fun PcViewerScreen(
                         statusMsg  = "❌ Code ভুল — PC তে নতুন code generate করো"
                     }
                     v.onError        = { msg ->
-                        statusMsg = "Error: $msg"
+                        statusMsg = msg
                     }
-                    // Connect with 6-digit auth code
-                    v.connectToPc(pcIp, code, pcPort)
+                    // শুধু code দিলেই হবে — UDP দিয়ে PC খুঁজে নেবে
+                    v.connectByCode(code)
                 }
             }
         )
@@ -789,7 +754,7 @@ fun PcViewerScreen(
                     Text(statusMsg, color = TextPrimary,
                         fontSize = 14.sp, textAlign = TextAlign.Center,
                         modifier = Modifier.padding(horizontal = 24.dp))
-                    Text("$pcIp:$pcPort  ·  code: $code",
+                    Text("Code: $code  ·  WiFi LAN discovery",
                         color = TextSecondary, fontSize = 12.sp)
                     OutlinedButton(
                         onClick = onBack,
@@ -819,7 +784,7 @@ fun PcViewerScreen(
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = TextPrimary)
                 }
                 Text(
-                    if (connected) "$pcIp  ${remoteW}×${remoteH}" else statusMsg,
+                    if (connected) "PC  ${remoteW}×${remoteH}" else statusMsg,
                     color = AccentCyan, fontSize = 13.sp, modifier = Modifier.weight(1f)
                 )
                 if (connected) {
