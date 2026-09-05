@@ -720,10 +720,8 @@ fun PcViewerScreen(code: String, onBack: () -> Unit) {
                                 val down = awaitFirstDown(requireUnconsumed = false)
                                 val normX = down.position.x / size.width
                                 val normY = down.position.y / size.height
-                                val btn   = if (isRightClickMode) 2 else 0
-
-                                // Mouse down
-                                val downMask = if (btn == 0) 1 else 2  // left=1, right=2
+                                // PC mask: 1=LEFTDOWN, 2=LEFTUP, 4=RIGHTDOWN, 8=RIGHTUP
+                                val downMask = if (isRightClickMode) 4 else 1
                                 RemoteDesktopService.getInstance()
                                     ?.sendMouseEvent(nx = normX, ny = normY, mask = downMask)
 
@@ -737,19 +735,19 @@ fun PcViewerScreen(code: String, onBack: () -> Unit) {
                                     val change = event.changes.firstOrNull() ?: break
                                     if (!change.pressed) {
                                         // Mouse up
-                                        val upMask = if (btn == 0) 2 else 8
+                                        val upMask = if (isRightClickMode) 8 else 2
                                         RemoteDesktopService.getInstance()
                                             ?.sendMouseEvent(nx = lastX, ny = lastY, mask = upMask)
                                         break
                                     }
-                                    // Move
+                                    // Move (send with button held)
                                     val mx = change.position.x / size.width
                                     val my = change.position.y / size.height
                                     if (kotlin.math.abs(mx - lastX) > 0.002f ||
                                         kotlin.math.abs(my - lastY) > 0.002f) {
                                         isDragging = true
                                         RemoteDesktopService.getInstance()
-                                            ?.sendMouseEvent(nx = mx, ny = my, mask = if (btn == 0) 1 else 2)
+                                            ?.sendMouseEvent(nx = mx, ny = my, mask = downMask)
                                         lastX = mx; lastY = my
                                     }
                                     change.consume()

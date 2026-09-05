@@ -327,7 +327,8 @@ class PcScreenReceiverView @JvmOverloads constructor(
         wsClient?.send("""{"type":"scroll","nx":$nx,"ny":$ny,"dir":"$dir"}""")
     }
     fun sendKeyEvent(vk: Int, action: Int) {
-        wsClient?.send("""{"type":"key","vk":$vk,"action":$action}""")
+        val actionStr = if (action == 1) "up" else "down"
+        wsClient?.send("""{"type":"key","vk":$vk,"action":"$actionStr"}""")
     }
 
     // ── Cleanup ────────────────────────────────────────────────────
