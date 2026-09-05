@@ -1,16 +1,21 @@
 package com.rasel.RasFocus.remotedesktop
 
 /**
- * RdSignaling — Firebase Firestore based ID↔IP signaling
+ * RdSignaling — Firebase Firestore ID lookup + Relay server fallback
  *
- * RustDesk uses its own relay server. আমরা Firebase ব্যবহার করি।
+ * PC side (tab_phone_remote.cpp) registers:
+ *   Firestore "rd_sessions/<code>" = {code, ip, port, hostname, platform, ts}
  *
- * Phone চালু হলে → Firestore এ নিজের {id, ip, port, ts} save করে
- * User remote ID দিলে → Firestore থেকে সেই ID এর IP lookup করে connect করে
+ * Phone side:
+ *   1. User types 6-digit code
+ *   2. Firestore lookup → get PC's local IP + port
+ *   3. Try direct WebSocket: ws://pc-ip:9224
+ *   4. If fails (different network) → relay: wss://relay.rasfocus.com/relay/<code>
  *
- * Collection: "rd_devices"
- * Document:   deviceId (9-digit)
- * Fields:     id, ip, port, ts, name, platform
+ * Relay server bridges the two WebSocket connections:
+ *   PC connects to relay as "host" using same code
+ *   Phone connects to relay as "client" using same code
+ *   Relay pipes data bidirectionally — transparent to app layer
  */
 
 import android.content.Context
@@ -22,9 +27,12 @@ import kotlin.coroutines.resume
 
 object RdSignaling {
 
-    private const val TAG        = "RdSignaling"
-    private const val COLLECTION = "rd_devices"
+    private const val TAG             = "RdSignaling"
+    private const val SESSION_COL     = "rd_sessions"   // PC registers codes here
+    private const val DEVICE_COL      = "rd_devices"    // Phone shares its own ID here
+    private const val RELAY_WS_URL    = "wss://relay.rasfocus.com"  // your relay server
 
+    // ── Device info returned from lookup ────────────────────────────
     data class DeviceInfo(
         val id: String,
         val ip: String,
@@ -33,11 +41,12 @@ object RdSignaling {
         val platform: String   // "android" or "windows"
     )
 
-    // ── Register this device on Firestore ─────────────────────────
+    // ── Register this phone device on Firestore ──────────────────────
+    // Called when RemoteDesktopService starts (phone can be a host too)
     fun register(ctx: Context, id: String, port: Int) {
         val ip = RemoteDesktopService.getLocalIp(ctx)
         if (ip == "0.0.0.0" || ip.isEmpty()) {
-            Log.w(TAG, "No IP — skipping register")
+            Log.w(TAG, "No local IP — skipping register")
             return
         }
         val doc = mapOf(
@@ -49,50 +58,95 @@ object RdSignaling {
             "ts"       to System.currentTimeMillis()
         )
         FirebaseFirestore.getInstance()
-            .collection(COLLECTION)
+            .collection(DEVICE_COL)
             .document(id)
             .set(doc, SetOptions.merge())
-            .addOnSuccessListener { Log.d(TAG, "Registered: $id @ $ip:$port") }
+            .addOnSuccessListener { Log.d(TAG, "Phone registered: $id @ $ip:$port") }
             .addOnFailureListener { Log.e(TAG, "Register failed: ${it.message}") }
     }
 
-    // ── Unregister (app stop) ─────────────────────────────────────
+    // ── Unregister ────────────────────────────────────────────────────
     fun unregister(id: String) {
         FirebaseFirestore.getInstance()
-            .collection(COLLECTION)
+            .collection(DEVICE_COL)
             .document(id)
             .delete()
     }
 
-    // ── Lookup device by ID → returns DeviceInfo or null ──────────
+    // ── Lookup by 9-digit ID (phone ID lookup — existing feature) ─────
     suspend fun lookup(id: String): DeviceInfo? =
         suspendCancellableCoroutine { cont ->
+            // Try rd_devices first (for phone-to-phone)
             FirebaseFirestore.getInstance()
-                .collection(COLLECTION)
+                .collection(DEVICE_COL)
                 .document(id)
                 .get()
                 .addOnSuccessListener { doc ->
                     if (doc.exists()) {
-                        val info = DeviceInfo(
-                            id       = doc.getString("id")   ?: id,
-                            ip       = doc.getString("ip")   ?: "",
-                            port     = (doc.getLong("port")  ?: 9224).toInt(),
-                            name     = doc.getString("name") ?: "Unknown",
-                            platform = doc.getString("platform") ?: "unknown"
-                        )
-                        Log.d(TAG, "Lookup $id → ${info.ip}:${info.port}")
-                        cont.resume(info)
+                        cont.resume(parseDeviceDoc(doc, id))
                     } else {
-                        Log.w(TAG, "ID not found: $id")
-                        cont.resume(null)
+                        // Try rd_sessions (for phone-to-PC by 6-digit code)
+                        lookupSession(id, cont)
                     }
                 }
                 .addOnFailureListener {
-                    Log.e(TAG, "Lookup failed: ${it.message}")
-                    cont.resume(null)
+                    Log.w(TAG, "rd_devices lookup failed, trying rd_sessions: ${it.message}")
+                    lookupSession(id, cont)
                 }
         }
 
-    // ── Format 9-digit ID for display (123 456 789) ───────────────
+    // ── Lookup a 6-digit PC session code ─────────────────────────────
+    suspend fun lookupSession(code: String): DeviceInfo? =
+        suspendCancellableCoroutine { cont ->
+            lookupSession(code, cont)
+        }
+
+    private fun lookupSession(
+        code: String,
+        cont: kotlin.coroutines.Continuation<DeviceInfo?>
+    ) {
+        FirebaseFirestore.getInstance()
+            .collection(SESSION_COL)
+            .document(code)
+            .get()
+            .addOnSuccessListener { doc ->
+                if (doc.exists()) {
+                    val info = DeviceInfo(
+                        id       = doc.getString("code")    ?: code,
+                        ip       = doc.getString("ip")      ?: "",
+                        port     = (doc.getLong("port")     ?: 9224).toInt(),
+                        name     = doc.getString("hostname") ?: "Windows PC",
+                        platform = doc.getString("platform") ?: "windows"
+                    )
+                    Log.d(TAG, "Session $code → ${info.ip}:${info.port} (${info.name})")
+                    cont.resume(info)
+                } else {
+                    Log.w(TAG, "Session code not found: $code")
+                    cont.resume(null)
+                }
+            }
+            .addOnFailureListener {
+                Log.e(TAG, "Session lookup failed: ${it.message}")
+                cont.resume(null)
+            }
+    }
+
+    private fun parseDeviceDoc(
+        doc: com.google.firebase.firestore.DocumentSnapshot,
+        fallbackId: String
+    ): DeviceInfo = DeviceInfo(
+        id       = doc.getString("id")       ?: fallbackId,
+        ip       = doc.getString("ip")       ?: "",
+        port     = (doc.getLong("port")      ?: 9224).toInt(),
+        name     = doc.getString("name")     ?: "Unknown",
+        platform = doc.getString("platform") ?: "unknown"
+    )
+
+    // ── Relay WebSocket URL for a given code ─────────────────────────
+    // Use this when direct LAN connect fails.
+    // PC must also connect to this same URL as host.
+    fun relayUrl(code: String): String = "$RELAY_WS_URL/relay/$code"
+
+    // ── Format ID for display (123 456 789 or 123 456) ───────────────
     fun formatId(id: String) = RemoteDesktopService.formatId(id)
 }
