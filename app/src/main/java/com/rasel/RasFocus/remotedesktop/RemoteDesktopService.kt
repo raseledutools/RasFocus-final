@@ -50,8 +50,10 @@ import java.util.concurrent.TimeUnit
 class RemoteDesktopService : Service() {
 
     companion object {
-        const val ACTION_START       = "com.rasel.RasFocus.remotedesktop.START"
-        const val ACTION_STOP        = "com.rasel.RasFocus.remotedesktop.STOP"
+        const val ACTION_START        = "com.rasel.RasFocus.remotedesktop.START"
+        const val ACTION_STOP         = "com.rasel.RasFocus.remotedesktop.STOP"
+        // Viewer-only mode: service starts without MediaProjection (phone connects TO a PC)
+        const val ACTION_START_VIEWER = "com.rasel.RasFocus.remotedesktop.START_VIEWER"
         const val EXTRA_RESULT_DATA  = "result_data"
         const val WS_PORT            = 9224
         const val NOTIFY_ID          = 5501
@@ -157,6 +159,11 @@ class RemoteDesktopService : Service() {
                     intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
                 else @Suppress("DEPRECATION") intent.getParcelableExtra(EXTRA_RESULT_DATA)
                 data?.let { initProjection(it) }
+            }
+            ACTION_START_VIEWER -> {
+                // Viewer-only: service is live, no screen capture needed
+                // Service onCreate already called startForeground + startWsServer
+                Log.d(TAG, "Viewer-only mode started")
             }
             ACTION_STOP -> {
                 stopProjection()

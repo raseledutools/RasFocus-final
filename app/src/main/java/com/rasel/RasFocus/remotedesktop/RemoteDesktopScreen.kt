@@ -661,7 +661,29 @@ fun PcViewerScreen(code: String, onBack: () -> Unit) {
             return@LaunchedEffect
         }
         statusText = "Connecting to ${devInfo.name}..."
-        RemoteDesktopService.getInstance()?.connectToPC(devInfo, code)
+
+        // Service না থাকলে viewer-only mode start করি
+        var svc = RemoteDesktopService.getInstance()
+        if (svc == null) {
+            val svcIntent = Intent(context, RemoteDesktopService::class.java).apply {
+                action = RemoteDesktopService.ACTION_START_VIEWER
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                context.startForegroundService(svcIntent)
+            else
+                context.startService(svcIntent)
+            var waited = 0
+            while (RemoteDesktopService.getInstance() == null && waited < 3000) {
+                delay(100)
+                waited += 100
+            }
+            svc = RemoteDesktopService.getInstance()
+        }
+        if (svc == null) {
+            statusText = "❌ Service start হয়নি — ফোন restart করে আবার চেষ্টা করো"
+            return@LaunchedEffect
+        }
+        svc.connectToPC(devInfo, code)
     }
 
     // Disconnect confirm dialog
@@ -1000,9 +1022,28 @@ data class ConnectResult(
 
 private suspend fun connectToRemote(context: Context, code: String): ConnectResult {
     val devInfo = RdSignaling.lookup(code)
-        ?: return ConnectResult(false, error = "Code পাওয়া যায়নি — PC এ code generate করা হয়েছে কিনা দেখো")
-    val svc = RemoteDesktopService.getInstance()
-        ?: return ConnectResult(false, error = "Remote Desktop Service চলছে না")
+        ?: return ConnectResult(false, error = "Code পাওয়া যায়নি — PC এ \"Generate Code\" চাপো")
+
+    // Service না থাকলে viewer-only mode এ start করি (screen share ছাড়া)
+    var svc = RemoteDesktopService.getInstance()
+    if (svc == null) {
+        val svcIntent = Intent(context, RemoteDesktopService::class.java).apply {
+            action = RemoteDesktopService.ACTION_START_VIEWER
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+            context.startForegroundService(svcIntent)
+        else
+            context.startService(svcIntent)
+        // Service start হতে একটু সময় লাগে
+        var waited = 0
+        while (RemoteDesktopService.getInstance() == null && waited < 3000) {
+            delay(100)
+            waited += 100
+        }
+        svc = RemoteDesktopService.getInstance()
+            ?: return ConnectResult(false, error = "Service start হয়নি — আবার চেষ্টা করো")
+    }
+
     val ok = svc.connectToPC(devInfo, code)
     return if (ok) ConnectResult(true, deviceName = devInfo.name, platform = devInfo.platform)
     else ConnectResult(false, error = "Connect করা যায়নি — Relay চেষ্টা করছে...")
