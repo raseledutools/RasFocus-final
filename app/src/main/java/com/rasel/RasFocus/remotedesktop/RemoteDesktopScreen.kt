@@ -32,6 +32,8 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -355,25 +357,53 @@ private fun RemoteIdCard(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                // Big ID text (editable but styled like RustDesk)
-                Box(modifier = Modifier.weight(1f)) {
-                    if (remoteId.isEmpty()) {
-                        Text(
-                            "Enter Remote ID",
-                            color = TextSecondary.copy(alpha = 0.5f),
-                            fontSize = 26.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    BasicClickableText(
-                        text = if (remoteId.isEmpty()) "" else displayId,
+                // Big ID text — proper focusable BasicTextField
+                val focusRequester = remember { FocusRequester() }
+                androidx.compose.foundation.text.BasicTextField(
+                    value = remoteId,
+                    onValueChange = onIdChange,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    textStyle = androidx.compose.ui.text.TextStyle(
                         color = AccentCyan,
-                        fontSize = 26,
-                        onIdChange = onIdChange,
-                        currentRaw = remoteId
-                    )
-                }
+                        fontSize = 26.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 3.sp
+                    ),
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(AccentCyan),
+                    modifier = Modifier
+                        .weight(1f)
+                        .focusRequester(focusRequester)
+                        .clickable { focusRequester.requestFocus() },
+                    decorationBox = { innerTextField ->
+                        Box(contentAlignment = Alignment.CenterStart) {
+                            // Placeholder
+                            if (remoteId.isEmpty()) {
+                                Text(
+                                    "Remote ID",
+                                    color = TextSecondary.copy(alpha = 0.4f),
+                                    fontSize = 26.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            // Formatted display with spaces (123 456 789)
+                            if (remoteId.isNotEmpty()) {
+                                Text(
+                                    text = displayId,
+                                    color = AccentCyan,
+                                    fontSize = 26.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 3.sp
+                                )
+                            }
+                            // Real cursor is invisible (1dp) but captures keyboard
+                            Box(Modifier.size(1.dp)) { innerTextField() }
+                        }
+                    }
+                )
 
                 // Clear button (X)
                 if (remoteId.isNotEmpty()) {
@@ -421,46 +451,6 @@ private fun RemoteIdCard(
             }
         }
     }
-}
-
-// Fake "clickable text field" that looks like big ID text
-@Composable
-private fun BasicClickableText(
-    text: String,
-    color: Color,
-    fontSize: Int,
-    onIdChange: (String) -> Unit,
-    currentRaw: String
-) {
-    var showKeyboard by remember { mutableStateOf(false) }
-
-    // Invisible text field that captures input
-    androidx.compose.foundation.text.BasicTextField(
-        value = currentRaw,
-        onValueChange = onIdChange,
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        textStyle = androidx.compose.ui.text.TextStyle(
-            color = color,
-            fontSize = fontSize.sp,
-            fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 2.sp
-        ),
-        decorationBox = { inner ->
-            // Display formatted text, actual input hidden beneath
-            Text(
-                text = text,
-                color = color,
-                fontSize = fontSize.sp,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 2.sp
-            )
-            // The real invisible input
-            Box(Modifier.size(1.dp, 1.dp)) { inner() }
-        }
-    )
 }
 
 // ── 5-icon tab row ────────────────────────────────────────────────────────────
