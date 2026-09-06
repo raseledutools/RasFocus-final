@@ -691,6 +691,61 @@ fun TopHeader(
             }
         }
 
+        // ── PC Control Card ───────────────────────────────────────────────
+        if (navController != null) {
+            Spacer(Modifier.height(16.dp))
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .clickable { navController.navigate("pc_control") },
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF0F1E3D)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(Color(0xFF0F1E3D), Color(0xFF1A3560))
+                            )
+                        )
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Box(
+                        Modifier
+                            .size(36.dp)
+                            .background(Color(0xFF4FC3F7).copy(alpha = 0.15f), RoundedCornerShape(10.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.Computer,
+                            contentDescription = null,
+                            tint = Color(0xFF4FC3F7),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Text("PC Control", color = White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        Text("Control Windows PC remotely", color = White.copy(alpha = 0.6f), fontSize = 10.sp)
+                    }
+                    Row(
+                        Modifier
+                            .background(Color(0xFF4FC3F7).copy(alpha = 0.15f), RoundedCornerShape(20.dp))
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(Modifier.size(5.dp).background(Color(0xFF4FC3F7), CircleShape))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Open", color = Color(0xFF4FC3F7), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+        }
+
         // ── Study Tools Card ──────────────────────────────────────────────
         if (navController != null) {
             Spacer(Modifier.height(16.dp))
