@@ -38,8 +38,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.input.pointer.awaitPointerEventScope
-import androidx.compose.ui.input.pointer.awaitPointerEvent
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -602,8 +600,7 @@ private fun DeviceListItem(
             }
             DropdownMenu(
                 expanded = showMenu,
-                onDismissRequest = { showMenu = false },
-                containerColor = BgCardDark
+                onDismissRequest = { showMenu = false }
             ) {
                 DropdownMenuItem(
                     text = { Text("Connect", color = TextPrimary, fontSize = 13.sp) },
