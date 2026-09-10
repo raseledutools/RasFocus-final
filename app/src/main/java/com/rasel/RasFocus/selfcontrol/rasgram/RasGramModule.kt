@@ -1804,7 +1804,7 @@ fun ChatsTab(
     var unreadCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     var searchQuery by remember { mutableStateOf("") }
     var showSettings by remember { mutableStateOf(false) }
-        var showQRScanner by remember { mutableStateOf(false) }
+    var showQRScanner by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
     var showNewGroup by remember { mutableStateOf(false) }
     var showAddContact by remember { mutableStateOf(false) }
@@ -2035,18 +2035,18 @@ fun ChatsTab(
             SearchBar(
                 query = searchQuery,
                 onQueryChange = { searchQuery = it },
-                onClose = { search            ChatsHeader(
+                onClose = { searchQuery = ""; showSearch = false }
+            )
+        } else {
+            ChatsHeader(
                 currentUser = currentUser,
                 onSearchClick = { showSearch = true },
                 onSettingsClick = { showSettings = true },
                 onNewGroupClick = { showNewGroup = true },
                 onAddContactClick = { showAddContact = true },
                 onToggleTheme = onToggleTheme,
-                onLogout = onLogout
-            
-                onScanQRClick = { showQRScanner = true },
-            )nToggleTheme,
-                onLogout = onLogout
+                onLogout = onLogout,
+                onScanQRClick = { showQRScanner = true }
             )
         }
 
@@ -2093,15 +2093,15 @@ fun ChatsTab(
         }
     }
 
-            // QR Desktop Login scanner
-        if (showQRScanner) {
-            QRDesktopLoginDialog(
-                currentUser = currentUser,
-                onDismiss = { showQRScanner = false }
-            )
-        }
+    // QR Desktop Login scanner
+    if (showQRScanner) {
+        QRDesktopLoginDialog(
+            currentUser = currentUser,
+            onDismiss = { showQRScanner = false }
+        )
+    }
 
-        if (showSettings) {
+    if (showSettings) {
         SettingsDialog(
             currentUser = currentUser,
             onDismiss = { showSettings = false },
