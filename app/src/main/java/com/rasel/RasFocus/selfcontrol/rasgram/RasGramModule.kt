@@ -1804,6 +1804,7 @@ fun ChatsTab(
     var unreadCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     var searchQuery by remember { mutableStateOf("") }
     var showSettings by remember { mutableStateOf(false) }
+        var showQRScanner by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
     var showNewGroup by remember { mutableStateOf(false) }
     var showAddContact by remember { mutableStateOf(false) }
@@ -2034,16 +2035,17 @@ fun ChatsTab(
             SearchBar(
                 query = searchQuery,
                 onQueryChange = { searchQuery = it },
-                onClose = { searchQuery = ""; showSearch = false }
-            )
-        } else {
-            ChatsHeader(
+                onClose = { search            ChatsHeader(
                 currentUser = currentUser,
                 onSearchClick = { showSearch = true },
                 onSettingsClick = { showSettings = true },
                 onNewGroupClick = { showNewGroup = true },
                 onAddContactClick = { showAddContact = true },
                 onToggleTheme = onToggleTheme,
+                onLogout = onLogout
+            
+                onScanQRClick = { showQRScanner = true },
+            )nToggleTheme,
                 onLogout = onLogout
             )
         }
@@ -2091,7 +2093,15 @@ fun ChatsTab(
         }
     }
 
-    if (showSettings) {
+            // QR Desktop Login scanner
+        if (showQRScanner) {
+            QRDesktopLoginDialog(
+                currentUser = currentUser,
+                onDismiss = { showQRScanner = false }
+            )
+        }
+
+        if (showSettings) {
         SettingsDialog(
             currentUser = currentUser,
             onDismiss = { showSettings = false },
@@ -2112,7 +2122,8 @@ fun ChatsHeader(
     onNewGroupClick: () -> Unit,
     onAddContactClick: () -> Unit,
     onToggleTheme: () -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onScanQRClick: () -> Unit = {}
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
@@ -2155,6 +2166,11 @@ fun ChatsHeader(
                     text = { Text("New Group", color = RasGramTheme.TextPrimary) },
                     leadingIcon = { Icon(Icons.Default.People, null, tint = RasGramTheme.TextMuted) },
                     onClick = { onNewGroupClick(); showMenu = false }
+                )
+                DropdownMenuItem(
+                    text = { Text("Linked Devices (QR)", color = RasGramTheme.TextPrimary) },
+                    leadingIcon = { Icon(Icons.Default.QrCodeScanner, null, tint = RasGramTheme.TextMuted) },
+                    onClick = { onScanQRClick(); showMenu = false }
                 )
                 DropdownMenuItem(
                     text = { Text("Settings", color = RasGramTheme.TextPrimary) },
@@ -8120,6 +8136,179 @@ fun zipDocumentFile(
         } catch (e: Exception) {
             android.util.Log.w("FolderZip", "skip file $entryPath: ${e.message}")
             // একটা file fail করলে বাকিগুলো চলতে থাকে
+        }
+    }
+}
+
+
+// ── QR Desktop Login Dialog ───────────────────────────────────
+// Allows user to scan a QR code displayed on RasGram Desktop (PC).
+// Flow:
+//   1. User taps "Linked Devices (QR)" in menu
+//   2. This dialog opens camera scanner (ZXing-compatible)
+//   3. Reads rasgram://qr/<token> URL from QR
+//   4. Writes to Firestore qr_sessions/{token}:
+//        status=scanned, mobile=currentUser.mobile, name=currentUser.name
+//   5. PC polls that doc → auto-logs in
+@Composable
+fun QRDesktopLoginDialog(
+    currentUser: User,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val db = remember { FirebaseFirestore.getInstance() }
+    val scope = rememberCoroutineScope()
+    var statusMsg by remember { mutableStateOf("Point your camera at the QR code on your PC") }
+    var isSuccess by remember { mutableStateOf(false) }
+    var isError   by remember { mutableStateOf(false) }
+    var isScanning by remember { mutableStateOf(true) }
+
+    // Camera permission
+    val cameraPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (!granted) {
+            statusMsg = "Camera permission required"
+            isError = true
+            isScanning = false
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        cameraPermission.launch(Manifest.permission.CAMERA)
+    }
+
+    Dialog(
+        onDismissRequest = { onDismiss() },
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+        ) {
+            if (isScanning && !isSuccess && !isError) {
+                // Camera preview + QR scan via AndroidView
+                AndroidView(
+                    factory = { ctx ->
+                        val previewView = androidx.camera.view.PreviewView(ctx)
+                        val cameraProviderFuture = androidx.camera.lifecycle.ProcessCameraProvider.getInstance(ctx)
+                        cameraProviderFuture.addListener({
+                            val cameraProvider = cameraProviderFuture.get()
+                            val preview = androidx.camera.core.Preview.Builder().build()
+                                .also { it.setSurfaceProvider(previewView.surfaceProvider) }
+                            val imageAnalysis = androidx.camera.core.ImageAnalysis.Builder()
+                                .setBackpressureStrategy(androidx.camera.core.ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                                .build()
+                            imageAnalysis.setAnalyzer(
+                                java.util.concurrent.Executors.newSingleThreadExecutor()
+                            ) { imageProxy ->
+                                val mediaImage = imageProxy.image
+                                if (mediaImage != null && isScanning) {
+                                    try {
+                                        val inputImage = com.google.mlkit.vision.common.InputImage
+                                            .fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
+                                        com.google.mlkit.vision.barcode.BarcodeScanning.getClient()
+                                            .process(inputImage)
+                                            .addOnSuccessListener { barcodes ->
+                                                for (barcode in barcodes) {
+                                                    val raw = barcode.rawValue ?: continue
+                                                    if (raw.startsWith("rasgram://qr/")) {
+                                                        val token = raw.removePrefix("rasgram://qr/").trim()
+                                                        if (token.isNotEmpty() && isScanning) {
+                                                            isScanning = false
+                                                            statusMsg = "Approving login…"
+                                                            scope.launch {
+                                                                try {
+                                                                    db.collection("qr_sessions").document(token)
+                                                                        .update(mapOf(
+                                                                            "status" to "scanned",
+                                                                            "mobile" to currentUser.mobile,
+                                                                            "name"   to currentUser.name,
+                                                                            "scannedAt" to System.currentTimeMillis()
+                                                                        )).await()
+                                                                    isSuccess = true
+                                                                    statusMsg = "✓ PC logged in as ${currentUser.name}!"
+                                                                    delay(1500)
+                                                                    onDismiss()
+                                                                } catch (e: Exception) {
+                                                                    isError   = true
+                                                                    statusMsg = "Failed: ${e.message}"
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            .addOnCompleteListener { imageProxy.close() }
+                                    } catch (_: Exception) { imageProxy.close() }
+                                } else {
+                                    imageProxy.close()
+                                }
+                            }
+                            try {
+                                cameraProvider.unbindAll()
+                                cameraProvider.bindToLifecycle(
+                                    ctx as androidx.lifecycle.LifecycleOwner,
+                                    androidx.camera.core.CameraSelector.DEFAULT_BACK_CAMERA,
+                                    preview, imageAnalysis
+                                )
+                            } catch (_: Exception) {}
+                        }, androidx.core.content.ContextCompat.getMainExecutor(ctx))
+                        previewView
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+                // Scanner frame overlay
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        // Corner frame
+                        Box(
+                            modifier = Modifier
+                                .size(220.dp)
+                                .border(3.dp, RasGramTheme.Green, RoundedCornerShape(16.dp))
+                        )
+                        Text(
+                            text = statusMsg,
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
+                                .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                        )
+                    }
+                }
+            } else {
+                // Status screen (success / error / permission denied)
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = if (isSuccess) "✅" else "❌",
+                        fontSize = 64.sp
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Text(statusMsg, color = Color.White, textAlign = TextAlign.Center, fontSize = 16.sp)
+                    Spacer(Modifier.height(24.dp))
+                    Button(
+                        onClick = { onDismiss() },
+                        colors = ButtonDefaults.buttonColors(containerColor = RasGramTheme.Green)
+                    ) {
+                        Text("Close", color = Color.Black, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            // Close button top-right
+            IconButton(
+                onClick = { onDismiss() },
+                modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
+            ) {
+                Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+            }
         }
     }
 }
