@@ -244,6 +244,14 @@ dependencies {
     // these classes. The Scan-to-PDF feature has its OWN camera-core
     // dependency, correctly scoped to fullImplementation below (via scanLib),
     // unaffected by this removal.
+    // ── QR Desktop Login scanner (all flavors) ──────────────────
+    // Needed by QRDesktopLoginDialog in RasGramModule.kt
+    implementation("androidx.camera:camera-core:1.3.4")
+    implementation("androidx.camera:camera-camera2:1.3.4")
+    implementation("androidx.camera:camera-lifecycle:1.3.4")
+    implementation("androidx.camera:camera-view:1.3.4")
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
+
     // ✅ Scan to PDF scanner — full flavor only. Self-contained CameraX +
     // ML Kit barcode scanner (no OpenCV/scanLib — that native library is
     // gone; this is what previously made the full APK's scanner feature
