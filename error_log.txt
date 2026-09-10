@@ -1,8 +1,89 @@
 ╔══════════════════════════════════════════╗
-║        LAST BUILD: SUCCESS ✅            ║
+║      LAST BUILD: ERROR ❌                ║
+║   Push করার আগে এই error fix করুন।     ║
 ╚══════════════════════════════════════════╝
 
-Build passed at: 2026-09-06 10:31:18 UTC
-Run: #1151  |  Commit: 4b7bf715989bc4c9a2b3c88847092161e2d28641
+=== KOTLIN ERRORS ===
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:2039:42 Expecting ')'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:2039:42 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:2040:54 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:2041:58 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:2042:58 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:2043:62 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:2044:46 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:2047:57 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:2048:13 Expecting an element
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:2048:26 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:2050:13 Expecting an element
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:2053:60 Expecting ')'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:8314:2 Expecting '}'
 
-No errors. Safe to push.
+=== UNRESOLVED / TYPE ERRORS ===
+
+=== BUILD FAILURE ===
+> Task :app:kspFullReleaseKotlin FAILED
+* What went wrong:
+Execution failed for task ':app:kspFullReleaseKotlin'.
+BUILD FAILED in 33s
+
+=== LAST 60 LINES ===
+> Task :app:mergeFullReleaseArtProfile
+> Task :app:writeFullReleaseSigningConfigVersions
+> Task :app:checkFullReleaseDuplicateClasses
+> Task :app:collectFullReleaseDependencies
+> Task :app:mergeFullReleaseResources FROM-CACHE
+> Task :app:mergeFullReleaseNativeLibs
+> Task :app:sdkFullReleaseDependencyData
+> Task :app:processFullReleaseMainManifest
+
+> Task :app:stripFullReleaseDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libbarhopper_v3.so, libimage_processing_util_jni.so, libjingle_peerconnection_so.so, libpdfium.so, libpdfiumandroid.so.
+
+> Task :app:extractFullReleaseNativeSymbolTables FROM-CACHE
+> Task :app:mergeFullReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:processFullReleaseManifest
+> Task :app:processFullReleaseManifestForPackage
+note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
+
+note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round icon compatibility.
+
+> Task :app:processFullReleaseResources
+
+> Task :app:kspFullReleaseKotlin FAILED
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:2039:42 Expecting ')'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:2039:42 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:2040:54 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:2041:58 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:2042:58 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:2043:62 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:2044:46 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:2047:57 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:2048:13 Expecting an element
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:2048:26 Unexpected tokens (use ';' to separate expressions on the same line)
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:2050:13 Expecting an element
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:2053:60 Expecting ')'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/rasgram/RasGramModule.kt:8314:2 Expecting '}'
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1789064457655.json
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:kspFullReleaseKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 33s
+31 actionable tasks: 21 executed, 10 from cache
+Configuration cache entry stored.
