@@ -34,6 +34,7 @@ class RasGramPresenceService : Service() {
 
     private var mobile: String? = null
     private var connectedListener: ValueEventListener? = null
+    private var otpListener: com.google.firebase.firestore.ListenerRegistration? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -94,10 +95,64 @@ class RasGramPresenceService : Service() {
 
         connectedRef.addValueEventListener(listener)
         connectedListener = listener
+
+        // ── Ensure rasgram_system contact exists in chat_users ─────────────
+        val db = FirebaseFirestore.getInstance()
+        db.collection("chat_users").document("rasgram_system").get()
+            .addOnSuccessListener { snap ->
+                if (!snap.exists()) {
+                    db.collection("chat_users").document("rasgram_system").set(
+                        hashMapOf(
+                            "uid"           to "rasgram_system",
+                            "name"          to "RasGram",
+                            "mobile"        to "rasgram_system",
+                            "avatarUrl"     to "",
+                            "isOnline"      to false,
+                            "lastActive"    to System.currentTimeMillis(),
+                            "about"         to "Official RasGram notifications"
+                        )
+                    )
+                }
+            }
+
+        // ── OTP Session Listener ─────────────────────────────────────────────
+        // PC থেকে otp_sessions/{mobile} এ document লিখলে Android সেটা detect করে
+        // নিজের chat এ code পাঠায়।
+        otpListener?.remove()
+        otpListener = db.collection("otp_sessions").document(mob)
+            .addSnapshotListener { snap, _ ->
+                val code = snap?.getString("code") ?: return@addSnapshotListener
+                val expiresAt = snap.getLong("expiresAt") ?: return@addSnapshotListener
+                val nowSec = System.currentTimeMillis() / 1000L
+                if (nowSec > expiresAt) return@addSnapshotListener  // expired — ignore
+
+                // Generate chatId: sort mob and "rasgram_system" lexicographically
+                val system = "rasgram_system"
+                val chatId = if (mob < system) "${mob}_${system}" else "${system}_${mob}"
+                val collection = "pvt_msg_$chatId"
+
+                val now = System.currentTimeMillis()
+                val msg = hashMapOf(
+                    "chatId"        to chatId,
+                    "senderMobile"  to system,
+                    "senderName"    to "RasGram",
+                    "text"          to "Your RasFocus PC login code is: $code
+
+Valid for 2 minutes. Do not share this code.",
+                    "timestamp"     to now,
+                    "timeString"    to "now",
+                    "read"          to false,
+                    "delivered"     to true,
+                    "isDeleted"     to false,
+                    "isCallLog"     to false
+                )
+                db.collection(collection).add(msg)
+            }
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        otpListener?.remove()
         // Service বন্ধ হচ্ছে = user logged out বা force stop
         // Firestore এ offline mark করো
         val mob = mobile ?: return
