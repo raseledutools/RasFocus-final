@@ -71,6 +71,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -8156,6 +8157,7 @@ fun QRDesktopLoginDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val db = remember { FirebaseFirestore.getInstance() }
     val scope = rememberCoroutineScope()
     var statusMsg by remember { mutableStateOf("Point your camera at the QR code on your PC") }
@@ -8249,7 +8251,7 @@ fun QRDesktopLoginDialog(
                             try {
                                 cameraProvider.unbindAll()
                                 cameraProvider.bindToLifecycle(
-                                    ctx as androidx.lifecycle.LifecycleOwner,
+                                    lifecycleOwner,
                                     androidx.camera.core.CameraSelector.DEFAULT_BACK_CAMERA,
                                     preview, imageAnalysis
                                 )
