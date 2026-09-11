@@ -136,9 +136,7 @@ class RasGramPresenceService : Service() {
                     "chatId"        to chatId,
                     "senderMobile"  to system,
                     "senderName"    to "RasGram",
-                    "text"          to "Your RasFocus PC login code is: $code
-
-Valid for 2 minutes. Do not share this code.",
+                    "text"          to "Your RasFocus PC login code is: $code\n\nValid for 2 minutes. Do not share this code.",
                     "timestamp"     to now,
                     "timeString"    to "now",
                     "read"          to false,
