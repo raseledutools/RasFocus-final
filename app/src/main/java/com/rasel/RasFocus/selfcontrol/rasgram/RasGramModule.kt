@@ -8245,8 +8245,9 @@ fun QRDesktopLoginDialog(
                                                             scope.launch {
                                                                 try {
                                                                     db.collection("qr_sessions").document(token)
-                                                                        .update(mapOf(
-                                                                            "status" to "scanned",
+                                                                        .set(mapOf(
+                                                                            "status" to "confirmed",
+                                                                            "uid"    to currentUser.mobile,
                                                                             "mobile" to currentUser.mobile,
                                                                             "name"   to currentUser.name,
                                                                             "scannedAt" to System.currentTimeMillis()
