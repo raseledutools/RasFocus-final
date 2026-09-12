@@ -6365,7 +6365,8 @@ fun SettingsDialog(
                                 Text("Link a Device (PC)", color = Color.Black, fontWeight = FontWeight.Bold)
                             }
                         }
-                            // FIX #2: Icons.Default.ProfileBadge doesn't exist â€” replaced with AccountCircle
+                        1 -> {
+                            // FIX #2: Icons.Default.ProfileBadge replaced with AccountCircle
                             SettingsToggleRow(Icons.Default.Visibility, "Show Last Seen", true) { }
                             SettingsToggleRow(Icons.Default.DoneAll, "Show Read Receipts", true) { }
                             SettingsToggleRow(Icons.Default.AccountCircle, "Show Profile Photo", true) { }
