@@ -138,7 +138,7 @@ fun QrScanScreen(onDone: () -> Unit) {
                                 if (!scanned) {
                                     scanned = true
                                     state   = ScanState.Confirming
-                                    confirmLogin(auth, db, token,
+                                    confirmLogin(auth, db, token, context,
                                         onSuccess = { state = ScanState.Done },
                                         onError   = { msg ->
                                             errorMsg = msg
@@ -275,9 +275,10 @@ fun CameraPreviewWithQR(
 // ══════════════════════════════════════════════════════════════════════
 
 private fun confirmLogin(
-    auth    : FirebaseAuth,
-    db      : FirebaseFirestore,
-    token   : String,
+    auth     : FirebaseAuth,
+    db       : FirebaseFirestore,
+    token    : String,
+    context  : android.content.Context,
     onSuccess: () -> Unit,
     onError  : (String) -> Unit
 ) {
@@ -287,25 +288,27 @@ private fun confirmLogin(
         return
     }
 
-    // Get fresh ID token, then write to Firestore
     user.getIdToken(true)
         .addOnSuccessListener { result ->
             val idToken = result.token ?: ""
 
-            // Read saved prefs for name/mobile (same keys as RasGramModule)
-            // We pass them through Firestore so PC gets display name + mobile
-            val update = hashMapOf(
+            val prefs  = context.getSharedPreferences("rasgram_prefs", android.content.Context.MODE_PRIVATE)
+            val mobile = prefs.getString("saved_mobile", null) ?: user.phoneNumber ?: ""
+            val name   = prefs.getString("saved_name",   null) ?: user.displayName ?: ""
+            val uid    = prefs.getString("saved_uid",    null) ?: user.uid
+
+            val data = hashMapOf(
                 "status"  to "confirmed",
-                "uid"     to user.uid,
-                "mobile"  to (user.phoneNumber ?: ""),
-                "name"    to (user.displayName ?: ""),
+                "uid"     to uid,
+                "mobile"  to mobile,
+                "name"    to name,
                 "email"   to (user.email ?: ""),
                 "idToken" to idToken
             )
 
             db.collection("qr_sessions")
                 .document(token)
-                .update(update as Map<String, Any>)
+                .set(data)
                 .addOnSuccessListener { onSuccess() }
                 .addOnFailureListener { e ->
                     onError("Firestore error: ${e.message}")
