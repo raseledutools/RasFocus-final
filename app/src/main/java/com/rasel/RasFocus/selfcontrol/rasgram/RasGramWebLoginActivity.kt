@@ -42,10 +42,31 @@ import java.util.concurrent.Executors
 // ব্যবহার:  Settings → Linked Devices → Link a Device
 // Flow:
 //   1. Phone camera দিয়ে PC-র QR scan করে
-//   2. QR-এর token পড়ে Firestore-এ  qr_sessions/{token}  doc update করে:
+//   2. QR-এর raw value: "rasgram://qr/{32-char-hex-token}"
+//      phone সেটা parse করে 32-char token বের করে
+//   3. Firestore-এ  qr_sessions/{token}  doc update করে:
 //        { status: "confirmed", uid, mobile, name, idToken }
-//   3. PC সেটা poll করে detect করে → auto-login হয়
+//   4. PC সেটা poll করে detect করে → auto-login হয়
+//
 // ══════════════════════════════════════════════════════════════════════
+//  BUG FIX (v1.1):
+//  PC encodes "rasgram://qr/<32-hex>" — raw.length is 46, NOT 32.
+//  Old code checked (raw.length == 32) → NEVER matched → scan always failed.
+//  Fix: strip "rasgram://qr/" prefix first, then validate the 32-char token.
+// ══════════════════════════════════════════════════════════════════════
+
+private const val QR_PREFIX = "rasgram://qr/"
+
+/** PC QR value থেকে 32-char hex token বের করে, না পেলে null */
+private fun extractToken(raw: String): String? {
+    val token = when {
+        raw.startsWith(QR_PREFIX) -> raw.removePrefix(QR_PREFIX)
+        raw.length == 32           -> raw   // legacy: bare token (backward compat)
+        else                       -> null
+    } ?: return null
+
+    return if (token.length == 32 && token.all { it.isLetterOrDigit() }) token else null
+}
 
 class RasGramWebLoginActivity : ComponentActivity() {
 
@@ -236,12 +257,16 @@ fun CameraPreviewWithQR(
                                 for (bc in barcodes) {
                                     if (bc.format == Barcode.FORMAT_QR_CODE) {
                                         val raw = bc.rawValue ?: continue
-                                        // Token is a 32-char hex string
-                                        if (raw.length == 32 && raw.all { it.isLetterOrDigit() }) {
-                                            alreadyFound = true
-                                            onTokenFound(raw)
-                                            break
-                                        }
+
+                                        // ─────────────────────────────────────────
+                                        // FIX: PC encodes "rasgram://qr/<token>"
+                                        // Strip prefix → get 32-char hex token
+                                        // ─────────────────────────────────────────
+                                        val token = extractToken(raw) ?: continue
+
+                                        alreadyFound = true
+                                        onTokenFound(token)
+                                        break
                                     }
                                 }
                             }
