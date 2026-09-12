@@ -6342,8 +6342,29 @@ fun SettingsDialog(
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Text("+${currentUser.mobile}", color = RasGramTheme.TextMuted, style = MaterialTheme.typography.bodyMedium)
                             }
+                            Spacer(modifier = Modifier.height(16.dp))
+                            // ── Linked Devices (PC login via QR) ──
+                            Divider(color = RasGramTheme.DarkBackground, thickness = 1.dp)
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text("Linked Devices", color = RasGramTheme.Green, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text("PC-তে RasGram ব্যবহার করতে QR scan করুন", color = RasGramTheme.TextMuted, fontSize = 12.sp)
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Button(
+                                onClick = {
+                                    context.startActivity(
+                                        android.content.Intent(context, RasGramWebLoginActivity::class.java)
+                                    )
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = RasGramTheme.Green),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Icon(Icons.Default.QrCodeScanner, null, tint = Color.Black, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Link a Device (PC)", color = Color.Black, fontWeight = FontWeight.Bold)
+                            }
                         }
-                        1 -> {
                             // FIX #2: Icons.Default.ProfileBadge doesn't exist â€” replaced with AccountCircle
                             SettingsToggleRow(Icons.Default.Visibility, "Show Last Seen", true) { }
                             SettingsToggleRow(Icons.Default.DoneAll, "Show Read Receipts", true) { }

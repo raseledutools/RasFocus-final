@@ -972,6 +972,14 @@
         </intent-filter>
     </activity>
 
+    <!-- RasGram PC Link — QR scan করে PC-তে login করার activity -->
+    <activity
+        android:name=".selfcontrol.rasgram.RasGramWebLoginActivity"
+        android:exported="false"
+        android:label="PC লিঙ্ক করুন"
+        android:theme="@style/Theme.RasFocus"
+        android:windowSoftInputMode="adjustResize" />
+
     <!-- RasGram — Decline incoming call broadcast
          directBootAware="true": lock screen থেকে Decline button কাজ করে। -->
     <receiver
