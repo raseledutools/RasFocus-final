@@ -2,10 +2,16 @@ package com.rasel.RasFocus.selfcontrol
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.provider.Settings
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,6 +25,8 @@ import android.graphics.drawable.Icon
 import android.os.Build
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,6 +36,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rasel.RasFocus.R
@@ -205,6 +214,9 @@ fun DrawerContent(
                         }
                     }
                 }
+                // ── Railway Staff Directory ──────────────────────────────────
+                RailwayStaffSection(context = context, closeDrawer = closeDrawer)
+
                 DrawerMenuItem(Icons.Default.Apps, "Set as Default Launcher", tint = Color(0xFF4FC3F7)) {
                     closeDrawer()
                     val intent = Intent(Settings.ACTION_HOME_SETTINGS).apply {
@@ -264,6 +276,213 @@ fun DrawerMenuItem(
         Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(24.dp))
         Spacer(modifier = Modifier.width(16.dp))
         Text(text = label, fontSize = 16.sp, fontWeight = FontWeight.Medium, color = tint)
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Railway Staff Directory
+// ঢাকা ডিজেল ওয়ার্কসপ — মেকানিক্যাল সিডিউল সেকশন
+// ─────────────────────────────────────────────────────────────────────────────
+
+private data class RailwayStaff(
+    val serial: Int,
+    val name: String,
+    val tin: String,
+    val designation: String,
+    val phone: String
+)
+
+private val railwayStaffList = listOf(
+    RailwayStaff(1,  "মোহামদ ছড়োয়ার হোসেন", "—",     "এসএসএই/ইলেকঃ", "01912541819"),
+    RailwayStaff(2,  "আব্দুর রহিম",          "৬৬০",   "ফিটার-১",       "01822968204"),
+    RailwayStaff(3,  "মোঃ জাকির হোসেন",     "৯৩০",   "ফিটার-১",       "01771026030"),
+    RailwayStaff(4,  "মোঃ মজিদ শেখ",        "২৩৪",   "ফিটার-২",       "01992669460"),
+    RailwayStaff(5,  "মোক্তার হোসেন",        "২৪৫",   "ফিটার-২",       "01777122860"),
+    RailwayStaff(6,  "এসএম হাইউল",           "১১১০",  "ফিটার-২",       "01704895716"),
+    RailwayStaff(7,  "মোঃ ভহরুল হক",         "৬৫",    "ফিটার-২",       "01712052042"),
+    RailwayStaff(8,  "মোঃ নাহিদ খান",        "২২০২৮", "ফিটার-২",       "01686778957"),
+    RailwayStaff(9,  "মোঃ দেলোয়ার হোসেন",   "২৫০০৪", "ফিটার-২",       "01570248027"),
+    RailwayStaff(10, "আরিফুল ইসলাম",         "২২০২৫", "ফিটার-২",       "01755042887"),
+    RailwayStaff(11, "মোঃ ইসমাইল হোসেন",    "১১২১",  "এসএস ফিটার",    "01772068986"),
+    RailwayStaff(12, "মোঃ শাহীন",            "১০৭৪",  "এসএস ফিটার",    "01676269469"),
+    RailwayStaff(13, "মোঃ ফয়সাল মিয়া",     "৮১৩",   "খালাসী",        "01943348360"),
+    RailwayStaff(14, "মোঃ শিপন মিয়া",       "১১২৬",  "খালাসী",        "01722609803"),
+    RailwayStaff(15, "মোঃ সফিকুল ইসলাম",    "৯৩৩",   "খালাসী",        "01721006811"),
+    RailwayStaff(16, "মোঃ রিয়াজ উদ্দিন খান","১০১৫",  "খালাসী",        "01766405026"),
+    RailwayStaff(17, "কাজী আসলাম উদ্দিন",   "১১২২",  "খালাসী",        "01726272268")
+)
+
+private val RailwayOrange = Color(0xFFFF8C00)
+private val RailwayBg     = Color(0xFF1E1A0F)
+private val RailwayCard   = Color(0xFF2A2410)
+
+@Composable
+fun RailwayStaffSection(context: Context, closeDrawer: () -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+
+    // ── Header Button ──
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (expanded) RailwayBg else Color.Transparent)
+            .clickable { expanded = !expanded }
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Train icon box
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .background(RailwayOrange.copy(alpha = 0.18f), RoundedCornerShape(9.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Train,
+                contentDescription = null,
+                tint = RailwayOrange,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+        Spacer(modifier = Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                "রেলওয়ে",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = RailwayOrange
+            )
+            Text(
+                "ঢাকা ডিজেল ওয়ার্কসপ",
+                fontSize = 11.sp,
+                color = RailwayOrange.copy(alpha = 0.65f)
+            )
+        }
+        Icon(
+            imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+            contentDescription = null,
+            tint = RailwayOrange.copy(alpha = 0.7f),
+            modifier = Modifier.size(20.dp)
+        )
+    }
+
+    // ── Expandable Staff List ──
+    AnimatedVisibility(
+        visible = expanded,
+        enter = expandVertically(),
+        exit  = shrinkVertically()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp)
+                .clip(RoundedCornerShape(bottomStart = 14.dp, bottomEnd = 14.dp))
+                .background(RailwayBg)
+                .padding(bottom = 8.dp)
+        ) {
+            // Section label
+            Text(
+                "মেকানিক্যাল সিডিউল সেকশন",
+                fontSize = 11.sp,
+                color = RailwayOrange.copy(alpha = 0.7f),
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(start = 14.dp, top = 6.dp, bottom = 6.dp)
+            )
+
+            railwayStaffList.forEach { staff ->
+                RailwayStaffRow(staff = staff, context = context)
+                if (staff.serial < railwayStaffList.size) {
+                    HorizontalDivider(
+                        color = RailwayOrange.copy(alpha = 0.08f),
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+        }
+    }
+}
+
+@Composable
+private fun RailwayStaffRow(staff: RailwayStaff, context: Context) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                // Direct call on row tap
+                val intent = Intent(Intent.ACTION_DIAL).apply {
+                    data = Uri.parse("tel:${staff.phone}")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+            }
+            .padding(horizontal = 14.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Serial badge
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .background(RailwayOrange.copy(alpha = 0.15f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "${staff.serial}",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = RailwayOrange
+            )
+        }
+
+        Spacer(modifier = Modifier.width(10.dp))
+
+        // Name + designation
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = staff.name,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = TextWhite,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = "${staff.designation}  •  TIN: ${staff.tin}",
+                fontSize = 10.sp,
+                color = TextWhite.copy(alpha = 0.5f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        // Call button
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .background(
+                    Brush.linearGradient(listOf(Color(0xFF1B6B1B), Color(0xFF2E9D2E))),
+                    CircleShape
+                )
+                .clickable {
+                    val intent = Intent(Intent.ACTION_DIAL).apply {
+                        data = Uri.parse("tel:${staff.phone}")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Call,
+                contentDescription = "Call ${staff.name}",
+                tint = Color.White,
+                modifier = Modifier.size(16.dp)
+            )
+        }
     }
 }
 
