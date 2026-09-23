@@ -1042,23 +1042,18 @@ fun LocalFileScreen(
                             conversionLabel = "Merging PDFs…"
                             showConversionProgress = true
                         }
-                        var destFile = File(path, "Merged_${System.currentTimeMillis()}.pdf")
-                        var success = PdfHelper.mergePdfs(context, filesToMerge, destFile)
-                        var fallbackUsed = false
-                        if (!success) {
-                            val fallback = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOCUMENTS), "RasFocus")
-                            fallback.mkdirs()
-                            destFile = File(fallback, destFile.name)
-                            success = PdfHelper.mergePdfs(context, filesToMerge, destFile)
-                            fallbackUsed = success
-                        }
+                        val fileName = "Merged_${System.currentTimeMillis()}.pdf"
+                        val resultPath = PdfHelper.mergePdfsToDir(context, filesToMerge, path, fileName)
                         withContext(Dispatchers.Main) {
                             showConversionProgress = false
-                            if (success) {
+                            if (resultPath != null) {
                                 opResultTitle = "Merge Complete"
-                                opResultFiles = listOf(destFile)
+                                // resultPath may be a content URI (SD card) or file path
+                                val f = runCatching { File(resultPath) }.getOrNull()
+                                opResultFiles = if (f != null && f.exists()) listOf(f) else emptyList()
                                 opResultIsDir = false
-                                showOpResultDialog = true
+                                if (opResultFiles.isNotEmpty()) showOpResultDialog = true
+                                else Toast.makeText(context, "Merged → $resultPath", Toast.LENGTH_LONG).show()
                             } else {
                                 Toast.makeText(context, "Merge failed", Toast.LENGTH_SHORT).show()
                             }
@@ -1078,23 +1073,17 @@ fun LocalFileScreen(
                             conversionLabel = "Converting PDF to images…"
                             showConversionProgress = true
                         }
-                        var targetDir = File(path, pdfFile.nameWithoutExtension)
-                        targetDir.mkdirs()
-                        var success = PdfHelper.pdfToImages(context, pdfFile, targetDir)
-                        var fallbackUsed = false
-                        if (!success) {
-                            targetDir = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOCUMENTS), "RasFocus/${pdfFile.nameWithoutExtension}")
-                            targetDir.mkdirs()
-                            success = PdfHelper.pdfToImages(context, pdfFile, targetDir)
-                            fallbackUsed = success
-                        }
+                        val destDirPath = "$path/${pdfFile.nameWithoutExtension}"
+                        val success = PdfHelper.pdfToImagesToDir(context, pdfFile, destDirPath)
                         withContext(Dispatchers.Main) {
                             showConversionProgress = false
                             if (success) {
+                                val targetDir = File(destDirPath)
                                 opResultTitle = "PDF → Images Complete"
                                 opResultFiles = listOf(targetDir)
                                 opResultIsDir = true
-                                showOpResultDialog = true
+                                if (targetDir.exists()) showOpResultDialog = true
+                                else Toast.makeText(context, "Saved to SD card: $destDirPath", Toast.LENGTH_LONG).show()
                             } else {
                                 Toast.makeText(context, "Conversion failed", Toast.LENGTH_SHORT).show()
                             }
@@ -1117,25 +1106,18 @@ fun LocalFileScreen(
                             conversionLabel = "Converting images to PDF…"
                             showConversionProgress = true
                         }
-                        var convertedDir = File(path, "Converted PDFs")
-                        convertedDir.mkdirs()
-                        var pdfDest = File(convertedDir, "images_${System.currentTimeMillis()}.pdf")
-                        var success = PdfHelper.imagesToPdf(context, images, pdfDest)
-                        var fallbackUsed = false
-                        if (!success) {
-                            val fallback = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOCUMENTS), "RasFocus")
-                            fallback.mkdirs()
-                            pdfDest = File(fallback, pdfDest.name)
-                            success = PdfHelper.imagesToPdf(context, images, pdfDest)
-                            fallbackUsed = success
-                        }
+                        val destDir = "$path/Converted PDFs"
+                        val fileName = "images_${System.currentTimeMillis()}.pdf"
+                        val resultPath = PdfHelper.imagesToPdfToDir(context, images, destDir, fileName)
                         withContext(Dispatchers.Main) {
                             showConversionProgress = false
-                            if (success) {
+                            if (resultPath != null) {
                                 opResultTitle = "Images → PDF Complete"
-                                opResultFiles = listOf(pdfDest)
+                                val f = runCatching { File(resultPath) }.getOrNull()
+                                opResultFiles = if (f != null && f.exists()) listOf(f) else emptyList()
                                 opResultIsDir = false
-                                showOpResultDialog = true
+                                if (opResultFiles.isNotEmpty()) showOpResultDialog = true
+                                else Toast.makeText(context, "Saved to SD card: $resultPath", Toast.LENGTH_LONG).show()
                             } else {
                                 Toast.makeText(context, "Conversion failed", Toast.LENGTH_SHORT).show()
                             }
@@ -1424,16 +1406,11 @@ fun LocalFileScreen(
                                 conversionLabel = "Merging PDFs…"
                                 showConversionProgress = true
                             }
-                            var dest = File(path, "Merged_${System.currentTimeMillis()}.pdf")
-                            var success = PdfHelper.mergePdfs(context, filesToMerge, dest)
-                            if (!success) {
-                                val fb = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOCUMENTS), "RasFocus")
-                                fb.mkdirs(); dest = File(fb, dest.name)
-                                success = PdfHelper.mergePdfs(context, filesToMerge, dest)
-                            }
+                            val fileName = "Merged_${System.currentTimeMillis()}.pdf"
+                            val resultPath = PdfHelper.mergePdfsToDir(context, filesToMerge, path, fileName)
                             withContext(Dispatchers.Main) {
                                 showConversionProgress = false
-                                Toast.makeText(context, if (success) "Merged successfully" else "Merge failed", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, if (resultPath != null) "Merged → $fileName" else "Merge failed", Toast.LENGTH_SHORT).show()
                                 selectedFiles = emptySet(); rawFiles = LocalFileManager.listFiles(path)
                             }
                         }
@@ -1448,14 +1425,8 @@ fun LocalFileScreen(
                                 conversionLabel = "Converting PDF to images…"
                                 showConversionProgress = true
                             }
-                            var targetDir = File(path, pdfFile.nameWithoutExtension)
-                            targetDir.mkdirs()
-                            var success = PdfHelper.pdfToImages(context, pdfFile, targetDir)
-                            if (!success) {
-                                targetDir = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOCUMENTS), "RasFocus/${pdfFile.nameWithoutExtension}")
-                                targetDir.mkdirs()
-                                success = PdfHelper.pdfToImages(context, pdfFile, targetDir)
-                            }
+                            val destDirPath = "$path/${pdfFile.nameWithoutExtension}"
+                            val success = PdfHelper.pdfToImagesToDir(context, pdfFile, destDirPath)
                             withContext(Dispatchers.Main) {
                                 showConversionProgress = false
                                 Toast.makeText(context, if (success) "PDF converted to images" else "Conversion failed", Toast.LENGTH_SHORT).show()
@@ -1481,18 +1452,12 @@ fun LocalFileScreen(
                                 conversionLabel = "Converting images to PDF…"
                                 showConversionProgress = true
                             }
-                            var convertedDir = File(path, "Converted PDFs")
-                            convertedDir.mkdirs()
-                            var pdfDest = File(convertedDir, "images_${System.currentTimeMillis()}.pdf")
-                            var success = PdfHelper.imagesToPdf(context, images, pdfDest)
-                            if (!success) {
-                                val fb = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOCUMENTS), "RasFocus")
-                                fb.mkdirs(); pdfDest = File(fb, pdfDest.name)
-                                success = PdfHelper.imagesToPdf(context, images, pdfDest)
-                            }
+                            val destDir = "$path/Converted PDFs"
+                            val fileName = "images_${System.currentTimeMillis()}.pdf"
+                            val resultPath = PdfHelper.imagesToPdfToDir(context, images, destDir, fileName)
                             withContext(Dispatchers.Main) {
                                 showConversionProgress = false
-                                Toast.makeText(context, if (success) "Images converted to PDF" else "Conversion failed", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, if (resultPath != null) "Images converted to PDF" else "Conversion failed", Toast.LENGTH_SHORT).show()
                                 selectedFiles = emptySet(); rawFiles = LocalFileManager.listFiles(path)
                             }
                         }
