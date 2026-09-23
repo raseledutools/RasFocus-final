@@ -175,10 +175,14 @@ object PdfHelper {
                 canvas.drawColor(android.graphics.Color.WHITE)
                 page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
 
-                val (os, _) = openOutputStream(context, destDirPath, "page_${i + 1}.jpg", "image/jpeg")
-                    ?: run { bmp.recycle(); page.close(); continue }
-                os.use { bmp.compress(Bitmap.CompressFormat.JPEG, 90, it) }
-                bmp.recycle(); page.close()
+                val osResult = openOutputStream(context, destDirPath, "page_${i + 1}.jpg", "image/jpeg")
+                if (osResult == null) {
+                    bmp.recycle(); page.close()
+                } else {
+                    val (os, _) = osResult
+                    os.use { bmp.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+                    bmp.recycle(); page.close()
+                }
             }
             renderer.close(); fd.close()
             true
