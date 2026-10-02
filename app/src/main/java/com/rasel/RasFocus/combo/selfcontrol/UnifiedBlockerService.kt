@@ -302,7 +302,16 @@ class UnifiedBlockerService : AccessibilityService() {
             }
         }
 
-        // ── 2. INSTANT TYPING BLOCK (বাটন ৩) ───────────────────────────
+        // ── 2. ULTRA SAVE MODE — Phone + SMS ছাড়া সব app block ──────────
+        // UltraSaveManager.activate() হলে এখানে non-essential app → HOME
+        if (com.rasel.RasFocus.selfcontrol.ultrasave.UltraSaveManager.isActive(this) &&
+            event.eventType == android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            !com.rasel.RasFocus.selfcontrol.ultrasave.UltraSaveManager.isAllowedPkg(pkg0)) {
+            performGlobalAction(GLOBAL_ACTION_HOME)
+            return
+        }
+
+        // ── 3. INSTANT TYPING BLOCK (বাটন ৩) ───────────────────────────
         // blockInstantKeyboard OR blockAnyAppTyping যেকোনো একটা ON থাকলে চলবে
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) {
             val typingBlockOn = blockerPrefs.blockInstantKeyboard || blockerPrefs.blockAnyAppTyping
