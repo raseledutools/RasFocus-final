@@ -151,7 +151,7 @@ object UltraSaveManager {
     fun setBackgroundProcessLimit(ctx: Context, limit: Int) {
         try {
             Settings.Global.putInt(ctx.contentResolver,
-                Settings.Global.BACKGROUND_PROCESS_LIMIT, limit)
+                "background_process_limit", limit)
         } catch (_: SecurityException) { /* silent fail */ }
     }
 
