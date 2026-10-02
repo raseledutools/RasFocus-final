@@ -91,15 +91,19 @@ object UltraSaveManager {
             apply()
         }
         applyGrayscale(ctx, true)
+        setAnimations(ctx, 0f)
+        setBackgroundProcessLimit(ctx, 2)
         killBackgroundApps(ctx)
     }
 
-    /** Ultra Save Mode বন্ধ করো — grayscale off হবে। */
+    /** Ultra Save Mode বন্ধ করো — grayscale off, animation ও process limit restore হবে। */
     fun deactivate(ctx: Context) {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putBoolean(KEY_ACTIVE, false)
             .apply()
         applyGrayscale(ctx, false)
+        setAnimations(ctx, 1f)
+        setBackgroundProcessLimit(ctx, -1) // -1 = standard limit (system default)
     }
 
     // ─── System actions ──────────────────────────────────────────────────
@@ -117,6 +121,36 @@ object UltraSaveManager {
                     "accessibility_display_daltonizer_enabled", 0)
             }
         } catch (_: SecurityException) { /* ADB permission দরকার */ }
+    }
+
+    /**
+     * সব animation scale set করো।
+     * 0f = সব animation বন্ধ (ultra fast feel)
+     * 1f = normal
+     * WRITE_SECURE_SETTINGS permission দরকার (ADB দিয়ে grant করা থাকলেই হবে)
+     */
+    fun setAnimations(ctx: Context, scale: Float) {
+        try {
+            Settings.Global.putFloat(ctx.contentResolver,
+                Settings.Global.WINDOW_ANIMATION_SCALE, scale)
+            Settings.Global.putFloat(ctx.contentResolver,
+                Settings.Global.TRANSITION_ANIMATION_SCALE, scale)
+            Settings.Global.putFloat(ctx.contentResolver,
+                Settings.Global.ANIMATOR_DURATION_SCALE, scale)
+        } catch (_: SecurityException) { /* WRITE_SECURE_SETTINGS না থাকলে silent fail */ }
+    }
+
+    /**
+     * Background process limit set করো।
+     * 2  = At most 2 background processes (battery ও RAM save)
+     * -1 = System default (restore করতে)
+     * WRITE_SECURE_SETTINGS permission দরকার
+     */
+    fun setBackgroundProcessLimit(ctx: Context, limit: Int) {
+        try {
+            Settings.Global.putInt(ctx.contentResolver,
+                Settings.Global.BACKGROUND_PROCESS_LIMIT, limit)
+        } catch (_: SecurityException) { /* silent fail */ }
     }
 
     /** Background processes kill — ফোন instantly fast হয়। */
