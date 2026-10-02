@@ -9,13 +9,18 @@ import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
+import android.graphics.Typeface
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.view.Gravity
 import android.view.WindowManager
+import android.view.animation.AlphaAnimation
+import android.view.animation.Animation
+import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
 import com.rasel.RasFocus.R
@@ -143,29 +148,67 @@ class UltraSaveBlockerService : Service() {
 
     private fun showOverlay() {
         if (!canDrawOverlay()) return
-        hideOverlay()
+        // ইতিমধ্যে দেখাচ্ছে — নতুন করে add করার দরকার নেই
+        if (overlayView != null) return
 
         val dp = resources.displayMetrics.density
 
-        val frame = FrameLayout(this).apply {
-            setBackgroundColor(0xCC000000.toInt())
+        // ── Card container (rounded, semi-transparent dark) ──
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(0x00000000) // transparent root; card নিচে আঁকা হবে
         }
 
-        val text = TextView(this).apply {
-            text = "⚡ Ultra Save Mode\nPhone, SMS ও WhatsApp ছাড়া\nঅন্য app বন্ধ আছে।"
-            setTextColor(0xFFFFFFFF.toInt())
-            textSize = 18f
-            gravity = Gravity.CENTER
+        // Pill-shaped inner card
+        val inner = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = buildPillDrawable()
             setPadding(
-                (24 * dp).toInt(), (24 * dp).toInt(),
-                (24 * dp).toInt(), (24 * dp).toInt()
+                (20 * dp).toInt(), (14 * dp).toInt(),
+                (24 * dp).toInt(), (14 * dp).toInt()
             )
         }
-        frame.addView(text)
+
+        // ⚡ icon
+        val icon = TextView(this).apply {
+            text = "⚡"
+            textSize = 22f
+            gravity = Gravity.CENTER
+            setPadding(0, 0, (10 * dp).toInt(), 0)
+        }
+
+        // Text column
+        val textCol = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        val title = TextView(this).apply {
+            text = "Ultra Save Mode চালু"
+            setTextColor(0xFFFFFFFF.toInt())
+            textSize = 14f
+            setTypeface(typeface, Typeface.BOLD)
+        }
+        val sub = TextView(this).apply {
+            text = "শুধু Phone · SMS · WhatsApp"
+            setTextColor(0xFFAAAAAA.toInt())
+            textSize = 11f
+        }
+        textCol.addView(title)
+        textCol.addView(sub)
+
+        inner.addView(icon)
+        inner.addView(textCol)
+
+        val outerParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT
+        ).apply { gravity = Gravity.CENTER }
+        card.addView(inner, outerParams)
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
-            (120 * dp).toInt(),
+            WindowManager.LayoutParams.WRAP_CONTENT,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             else
@@ -176,23 +219,59 @@ class UltraSaveBlockerService : Service() {
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            bottomMargin = (72 * dp).toInt() // nav bar উপরে
         }
 
         try {
-            windowManager?.addView(frame, params)
-            overlayView = frame
-            // 1.5s পর নিজে থেকে সরে যাবে
-            handler.postDelayed({ hideOverlay() }, 1500L)
+            windowManager?.addView(card, params)
+            overlayView = card
+
+            // Smooth fade-in
+            val fadeIn = AlphaAnimation(0f, 1f).apply {
+                duration = 250
+                interpolator = DecelerateInterpolator()
+                fillAfter = true
+            }
+            card.startAnimation(fadeIn)
+
+            // 2s পর smooth fade-out করে remove
+            handler.postAtTime({ hideOverlay() }, hideToken,
+                android.os.SystemClock.uptimeMillis() + 2000L)
         } catch (_: Exception) {}
     }
 
+    private val hideToken = Object() // pending hide Runnable এর tag
+
     private fun hideOverlay() {
-        overlayView?.let {
-            try { windowManager?.removeView(it) } catch (_: Exception) {}
+        val view = overlayView ?: return
+        handler.removeCallbacksAndMessages(hideToken) // শুধু hide callback cancel করো
+
+        val fadeOut = AlphaAnimation(1f, 0f).apply {
+            duration = 300
+            interpolator = DecelerateInterpolator()
+            fillAfter = true
+            setAnimationListener(object : Animation.AnimationListener {
+                override fun onAnimationStart(a: Animation?) {}
+                override fun onAnimationRepeat(a: Animation?) {}
+                override fun onAnimationEnd(a: Animation?) {
+                    try { windowManager?.removeView(view) } catch (_: Exception) {}
+                }
+            })
         }
+        view.startAnimation(fadeOut)
         overlayView = null
         lastBlockedPkg = null
+    }
+
+    /** Rounded pill background drawable */
+    private fun buildPillDrawable(): android.graphics.drawable.GradientDrawable {
+        return android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+            cornerRadius = 999f
+            setColor(0xE8111122.toInt())   // dark navy, 91% opaque
+            setStroke(2, 0xFF6C63FF.toInt()) // purple border
+        }
     }
 
     private fun canDrawOverlay(): Boolean =
