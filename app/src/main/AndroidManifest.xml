@@ -703,7 +703,7 @@
 
     <!-- ✅ UltraSaveTileService — Quick Settings tile: Ultra Save Mode (B&W + app block + fast).
          Tap → 3 options: Normal / Self Control (timer lock) / Parents (password lock)
-         Requires: UnifiedBlockerService (Accessibility) must be ON for app blocking to work. -->
+         App blocking: UsageStats polling via UltraSaveBlockerService (no Accessibility needed). -->
     <service
         android:name=".selfcontrol.ultrasave.UltraSaveTileService"
         android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
@@ -722,6 +722,14 @@
         android:exported="false"
         android:theme="@android:style/Theme.Translucent.NoTitleBar"
         android:excludeFromRecents="true" />
+
+    <!-- ✅ UltraSaveBlockerService — UsageStats polling service that blocks all apps
+         except Phone, SMS and WhatsApp while Ultra Save Mode is active.
+         No Accessibility permission needed — uses PACKAGE_USAGE_STATS only. -->
+    <service
+        android:name=".selfcontrol.ultrasave.UltraSaveBlockerService"
+        android:exported="false"
+        android:foregroundServiceType="specialUse" />
 
     <!-- ✅ GrayscaleTileService — Quick Settings tile to toggle full phone Black & White mode.
          Tap করলে পুরো ফোন grayscale হয়, আবার tap করলে colour ফেরে।

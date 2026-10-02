@@ -94,6 +94,7 @@ object UltraSaveManager {
         setAnimations(ctx, 0f)
         setBackgroundProcessLimit(ctx, 2)
         killBackgroundApps(ctx)
+        UltraSaveBlockerService.start(ctx)
     }
 
     /** Ultra Save Mode বন্ধ করো — grayscale off, animation ও process limit restore হবে। */
@@ -104,6 +105,7 @@ object UltraSaveManager {
         applyGrayscale(ctx, false)
         setAnimations(ctx, 1f)
         setBackgroundProcessLimit(ctx, -1) // -1 = standard limit (system default)
+        UltraSaveBlockerService.stop(ctx)
     }
 
     // ─── System actions ──────────────────────────────────────────────────
