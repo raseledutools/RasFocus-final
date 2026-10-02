@@ -46,6 +46,12 @@
      needs them, with runtime permission requests at the point of use. -->
 
 <uses-permission android:name="android.permission.BIND_ACCESSIBILITY_SERVICE" />
+<!-- GrayscaleTileService: WRITE_SECURE_SETTINGS দিয়ে daltonizer (grayscale) toggle করা হয়।
+     এটি system-level permission — install-time automatically grant হয় না।
+     একবার ADB দিয়ে grant করতে হবে:
+     adb shell pm grant com.rasel.RasFocus android.permission.WRITE_SECURE_SETTINGS -->
+<uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"
+    tools:ignore="ProtectedPermissions" />
 <uses-permission android:name="android.permission.BIND_VPN_SERVICE" />
 <uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" />
 <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -690,6 +696,21 @@
         <meta-data
             android:name="android.service.quicksettings.ACTIVE_TILE"
             android:value="false" />
+    </service>
+
+    <!-- ✅ GrayscaleTileService — Quick Settings tile to toggle full phone Black & White mode.
+         Tap করলে পুরো ফোন grayscale হয়, আবার tap করলে colour ফেরে।
+         Requires: adb shell pm grant com.rasel.RasFocus android.permission.WRITE_SECURE_SETTINGS
+         (একবার grant করলে reboot পর্যন্ত কার্যকর; reboot হলে আবার grant করতে হবে — Android limitation) -->
+    <service
+        android:name=".selfcontrol.study_tools.GrayscaleTileService"
+        android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+        android:exported="true"
+        android:icon="@drawable/ic_tile_grayscale"
+        android:label="Grayscale">
+        <intent-filter>
+            <action android:name="android.service.quicksettings.action.QS_TILE" />
+        </intent-filter>
     </service>
 
     <!-- ✅ Unified Blocker Service (UnifiedBlockerService.kt) — adult, website, reels, shorts, app block -->
