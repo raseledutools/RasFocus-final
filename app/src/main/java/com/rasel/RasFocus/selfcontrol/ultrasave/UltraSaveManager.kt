@@ -22,11 +22,12 @@ object UltraSaveManager {
 
     enum class LockType { NORMAL, SELF_CONTROL, PARENTS }
 
-    private const val PREFS         = "ultra_save_prefs"
-    private const val KEY_ACTIVE    = "active"
-    private const val KEY_LOCK      = "lock_type"
-    private const val KEY_UNLOCK_AT = "unlock_at_ms"
-    private const val KEY_PASS_HASH = "pass_hash"
+    private const val PREFS              = "ultra_save_prefs"
+    private const val KEY_ACTIVE         = "active"
+    private const val KEY_LOCK           = "lock_type"
+    private const val KEY_UNLOCK_AT      = "unlock_at_ms"
+    private const val KEY_PASS_HASH      = "pass_hash"
+    private const val KEY_INTERNET_OFF   = "internet_off"  // true = user chose to disable internet
 
     // ─── Read ────────────────────────────────────────────────────────────
 
@@ -69,19 +70,22 @@ object UltraSaveManager {
 
     /**
      * Ultra Save Mode চালু করো।
-     * @param lockType  কোন lock ব্যবহার হবে
-     * @param durationMs SELF_CONTROL এর জন্য কতক্ষণ (ms)
-     * @param password  PARENTS এর জন্য পাসওয়ার্ড (plain text — hashed করে store)
+     * @param lockType    কোন lock ব্যবহার হবে
+     * @param durationMs  SELF_CONTROL এর জন্য কতক্ষণ (ms)
+     * @param password    PARENTS এর জন্য পাসওয়ার্ড (plain text — hashed করে store)
+     * @param keepInternet true = internet চালু থাকবে | false = WiFi + Data বন্ধ হবে
      */
     fun activate(
         ctx: Context,
         lockType: LockType,
         durationMs: Long = 0L,
-        password: String = ""
+        password: String = "",
+        keepInternet: Boolean = true
     ) {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().apply {
             putBoolean(KEY_ACTIVE, true)
             putString(KEY_LOCK, lockType.name)
+            putBoolean(KEY_INTERNET_OFF, !keepInternet)
             if (lockType == LockType.SELF_CONTROL && durationMs > 0) {
                 putLong(KEY_UNLOCK_AT, System.currentTimeMillis() + durationMs)
             }
@@ -93,18 +97,20 @@ object UltraSaveManager {
         applyGrayscale(ctx, true)
         setAnimations(ctx, 0f)
         setBackgroundProcessLimit(ctx, 2)
+        if (!keepInternet) setInternet(ctx, false)
         killBackgroundApps(ctx)
         UltraSaveBlockerService.start(ctx)
     }
 
-    /** Ultra Save Mode বন্ধ করো — grayscale off, animation ও process limit restore হবে। */
+    /** Ultra Save Mode বন্ধ করো — সব restore হবে। */
     fun deactivate(ctx: Context) {
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putBoolean(KEY_ACTIVE, false)
-            .apply()
+        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val wasInternetOff = prefs.getBoolean(KEY_INTERNET_OFF, false)
+        prefs.edit().putBoolean(KEY_ACTIVE, false).apply()
         applyGrayscale(ctx, false)
         setAnimations(ctx, 1f)
-        setBackgroundProcessLimit(ctx, -1) // -1 = standard limit (system default)
+        setBackgroundProcessLimit(ctx, -1)
+        if (wasInternetOff) setInternet(ctx, true)
         UltraSaveBlockerService.stop(ctx)
     }
 
@@ -153,6 +159,32 @@ object UltraSaveManager {
             Settings.Global.putInt(ctx.contentResolver,
                 "background_process_limit", limit)
         } catch (_: SecurityException) { /* silent fail */ }
+    }
+
+    /**
+     * WiFi ও Mobile Data on/off।
+     * enable=false → দুটোই বন্ধ (maximum battery save)
+     * enable=true  → দুটোই চালু (restore)
+     * WRITE_SECURE_SETTINGS permission দরকার।
+     */
+    @Suppress("DEPRECATION")
+    fun setInternet(ctx: Context, enable: Boolean) {
+        val v = if (enable) 1 else 0
+        try {
+            // WiFi
+            val wm = ctx.applicationContext
+                .getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+            wm.isWifiEnabled = enable
+        } catch (_: Exception) {
+            // fallback: Settings.Global (older API)
+            try {
+                Settings.Global.putInt(ctx.contentResolver, Settings.Global.WIFI_ON, v)
+            } catch (_: Exception) {}
+        }
+        try {
+            // Mobile Data — WRITE_SECURE_SETTINGS দিয়ে
+            Settings.Global.putInt(ctx.contentResolver, "mobile_data", v)
+        } catch (_: Exception) {}
     }
 
     /** Background processes kill — ফোন instantly fast হয়। */

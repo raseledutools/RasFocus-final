@@ -70,6 +70,8 @@ private fun ActivateDialog(onDismiss: () -> Unit, onActivated: () -> Unit) {
     // Parents: password
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
+    // Internet: চালু রাখবো?
+    var keepInternet by remember { mutableStateOf(true) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -148,7 +150,50 @@ private fun ActivateDialog(onDismiss: () -> Unit, onActivated: () -> Unit) {
                     }
                 }
 
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(16.dp))
+
+                // ── Internet Toggle ──
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0xFF14142A))
+                        .border(1.dp, Color(0xFF333355), RoundedCornerShape(14.dp))
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(
+                                text = if (keepInternet) "🌐 Internet চালু থাকবে" else "✈️ Internet বন্ধ থাকবে",
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = if (keepInternet) "WhatsApp ও calls চলবে"
+                                       else "Maximum battery save • শুধু Calls ও SMS",
+                                color = Color(0xFF999999),
+                                fontSize = 12.sp
+                            )
+                        }
+                        Switch(
+                            checked = keepInternet,
+                            onCheckedChange = { keepInternet = it },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = Color(0xFF4CAF50),
+                                uncheckedThumbColor = Color.White,
+                                uncheckedTrackColor = Color(0xFF555577)
+                            )
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
 
                 // ── Activate Button ──
                 Button(
@@ -171,7 +216,8 @@ private fun ActivateDialog(onDismiss: () -> Unit, onActivated: () -> Unit) {
                             ctx = ctx,
                             lockType = type,
                             durationMs = if (type == UltraSaveManager.LockType.SELF_CONTROL) selfDurationMs else 0L,
-                            password = if (type == UltraSaveManager.LockType.PARENTS) password else ""
+                            password = if (type == UltraSaveManager.LockType.PARENTS) password else "",
+                            keepInternet = keepInternet
                         )
                         Toast.makeText(ctx, "⚡ Ultra Save চালু!", Toast.LENGTH_SHORT).show()
                         onActivated()
