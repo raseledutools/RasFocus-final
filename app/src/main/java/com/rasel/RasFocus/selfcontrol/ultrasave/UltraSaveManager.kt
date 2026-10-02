@@ -174,6 +174,8 @@ object UltraSaveManager {
     fun isAllowedPkg(pkg: String): Boolean =
         pkg == "com.rasel.RasFocus"     ||
         pkg == "android"                 ||
+        pkg == "com.whatsapp"            ||
+        pkg == "com.whatsapp.w4b"        ||
         pkg.contains("dialer")           ||
         pkg.contains("incallui")         ||
         pkg.contains(".phone")           ||
