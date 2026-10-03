@@ -60,7 +60,7 @@ class UltraSaveBlockerService : Service() {
 
     private val handler = Handler(Looper.getMainLooper())
     private var windowManager: WindowManager? = null
-    private var overlayView: FrameLayout? = null
+    private var overlayView: LinearLayout? = null
     private var lastBlockedPkg: String? = null
 
     private val pollRunnable = object : Runnable {
@@ -220,7 +220,7 @@ class UltraSaveBlockerService : Service() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-            bottomMargin = (72 * dp).toInt() // nav bar উপরে
+            y = (72 * dp).toInt() // nav bar উপরে
         }
 
         try {
@@ -304,3 +304,4 @@ class UltraSaveBlockerService : Service() {
             .setPriority(NotificationCompat.PRIORITY_MIN)
             .build()
 }
+
