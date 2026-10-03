@@ -2,11 +2,11 @@ package com.rasel.RasFocus.selfcontrol.study_tools
 
 import android.annotation.SuppressLint
 import android.app.ActivityManager
+import android.app.NotificationManager
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.ContentResolver
 import android.content.Context
-import android.net.ConnectivityManager
-import android.net.LinkProperties
-import android.net.Network
-import android.net.wifi.WifiManager
 import android.os.Build
 import android.provider.Settings
 import android.service.quicksettings.Tile
@@ -14,7 +14,6 @@ import android.service.quicksettings.TileService
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import java.io.File
-import java.net.InetAddress
 
 /**
  * Quick Settings Tile — Grayscale Fast Mode
@@ -100,12 +99,29 @@ class GrayscaleTileService : TileService() {
                 setFastDns()
                 clearAllCache()
                 killBackgroundApps()
+                enableBatterySaver()
+                disableSync()
+                setManualBrightness()
+                disableLocation()
+                enableDnd()
+                disableHaptic()
+                setScreenTimeout(15_000)
+                setFontScale(1.0f)
+                clearClipboard()
             } else {
                 disableGrayscale()
                 enableAnimations()
                 resetGpuRendering()
                 resetBackgroundProcessLimit()
                 resetDns()
+                disableBatterySaver()
+                enableSync()
+                resetBrightness()
+                enableLocation()
+                disableDnd()
+                enableHaptic()
+                setScreenTimeout(60_000)
+                setFontScale(1.0f)
             }
             refreshTile()
         } catch (e: SecurityException) {
@@ -236,6 +252,166 @@ class GrayscaleTileService : TileService() {
     // Cache clear
     // ─────────────────────────────────────────────────────────────
 
+    // ─────────────────────────────────────────────────────────────
+    // 6. Battery Saver
+    // ─────────────────────────────────────────────────────────────
+
+    private fun enableBatterySaver() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                Settings.Global.putInt(contentResolver, "low_power", 1)
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun disableBatterySaver() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                Settings.Global.putInt(contentResolver, "low_power", 0)
+            }
+        } catch (_: Exception) {}
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 7. Sync
+    // ─────────────────────────────────────────────────────────────
+
+    private fun disableSync() {
+        try {
+            ContentResolver.setMasterSyncAutomatically(false)
+        } catch (_: Exception) {}
+    }
+
+    private fun enableSync() {
+        try {
+            ContentResolver.setMasterSyncAutomatically(true)
+        } catch (_: Exception) {}
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 8. Brightness
+    // ─────────────────────────────────────────────────────────────
+
+    private fun setManualBrightness() {
+        try {
+            Settings.System.putInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS_MODE,
+                Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL)
+            Settings.System.putInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS, 80)
+        } catch (_: Exception) {}
+    }
+
+    private fun resetBrightness() {
+        try {
+            Settings.System.putInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS_MODE,
+                Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC)
+        } catch (_: Exception) {}
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 9. Location
+    // ─────────────────────────────────────────────────────────────
+
+    private fun disableLocation() {
+        try {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+                Settings.Secure.putInt(contentResolver, Settings.Secure.LOCATION_MODE, 0)
+            } else {
+                Settings.Secure.putInt(contentResolver, "location_mode", 0)
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun enableLocation() {
+        try {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+                Settings.Secure.putInt(contentResolver, Settings.Secure.LOCATION_MODE, 3)
+            } else {
+                Settings.Secure.putInt(contentResolver, "location_mode", 3)
+            }
+        } catch (_: Exception) {}
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 10. DND
+    // ─────────────────────────────────────────────────────────────
+
+    private fun enableDnd() {
+        try {
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (nm.isNotificationPolicyAccessGranted) {
+                nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_NONE)
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun disableDnd() {
+        try {
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (nm.isNotificationPolicyAccessGranted) {
+                nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
+            }
+        } catch (_: Exception) {}
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 11. Haptic
+    // ─────────────────────────────────────────────────────────────
+
+    private fun disableHaptic() {
+        try {
+            Settings.System.putInt(contentResolver, "haptic_feedback_enabled", 0)
+            Settings.System.putInt(contentResolver, "vibrate_when_ringing", 0)
+            Settings.System.putInt(contentResolver, "vibrate_on", 0)
+        } catch (_: Exception) {}
+    }
+
+    private fun enableHaptic() {
+        try {
+            Settings.System.putInt(contentResolver, "haptic_feedback_enabled", 1)
+            Settings.System.putInt(contentResolver, "vibrate_when_ringing", 1)
+            Settings.System.putInt(contentResolver, "vibrate_on", 1)
+        } catch (_: Exception) {}
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 12. Screen Timeout
+    // ─────────────────────────────────────────────────────────────
+
+    private fun setScreenTimeout(ms: Int) {
+        try {
+            Settings.System.putInt(contentResolver, Settings.System.SCREEN_OFF_TIMEOUT, ms)
+        } catch (_: Exception) {}
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 13. Font Scale
+    // ─────────────────────────────────────────────────────────────
+
+    private fun setFontScale(scale: Float) {
+        try {
+            Settings.System.putFloat(contentResolver, "font_scale", scale)
+        } catch (_: Exception) {}
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 14. Clipboard Clear
+    // ─────────────────────────────────────────────────────────────
+
+    private fun clearClipboard() {
+        try {
+            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                cm.clearPrimaryClip()
+            } else {
+                cm.setPrimaryClip(ClipData.newPlainText("", ""))
+            }
+        } catch (_: Exception) {}
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Cache clear
+    // ─────────────────────────────────────────────────────────────
+
     @SuppressLint("WorldReadableFiles")
     private fun clearAllCache() {
         try {
@@ -287,3 +463,4 @@ class GrayscaleTileService : TileService() {
         refreshTile()
     }
 }
+
