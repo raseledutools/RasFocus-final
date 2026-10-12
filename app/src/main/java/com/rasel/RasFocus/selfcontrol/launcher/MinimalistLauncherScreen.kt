@@ -144,14 +144,14 @@ private val DEFAULT_WORDS = listOf(
 
 enum class LauncherTheme(val bg: Color, val text: Color, val accent: Color) {
     PureBlack (Color(0xFF000000), Color(0xFFFFFFFF), Color(0xFF14C3B2)),
-    DarkBlue  (Color(0xFF0A0E1A), Color(0xFFE8EAF6), Color(0xFF4FC3F7)),
-    DarkGreen (Color(0xFF030E0A), Color(0xFFE8F5E9), Color(0xFF00FFB2)),
+    DarkBlue  (Color(0xFF020408), Color(0xFFE8EAF6), Color(0xFF4FC3F7)),
+    DarkGreen (Color(0xFF010804), Color(0xFFE8F5E9), Color(0xFF00FFB2)),
     // ── 5 new distinct styles ──────────────────────────────────────
-    Study     (Color(0xFF110E07), Color(0xFFEED9A0), Color(0xFFD4922A)),  // warm desk-lamp — amber parchment
-    NeonCity  (Color(0xFF0A010F), Color(0xFFE8D5FF), Color(0xFFBB40FF)),  // cyberpunk — neon purple
-    Ocean     (Color(0xFF011018), Color(0xFFD0EAF5), Color(0xFF29B6E0)),  // deep sea — icy blue
-    Ember     (Color(0xFF0F0200), Color(0xFFF5DDD0), Color(0xFFFF6B35)),  // fireplace — warm orange
-    Moonlight (Color(0xFF06061A), Color(0xFFE8EAFF), Color(0xFF9999FF))   // night sky — silver periwinkle
+    Study     (Color(0xFF090704), Color(0xFFEED9A0), Color(0xFFD4922A)),  // warm desk-lamp — amber parchment
+    NeonCity  (Color(0xFF040006), Color(0xFFE8D5FF), Color(0xFFBB40FF)),  // cyberpunk — neon purple
+    Ocean     (Color(0xFF00070D), Color(0xFFD0EAF5), Color(0xFF29B6E0)),  // deep sea — icy blue
+    Ember     (Color(0xFF070100), Color(0xFFF5DDD0), Color(0xFFFF6B35)),  // fireplace — warm orange
+    Moonlight (Color(0xFF02020D), Color(0xFFE8EAFF), Color(0xFF9999FF))   // night sky — silver periwinkle
 }
 
 // which picker slot is active
@@ -958,35 +958,7 @@ fun ClockWithBatteryRing(
         Modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center
     ) {
-        // ── Outer usage ring (larger box, draws behind) ───────────────────
-        Box(
-            Modifier
-                .size(200.dp)
-                .drawBehind {
-                    val outerStroke = 2.dp.toPx()
-                    val r2       = size.width / 2f - outerStroke
-                    val cx2      = size.width / 2f
-                    val cy2      = size.height / 2f
-                    val tl2      = Offset(cx2 - r2, cy2 - r2)
-                    val as2      = Size(r2 * 2, r2 * 2)
-                    // dim track
-                    drawArc(
-                        color = Color.White.copy(alpha = 0.04f),
-                        startAngle = -90f, sweepAngle = 360f, useCenter = false,
-                        topLeft = tl2, size = as2,
-                        style = Stroke(width = outerStroke, cap = StrokeCap.Round)
-                    )
-                    // usage progress
-                    if (animatedUsageSweep > 0f) {
-                        drawArc(
-                            color = usageArcColor.copy(alpha = 0.75f),
-                            startAngle = -90f, sweepAngle = animatedUsageSweep, useCenter = false,
-                            topLeft = tl2, size = as2,
-                            style = Stroke(width = outerStroke, cap = StrokeCap.Round)
-                        )
-                    }
-                }
-        )
+
 
         // ── Inner battery ring + clock ────────────────────────────────────
         Box(
