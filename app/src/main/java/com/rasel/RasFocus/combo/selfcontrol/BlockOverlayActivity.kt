@@ -211,7 +211,7 @@ fun BlockOverlayScreen(
                 1 -> PinUnlockSection(profile.parentPin, onUnlocked)
                 2 -> LongTextUnlockSection(onUnlocked)
                 3 -> DailyLimitInfoSection(blockedPackage, profile.dailyLimitMinutes, context)
-                4 -> HourlyLimitInfoSection(profile.hourlyLimitMinutes)
+                4 -> HourlyLimitInfoSection(blockedPackage, profile.hourlyLimitMinutes, context)
                 else -> SelfControlInfoSection(profile)   // 0 = self control
             }
 
@@ -392,22 +392,11 @@ fun SelfControlInfoSection(profile: BlockingFocusProfile) {
 @Composable
 fun DailyLimitInfoSection(packageName: String, limitMinutes: Int, context: Context) {
     val usedMinutes = remember {
-        try {
-            val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
-            val now = System.currentTimeMillis()
-            val startOfDay = java.util.Calendar.getInstance().apply {
-                set(java.util.Calendar.HOUR_OF_DAY, 0)
-                set(java.util.Calendar.MINUTE, 0)
-                set(java.util.Calendar.SECOND, 0)
-                set(java.util.Calendar.MILLISECOND, 0)
-            }.timeInMillis
-            val stats = usm.queryUsageStats(
-                android.app.usage.UsageStatsManager.INTERVAL_DAILY, startOfDay, now
-            )
-            val stat = stats?.find { it.packageName == packageName }
-            ((stat?.totalTimeInForeground ?: 0L) / 60_000L).toInt()
-        } catch (_: Exception) { 0 }
+        BlockingManager.getDailyUsageMinutes(context, packageName)
     }
+    val remainingMinutes = (limitMinutes - usedMinutes).coerceAtLeast(0)
+    val progressFraction = if (limitMinutes > 0) (usedMinutes.toFloat() / limitMinutes).coerceIn(0f, 1f) else 1f
+
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF4C1D95).copy(alpha = 0.5f))
@@ -418,14 +407,45 @@ fun DailyLimitInfoSection(packageName: String, limitMinutes: Int, context: Conte
         ) {
             Icon(Icons.Default.CalendarToday, contentDescription = null, tint = Color(0xFF8B5CF6), modifier = Modifier.size(36.dp))
             Spacer(Modifier.height(10.dp))
-            Text("Daily Limit পূর্ণ হয়েছে", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF8B5CF6))
+            Text(
+                if (remainingMinutes == 0) "Daily Limit পূর্ণ হয়েছে" else "Daily Limit চলছে",
+                fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF8B5CF6)
+            )
+            Spacer(Modifier.height(12.dp))
+            // Progress bar
+            androidx.compose.material3.LinearProgressIndicator(
+                progress = { progressFraction },
+                modifier = Modifier.fillMaxWidth().height(8.dp)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp)),
+                color = Color(0xFF8B5CF6),
+                trackColor = Color(0xFF8B5CF6).copy(alpha = 0.2f)
+            )
+            Spacer(Modifier.height(12.dp))
+            // Stats row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("$usedMinutes min", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF8B5CF6))
+                    Text("ব্যবহার হয়েছে", fontSize = 11.sp, color = Color(0xFF94A3B8))
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("$limitMinutes min", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFFCBD5E1))
+                    Text("দৈনিক limit", fontSize = 11.sp, color = Color(0xFF94A3B8))
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("$remainingMinutes min", fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                        color = if (remainingMinutes == 0) Color(0xFFEF4444) else Color(0xFF4ADE80))
+                    Text("বাকি আছে", fontSize = 11.sp, color = Color(0xFF94A3B8))
+                }
+            }
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "আজকে ${usedMinutes} মিনিট ব্যবহার হয়েছে।\nLimit: ${limitMinutes} মিনিট।\nকাল সকালে আবার ব্যবহার করতে পারবে।",
-                fontSize = 14.sp,
-                color = Color(0xFF94A3B8),
-                textAlign = TextAlign.Center,
-                lineHeight = 22.sp
+                text = if (remainingMinutes == 0) "কাল সকালে আবার ব্যবহার করতে পারবে।"
+                       else "${remainingMinutes} মিনিট আরও ব্যবহার করতে পারবে।",
+                fontSize = 13.sp, color = Color(0xFF94A3B8),
+                textAlign = TextAlign.Center, lineHeight = 20.sp
             )
         }
     }
@@ -433,7 +453,19 @@ fun DailyLimitInfoSection(packageName: String, limitMinutes: Int, context: Conte
 
 // ── Hourly Limit info ──────────────────────────────────────────────────────────
 @Composable
-fun HourlyLimitInfoSection(limitMinutes: Int) {
+fun HourlyLimitInfoSection(packageName: String, limitMinutes: Int, context: Context) {
+    val usedMinutes = remember {
+        BlockingManager.getHourlyUsageMinutes(context, packageName)
+    }
+    val remainingMinutes = (limitMinutes - usedMinutes).coerceAtLeast(0)
+    val progressFraction = if (limitMinutes > 0) (usedMinutes.toFloat() / limitMinutes).coerceIn(0f, 1f) else 1f
+
+    // Calculate minutes until next hour reset
+    val minutesUntilReset = remember {
+        val cal = java.util.Calendar.getInstance()
+        60 - cal.get(java.util.Calendar.MINUTE)
+    }
+
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF7C2D12).copy(alpha = 0.5f))
@@ -444,14 +476,45 @@ fun HourlyLimitInfoSection(limitMinutes: Int) {
         ) {
             Icon(Icons.Default.HourglassEmpty, contentDescription = null, tint = Color(0xFFF97316), modifier = Modifier.size(36.dp))
             Spacer(Modifier.height(10.dp))
-            Text("Hourly Limit পূর্ণ হয়েছে", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFFF97316))
+            Text(
+                if (remainingMinutes == 0) "Hourly Limit পূর্ণ হয়েছে" else "Hourly Limit চলছে",
+                fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFFF97316)
+            )
+            Spacer(Modifier.height(12.dp))
+            // Progress bar
+            androidx.compose.material3.LinearProgressIndicator(
+                progress = { progressFraction },
+                modifier = Modifier.fillMaxWidth().height(8.dp)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp)),
+                color = Color(0xFFF97316),
+                trackColor = Color(0xFFF97316).copy(alpha = 0.2f)
+            )
+            Spacer(Modifier.height(12.dp))
+            // Stats row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("$usedMinutes min", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFFF97316))
+                    Text("এই ঘণ্টায়", fontSize = 11.sp, color = Color(0xFF94A3B8))
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("$limitMinutes min", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFFCBD5E1))
+                    Text("ঘণ্টায় limit", fontSize = 11.sp, color = Color(0xFF94A3B8))
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("$remainingMinutes min", fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                        color = if (remainingMinutes == 0) Color(0xFFEF4444) else Color(0xFF4ADE80))
+                    Text("বাকি আছে", fontSize = 11.sp, color = Color(0xFF94A3B8))
+                }
+            }
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "এই ঘণ্টায় ${limitMinutes} মিনিট limit শেষ হয়ে গেছে।\nপরের ঘণ্টায় আবার ব্যবহার করতে পারবে।",
-                fontSize = 14.sp,
-                color = Color(0xFF94A3B8),
-                textAlign = TextAlign.Center,
-                lineHeight = 22.sp
+                text = if (remainingMinutes == 0) "${minutesUntilReset} মিনিট পর পরের ঘণ্টা শুরু হবে।"
+                       else "${remainingMinutes} মিনিট আরও ব্যবহার করতে পারবে।",
+                fontSize = 13.sp, color = Color(0xFF94A3B8),
+                textAlign = TextAlign.Center, lineHeight = 20.sp
             )
         }
     }
