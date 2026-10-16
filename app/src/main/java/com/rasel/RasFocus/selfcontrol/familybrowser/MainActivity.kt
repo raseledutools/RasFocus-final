@@ -105,7 +105,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.awaitPointerEvent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -955,22 +958,53 @@ fun BrowserScaffold(vm: BrowserViewModel) {
             modifier = Modifier
                 .weight(1f)
                 .pointerInput(Unit) {
-                    detectDragGestures(
-                        onDragStart  = { isPulling = true },
-                        onDragEnd    = {
-                            if (pullOffsetY >= pullThresholdPx) vm.reload()
-                            pullOffsetY = 0f; isPulling = false
-                        },
-                        onDragCancel = { pullOffsetY = 0f; isPulling = false },
-                        onDrag = { change, dragAmount ->
-                            change.consume()
-                            if (dragAmount.y > 0f)
-                                pullOffsetY = (pullOffsetY + dragAmount.y * 0.4f)
-                                    .coerceAtMost(pullThresholdPx * 1.2f)
-                            else if (pullOffsetY > 0f)
-                                pullOffsetY = (pullOffsetY + dragAmount.y * 0.4f).coerceAtLeast(0f)
+                    // FIX: আগে detectDragGestures সব single-finger touch event consume করতো
+                    // ফলে WebView কোনো touch পেত না — single finger scroll কাজ করত না।
+                    // এখন: শুধু WebView scroll-top এ থাকলে + downward drag হলে pull-to-refresh
+                    // activate হবে। বাকি সব gesture WebView কে pass করা হয় (consume করা হয় না)।
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        var totalDragY = 0f
+                        var activated  = false
+
+                        // pointer উঠে যাওয়া পর্যন্ত track করো
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!change.pressed) {
+                                // pointer up — pull-to-refresh check
+                                if (pullOffsetY >= pullThresholdPx) vm.reload()
+                                pullOffsetY = 0f
+                                isPulling   = false
+                                break
+                            }
+
+                            val dy = change.position.y - change.previousPosition.y
+
+                            // WebView scroll top এ আছে কিনা check
+                            val webViewScrollY = vm.activeWebView?.scrollY ?: 0
+                            val isAtTop = webViewScrollY == 0
+
+                            if (!activated) {
+                                totalDragY += dy
+                                // শুধু top এ থাকলে + clearly downward drag হলে activate
+                                if (isAtTop && totalDragY > 12f) {
+                                    activated   = true
+                                    isPulling   = true
+                                }
+                                // consume করো না — WebView নিজেই handle করুক
+                            } else {
+                                // activated: এখন pull indicator update করো
+                                // এই phase এ consume করো যাতে WebView আর scroll না করে
+                                change.consume()
+                                if (dy > 0f)
+                                    pullOffsetY = (pullOffsetY + dy * 0.4f)
+                                        .coerceAtMost(pullThresholdPx * 1.2f)
+                                else if (pullOffsetY > 0f)
+                                    pullOffsetY = (pullOffsetY + dy * 0.4f).coerceAtLeast(0f)
+                            }
                         }
-                    )
+                    }
                 }
         ) {
             // ── Pull-to-refresh indicator ──────────────────────────────────
