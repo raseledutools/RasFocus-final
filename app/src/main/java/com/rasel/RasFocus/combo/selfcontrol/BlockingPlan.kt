@@ -104,11 +104,10 @@ data class BlockingFocusProfile(
     val dailyLimitMinutes: Int = 60,
     val hourlyLimitMinutes: Int = 10,
     val parentPin: String = "",
-    val customLongText: String = DEFAULT_LONG_TEXT,
+    val customLongText: String = DEFAULT_LONG_TEXT, // User customizable long text
     val blockedPackages: List<String> = emptyList(),
     val blockedSites: List<String> = emptyList(),
-    // Active days: empty = all days, otherwise Set of 0(Sun)..6(Sat)
-    val activeDays: Set<Int> = emptySet()
+    val activeDays: List<Int> = listOf(0, 1, 2, 3, 4, 5, 6) // 0=Sun, 1=Mon, ..., 6=Sat
 )
 
 data class LockModeOption(
@@ -272,10 +271,12 @@ fun BlockingPlanScreen(navController: NavController) {
     }
 
     if (showCreateSheet) {
+        val nextNum = (profiles.maxOfOrNull { it.id } ?: 0) + 1
         CreateProfileSheet(
+            nextProfileNumber = nextNum,
             onDismiss = { showCreateSheet = false },
             onCreate  = { newProfile -> 
-                profiles = profiles + newProfile.copy(id = (profiles.maxOfOrNull { it.id } ?: 0) + 1)
+                profiles = profiles + newProfile.copy(id = nextNum)
                 showCreateSheet = false 
             }
         )
@@ -538,24 +539,6 @@ fun ProfileCardItem(
                 Text(modeDetail, fontSize = 10.sp, color = GrayText)
             }
 
-            // Active days chips
-            if (profile.activeDays.isNotEmpty()) {
-                Spacer(Modifier.height(5.dp))
-                val dayLabels = listOf("Sun","Mon","Tue","Wed","Thu","Fri","Sat")
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    profile.activeDays.sorted().forEach { dayIdx ->
-                        Box(
-                            modifier = Modifier
-                                .background(PrimaryTeal.copy(alpha = 0.12f), RoundedCornerShape(4.dp))
-                                .padding(horizontal = 5.dp, vertical = 2.dp)
-                        ) {
-                            Text(dayLabels.getOrElse(dayIdx) { "?" }, fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold, color = PrimaryTeal)
-                        }
-                    }
-                }
-            }
-
             Spacer(Modifier.height(7.dp))
             HorizontalDivider(color = Color(0xFFF3F4F6))
             Spacer(Modifier.height(6.dp))
@@ -612,7 +595,7 @@ fun ProfileCardItem(
 // ==========================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CreateProfileSheet(onDismiss: () -> Unit, onCreate: (BlockingFocusProfile) -> Unit) {
+fun CreateProfileSheet(nextProfileNumber: Int = 1, onDismiss: () -> Unit, onCreate: (BlockingFocusProfile) -> Unit) {
     var step by remember { mutableStateOf(0) }
     
     var profileType by remember { mutableStateOf("") } 
@@ -628,13 +611,10 @@ fun CreateProfileSheet(onDismiss: () -> Unit, onCreate: (BlockingFocusProfile) -
     var customLongText by remember { mutableStateOf(DEFAULT_LONG_TEXT) }
     var dailyLimit by remember { mutableStateOf(60) }
     var hourlyLimit by remember { mutableStateOf(10) }
-    val context = LocalContext.current
-    val nextId = (BlockingManager.loadProfiles(context).maxOfOrNull { it.id } ?: 0) + 1
-    var profileName by remember { mutableStateOf("Profile $nextId") }
+    var profileName by remember { mutableStateOf("Profile $nextProfileNumber") }
+    var activeDays by remember { mutableStateOf(listOf(0, 1, 2, 3, 4, 5, 6)) } // 0=Sun..6=Sat
     var blockPhoneSettings by remember { mutableStateOf(false) }
     var uninstallProtection by remember { mutableStateOf(false) }
-    // Active days of week: Sun=0..Sat=6, empty = all days
-    var activeDays by remember { mutableStateOf(setOf<Int>()) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -686,42 +666,7 @@ fun CreateProfileSheet(onDismiss: () -> Unit, onCreate: (BlockingFocusProfile) -
                         }
                         2 -> {
                             Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                                OutlinedTextField(
-                                    value = profileName, onValueChange = { profileName = it },
-                                    label = { Text("Profile Name", color = GrayText) },
-                                    placeholder = { Text("e.g. Deep Study Mode", color = GrayText) },
-                                    modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedTextColor = DarkText, unfocusedTextColor = DarkText,
-                                        focusedBorderColor = PrimaryTeal, unfocusedBorderColor = Color(0xFFD1D5DB),
-                                        focusedLabelColor = PrimaryTeal, unfocusedLabelColor = GrayText
-                                    )
-                                )
-                                // Active Days Selector
-                                Text("কোন কোন দিন Active থাকবে", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = DarkText)
-                                Text("কোনো দিন না বাছলে সপ্তাহের সব দিন active থাকবে", fontSize = 12.sp, color = GrayText)
-                                val dayLabels = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    dayLabels.forEachIndexed { idx, day ->
-                                        val isSelected = activeDays.contains(idx)
-                                        Box(
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .background(
-                                                    if (isSelected) PrimaryTeal else Color(0xFFF3F4F6),
-                                                    RoundedCornerShape(8.dp)
-                                                )
-                                                .clickable {
-                                                    activeDays = if (isSelected) activeDays - idx else activeDays + idx
-                                                }
-                                                .padding(vertical = 8.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(day, fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                                                color = if (isSelected) Color.White else GrayText)
-                                        }
-                                    }
-                                }
+                                OutlinedTextField(value = profileName, onValueChange = { profileName = it }, label = { Text("Profile Name", color = DarkText) }, placeholder = { Text("e.g. Deep Study Mode", color = GrayText) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = DarkText, unfocusedTextColor = DarkText, focusedLabelColor = PrimaryTeal, unfocusedLabelColor = GrayText))
                                 Text("Blocking Mode", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = DarkText)
                                 lockModeOptions.forEach { mode ->
                                     val isSelected = selectedMode == mode.index
@@ -754,6 +699,11 @@ fun CreateProfileSheet(onDismiss: () -> Unit, onCreate: (BlockingFocusProfile) -
                                 } else if (selectedMode == 4) {
                                     NumberPickerRow("Minutes / hour", hourlyLimit, 1, 55) { hourlyLimit = it }
                                 }
+                                HorizontalDivider()
+                                Spacer(Modifier.height(4.dp))
+                                Text("Active Days", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = DarkText)
+                                Text("কোন কোন দিন এই profile active থাকবে", fontSize = 12.sp, color = GrayText)
+                                ActiveDaysSelector(selectedDays = activeDays, onSelectionChanged = { activeDays = it })
                                 HorizontalDivider()
                                 Text("Extra Protections", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = DarkText)
                                 Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(12.dp)) {
@@ -844,45 +794,51 @@ fun PermissionBanner(icon: ImageVector, title: String, message: String, color: C
 }
 
 @Composable
-fun NumberPickerRow(label: String, value: Int, min: Int, max: Int, onValueChange: (Int) -> Unit) {
+fun ActiveDaysSelector(selectedDays: List<Int>, onSelectionChanged: (List<Int>) -> Unit) {
+    val dayLabels = listOf("S", "M", "T", "W", "T", "F", "S")
+    val dayNames  = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color.White, RoundedCornerShape(12.dp))
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
+        dayLabels.forEachIndexed { idx, label ->
+            val isSelected = selectedDays.contains(idx)
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .aspectRatio(1f)
+                    .background(
+                        if (isSelected) PrimaryTeal else Color(0xFFF3F4F6),
+                        RoundedCornerShape(8.dp)
+                    )
+                    .clickable {
+                        onSelectionChanged(
+                            if (isSelected) selectedDays.filter { it != idx }
+                            else (selectedDays + idx).sorted()
+                        )
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = label,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isSelected) Color.White else GrayText
+                )
+            }
+        }
+    }
+}
+
+
+@Composable
+fun NumberPickerRow(label: String, value: Int, min: Int, max: Int, onValueChange: (Int) -> Unit) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
         Text(label, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = DarkText, modifier = Modifier.weight(1f))
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .background(PrimaryTeal.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
-                    .clickable { if (value > min) onValueChange(value - 1) },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.Remove, contentDescription = "Decrease",
-                    tint = PrimaryTeal, modifier = Modifier.size(18.dp))
-            }
-            Text(
-                "$value",
-                fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = PrimaryTeal,
-                modifier = Modifier.width(54.dp), textAlign = TextAlign.Center
-            )
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .background(PrimaryTeal.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
-                    .clickable { if (value < max) onValueChange(value + 1) },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Increase",
-                    tint = PrimaryTeal, modifier = Modifier.size(18.dp))
-            }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { if (value > min) onValueChange(value - 1) }, modifier = Modifier.size(36.dp).background(Color(0xFFF3F4F6), RoundedCornerShape(8.dp))) { Icon(Icons.Default.Remove, contentDescription = "Decrease", tint = DarkText, modifier = Modifier.size(18.dp)) }
+            Text("$value", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = PrimaryTeal, modifier = Modifier.width(54.dp), textAlign = TextAlign.Center)
+            IconButton(onClick = { if (value < max) onValueChange(value + 1) }, modifier = Modifier.size(36.dp).background(Color(0xFFF3F4F6), RoundedCornerShape(8.dp))) { Icon(Icons.Default.Add, contentDescription = "Increase", tint = DarkText, modifier = Modifier.size(18.dp)) }
         }
     }
 }
@@ -1280,9 +1236,9 @@ fun EditProfileSheet(profile: BlockingFocusProfile, onDismiss: () -> Unit, onSav
     var customLongText     by remember { mutableStateOf(profile.customLongText) }
     var dailyLimit         by remember { mutableStateOf(profile.dailyLimitMinutes) }
     var hourlyLimit        by remember { mutableStateOf(profile.hourlyLimitMinutes) }
+    var activeDays        by remember { mutableStateOf(profile.activeDays) }
     var blockPhoneSettings by remember { mutableStateOf(profile.blockPhoneSettings) }
     var uninstallProtection by remember { mutableStateOf(profile.uninstallProtection) }
-    var activeDays         by remember { mutableStateOf(profile.activeDays) }
     
     var selectedTabIndex   by remember { mutableStateOf(0) }
     var currentSection     by remember { mutableStateOf(0) }
@@ -1308,42 +1264,7 @@ fun EditProfileSheet(profile: BlockingFocusProfile, onDismiss: () -> Unit, onSav
                 Box(modifier = Modifier.weight(1f).padding(horizontal = 16.dp)) {
                     when (currentSection) {
                         0 -> Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            OutlinedTextField(
-                                value = profileName, onValueChange = { profileName = it },
-                                label = { Text("Profile Name", color = GrayText) },
-                                placeholder = { Text("e.g. Deep Study Mode", color = GrayText) },
-                                modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedTextColor = DarkText, unfocusedTextColor = DarkText,
-                                    focusedBorderColor = PrimaryTeal, unfocusedBorderColor = Color(0xFFD1D5DB),
-                                    focusedLabelColor = PrimaryTeal, unfocusedLabelColor = GrayText
-                                )
-                            )
-                            // Active Days Selector
-                            Text("কোন কোন দিন Active থাকবে", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = DarkText)
-                            Text("কোনো দিন না বাছলে সপ্তাহের সব দিন active থাকবে", fontSize = 12.sp, color = GrayText)
-                            val dayLabels = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                dayLabels.forEachIndexed { idx, day ->
-                                    val isSelected = activeDays.contains(idx)
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .background(
-                                                if (isSelected) PrimaryTeal else Color(0xFFF3F4F6),
-                                                RoundedCornerShape(8.dp)
-                                            )
-                                            .clickable {
-                                                activeDays = if (isSelected) activeDays - idx else activeDays + idx
-                                            }
-                                            .padding(vertical = 8.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(day, fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                                            color = if (isSelected) Color.White else GrayText)
-                                    }
-                                }
-                            }
+                            OutlinedTextField(value = profileName, onValueChange = { profileName = it }, label = { Text("Profile Name") }, placeholder = { Text("e.g. Deep Study Mode") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
                             Text("Profile Type", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = DarkText)
                             SelectionCard("Block Apps and Websites", "Selected apps and websites will be restricted.", Icons.Default.Block, profileType == "Block") { profileType = "Block" }
                             SelectionCard("Allow Only Apps and Websites", "Everything is blocked EXCEPT the selected ones.", Icons.Default.CheckCircleOutline, profileType == "Allow") { profileType = "Allow" }
@@ -1395,6 +1316,10 @@ fun EditProfileSheet(profile: BlockingFocusProfile, onDismiss: () -> Unit, onSav
                             Spacer(Modifier.height(20.dp))
                         }
                         3 -> Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("Active Days", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = DarkText)
+                            Text("কোন কোন দিন এই profile active থাকবে", fontSize = 12.sp, color = GrayText)
+                            ActiveDaysSelector(selectedDays = activeDays, onSelectionChanged = { activeDays = it })
+                            HorizontalDivider()
                             Text("Extra Protections", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = DarkText)
                             Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(12.dp)) {
                                 Column {
@@ -1423,8 +1348,7 @@ fun EditProfileSheet(profile: BlockingFocusProfile, onDismiss: () -> Unit, onSav
                                     profileName = profileName, profileType = profileType, blockedSites = blockedSites, blockedPackages = blockedApps,
                                     webCount = blockedSites.size, appCount = blockedApps.size, lockMode = selectedMode, mode = lockModeOptions.getOrNull(selectedMode)?.title ?: "",
                                     selfDays = selfDays, selfHours = selfHours, selfMinutes = selfMinutes, customLongText = customLongText,
-                                    dailyLimitMinutes = dailyLimit, hourlyLimitMinutes = hourlyLimit, blockPhoneSettings = blockPhoneSettings,
-                                    uninstallProtection = uninstallProtection, activeDays = activeDays
+                                    dailyLimitMinutes = dailyLimit, hourlyLimitMinutes = hourlyLimit, activeDays = activeDays, blockPhoneSettings = blockPhoneSettings, uninstallProtection = uninstallProtection
                                 )
                             )
                         },
@@ -1519,51 +1443,33 @@ object BlockingManager {
         )
     }
 
-    fun getDailyUsageMinutes(context: Context, packageName: String): Int {
+    fun getDailyUsageMs(context: Context, packageName: String): Long {
         return try {
             val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
-            val cal = java.util.Calendar.getInstance().apply {
+            val now = System.currentTimeMillis()
+            val startOfDay = java.util.Calendar.getInstance().apply {
                 set(java.util.Calendar.HOUR_OF_DAY, 0)
                 set(java.util.Calendar.MINUTE, 0)
                 set(java.util.Calendar.SECOND, 0)
                 set(java.util.Calendar.MILLISECOND, 0)
-            }
-            val startOfDay = cal.timeInMillis
-            val now = System.currentTimeMillis()
+            }.timeInMillis
             val stats = usm.queryUsageStats(android.app.usage.UsageStatsManager.INTERVAL_DAILY, startOfDay, now)
-            val stat = stats?.find { it.packageName == packageName }
-            ((stat?.totalTimeInForeground ?: 0L) / 60_000L).toInt()
-        } catch (_: Exception) { 0 }
+            stats?.find { it.packageName == packageName }?.totalTimeInForeground ?: 0L
+        } catch (_: Exception) { 0L }
     }
 
-    fun getHourlyUsageMinutes(context: Context, packageName: String): Int {
+    fun getHourlyUsageMs(context: Context, packageName: String): Long {
         return try {
             val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
             val now = System.currentTimeMillis()
-            val startOfHour = now - (now % (60 * 60 * 1000L))
-            val events = usm.queryEvents(startOfHour, now)
-            val event = android.app.usage.UsageEvents.Event()
-            var totalMs = 0L
-            var lastResumeTime = -1L
-            while (events.hasNextEvent()) {
-                events.getNextEvent(event)
-                if (event.packageName != packageName) continue
-                when (event.eventType) {
-                    android.app.usage.UsageEvents.Event.MOVE_TO_FOREGROUND -> lastResumeTime = event.timeStamp
-                    android.app.usage.UsageEvents.Event.MOVE_TO_BACKGROUND -> {
-                        if (lastResumeTime > 0) { totalMs += event.timeStamp - lastResumeTime; lastResumeTime = -1L }
-                    }
-                }
-            }
-            if (lastResumeTime > 0) totalMs += now - lastResumeTime
-            (totalMs / 60_000L).toInt()
-        } catch (_: Exception) { 0 }
-    }
-
-    fun isProfileActiveToday(profile: BlockingFocusProfile): Boolean {
-        if (profile.activeDays.isEmpty()) return true
-        val today = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK) - 1 // 0=Sun..6=Sat
-        return profile.activeDays.contains(today)
+            val startOfHour = java.util.Calendar.getInstance().apply {
+                set(java.util.Calendar.MINUTE, 0)
+                set(java.util.Calendar.SECOND, 0)
+                set(java.util.Calendar.MILLISECOND, 0)
+            }.timeInMillis
+            val stats = usm.queryUsageStats(android.app.usage.UsageStatsManager.INTERVAL_BEST, startOfHour, now)
+            stats?.filter { it.packageName == packageName }?.sumOf { it.totalTimeInForeground } ?: 0L
+        } catch (_: Exception) { 0L }
     }
 
     fun shouldBlockPackage(context: Context, packageName: String): Boolean {
@@ -1573,13 +1479,14 @@ object BlockingManager {
 
         val profiles = loadProfiles(context).filter { it.isActive }
         for (profile in profiles) {
-            // Active day check
-            if (!isProfileActiveToday(profile)) continue
-
             val matchesList = profile.blockedPackages.contains(packageName)
             val isTargeted = if (profile.profileType == "Allow") !matchesList else matchesList
 
             if (!isTargeted) continue
+
+            // Check active days
+            val todayDow = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK) - 1 // 0=Sun
+            if (profile.activeDays.isNotEmpty() && !profile.activeDays.contains(todayDow)) continue
 
             when (profile.lockMode) {
                 0 -> {
@@ -1591,14 +1498,18 @@ object BlockingManager {
                 }
                 1, 2 -> return true
                 3 -> {
-                    // Daily limit: check real usage against limit
-                    val usedMinutes = getDailyUsageMinutes(context, packageName)
-                    if (usedMinutes >= profile.dailyLimitMinutes) return true
+                    // Daily Limit — check actual usage today
+                    val usedMs = getDailyUsageMs(context, packageName)
+                    val limitMs = profile.dailyLimitMinutes * 60_000L
+                    if (usedMs >= limitMs) return true
+                    // else allow (limit not yet reached)
                 }
                 4 -> {
-                    // Hourly limit: check real usage this hour against limit
-                    val usedMinutes = getHourlyUsageMinutes(context, packageName)
-                    if (usedMinutes >= profile.hourlyLimitMinutes) return true
+                    // Hourly Limit — check actual usage this hour
+                    val usedMs = getHourlyUsageMs(context, packageName)
+                    val limitMs = profile.hourlyLimitMinutes * 60_000L
+                    if (usedMs >= limitMs) return true
+                    // else allow
                 }
             }
         }
