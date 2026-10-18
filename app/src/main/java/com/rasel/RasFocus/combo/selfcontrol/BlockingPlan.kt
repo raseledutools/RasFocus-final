@@ -107,7 +107,10 @@ data class BlockingFocusProfile(
     val customLongText: String = DEFAULT_LONG_TEXT, // User customizable long text
     val blockedPackages: List<String> = emptyList(),
     val blockedSites: List<String> = emptyList(),
-    val activeDays: List<Int> = listOf(0, 1, 2, 3, 4, 5, 6) // 0=Sun, 1=Mon, ..., 6=Sat
+    val activeDays: List<Int> = listOf(0, 1, 2, 3, 4, 5, 6), // 0=Sun, 1=Mon, ..., 6=Sat
+    val limitSessionLock: String = "NONE",  // NONE | SELF | PARENTS | LONG_TEXT
+    val limitSessionPin:  String = "",
+    val limitSessionUntilMs: Long = 0L      // for SELF: epoch ms when lock expires
 )
 
 data class LockModeOption(
@@ -215,19 +218,31 @@ fun BlockingPlanScreen(navController: NavController) {
 
     if (showDailyLimitDialog && pendingProfile != null) {
         val p = pendingProfile!!
-        DailyLimitActivateDialog(
-            initialMinutes = p.dailyLimitMinutes,
+        LimitActivateDialog(
+            title = "Daily Limit — ${p.dailyLimitMinutes} min / day",
+            limitLabel = "${p.dailyLimitMinutes} মিনিট / দিন",
             onDismiss = { showDailyLimitDialog = false; pendingProfile = null },
-            onConfirm = { mins -> profiles = profiles.map { if (it.id == p.id) it.copy(isActive = true, dailyLimitMinutes = mins) else it }; showDailyLimitDialog = false; pendingProfile = null }
+            onConfirm = { lockType, extra ->
+                val untilMs = if (lockType == LimitSessionLock.SELF) System.currentTimeMillis() + (extra.toLongOrNull() ?: 60L) * 60_000L else 0L
+                val pin     = if (lockType == LimitSessionLock.PARENTS) extra else ""
+                profiles = profiles.map { if (it.id == p.id) it.copy(isActive = true, limitSessionLock = lockType.name, limitSessionPin = pin, limitSessionUntilMs = untilMs) else it }
+                showDailyLimitDialog = false; pendingProfile = null
+            }
         )
     }
 
     if (showHourlyLimitDialog && pendingProfile != null) {
         val p = pendingProfile!!
-        HourlyLimitActivateDialog(
-            initialMinutes = p.hourlyLimitMinutes,
+        LimitActivateDialog(
+            title = "Hourly Limit — ${p.hourlyLimitMinutes} min / hr",
+            limitLabel = "${p.hourlyLimitMinutes} মিনিট / ঘণ্টা",
             onDismiss = { showHourlyLimitDialog = false; pendingProfile = null },
-            onConfirm = { mins -> profiles = profiles.map { if (it.id == p.id) it.copy(isActive = true, hourlyLimitMinutes = mins) else it }; showHourlyLimitDialog = false; pendingProfile = null }
+            onConfirm = { lockType, extra ->
+                val untilMs = if (lockType == LimitSessionLock.SELF) System.currentTimeMillis() + (extra.toLongOrNull() ?: 60L) * 60_000L else 0L
+                val pin     = if (lockType == LimitSessionLock.PARENTS) extra else ""
+                profiles = profiles.map { if (it.id == p.id) it.copy(isActive = true, limitSessionLock = lockType.name, limitSessionPin = pin, limitSessionUntilMs = untilMs) else it }
+                showHourlyLimitDialog = false; pendingProfile = null
+            }
         )
     }
 
@@ -422,6 +437,26 @@ fun BlockingPlanScreen(navController: NavController) {
                                     }
                                     1 -> showParentsUnlockDialog = true // Unlock with password
                                     2 -> showLongTextUnlockDialog = true // Unlock with typing
+                                    3, 4 -> {
+                                        when (profile.limitSessionLock) {
+                                            "PARENTS" -> showParentsUnlockDialog = true
+                                            "LONG_TEXT" -> showLongTextUnlockDialog = true
+                                            "SELF" -> {
+                                                if (System.currentTimeMillis() < profile.limitSessionUntilMs) {
+                                                    val remaining = ((profile.limitSessionUntilMs - System.currentTimeMillis()) / 60_000).toInt()
+                                                    Toast.makeText(context, "Self Control: আরও $remaining মিনিট বাকি", Toast.LENGTH_SHORT).show()
+                                                    profileToTurnOff = null
+                                                } else {
+                                                    profiles = profiles.map { if (it.id == profile.id) it.copy(isActive = false) else it }
+                                                    profileToTurnOff = null
+                                                }
+                                            }
+                                            else -> {
+                                                profiles = profiles.map { if (it.id == profile.id) it.copy(isActive = false) else it }
+                                                profileToTurnOff = null
+                                            }
+                                        }
+                                    }
                                     else -> {
                                         profiles = profiles.map { if (it.id == profile.id) it.copy(isActive = false) else it }
                                         profileToTurnOff = null
@@ -1185,39 +1220,112 @@ fun LongTextUnlockDialog(targetText: String, onDismiss: () -> Unit, onConfirm: (
 }
 
 @Composable
-fun DailyLimitActivateDialog(initialMinutes: Int, onDismiss: () -> Unit, onConfirm: (Int) -> Unit) {
-    var minutes by remember { mutableStateOf(initialMinutes) }
+// Lock type for daily/hourly limit session
+enum class LimitSessionLock { NONE, SELF, PARENTS, LONG_TEXT }
+
+@Composable
+fun LimitActivateDialog(
+    title: String,
+    limitLabel: String,       // e.g. "5 min / hour"
+    onDismiss: () -> Unit,
+    onConfirm: (LimitSessionLock, String) -> Unit // lock type, extra (pin or selfTime)
+) {
+    var selected by remember { mutableStateOf(LimitSessionLock.NONE) }
+    var pin      by remember { mutableStateOf("") }
+    var selfMins by remember { mutableStateOf(60) }
+
     Dialog(onDismissRequest = onDismiss) {
         Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = CardBg)) {
-            Column(modifier = Modifier.padding(24.dp)) {
-                Text("Daily Usage Limit", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
-                Spacer(Modifier.height(16.dp))
-                NumberPickerRow("Minutes / day", minutes, 5, 480) { minutes = it }
-                Row(modifier = Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(title, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = DarkText)
+                Text("Limit: $limitLabel", fontSize = 13.sp, color = GrayText)
+                HorizontalDivider()
+
+                Text("Toggle বন্ধ করার lock কী হবে?", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DarkText)
+
+                val options = listOf(
+                    Triple(LimitSessionLock.NONE,      Icons.Default.LockOpen,  "Lock নেই — যেকোনো সময় বন্ধ করা যাবে"),
+                    Triple(LimitSessionLock.SELF,       Icons.Default.Timer,     "Self Control — নির্দিষ্ট সময় পর বন্ধ করা যাবে"),
+                    Triple(LimitSessionLock.PARENTS,    Icons.Default.Lock,      "Parents PIN — PIN ছাড়া বন্ধ করা যাবে না"),
+                    Triple(LimitSessionLock.LONG_TEXT,  Icons.Default.Subject,   "Long Text — paragraph টাইপ না করলে বন্ধ না")
+                )
+                options.forEach { (lock, icon, label) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (selected == lock) PrimaryTeal.copy(alpha = 0.12f) else Color.Transparent)
+                            .clickable { selected = lock }
+                            .padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(icon, contentDescription = null, tint = if (selected == lock) PrimaryTeal else GrayText, modifier = Modifier.size(20.dp))
+                        Text(label, fontSize = 13.sp, color = if (selected == lock) PrimaryTeal else DarkText, modifier = Modifier.weight(1f))
+                        RadioButton(selected = selected == lock, onClick = { selected = lock }, colors = RadioButtonDefaults.colors(selectedColor = PrimaryTeal))
+                    }
+                }
+
+                // Extra input based on selection
+                when (selected) {
+                    LimitSessionLock.SELF -> {
+                        NumberPickerRow("কতক্ষণ lock থাকবে (মিনিট)", selfMins, 1, 1440) { selfMins = it }
+                    }
+                    LimitSessionLock.PARENTS -> {
+                        OutlinedTextField(
+                            value = pin,
+                            onValueChange = { pin = it },
+                            label = { Text("PIN সেট করুন", color = GrayText) },
+                            placeholder = { Text("4+ digit PIN") },
+                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = DarkText, unfocusedTextColor = DarkText, focusedLabelColor = PrimaryTeal),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                    }
+                    else -> {}
+                }
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Cancel") }
-                    Button(onClick = { onConfirm(minutes) }, modifier = Modifier.weight(1f)) { Text("Activate") }
+                    Button(
+                        onClick = {
+                            val extra = when (selected) {
+                                LimitSessionLock.PARENTS   -> pin
+                                LimitSessionLock.SELF      -> selfMins.toString()
+                                else -> ""
+                            }
+                            onConfirm(selected, extra)
+                        },
+                        modifier = Modifier.weight(1f),
+                        enabled = selected != LimitSessionLock.PARENTS || pin.length >= 4
+                    ) { Text("Activate") }
                 }
             }
         }
     }
 }
 
+// Keep old signatures as wrappers (unused but avoids breaking other refs)
+@Composable
+fun DailyLimitActivateDialog(initialMinutes: Int, onDismiss: () -> Unit, onConfirm: (Int) -> Unit) {
+    LimitActivateDialog(
+        title = "Daily Usage Limit",
+        limitLabel = "$initialMinutes min / day",
+        onDismiss = onDismiss,
+        onConfirm = { _, _ -> onConfirm(initialMinutes) }
+    )
+}
+
 @Composable
 fun HourlyLimitActivateDialog(initialMinutes: Int, onDismiss: () -> Unit, onConfirm: (Int) -> Unit) {
-    var minutes by remember { mutableStateOf(initialMinutes) }
-    Dialog(onDismissRequest = onDismiss) {
-        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = CardBg)) {
-            Column(modifier = Modifier.padding(24.dp)) {
-                Text("Hourly Usage Limit", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
-                Spacer(Modifier.height(16.dp))
-                NumberPickerRow("Minutes / hour", minutes, 1, 55) { minutes = it }
-                Row(modifier = Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Cancel") }
-                    Button(onClick = { onConfirm(minutes) }, modifier = Modifier.weight(1f)) { Text("Activate") }
-                }
-            }
-        }
-    }
+    LimitActivateDialog(
+        title = "Hourly Usage Limit",
+        limitLabel = "$initialMinutes min / hour",
+        onDismiss = onDismiss,
+        onConfirm = { _, _ -> onConfirm(initialMinutes) }
+    )
 }
 
 // ==========================================
@@ -1462,13 +1570,33 @@ object BlockingManager {
         return try {
             val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
             val now = System.currentTimeMillis()
+            // Use start of current hour — INTERVAL_DAILY gives finer resolution for same-day range
             val startOfHour = java.util.Calendar.getInstance().apply {
                 set(java.util.Calendar.MINUTE, 0)
                 set(java.util.Calendar.SECOND, 0)
                 set(java.util.Calendar.MILLISECOND, 0)
             }.timeInMillis
-            val stats = usm.queryUsageStats(android.app.usage.UsageStatsManager.INTERVAL_BEST, startOfHour, now)
-            stats?.filter { it.packageName == packageName }?.sumOf { it.totalTimeInForeground } ?: 0L
+            // queryEvents gives per-event precision within an hour
+            val events = usm.queryEvents(startOfHour, now)
+            val event = android.app.usage.UsageEvents.Event()
+            var foregroundStart = -1L
+            var totalMs = 0L
+            while (events.hasNextEvent()) {
+                events.getNextEvent(event)
+                if (event.packageName != packageName) continue
+                when (event.eventType) {
+                    android.app.usage.UsageEvents.Event.MOVE_TO_FOREGROUND -> foregroundStart = event.timeStamp
+                    android.app.usage.UsageEvents.Event.MOVE_TO_BACKGROUND -> {
+                        if (foregroundStart > 0L) {
+                            totalMs += event.timeStamp - foregroundStart
+                            foregroundStart = -1L
+                        }
+                    }
+                }
+            }
+            // Still in foreground
+            if (foregroundStart > 0L) totalMs += now - foregroundStart
+            totalMs
         } catch (_: Exception) { 0L }
     }
 
