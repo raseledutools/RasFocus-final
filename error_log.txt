@@ -4,28 +4,40 @@
 ╚══════════════════════════════════════════╝
 
 === KOTLIN ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/BlockOverlayActivity.kt:395:25 Unresolved reference: getDailyUsageMinutes
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/BlockOverlayActivity.kt:397:42 None of the following functions can be called with the arguments supplied: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/BlockOverlayActivity.kt:398:63 Unresolved reference. None of the following candidates is applicable because of receiver type mismatch: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/BlockOverlayActivity.kt:458:25 Unresolved reference: getHourlyUsageMinutes
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/BlockOverlayActivity.kt:460:42 None of the following functions can be called with the arguments supplied: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/BlockOverlayActivity.kt:461:63 Unresolved reference. None of the following candidates is applicable because of receiver type mismatch: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/BlockingPlan.kt:1222:1 This annotation is not applicable to target 'enum class'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/BlockingPlan.kt:1281:47 Unresolved reference: KeyboardOptions
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/BlockingPlan.kt:1281:78 Unresolved reference: KeyboardType
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/BlockingPlan.kt:1222:1 This annotation is not applicable to target 'enum class'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/BlockingPlan.kt:1281:47 Unresolved reference: KeyboardOptions
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/BlockingPlan.kt:1281:78 Unresolved reference: KeyboardType
 
 === UNRESOLVED / TYPE ERRORS ===
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/BlockOverlayActivity.kt:395:25 Unresolved reference: getDailyUsageMinutes
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/BlockOverlayActivity.kt:397:42 None of the following functions can be called with the arguments supplied: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/BlockOverlayActivity.kt:398:63 Unresolved reference. None of the following candidates is applicable because of receiver type mismatch: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/BlockOverlayActivity.kt:458:25 Unresolved reference: getHourlyUsageMinutes
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/BlockOverlayActivity.kt:460:42 None of the following functions can be called with the arguments supplied: 
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/BlockOverlayActivity.kt:461:63 Unresolved reference. None of the following candidates is applicable because of receiver type mismatch: 
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/BlockingPlan.kt:1281:47 Unresolved reference: KeyboardOptions
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/BlockingPlan.kt:1281:78 Unresolved reference: KeyboardType
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/BlockingPlan.kt:1281:47 Unresolved reference: KeyboardOptions
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/BlockingPlan.kt:1281:78 Unresolved reference: KeyboardType
 
 === BUILD FAILURE ===
 > Task :app:compileFullReleaseKotlin FAILED
 * What went wrong:
 Execution failed for task ':app:compileFullReleaseKotlin'.
-BUILD FAILED in 2m 39s
+BUILD FAILED in 2m 22s
 
 === LAST 60 LINES ===
+> Task :app:mergeFullReleaseArtProfile
+> Task :app:validateSigningFullRelease
+> Task :app:writeFullReleaseAppMetadata
+> Task :app:checkFullReleaseAarMetadata
+> Task :app:writeFullReleaseSigningConfigVersions
+> Task :app:checkFullReleaseDuplicateClasses
+> Task :app:mergeFullReleaseAssets FROM-CACHE
+> Task :app:collectFullReleaseDependencies
+> Task :app:compressFullReleaseAssets FROM-CACHE
+> Task :app:mergeFullReleaseNativeLibs
+> Task :app:sdkFullReleaseDependencyData
+> Task :app:mergeFullReleaseResources FROM-CACHE
+
+> Task :app:stripFullReleaseDebugSymbols
 Unable to strip the following libraries, packaging them as they are: libbarhopper_v3.so, libimage_processing_util_jni.so, libjingle_peerconnection_so.so, libpdfium.so, libpdfiumandroid.so.
 
 > Task :app:extractFullReleaseNativeSymbolTables FROM-CACHE
@@ -40,29 +52,15 @@ note: generating mipmap/ic_launcher_round with config "anydpi-v33" for round ico
 > Task :app:processFullReleaseResources
 > Task :app:kspFullReleaseKotlin
 > Task :app:compileFullReleaseKotlin
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/BlockOverlayActivity.kt:395:25 Unresolved reference: getDailyUsageMinutes
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/BlockOverlayActivity.kt:397:42 None of the following functions can be called with the arguments supplied: 
-public final operator fun minus(other: Byte): Int defined in kotlin.Int
-public final operator fun minus(other: Double): Double defined in kotlin.Int
-public final operator fun minus(other: Float): Float defined in kotlin.Int
-public final operator fun minus(other: Int): Int defined in kotlin.Int
-public final operator fun minus(other: Long): Long defined in kotlin.Int
-public final operator fun minus(other: Short): Int defined in kotlin.Int
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/BlockOverlayActivity.kt:398:63 Unresolved reference. None of the following candidates is applicable because of receiver type mismatch: 
-public inline fun String.toFloat(): Float defined in kotlin.text
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/BlockOverlayActivity.kt:458:25 Unresolved reference: getHourlyUsageMinutes
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/BlockOverlayActivity.kt:460:42 None of the following functions can be called with the arguments supplied: 
-public final operator fun minus(other: Byte): Int defined in kotlin.Int
-public final operator fun minus(other: Double): Double defined in kotlin.Int
-public final operator fun minus(other: Float): Float defined in kotlin.Int
-public final operator fun minus(other: Int): Int defined in kotlin.Int
-public final operator fun minus(other: Long): Long defined in kotlin.Int
-public final operator fun minus(other: Short): Int defined in kotlin.Int
-e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/BlockOverlayActivity.kt:461:63 Unresolved reference. None of the following candidates is applicable because of receiver type mismatch: 
-public inline fun String.toFloat(): Float defined in kotlin.text
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/BlockingPlan.kt:1222:1 This annotation is not applicable to target 'enum class'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/BlockingPlan.kt:1281:47 Unresolved reference: KeyboardOptions
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/combo/selfcontrol/BlockingPlan.kt:1281:78 Unresolved reference: KeyboardType
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/BlockingPlan.kt:1222:1 This annotation is not applicable to target 'enum class'
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/BlockingPlan.kt:1281:47 Unresolved reference: KeyboardOptions
+e: file:///home/runner/work/RasFocus-final/RasFocus-final/app/src/main/java/com/rasel/RasFocus/selfcontrol/BlockingPlan.kt:1281:78 Unresolved reference: KeyboardType
 
 > Task :app:compileFullReleaseKotlin FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1792318293785.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1792326466235.json
 
 FAILURE: Build failed with an exception.
 
@@ -83,6 +81,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 2m 39s
+BUILD FAILED in 2m 22s
 32 actionable tasks: 22 executed, 10 from cache
 Configuration cache entry stored.
