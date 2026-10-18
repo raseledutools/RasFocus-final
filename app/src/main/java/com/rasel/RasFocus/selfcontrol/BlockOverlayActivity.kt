@@ -310,7 +310,7 @@ fun BlockOverlayScreen(
                         1 -> PinUnlockSection(profile.parentPin, onUnlocked)
                         2 -> LongTextUnlockSection(onUnlocked)
                         3 -> DailyLimitInfoSection(blockedPackage, profile.dailyLimitMinutes, context)
-                        4 -> HourlyLimitInfoSection(profile.hourlyLimitMinutes)
+                        4 -> HourlyLimitInfoSection(blockedPackage, profile.hourlyLimitMinutes, context)
                         else -> SelfControlInfoSection(profile)
                     }
                 }
@@ -585,7 +585,28 @@ fun DailyLimitInfoSection(packageName: String, limitMinutes: Int, context: Conte
 
 // ── Hourly Limit info ──────────────────────────────────────────────────────────
 @Composable
-fun HourlyLimitInfoSection(limitMinutes: Int) {
+fun HourlyLimitInfoSection(blockedPackage: String, limitMinutes: Int, context: Context) {
+    val usedMinutes = remember {
+        try {
+            val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
+            val now = System.currentTimeMillis()
+            val startOfHour = java.util.Calendar.getInstance().apply {
+                set(java.util.Calendar.MINUTE, 0)
+                set(java.util.Calendar.SECOND, 0)
+                set(java.util.Calendar.MILLISECOND, 0)
+            }.timeInMillis
+            val stats = usm.queryUsageStats(android.app.usage.UsageStatsManager.INTERVAL_BEST, startOfHour, now)
+            ((stats?.filter { it.packageName == blockedPackage }?.sumOf { it.totalTimeInForeground } ?: 0L) / 60_000L).toInt()
+        } catch (_: Exception) { 0 }
+    }
+    val nextHourMs = java.util.Calendar.getInstance().apply {
+        add(java.util.Calendar.HOUR_OF_DAY, 1)
+        set(java.util.Calendar.MINUTE, 0)
+        set(java.util.Calendar.SECOND, 0)
+        set(java.util.Calendar.MILLISECOND, 0)
+    }.timeInMillis
+    val remainingMinutes = ((nextHourMs - System.currentTimeMillis()) / 60_000L).toInt().coerceAtLeast(0)
+
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF7C2D12).copy(alpha = 0.5f))
@@ -599,7 +620,7 @@ fun HourlyLimitInfoSection(limitMinutes: Int) {
             Text("Hourly Limit পূর্ণ হয়েছে", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFFF97316))
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "এই ঘণ্টায় ${limitMinutes} মিনিট limit শেষ হয়ে গেছে।\nপরের ঘণ্টায় আবার ব্যবহার করতে পারবে।",
+                text = "এই ঘণ্টায় ${usedMinutes} মিনিট ব্যবহার হয়েছে।\nLimit: ${limitMinutes} মিনিট।\n${remainingMinutes} মিনিট পরে পরের ঘণ্টায় আবার পাবে।",
                 fontSize = 14.sp,
                 color = Color(0xFF94A3B8),
                 textAlign = TextAlign.Center,
@@ -608,3 +629,4 @@ fun HourlyLimitInfoSection(limitMinutes: Int) {
         }
     }
 }
+
