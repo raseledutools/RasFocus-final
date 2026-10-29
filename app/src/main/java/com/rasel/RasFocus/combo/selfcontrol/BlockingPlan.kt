@@ -1219,7 +1219,6 @@ fun LongTextUnlockDialog(targetText: String, onDismiss: () -> Unit, onConfirm: (
     }
 }
 
-@Composable
 // Lock type for daily/hourly limit session
 enum class LimitSessionLock { NONE, SELF, PARENTS, LONG_TEXT }
 
