@@ -72,7 +72,10 @@ data class TutorialVideo(
 
 data class TutorialCourse(
     val id: String = "",
+    val courseName: String = "",
     val title: String = "",
+    val className: String = "",
+    val subject: String = "",
     val description: String = "",
     val thumbnailUrl: String = "",
     val videos: List<TutorialVideo> = emptyList()
@@ -343,7 +346,10 @@ fun CourseListScreen(
                     loaded.add(
                         TutorialCourse(
                             id = courseDoc.id,
+                            courseName = courseDoc.getString("courseName") ?: "",
                             title = courseDoc.getString("title") ?: "",
+                            className = courseDoc.getString("className") ?: "",
+                            subject = courseDoc.getString("subject") ?: "",
                             description = courseDoc.getString("description") ?: "",
                             videos = videos
                         )
@@ -484,10 +490,18 @@ private fun CourseCard(course: TutorialCourse, onClick: () -> Unit) {
             }
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
+                if (course.courseName.isNotEmpty())
+                    Text(course.courseName, fontSize = 13.sp, color = TutAccent2, fontWeight = FontWeight.Medium)
                 Text(course.title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TutText)
-                if (course.description.isNotEmpty()) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(course.description, fontSize = 12.sp, color = TutSubtext, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (course.className.isNotEmpty() || course.subject.isNotEmpty()) {
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        listOfNotNull(
+                            course.className.ifEmpty { null },
+                            course.subject.ifEmpty { null }
+                        ).joinToString(" • "),
+                        fontSize = 12.sp, color = TutSubtext
+                    )
                 }
                 Spacer(Modifier.height(6.dp))
                 Text("${course.videos.size} videos", fontSize = 11.sp, color = TutAccent)
