@@ -205,6 +205,7 @@ object Routes {
     const val PARENTAL_FAMILY   = "parental_family"
     const val COMBO_FAMILY      = "combo_family"
     const val SETTINGS          = "settings_screen"
+    const val RAJIB_TUTORIAL    = "rajib_tutorial"
 }
 
 sealed class BottomNavTab(val route: String, val label: String, val selectedIcon: ImageVector, val unselectedIcon: ImageVector) {
@@ -1250,6 +1251,13 @@ fun RasFocusApp(viewModel: MainViewModel) {
                 onChangePersona = { navController.navigate(Routes.ROLE_SELECTION) { popUpTo(0) { inclusive = true } } }
             )
         }
+
+        // ── Rajib Tutorial ───────────────────────────────────────────────
+        composable(Routes.RAJIB_TUTORIAL) {
+            com.rasel.RasFocus.tutorial.RajibTutorialRoot(
+                onBack = { navController.popBackStack() }
+            )
+        }
     }
 }
 
@@ -2281,4 +2289,5 @@ class UsageNotificationService : Service() {
             .build()
     }
 }
+
 
