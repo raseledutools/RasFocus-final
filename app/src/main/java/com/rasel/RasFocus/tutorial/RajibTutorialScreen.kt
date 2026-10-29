@@ -249,6 +249,16 @@ fun TutorialLoginScreen(onLoginSuccess: () -> Unit, onBack: () -> Unit) {
                     scope.launch {
                         try {
                             auth.signInWithEmailAndPassword(email.trim(), password).await()
+                            // uid → email mapping store করো (admin user search এর জন্য)
+                            val uid = auth.currentUser?.uid ?: ""
+                            if (uid.isNotEmpty()) {
+                                val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                                val emailKey = email.trim().replace(".", "_")
+                                db.collection("tutorial_user_emails").document(emailKey)
+                                    .set(mapOf("uid" to uid, "email" to email.trim()))
+                                db.collection("tutorial_users").document(uid)
+                                    .set(mapOf("email" to email.trim()), com.google.firebase.firestore.SetOptions.merge())
+                            }
                             onLoginSuccess()
                         } catch (e: Exception) {
                             error = "Login failed. Check your credentials."
