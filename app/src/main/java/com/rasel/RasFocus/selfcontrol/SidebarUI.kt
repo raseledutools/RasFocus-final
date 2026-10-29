@@ -103,6 +103,7 @@ fun DrawerContent(
                 DrawerMenuItem(Icons.Default.MenuBook, "Deep Study") { onNavigate("deep_study"); closeDrawer() }
                 DrawerMenuItem(Icons.Default.Settings, "Settings") { onNavigate("settings"); closeDrawer() }
                 DrawerMenuItem(Icons.Default.Lock, "Master Password", tint = AccentTeal) { onNavigate("master_password"); closeDrawer() }
+                DrawerMenuItem(Icons.Default.PlayCircle, "Rajib Tutorial", tint = Color(0xFF4A9EFF)) { onNavigate("rajib_tutorial"); closeDrawer() }
                 val context = LocalContext.current
                 // ── RasGram row: open button + "Add to Home" pin shortcut button ──
                 Row(
@@ -485,4 +486,5 @@ private fun RailwayStaffRow(staff: RailwayStaff, context: Context) {
         }
     }
 }
+
 
