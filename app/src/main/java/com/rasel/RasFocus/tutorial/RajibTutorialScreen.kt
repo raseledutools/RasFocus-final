@@ -49,6 +49,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
@@ -124,7 +125,9 @@ fun CourseListScreen(
 ) {
     val db = FirebaseFirestore.getInstance()
     val auth = FirebaseAuth.getInstance()
-    val uid = auth.currentUser?.uid ?: ""
+    val currentUser = auth.currentUser
+    val uid = currentUser?.uid ?: ""
+    val userEmail = currentUser?.email ?: ""
 
     var courses by remember { mutableStateOf<List<TutorialCourse>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
@@ -132,42 +135,50 @@ fun CourseListScreen(
     var showAdminPanel by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    // সব courses load করো — no auth restriction
     LaunchedEffect(Unit) {
         try {
-            // Admin check (uid থাকলে)
+            var enrolledIds: List<String> = emptyList()
+
             if (uid.isNotEmpty()) {
                 val userDoc = db.collection("tutorial_users").document(uid).get().await()
                 isAdmin = userDoc.getString("role") == "admin"
+
+                // Normal user হলে enrolledCourses fetch করো
+                if (!isAdmin) {
+                    @Suppress("UNCHECKED_CAST")
+                    enrolledIds = userDoc.get("enrolledCourses") as? List<String> ?: emptyList()
+                }
             }
 
-            // সব courses fetch করো
             val loaded = mutableListOf<TutorialCourse>()
             val snap = db.collection("tutorial_courses").get().await()
             for (courseDoc in snap.documents) {
-                if (courseDoc.exists()) {
-                    @Suppress("UNCHECKED_CAST")
-                    val videosRaw = courseDoc.get("videos") as? List<Map<String, Any>> ?: emptyList()
-                    val videos = videosRaw.map { v ->
-                        TutorialVideo(
-                            id = v["id"] as? String ?: "",
-                            title = v["title"] as? String ?: "",
-                            cloudinaryUrl = v["cloudinaryUrl"] as? String ?: "",
-                            durationMinutes = (v["durationMinutes"] as? Long)?.toInt() ?: 0
-                        )
-                    }
-                    loaded.add(
-                        TutorialCourse(
-                            id = courseDoc.id,
-                            courseName = courseDoc.getString("courseName") ?: "",
-                            title = courseDoc.getString("title") ?: "",
-                            className = courseDoc.getString("className") ?: "",
-                            subject = courseDoc.getString("subject") ?: "",
-                            description = courseDoc.getString("description") ?: "",
-                            videos = videos
-                        )
+                if (!courseDoc.exists()) continue
+
+                // Admin সব দেখবে; normal user শুধু enrolled courses দেখবে
+                if (!isAdmin && !enrolledIds.contains(courseDoc.id)) continue
+
+                @Suppress("UNCHECKED_CAST")
+                val videosRaw = courseDoc.get("videos") as? List<Map<String, Any>> ?: emptyList()
+                val videos = videosRaw.map { v ->
+                    TutorialVideo(
+                        id = v["id"] as? String ?: "",
+                        title = v["title"] as? String ?: "",
+                        cloudinaryUrl = v["cloudinaryUrl"] as? String ?: "",
+                        durationMinutes = (v["durationMinutes"] as? Long)?.toInt() ?: 0
                     )
                 }
+                loaded.add(
+                    TutorialCourse(
+                        id = courseDoc.id,
+                        courseName = courseDoc.getString("courseName") ?: "",
+                        title = courseDoc.getString("title") ?: "",
+                        className = courseDoc.getString("className") ?: "",
+                        subject = courseDoc.getString("subject") ?: "",
+                        description = courseDoc.getString("description") ?: "",
+                        videos = videos
+                    )
+                )
             }
             courses = loaded
         } catch (_: Exception) {}
@@ -415,6 +426,28 @@ fun VideoPlayerScreen(video: TutorialVideo, onBack: () -> Unit) {
         }
     }
 
+    // Cloudinary URL empty হলে player বানানো যাবে না — error দেখাও
+    if (video.cloudinaryUrl.isBlank()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                IconButton(onClick = onBack, modifier = Modifier.align(Alignment.Start)) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = null, tint = Color.White)
+                }
+                Spacer(Modifier.height(32.dp))
+                Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = Color(0xFFFF6B6B), modifier = Modifier.size(56.dp))
+                Spacer(Modifier.height(12.dp))
+                Text("Video not available", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text("URL is missing. Admin must re-upload.", color = Color(0xFF8A9BB0), fontSize = 13.sp)
+            }
+        }
+        return
+    }
+
     val player = remember {
         ExoPlayer.Builder(context).build().apply {
             val mediaItem = MediaItem.fromUri(video.cloudinaryUrl)
@@ -463,7 +496,6 @@ fun VideoPlayerScreen(video: TutorialVideo, onBack: () -> Unit) {
                 PlayerView(it).apply {
                     this.player = player
                     useController = true
-                    // Hide download button — not available in PlayerView by default, but ensure no save option
                     controllerShowTimeoutMs = 3000
                 }
             },
