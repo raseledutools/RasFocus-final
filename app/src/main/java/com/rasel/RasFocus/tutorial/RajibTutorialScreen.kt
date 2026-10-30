@@ -98,8 +98,7 @@ private val TutSubtext  = Color(0xFF8A9BB0)
 
 @Composable
 fun RajibTutorialRoot(onBack: () -> Unit) {
-    val auth = FirebaseAuth.getInstance()
-    var screen by remember { mutableStateOf(if (auth.currentUser != null) "courses" else "login") }
+    // RasFocus এর existing login session use করি — আলাদা login নেই
     var selectedCourse by remember { mutableStateOf<TutorialCourse?>(null) }
     var selectedVideo by remember { mutableStateOf<TutorialVideo?>(null) }
 
@@ -113,17 +112,10 @@ fun RajibTutorialRoot(onBack: () -> Unit) {
             onVideoClick = { selectedVideo = it },
             onBack = { selectedCourse = null }
         )
-        screen == "login" -> TutorialLoginScreen(
-            onLoginSuccess = { screen = "courses" },
-            onBack = onBack
-        )
         else -> CourseListScreen(
             onCourseClick = { selectedCourse = it },
             onBack = onBack,
-            onLogout = {
-                auth.signOut()
-                screen = "login"
-            }
+            onLogout = onBack
         )
     }
 }
@@ -303,11 +295,23 @@ fun CourseListScreen(
     val auth = FirebaseAuth.getInstance()
     val uid = auth.currentUser?.uid ?: ""
     val userEmail = auth.currentUser?.email ?: ""
+    val db2 = FirebaseFirestore.getInstance()
+    // First visit এ uid-email mapping store করো
+    LaunchedEffect(uid) {
+        if (uid.isNotEmpty() && userEmail.isNotEmpty()) {
+            val emailKey = userEmail.replace(".", "_")
+            db2.collection("tutorial_user_emails").document(emailKey)
+                .set(mapOf("uid" to uid, "email" to userEmail),
+                    com.google.firebase.firestore.SetOptions.merge())
+            db2.collection("tutorial_users").document(uid)
+                .set(mapOf("email" to userEmail),
+                    com.google.firebase.firestore.SetOptions.merge())
+        }
+    }
 
     var courses by remember { mutableStateOf<List<TutorialCourse>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var isAdmin by remember { mutableStateOf(false) }
-    var showLogoutDialog by remember { mutableStateOf(false) }
     var showAdminPanel by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
@@ -402,9 +406,7 @@ fun CourseListScreen(
                     }
                     Spacer(Modifier.width(8.dp))
                 }
-                IconButton(onClick = { showLogoutDialog = true }) {
-                    Icon(Icons.Default.Logout, contentDescription = "Logout", tint = TutSubtext)
-                }
+
             }
         }
 
@@ -443,24 +445,7 @@ fun CourseListScreen(
         }
     }
 
-    if (showLogoutDialog) {
-        AlertDialog(
-            onDismissRequest = { showLogoutDialog = false },
-            containerColor = TutCard,
-            title = { Text("Sign Out?", color = TutText) },
-            text = { Text("You will need to sign in again to access your courses.", color = TutSubtext) },
-            confirmButton = {
-                TextButton(onClick = { showLogoutDialog = false; onLogout() }) {
-                    Text("Sign Out", color = Color(0xFFFF6B6B))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showLogoutDialog = false }) {
-                    Text("Cancel", color = TutAccent)
-                }
-            }
-        )
-    }
+
 }
 
 @Composable
