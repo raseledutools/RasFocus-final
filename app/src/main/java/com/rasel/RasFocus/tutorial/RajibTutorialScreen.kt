@@ -151,6 +151,16 @@ fun CourseListScreen(
     LaunchedEffect(uid) {
         if (uid.isEmpty()) return@LaunchedEffect
         try {
+            // uid-email mapping store করো (admin user search এর জন্য)
+            val emailKey = userEmail.replace(".", "_")
+            if (emailKey.isNotEmpty()) {
+                db.collection("tutorial_user_emails").document(emailKey)
+                    .set(mapOf("uid" to uid, "email" to userEmail),
+                         com.google.firebase.firestore.SetOptions.merge())
+                db.collection("tutorial_users").document(uid)
+                    .set(mapOf("email" to userEmail),
+                         com.google.firebase.firestore.SetOptions.merge())
+            }
             // Check admin role
             val userDoc = db.collection("tutorial_users").document(uid).get().await()
             isAdmin = userDoc.getString("role") == "admin"
