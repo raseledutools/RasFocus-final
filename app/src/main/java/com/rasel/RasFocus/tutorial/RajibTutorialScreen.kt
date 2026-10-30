@@ -23,9 +23,6 @@ package com.rasel.RasFocus.tutorial
 import android.app.Activity
 import android.view.WindowManager
 import androidx.annotation.OptIn
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -44,8 +41,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -117,167 +112,6 @@ fun RajibTutorialRoot(onBack: () -> Unit) {
             onBack = onBack,
             onLogout = onBack
         )
-    }
-}
-
-// ─────────────────────────────────────────────────────────────
-// Login Screen
-// ─────────────────────────────────────────────────────────────
-
-@Composable
-fun TutorialLoginScreen(onLoginSuccess: () -> Unit, onBack: () -> Unit) {
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var showPassword by remember { mutableStateOf(false) }
-    var loading by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf("") }
-    val scope = rememberCoroutineScope()
-    val auth = FirebaseAuth.getInstance()
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(listOf(Color(0xFF0A1628), TutBg))
-            )
-    ) {
-        // Back button
-        IconButton(
-            onClick = onBack,
-            modifier = Modifier
-                .padding(16.dp)
-                .statusBarsPadding()
-                .align(Alignment.TopStart)
-        ) {
-            Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = TutText)
-        }
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.Center)
-                .padding(horizontal = 28.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // Logo
-            Box(
-                modifier = Modifier
-                    .size(80.dp)
-                    .background(
-                        Brush.linearGradient(listOf(TutAccent, TutAccent2)),
-                        CircleShape
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.PlayCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(44.dp))
-            }
-
-            Spacer(Modifier.height(20.dp))
-            Text("Rajib Tutorial", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = TutText)
-            Text("Sign in to access your courses", fontSize = 14.sp, color = TutSubtext)
-            Spacer(Modifier.height(36.dp))
-
-            // Email field
-            OutlinedTextField(
-                value = email,
-                onValueChange = { email = it; error = "" },
-                label = { Text("Email", color = TutSubtext) },
-                leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = TutAccent) },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = TutAccent,
-                    unfocusedBorderColor = TutSubtext.copy(alpha = 0.3f),
-                    focusedTextColor = TutText,
-                    unfocusedTextColor = TutText,
-                    cursorColor = TutAccent
-                ),
-                singleLine = true
-            )
-
-            Spacer(Modifier.height(12.dp))
-
-            // Password field
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it; error = "" },
-                label = { Text("Password", color = TutSubtext) },
-                leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = TutAccent) },
-                trailingIcon = {
-                    IconButton(onClick = { showPassword = !showPassword }) {
-                        Icon(
-                            if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            contentDescription = null,
-                            tint = TutSubtext
-                        )
-                    }
-                },
-                visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = TutAccent,
-                    unfocusedBorderColor = TutSubtext.copy(alpha = 0.3f),
-                    focusedTextColor = TutText,
-                    unfocusedTextColor = TutText,
-                    cursorColor = TutAccent
-                ),
-                singleLine = true
-            )
-
-            // Error message
-            AnimatedVisibility(visible = error.isNotEmpty(), enter = fadeIn(), exit = fadeOut()) {
-                Spacer(Modifier.height(8.dp))
-                Text(error, color = Color(0xFFFF6B6B), fontSize = 13.sp)
-            }
-
-            Spacer(Modifier.height(24.dp))
-
-            // Login button
-            Button(
-                onClick = {
-                    if (email.isBlank() || password.isBlank()) {
-                        error = "Email and password required"
-                        return@Button
-                    }
-                    loading = true
-                    scope.launch {
-                        try {
-                            auth.signInWithEmailAndPassword(email.trim(), password).await()
-                            // uid → email mapping store করো (admin user search এর জন্য)
-                            val uid = auth.currentUser?.uid ?: ""
-                            if (uid.isNotEmpty()) {
-                                val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
-                                val emailKey = email.trim().replace(".", "_")
-                                db.collection("tutorial_user_emails").document(emailKey)
-                                    .set(mapOf("uid" to uid, "email" to email.trim()))
-                                db.collection("tutorial_users").document(uid)
-                                    .set(mapOf("email" to email.trim()), com.google.firebase.firestore.SetOptions.merge())
-                            }
-                            onLoginSuccess()
-                        } catch (e: Exception) {
-                            error = "Login failed. Check your credentials."
-                        } finally {
-                            loading = false
-                        }
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = TutAccent
-                ),
-                enabled = !loading
-            ) {
-                if (loading) {
-                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
-                } else {
-                    Text("Sign In", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-                }
-            }
-        }
     }
 }
 
