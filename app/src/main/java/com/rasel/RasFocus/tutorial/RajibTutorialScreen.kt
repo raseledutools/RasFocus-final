@@ -109,8 +109,7 @@ fun RajibTutorialRoot(onBack: () -> Unit) {
         )
         else -> CourseListScreen(
             onCourseClick = { selectedCourse = it },
-            onBack = onBack,
-            onLogout = onBack
+            onBack = onBack
         )
     }
 }
@@ -122,8 +121,7 @@ fun RajibTutorialRoot(onBack: () -> Unit) {
 @Composable
 fun CourseListScreen(
     onCourseClick: (TutorialCourse) -> Unit,
-    onBack: () -> Unit,
-    onLogout: () -> Unit
+    onBack: () -> Unit
 ) {
     val db = FirebaseFirestore.getInstance()
     val auth = FirebaseAuth.getInstance()
