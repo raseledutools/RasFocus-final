@@ -49,7 +49,6 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
-import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
@@ -126,20 +125,6 @@ fun CourseListScreen(
     val db = FirebaseFirestore.getInstance()
     val auth = FirebaseAuth.getInstance()
     val uid = auth.currentUser?.uid ?: ""
-    val userEmail = auth.currentUser?.email ?: ""
-    val db2 = FirebaseFirestore.getInstance()
-    // First visit এ uid-email mapping store করো
-    LaunchedEffect(uid) {
-        if (uid.isNotEmpty() && userEmail.isNotEmpty()) {
-            val emailKey = userEmail.replace(".", "_")
-            db2.collection("tutorial_user_emails").document(emailKey)
-                .set(mapOf("uid" to uid, "email" to userEmail),
-                    com.google.firebase.firestore.SetOptions.merge())
-            db2.collection("tutorial_users").document(uid)
-                .set(mapOf("email" to userEmail),
-                    com.google.firebase.firestore.SetOptions.merge())
-        }
-    }
 
     var courses by remember { mutableStateOf<List<TutorialCourse>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
@@ -147,37 +132,19 @@ fun CourseListScreen(
     var showAdminPanel by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    // Load enrolled courses
-    LaunchedEffect(uid) {
-        if (uid.isEmpty()) return@LaunchedEffect
+    // সব courses load করো — no auth restriction
+    LaunchedEffect(Unit) {
         try {
-            // uid-email mapping store করো (admin user search এর জন্য)
-            val emailKey = userEmail.replace(".", "_")
-            if (emailKey.isNotEmpty()) {
-                db.collection("tutorial_user_emails").document(emailKey)
-                    .set(mapOf("uid" to uid, "email" to userEmail),
-                         com.google.firebase.firestore.SetOptions.merge())
-                db.collection("tutorial_users").document(uid)
-                    .set(mapOf("email" to userEmail),
-                         com.google.firebase.firestore.SetOptions.merge())
-            }
-            // Check admin role
-            val userDoc = db.collection("tutorial_users").document(uid).get().await()
-            isAdmin = userDoc.getString("role") == "admin"
-
-            // Get enrolled course IDs
-            @Suppress("UNCHECKED_CAST")
-            val enrolledIds = userDoc.get("enrolledCourses") as? List<String> ?: emptyList()
-
-            if (enrolledIds.isEmpty()) {
-                loading = false
-                return@LaunchedEffect
+            // Admin check (uid থাকলে)
+            if (uid.isNotEmpty()) {
+                val userDoc = db.collection("tutorial_users").document(uid).get().await()
+                isAdmin = userDoc.getString("role") == "admin"
             }
 
-            // Fetch each course
+            // সব courses fetch করো
             val loaded = mutableListOf<TutorialCourse>()
-            for (courseId in enrolledIds) {
-                val courseDoc = db.collection("tutorial_courses").document(courseId).get().await()
+            val snap = db.collection("tutorial_courses").get().await()
+            for (courseDoc in snap.documents) {
                 if (courseDoc.exists()) {
                     @Suppress("UNCHECKED_CAST")
                     val videosRaw = courseDoc.get("videos") as? List<Map<String, Any>> ?: emptyList()
