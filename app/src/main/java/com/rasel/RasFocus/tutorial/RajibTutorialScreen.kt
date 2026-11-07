@@ -99,8 +99,18 @@ private const val ADMIN_PASSWORD = "1111"
 // Root — navigation controller
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * Entry point used by the app. Shows the live Rajib Tutorial website
+ * (same sidebar, Live Class, Live Exam, courses, Premium and Admin as the website).
+ */
 @Composable
 fun RajibTutorialRoot(onBack: () -> Unit) {
+    RajibTutorialWebView(onBack = onBack)
+}
+
+/** Previous fully-native implementation (kept as a fallback, not used by default). */
+@Composable
+fun RajibTutorialNativeRoot(onBack: () -> Unit) {
     var selectedCourse  by remember { mutableStateOf<TutorialCourse?>(null) }
     var selectedVideo   by remember { mutableStateOf<TutorialVideo?>(null) }
     var showAdminPanel  by remember { mutableStateOf(false) }
