@@ -73,6 +73,27 @@ object AutoUpdater {
         )
     }
 
+    // ── GitHub redirect → direct CDN URL resolve করা ─────────────────────
+    // GitHub browser_download_url → 302 → release-assets.githubusercontent.com
+    // DownloadManager এই redirect sometimes fail করে, তাই আগেই resolve করা হচ্ছে।
+    private fun resolveRedirectUrl(githubUrl: String): String {
+        return try {
+            val conn = (URL(githubUrl).openConnection() as HttpURLConnection).apply {
+                instanceFollowRedirects = false   // manually redirect track করব
+                requestMethod  = "HEAD"
+                connectTimeout = 8000
+                readTimeout    = 8000
+            }
+            conn.connect()
+            val location = conn.getHeaderField("Location")
+            conn.disconnect()
+            if (!location.isNullOrEmpty()) location else githubUrl
+        } catch (e: Exception) {
+            Log.w(TAG, "redirect resolve failed, using original URL", e)
+            githubUrl   // fallback: original URL দিয়েই চেষ্টা করো
+        }
+    }
+
     // ── GitHub API → latest release info ──────────────────────────────────
     suspend fun fetchLatestReleaseInfoSync(context: Context): ReleaseInfo? {
         return try {
@@ -98,18 +119,23 @@ object AutoUpdater {
             // Device ABI অনুযায়ী সঠিক APK বেছে নাও
             val preferredApk = getPreferredApkName()
             val assets = json.getJSONArray("assets")
-            var downloadUrl = ""
-            var fallbackUrl = ""
+            var browserUrl = ""
+            var fallbackBrowserUrl = ""
             for (i in 0 until assets.length()) {
                 val asset = assets.getJSONObject(i)
                 val name  = asset.getString("name")
-                if (name == preferredApk) downloadUrl = asset.getString("browser_download_url")
-                if (name == APK_UNIVERSAL) fallbackUrl = asset.getString("browser_download_url")
+                if (name == preferredApk) browserUrl = asset.getString("browser_download_url")
+                if (name == APK_UNIVERSAL) fallbackBrowserUrl = asset.getString("browser_download_url")
             }
-            if (downloadUrl.isEmpty()) downloadUrl = fallbackUrl
-            if (downloadUrl.isEmpty()) return null
+            if (browserUrl.isEmpty()) browserUrl = fallbackBrowserUrl
+            if (browserUrl.isEmpty()) return null
 
-            ReleaseInfo(tagName, publishedAt, downloadUrl)
+            // GitHub redirect follow করে direct CDN URL বের করো
+            // এতে DownloadManager সরাসরি download করতে পারবে, redirect এ আটকাবে না
+            val directUrl = resolveRedirectUrl(browserUrl)
+            Log.d(TAG, "download URL resolved: $directUrl")
+
+            ReleaseInfo(tagName, publishedAt, directUrl)
         } catch (e: Exception) {
             Log.e(TAG, "fetchLatestReleaseInfoSync failed", e)
             null
