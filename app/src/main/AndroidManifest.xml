@@ -926,6 +926,11 @@
             <action android:name="com.rasel.RasFocus.ACTION_INSTALL_UPDATE" />
         </intent-filter>
     </receiver>
+
+    <!-- Notification tap → DownloadManager দিয়ে APK নামায় (Rajib Tutorial style) -->
+    <receiver
+        android:name=".AutoUpdater$UpdateDownloadReceiver"
+        android:exported="false" />
         <activity
             android:name=".drivebackup.DriveFileManagerActivity"
             android:exported="false"

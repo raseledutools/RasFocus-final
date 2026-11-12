@@ -107,10 +107,12 @@ android {
         }
     }
 
-    // ✅ Fixed signing config — CI এ একই keystore ব্যবহার করে সবসময়
-    // একই signature produce করে, তাই update install করতে আর uninstall লাগে না।
-    // এখন debug AND release দুটোই এই একই config ব্যবহার করে — তাই debug থেকে
-    // release এ upgrade করলেও "App not installed" (signature mismatch) হবে না।
+    // ✅ Fixed signing config — CI এ একই keystore দিয়ে সবসময় sign করা হয়।
+    // একই signature মানে update install করতে uninstall লাগে না।
+    // debug AND release দুটোই একই config — তাই কোনো build থেকে update করলে
+    // "App not installed" (signature mismatch) হবে না।
+    // FIX: আগে keystoreB64 empty হলে signingConfig set-ই হতো না → unsigned APK
+    // → Android install refuse করত। এখন সবসময় signingConfig set হবে।
     signingConfigs {
         create("fixedSigning") {
             val keystoreB64 = System.getenv("KEYSTORE_BASE64") ?: ""
@@ -123,28 +125,26 @@ android {
                 storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "rasfocus123"
                 keyAlias      = System.getenv("KEY_ALIAS")          ?: "rasfocus_debug"
                 keyPassword   = System.getenv("KEY_PASSWORD")       ?: "rasfocus123"
+            } else {
+                // Local build fallback: Android default debug keystore ব্যবহার করো
+                // ~/.android/debug.keystore সবসময় থাকে Android SDK এ
+                storeFile     = file("${System.getProperty("user.home")}/.android/debug.keystore")
+                storePassword = "android"
+                keyAlias      = "androiddebugkey"
+                keyPassword   = "android"
             }
         }
     }
 
     buildTypes {
         debug {
-            val keystoreB64 = System.getenv("KEYSTORE_BASE64") ?: ""
-            if (keystoreB64.isNotEmpty()) {
-                signingConfig = signingConfigs.getByName("fixedSigning")
-            }
+            // সবসময় fixedSigning — কোনো condition নেই
+            signingConfig = signingConfigs.getByName("fixedSigning")
         }
         release {
-            // FIX: without a signingConfig here, assembleFullRelease produces
-            // an UNSIGNED APK — Android refuses to install any unsigned APK,
-            // even for sideloading. Same fixedSigning keystore as debug, so
-            // switching from the old debug build to this release build won't
-            // trigger a signature-mismatch "App not installed" either.
-            val keystoreB64 = System.getenv("KEYSTORE_BASE64") ?: ""
-            if (keystoreB64.isNotEmpty()) {
-                signingConfig = signingConfigs.getByName("fixedSigning")
-            }
-            isMinifyEnabled = true
+            // সবসময় fixedSigning — KEYSTORE_BASE64 ছাড়াও APK signed থাকবে
+            signingConfig = signingConfigs.getByName("fixedSigning")
+            isMinifyEnabled   = true
             isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
