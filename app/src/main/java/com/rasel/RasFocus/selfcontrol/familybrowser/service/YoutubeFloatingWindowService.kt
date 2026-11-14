@@ -393,6 +393,22 @@ class YoutubeFloatingWindowService : Service() {
         setupMediaSession()
         setupGhostContainer()
         setupScreenLockReceiver()
+        startPlaybackSyncLoop()
+    }
+
+    // ── Playback state sync ────────────────────────────────────────────────────
+    // Page এর আসল play/pause অবস্থা (user YouTube UI থেকে pause করলে) notification
+    // ও MediaSession এ মিলিয়ে রাখো — lock screen এর Pause/Play বাটন ঠিক কাজ করবে।
+    private val syncHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val syncRunnable = object : Runnable {
+        override fun run() {
+            if (webView != null) syncPlaybackState()
+            syncHandler.postDelayed(this, 1500L)
+        }
+    }
+    private fun startPlaybackSyncLoop() {
+        syncHandler.removeCallbacks(syncRunnable)
+        syncHandler.postDelayed(syncRunnable, 1500L)
     }
 
     // ── Screen-lock → instant floating ────────────────────────────────────────
@@ -433,13 +449,13 @@ class YoutubeFloatingWindowService : Service() {
             setCallback(object : MediaSession.Callback() {
                 override fun onPlay() {
                     isPlaying = true
-                    webView?.evaluateJavascript(JS_PLAY, null)
+                    webView?.let { com.rasel.RasFocus.selfcontrol.familybrowser.service.YtPauseGuard.nativePlay(it) }
                     updateMediaState()
                     updateNotification(currentTitle)
                 }
                 override fun onPause() {
                     isPlaying = false
-                    webView?.evaluateJavascript(JS_PAUSE, null)
+                    webView?.let { com.rasel.RasFocus.selfcontrol.familybrowser.service.YtPauseGuard.nativePause(it) }
                     updateMediaState()
                     updateNotification(currentTitle)
                 }
@@ -502,8 +518,6 @@ class YoutubeFloatingWindowService : Service() {
         mediaSession?.setMetadata(metadata)
     }
 
-    private val JS_PLAY  = "try { document.querySelector('video')?.play(); } catch(e) {}"
-    private val JS_PAUSE = "try { document.querySelector('video')?.pause(); } catch(e) {}"
     private val JS_NEXT  = """
         try {
             var btn = document.querySelector('.ytp-next-button') ||
@@ -571,10 +585,10 @@ class YoutubeFloatingWindowService : Service() {
             ACTION_PLAY_PAUSE -> {
                 if (isPlaying) {
                     isPlaying = false
-                    webView?.evaluateJavascript(JS_PAUSE, null)
+                    webView?.let { com.rasel.RasFocus.selfcontrol.familybrowser.service.YtPauseGuard.nativePause(it) }
                 } else {
                     isPlaying = true
-                    webView?.evaluateJavascript(JS_PLAY, null)
+                    webView?.let { com.rasel.RasFocus.selfcontrol.familybrowser.service.YtPauseGuard.nativePlay(it) }
                 }
                 updateMediaState()
                 updateNotification(currentTitle)
@@ -713,6 +727,7 @@ class YoutubeFloatingWindowService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        syncHandler.removeCallbacks(syncRunnable)
         // ══════════════════════════════════════════════════════════════════════
         // ★ FIX: WebView destroy করো না — সবসময় pendingWebView এ রাখো।
         // Mini Player (back press) বা Lock → Floating দুটোতেই
@@ -1303,6 +1318,7 @@ class YoutubeFloatingWindowService : Service() {
      * video play() force করে — audio যাতে নিশ্চিতভাবে চলে।
      */
     private fun injectStrongAudioKeepAlive(view: WebView) {
+        com.rasel.RasFocus.selfcontrol.familybrowser.service.YtPauseGuard.install(view)
         view.evaluateJavascript("""
             (function() {
                 // Visibility fully spoof — YouTube ভাবুক page সবসময় visible
@@ -1317,15 +1333,8 @@ class YoutubeFloatingWindowService : Service() {
                         { get: function(){ return 'visible'; }, configurable: true });
                 } catch(e) {}
 
-                // pause() ব্লক করো — YouTube যখনই pause করতে চাইবে, আমরা আটকাবো
-                try {
-                    var _origPause = HTMLMediaElement.prototype.pause;
-                    HTMLMediaElement.prototype.pause = function() {
-                        // শুধু user-intent pause allow করো না — সব system/visibility pause block
-                        // (user notification থেকে pause করলে এটা mediasession callback দিয়ে আসে, এখানে না)
-                        return;
-                    };
-                } catch(e) {}
+                // pause() এখন YtPauseGuard এ handle হয় — system pause block,
+                // user/native pause allowed।
 
                 // dispatchEvent visibilitychange block করো
                 try {
@@ -1345,7 +1354,7 @@ class YoutubeFloatingWindowService : Service() {
                         for (var i = 0; i < videos.length; i++) {
                             try {
                                 videos[i].muted = false;
-                                if (videos[i].paused && !videos[i].ended) {
+                                if (window.__rasUserPaused !== true && videos[i].paused && !videos[i].ended) {
                                     videos[i].play().catch(function(){});
                                 }
                             } catch(e) {}
@@ -1359,7 +1368,7 @@ class YoutubeFloatingWindowService : Service() {
                         var videos = document.querySelectorAll('video');
                         for (var i = 0; i < videos.length; i++) {
                             try {
-                                if (videos[i].paused && !videos[i].ended) {
+                                if (window.__rasUserPaused !== true && videos[i].paused && !videos[i].ended) {
                                     videos[i].play().catch(function(){});
                                 }
                             } catch(e) {}
@@ -1549,6 +1558,7 @@ class YoutubeFloatingWindowService : Service() {
     // ── JS Injection helpers ───────────────────────────────────────────────────
 
     private fun injectVisibilitySpoof(view: WebView) {
+        com.rasel.RasFocus.selfcontrol.familybrowser.service.YtPauseGuard.install(view)
         view.evaluateJavascript("""
             (function() {
                 try {
@@ -1578,7 +1588,7 @@ class YoutubeFloatingWindowService : Service() {
                     var videos = document.querySelectorAll('video');
                     for (var i = 0; i < videos.length; i++) {
                         try {
-                            if (videos[i].paused) videos[i].play().catch(function(){});
+                            if (window.__rasUserPaused !== true && videos[i].paused) videos[i].play().catch(function(){});
                         } catch(e) {}
                     }
                 } catch(e) {}
@@ -1588,6 +1598,7 @@ class YoutubeFloatingWindowService : Service() {
 
     private fun injectYoutubeHacks(view: WebView, url: String) {
         if (!url.contains("youtube.com") && !url.contains("youtu.be")) return
+        com.rasel.RasFocus.selfcontrol.familybrowser.service.YtPauseGuard.install(view)
         view.evaluateJavascript("""
             (function() {
                 if (window.__rasBgAudioInjected__) return;
@@ -1611,30 +1622,19 @@ class YoutubeFloatingWindowService : Service() {
                         return _origAdd.call(this, type, fn, opts);
                     };
 
-                    var _desc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'pause');
-                    if (_desc && _desc.value) {
-                        HTMLMediaElement.prototype.pause = function() { return; };
-                    }
-
                     if (!window.__rasVideoKeepAlive__) {
                         window.__rasVideoKeepAlive__ = true;
                         setInterval(function() {
                             try {
                                 var v = document.querySelector('video');
-                                if (v && v.paused && !v.ended && v.readyState > 1) {
+                                if (window.__rasUserPaused !== true && v && v.paused && !v.ended && v.readyState > 1) {
                                     v.play().catch(function(){});
                                 }
                             } catch(e) {}
                         }, 2000);
                     }
 
-                    if ('mediaSession' in navigator) {
-                        navigator.mediaSession.setActionHandler('play', function() {
-                            try { var v = document.querySelector('video'); if (v) v.play(); } catch(e) {}
-                        });
-                        navigator.mediaSession.setActionHandler('pause', function() {});
-                        navigator.mediaSession.setActionHandler('stop', null);
-                    }
+                    // MediaSession play/pause handler YtPauseGuard এ set হয়
 
                     try {
                         var yt = window.yt || {};
@@ -1646,7 +1646,7 @@ class YoutubeFloatingWindowService : Service() {
 
                     try {
                         document.querySelectorAll('video').forEach(function(v) {
-                            try { if (v.paused) v.play().catch(function(){}); } catch(e) {}
+                            try { if (window.__rasUserPaused !== true && v.paused) v.play().catch(function(){}); } catch(e) {}
                         });
                     } catch(e) {}
 

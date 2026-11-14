@@ -47,6 +47,10 @@ class BackgroundAudioService : Service() {
         // YoutubeActivity এই broadcast শুনবে এবং WebView-এ JS inject করবে
         const val BROADCAST_PLAYBACK_ACTION = "com.familybrowser.PLAYBACK_CONTROL"
         const val EXTRA_PLAYBACK_CMD        = "playback_cmd"
+
+        // WebView (JS) → Service: page এ আসল play/pause state বদলালে sync করার জন্য
+        const val BROADCAST_STATE_SYNC = "com.familybrowser.PLAYBACK_STATE_SYNC"
+        const val EXTRA_PLAYING        = "playing"
     }
 
     private var audioManager: AudioManager? = null
@@ -58,6 +62,19 @@ class BackgroundAudioService : Service() {
     private var currentThumbnail: Bitmap? = null
 
     private val bgExecutor = Executors.newSingleThreadExecutor()
+
+    // Page এ user নিজে pause/play করলে notification এর icon/state মিলিয়ে নাও
+    private val stateSyncReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(ctx: Context, intent: Intent) {
+            if (intent.action != BROADCAST_STATE_SYNC) return
+            val playing = intent.getBooleanExtra(EXTRA_PLAYING, isPlaying)
+            if (playing != isPlaying) {
+                isPlaying = playing
+                if (::mediaSession.isInitialized) updatePlaybackState()
+                refreshNotification()
+            }
+        }
+    }
 
     // ── Audio Focus ────────────────────────────────────────────────────────────
     private val audioFocusRequest by lazy {
@@ -83,6 +100,12 @@ class BackgroundAudioService : Service() {
         createNotificationChannel()
         acquireWakeLock()
         initMediaSession()
+        val syncFilter = android.content.IntentFilter(BROADCAST_STATE_SYNC)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(stateSyncReceiver, syncFilter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(stateSyncReceiver, syncFilter)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -171,6 +194,7 @@ class BackgroundAudioService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        runCatching { unregisterReceiver(stateSyncReceiver) }
         releaseWakeLock()
         releaseAudioFocus()
         bgExecutor.shutdownNow()

@@ -81,9 +81,9 @@ class YoutubeActivity : ComponentActivity() {
             if (intent.action != com.rasel.RasFocus.selfcontrol.familybrowser.service.BackgroundAudioService.BROADCAST_PLAYBACK_ACTION) return
             val wv = webView ?: return
             when (intent.getStringExtra(com.rasel.RasFocus.selfcontrol.familybrowser.service.BackgroundAudioService.EXTRA_PLAYBACK_CMD)) {
-                "play"    -> wv.evaluateJavascript("(function(){ try{ var v=document.querySelector('video'); if(v) v.play().catch(function(){}); }catch(e){} })()", null)
-                "pause"   -> wv.evaluateJavascript("(function(){ try{ var v=document.querySelector('video'); if(v) v.pause(); }catch(e){} })()", null)
-                "stop"    -> wv.evaluateJavascript("(function(){ try{ var v=document.querySelector('video'); if(v) v.pause(); }catch(e){} })()", null)
+                "play"    -> com.rasel.RasFocus.selfcontrol.familybrowser.service.YtPauseGuard.nativePlay(wv)
+                "pause"   -> com.rasel.RasFocus.selfcontrol.familybrowser.service.YtPauseGuard.nativePause(wv)
+                "stop"    -> com.rasel.RasFocus.selfcontrol.familybrowser.service.YtPauseGuard.nativePause(wv)
                 "rewind"  -> wv.evaluateJavascript("(function(){ try{ var v=document.querySelector('video'); if(v) v.currentTime=Math.max(0,v.currentTime-10); }catch(e){} })()", null)
                 "forward" -> wv.evaluateJavascript("(function(){ try{ var v=document.querySelector('video'); if(v) v.currentTime=Math.min(v.duration,v.currentTime+10); }catch(e){} })()", null)
                 "prev"    -> wv.evaluateJavascript("""
@@ -406,6 +406,7 @@ class YoutubeActivity : ComponentActivity() {
             cookieManager.setAcceptThirdPartyCookies(this, true)
 
             addJavascriptInterface(YtBlockBridge(this), "RasYtBlockBridge")
+            addJavascriptInterface(com.rasel.RasFocus.selfcontrol.familybrowser.service.YtPlayStateBridge(applicationContext), "RasPlayBridge")
             addJavascriptInterface(
                 com.rasel.RasFocus.selfcontrol.familybrowser.AdBlocker.BlockOverlayBridge(
                     this, "https://m.youtube.com/", { block -> runOnUiThread(block) }
@@ -900,6 +901,7 @@ class YoutubeActivity : ComponentActivity() {
             cookieManager.setAcceptThirdPartyCookies(this, true)
 
             addJavascriptInterface(YtLayerBridge(), "RasYtLayerBridge")
+            addJavascriptInterface(com.rasel.RasFocus.selfcontrol.familybrowser.service.YtPlayStateBridge(applicationContext), "RasPlayBridge")
 
             webViewClient = object : WebViewClient() {
                 override fun shouldInterceptRequest(
@@ -1240,7 +1242,7 @@ class YoutubeActivity : ComponentActivity() {
                         for (var i = 0; i < videos.length; i++) {
                             try {
                                 videos[i].muted = false;
-                                if (videos[i].paused && !videos[i].ended) {
+                                if (window.__rasUserPaused !== true && videos[i].paused && !videos[i].ended) {
                                     videos[i].play().catch(function(){});
                                 }
                             } catch(e) {}
@@ -1252,6 +1254,7 @@ class YoutubeActivity : ComponentActivity() {
     }
 
     private fun injectVisibilitySpoofBeforeLeave(wv: WebView) {
+        com.rasel.RasFocus.selfcontrol.familybrowser.service.YtPauseGuard.install(wv)
         wv.evaluateJavascript("""
             (function() {
                 try {
@@ -1340,6 +1343,7 @@ class YoutubeActivity : ComponentActivity() {
     }
 
     private fun injectVisibilitySpoof(view: WebView) {
+        com.rasel.RasFocus.selfcontrol.familybrowser.service.YtPauseGuard.install(view)
         view.evaluateJavascript("""
             (function() {
                 try {
@@ -1351,6 +1355,7 @@ class YoutubeActivity : ComponentActivity() {
     }
 
     private fun injectYoutubeHacks(view: WebView) {
+        com.rasel.RasFocus.selfcontrol.familybrowser.service.YtPauseGuard.install(view)
         view.evaluateJavascript("""
             (function() {
                 if (window.__rasBgAudioInjected__) return;
@@ -1371,7 +1376,7 @@ class YoutubeActivity : ComponentActivity() {
                         setInterval(function() {
                             try {
                                 var v = document.querySelector('video');
-                                if (v && v.paused && !v.ended && v.readyState > 1) {
+                                if (window.__rasUserPaused !== true && v && v.paused && !v.ended && v.readyState > 1) {
                                     v.play().catch(function(){});
                                 }
                             } catch(e) {}
@@ -1515,9 +1520,9 @@ class YoutubeActivity : ComponentActivity() {
                         mainVideo.style.display    = 'block';
                         mainVideo.style.opacity    = '1';
                         if (mainVideo.muted) mainVideo.muted = false;
-                        mainVideo.play().catch(function(){});
+                        if (window.__rasUserPaused !== true) mainVideo.play().catch(function(){});
                         setTimeout(function() {
-                            try { if (mainVideo.paused && !mainVideo.ended) mainVideo.play().catch(function(){}); } catch(e) {}
+                            try { if (window.__rasUserPaused !== true && mainVideo.paused && !mainVideo.ended) mainVideo.play().catch(function(){}); } catch(e) {}
                         }, 400);
                     } catch(e) {}
                 }
@@ -1692,13 +1697,14 @@ class YoutubeActivity : ComponentActivity() {
     }
 
         private fun injectYoutubeHacksForced(view: WebView) {
+        com.rasel.RasFocus.selfcontrol.familybrowser.service.YtPauseGuard.install(view)
         view.evaluateJavascript("""
             (function() {
                 try {
                     Object.defineProperty(document, 'hidden', { get: function(){ return false; }, configurable: true });
                     var videos = document.querySelectorAll('video');
                     for (var i = 0; i < videos.length; i++) {
-                        try { if (videos[i].paused) videos[i].play().catch(function(){}); } catch(e) {}
+                        try { if (window.__rasUserPaused !== true && videos[i].paused) videos[i].play().catch(function(){}); } catch(e) {}
                     }
                 } catch(e) {}
             })();
