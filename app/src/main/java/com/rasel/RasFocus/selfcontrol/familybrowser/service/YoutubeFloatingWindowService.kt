@@ -267,6 +267,65 @@ class YoutubeFloatingWindowService : Service() {
          * ফলে miniplayer এ কোনো black color বা অর্ধেক কালো দেখায় না।
          * enable = false দিলে আবার normal watch page layout এ ফিরে আসে।
          */
+        // ── Mini player hand-off (Activity → Service) ────────────────────────
+        // Activity shrink animation শেষ হলে service window ঠিক একই জায়গায়, একই
+        // size এ, কোনো দ্বিতীয় animation ছাড়াই বসে — তাই video frame একটাই থাকে,
+        // jump/duplicate হয় না। WebView এর layout size বদলানো হয় না (relayout নেই);
+        // শুধু scale+offset করে video rect টা ছোট window তে দেখানো হয়।
+        @Volatile var pendingMiniClip: android.graphics.Rect? = null
+        @Volatile var pendingMiniWvW: Int = 0
+        @Volatile var pendingMiniWvH: Int = 0
+
+        // User যেখানে mini player drag করে রেখেছে, পরের বার সেখানেই আসবে
+        @Volatile private var lastMiniX: Int = Int.MIN_VALUE
+        @Volatile private var lastMiniY: Int = Int.MIN_VALUE
+
+        /** Mini player এর final screen rect (screen coords) — Activity ও Service দুজনেই এটা ব্যবহার করে। */
+        fun miniTarget(ctx: Context, aspect: Float): android.graphics.Rect {
+            val dm = ctx.resources.displayMetrics
+            val w  = (240 * dm.density).toInt()
+            val h  = (w * aspect).toInt().coerceAtLeast(1)
+            val x  = if (lastMiniX != Int.MIN_VALUE) lastMiniX
+                     else dm.widthPixels - w - (12 * dm.density).toInt()
+            val y  = if (lastMiniY != Int.MIN_VALUE) lastMiniY
+                     else dm.heightPixels - h - (180 * dm.density).toInt()
+            return android.graphics.Rect(x, y, x + w, y + h)
+        }
+
+        /**
+         * Mini player এর জন্য শুধু চেহারা বদলায় — layout/size কিছুই force করে না
+         * (আগের CSS player কে 100vh করে দিত → video stretch/squash হতো)।
+         * নিচের content ও player এর control overlay লুকায়।
+         */
+        fun injectMiniChromeCss(view: WebView?) {
+            if (view == null) return
+            view.evaluateJavascript("""
+                (function() {
+                    try {
+                        var style = document.getElementById('ras-mini-player-style');
+                        if (!style) {
+                            style = document.createElement('style');
+                            style.id = 'ras-mini-player-style';
+                            document.head.appendChild(style);
+                        }
+                        style.innerHTML = `
+                            ytm-mobile-topbar-renderer, ytm-pivot-bar-renderer, #header-bar, .mobile-topbar-header-content,
+                            ytm-watch-next-secondary-results-renderer, ytm-item-section-renderer, ytm-comment-section-renderer,
+                            .watch-below-the-player, ytm-single-column-watch-next-results-renderer > :not(.player-container),
+                            ytm-watch-metadata-app-bundle-slot-renderer, ytm-paid-content-overlay, ytm-ad-slot-renderer,
+                            .player-controls-content, .player-controls-background, .ytp-chrome-top, .ytp-chrome-bottom,
+                            .ytp-gradient-top, .ytp-gradient-bottom, .ytp-pause-overlay, .ytp-ce-element,
+                            .ytp-cards-teaser, .ytp-endscreen-content, ytm-autonav-endscreen-renderer {
+                                display: none !important;
+                            }
+                            html, body { overflow: hidden !important; }
+                        `;
+                        window.scrollTo(0, 0);
+                    } catch(e) {}
+                })();
+            """.trimIndent(), null)
+        }
+
         fun injectMiniPlayerCss(view: WebView?, enable: Boolean) {
             if (view == null) return
             val js = if (enable) {
@@ -495,7 +554,19 @@ class YoutubeFloatingWindowService : Service() {
         }
     }
 
+    private var miniPlayBtn: android.widget.TextView? = null
+
+    private fun resetWebViewTransform(wv: WebView) {
+        wv.scaleX = 1f
+        wv.scaleY = 1f
+        wv.translationX = 0f
+        wv.translationY = 0f
+        wv.pivotX = wv.width / 2f
+        wv.pivotY = wv.height / 2f
+    }
+
     private fun updateMediaState() {
+        miniPlayBtn?.text = if (isPlaying) "❚❚" else "▶"
         val state = if (isPlaying) PlaybackState.STATE_PLAYING
                     else           PlaybackState.STATE_PAUSED
         val playbackState = PlaybackState.Builder()
@@ -626,6 +697,7 @@ class YoutubeFloatingWindowService : Service() {
                     val wv = webView
                     if (wv != null && ghostContainer != null) {
                         (wv.parent as? ViewGroup)?.removeView(wv)
+                        resetWebViewTransform(wv)
                         ghostContainer?.addView(
                             wv,
                             android.widget.FrameLayout.LayoutParams(
@@ -681,7 +753,10 @@ class YoutubeFloatingWindowService : Service() {
                 removeMiniWindow()
 
                 // WebView সেটআপ (pendingWebView থেকে নেবে — reload নেই)
-                buildMiniPlayerWindow()
+                val clip = pendingMiniClip
+                pendingMiniClip = null
+                if (clip != null) buildMiniPlayerWindowScaled(clip, pendingMiniWvW, pendingMiniWvH)
+                else buildMiniPlayerWindow()
             }
 
             // Full Floating Launch (Home press / lock press)
@@ -738,6 +813,7 @@ class YoutubeFloatingWindowService : Service() {
         if (wv != null) {
             // Ghost/floating থেকে detach করো
             (wv.parent as? ViewGroup)?.removeView(wv)
+            resetWebViewTransform(wv)
             // pendingWebView এ রেখে দাও — YoutubeActivity নেবে
             pendingWebView = wv
             webView = null
@@ -979,6 +1055,186 @@ class YoutubeFloatingWindowService : Service() {
         android.os.Handler(android.os.Looper.getMainLooper()).post {
             animator.start()
         }
+    }
+
+    /**
+     * ★ Scaled mini player — native YouTube এর মতো পরিষ্কার, একটাই video frame।
+     *
+     * WebView এর layout size একদম অপরিবর্তিত থাকে (তাই YouTube relayout করে না,
+     * video কখনো blink/stretch করে না)। WebView কে scale করে এবং offset দিয়ে শুধু
+     * video rect টা ছোট rounded window তে দেখানো হয়; বাকি page window এর বাইরে clip হয়।
+     * Window টা Activity এর shrink animation এর final position এই তৈরি হয় →
+     * কোনো দ্বিতীয় animation বা position jump নেই।
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    private fun buildMiniPlayerWindowScaled(clip: android.graphics.Rect, wvWIn: Int, wvHIn: Int) {
+        val dm      = resources.displayMetrics
+        val screenW = dm.widthPixels
+        val screenH = dm.heightPixels
+        val cw      = clip.width().coerceAtLeast(1)
+        val ch      = clip.height().coerceAtLeast(1)
+        val wvW     = if (wvWIn > 0) wvWIn else screenW
+        val wvH     = if (wvHIn > 0) wvHIn else screenH
+
+        val target = miniTarget(this, ch.toFloat() / cw)
+        val miniW  = target.width()
+        val miniH  = target.height()
+        val s      = miniW.toFloat() / cw
+        miniPosX = target.left
+        miniPosY = target.top
+
+        val params = WindowManager.LayoutParams(
+            miniW, miniH, target.left, target.top,
+            overlayWindowType(),
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply { gravity = Gravity.TOP or Gravity.START }
+
+        val radius = dp(10).toFloat()
+        val root = android.widget.FrameLayout(this).apply {
+            setBackgroundColor(0xFF000000.toInt())
+            clipChildren  = true
+            clipToOutline = true
+            outlineProvider = object : android.view.ViewOutlineProvider() {
+                override fun getOutline(view: android.view.View, outline: android.graphics.Outline) {
+                    outline.setRoundRect(0, 0, view.width, view.height, radius)
+                }
+            }
+        }
+
+        val wv = getOrBuildWebView()
+        webView = wv
+        wv.setLayerType(android.view.View.LAYER_TYPE_NONE, null)
+        (wv.parent as? ViewGroup)?.removeView(wv)
+        wv.pivotX       = 0f
+        wv.pivotY       = 0f
+        wv.scaleX       = s
+        wv.scaleY       = s
+        wv.translationX = -clip.left * s
+        wv.translationY = -clip.top  * s
+        root.addView(wv, android.widget.FrameLayout.LayoutParams(wvW, wvH))
+
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            injectStrongAudioKeepAlive(wv)
+        }, 200L)
+
+        // ── Controls overlay: ❚❚/▶ (বামে) এবং ✕ (ডানে) ─────────────────────
+        val overlay = android.widget.FrameLayout(this)
+
+        val btnPlay = android.widget.TextView(this).apply {
+            text     = if (isPlaying) "❚❚" else "▶"
+            textSize = 11f
+            gravity  = Gravity.CENTER
+            setTextColor(0xFFFFFFFF.toInt())
+            background = buildCircleBg(0xAA000000.toInt())
+            layoutParams = android.widget.FrameLayout.LayoutParams(dp(28), dp(28), Gravity.TOP or Gravity.START)
+                .apply { setMargins(dp(6), dp(6), 0, 0) }
+            setOnClickListener {
+                webView?.let { w ->
+                    if (isPlaying) YtPauseGuard.nativePause(w) else YtPauseGuard.nativePlay(w)
+                }
+                isPlaying = !isPlaying
+                updateMediaState()
+                updateNotification(currentTitle)
+            }
+        }
+        miniPlayBtn = btnPlay
+
+        val btnClose = android.widget.TextView(this).apply {
+            text     = "✕"
+            textSize = 12f
+            gravity  = Gravity.CENTER
+            setTextColor(0xFFFFFFFF.toInt())
+            background = buildCircleBg(0xAA000000.toInt())
+            layoutParams = android.widget.FrameLayout.LayoutParams(dp(28), dp(28), Gravity.TOP or Gravity.END)
+                .apply { setMargins(0, dp(6), dp(6), 0) }
+            setOnClickListener {
+                webView?.let {
+                    (it.parent as? ViewGroup)?.removeView(it)
+                    it.destroy()
+                    webView = null
+                }
+                pendingWebView = null
+                miniPlayBtn = null
+                stopSelf()
+            }
+        }
+        overlay.addView(btnPlay)
+        overlay.addView(btnClose)
+        root.addView(overlay, android.widget.FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ))
+
+        // ── Drag (edge snap সহ) + tap → Activity resume ──────────────────────
+        var startRawX = 0f; var startRawY = 0f
+        var startParamX = 0; var startParamY = 0
+        var hasMoved = false
+        val margin = dp(12)
+        val minY   = dp(24)
+        val maxY   = screenH - miniH - dp(40)
+
+        root.setOnTouchListener { _, ev ->
+            when (ev.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    startRawX = ev.rawX; startRawY = ev.rawY
+                    startParamX = params.x; startParamY = params.y
+                    hasMoved = false
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = (ev.rawX - startRawX).toInt()
+                    val dy = (ev.rawY - startRawY).toInt()
+                    if (abs(dx) > 8 || abs(dy) > 8) {
+                        hasMoved = true
+                        params.x = (startParamX + dx).coerceIn(0, screenW - miniW)
+                        params.y = (startParamY + dy).coerceIn(minY, maxY)
+                        runCatching { windowManager.updateViewLayout(miniWindow, params) }
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (!hasMoved) {
+                        returnToActivity()
+                    } else {
+                        // নিকটতম পাশে snap করো
+                        val fromX = params.x
+                        val toX = if (params.x + miniW / 2 < screenW / 2) margin else screenW - miniW - margin
+                        val toY = params.y.coerceIn(minY, maxY)
+                        val fromY = params.y
+                        android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+                            duration = 160L
+                            interpolator = android.view.animation.DecelerateInterpolator()
+                            addUpdateListener { a ->
+                                val t = a.animatedValue as Float
+                                params.x = (fromX + (toX - fromX) * t).toInt()
+                                params.y = (fromY + (toY - fromY) * t).toInt()
+                                miniPosX = params.x; miniPosY = params.y
+                                lastMiniX = params.x; lastMiniY = params.y
+                                runCatching { windowManager.updateViewLayout(miniWindow, params) }
+                            }
+                            start()
+                        }
+                    }
+                    true
+                }
+                MotionEvent.ACTION_CANCEL -> true
+                else -> false
+            }
+        }
+
+        miniWindow = root
+        try {
+            windowManager.addView(root, params)
+        } catch (e: Exception) {
+            tearDown()
+            stopSelf()
+            return
+        }
+        updateNotification("▶ $currentTitle")
     }
 
     /**
@@ -1296,6 +1552,7 @@ class YoutubeFloatingWindowService : Service() {
             // এ conflict করে। এখানে force করে LAYER_TYPE_NONE দিলে WebView নিজেই
             // সঠিক compositing বেছে নেয় এবং video frame দেখা যায়।
             pending.setLayerType(android.view.View.LAYER_TYPE_NONE, null)
+            resetWebViewTransform(pending)
 
             injectVisibilitySpoof(pending)
 
