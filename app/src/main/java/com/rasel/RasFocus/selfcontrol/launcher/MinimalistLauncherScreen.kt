@@ -74,6 +74,8 @@ private val DIVIDER = Color(0xFF222222)
 
 private const val PREFS       = "launcher_prefs"
 private const val KEY_PINNED  = "pinned_apps"
+const val SHORTCUT_PREFIX = "shortcut:"
+const val KEY_PINNED_SHORTCUTS = "pinned_shortcuts"   // set of "pkg|id|label"
 private const val KEY_HIDDEN  = "hidden_apps"
 private const val KEY_RENAMED = "renamed_apps"
 private const val KEY_THEME   = "launcher_theme"
@@ -2206,7 +2208,22 @@ private fun getInstalledApps(
         }.getOrNull()
     } else null
 
-    return (fromLauncher + listOfNotNull(ownAppEntry))
+    val savedShortcuts = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        .getStringSet(KEY_PINNED_SHORTCUTS, emptySet()).orEmpty()
+        .mapNotNull { raw ->
+            val parts = raw.split("|", limit = 3)
+            if (parts.size < 3) return@mapNotNull null
+            val key = "$SHORTCUT_PREFIX${parts[0]}|${parts[1]}"
+            if (key in hidden) return@mapNotNull null
+            AppInfo(
+                label        = parts[2],
+                packageName  = key,
+                customName   = renamed[key] ?: "",
+                isBlocked    = parts[0] in blocked
+            )
+        }
+
+    return (fromLauncher + listOfNotNull(ownAppEntry) + savedShortcuts)
         .sortedBy { (renamed[it.packageName] ?: it.label).lowercase() }
         .distinctBy { it.packageName }
 }
@@ -2247,6 +2264,15 @@ private fun launchShortcut(context: Context, shortcut: AppShortcut) {
 }
 
 private fun launchApp(context: Context, packageName: String) {
+    // Pinned shortcut (browser "Add to home screen" ইত্যাদি) — "shortcut:<pkg>|<id>"
+    if (packageName.startsWith(SHORTCUT_PREFIX)) {
+        try {
+            val (pkg, id) = packageName.removePrefix(SHORTCUT_PREFIX).split("|", limit = 2)
+            val la = context.getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
+            la.startShortcut(pkg, id, null, null, Process.myUserHandle())
+        } catch (_: Exception) {}
+        return
+    }
     try {
         val intent = context.packageManager.getLaunchIntentForPackage(packageName)
         intent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

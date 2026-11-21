@@ -1003,6 +1003,18 @@
         </intent-filter>
     </activity>
 
+    <!-- ✅ Pinned shortcut receiver — browser/অন্য app এর "Add to Home screen" -->
+    <activity
+        android:name=".selfcontrol.launcher.PinShortcutActivity"
+        android:exported="true"
+        android:theme="@android:style/Theme.Translucent.NoTitleBar"
+        android:excludeFromRecents="true">
+        <intent-filter>
+            <action android:name="android.content.pm.action.CONFIRM_PIN_SHORTCUT" />
+            <category android:name="android.intent.category.DEFAULT" />
+        </intent-filter>
+    </activity>
+
 
     <!-- ✅ RasGram — WhatsApp-style messaging module
          directBootAware="true": lock screen এ Activity launch হয় — phone reboot

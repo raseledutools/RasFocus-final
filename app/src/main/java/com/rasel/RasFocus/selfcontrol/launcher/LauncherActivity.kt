@@ -24,4 +24,14 @@ class LauncherActivity : ComponentActivity() {
             }
         }
     }
+
+    // নতুন shortcut pin হলে UI আবার লোড করো (সাধারণ home press এ নয়)
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra("reload_shortcuts", false)) {
+            intent.removeExtra("reload_shortcuts")
+            recreate()
+        }
+    }
 }
