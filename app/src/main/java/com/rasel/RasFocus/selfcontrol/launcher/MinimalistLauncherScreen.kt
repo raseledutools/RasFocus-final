@@ -48,6 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -200,8 +201,9 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
     val theme       = LauncherTheme.entries[themeIdx.coerceIn(0, LauncherTheme.entries.size - 1)]
     val appFontSize = when (fontSize) { 0 -> 16.sp; 2 -> 26.sp; else -> 21.sp }
 
-    val usageMap: Map<String, Long> = remember { getUsageMap(context) }
-    val allApps: List<AppInfo> = remember(hiddenPkgs, renamedMap) {
+    var refreshTick by remember { mutableIntStateOf(0) }
+    val usageMap: Map<String, Long> = remember(refreshTick) { getUsageMap(context) }
+    val allApps: List<AppInfo> = remember(hiddenPkgs, renamedMap, refreshTick) {
         getInstalledApps(context, hiddenPkgs, renamedMap, getBlockedApps(context), usageMap)
     }
     val pinnedApps = remember(pinnedPkgs, allApps) {
@@ -214,14 +216,33 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
         allApps
             .filter { it.packageName !in pinnedPkgs && usageMap.getOrDefault(it.packageName, 0L) > 0L }
             .sortedByDescending { usageMap.getOrDefault(it.packageName, 0L) }
-            .take(4)
+            .take(15)
     }
 
     var timeState by remember { mutableStateOf(getCurrentTime()) }
     LaunchedEffect(Unit) { while (true) { delay(1000L); timeState = getCurrentTime() } }
 
-    val battery    = getBatteryLevel(context)
-    val isCharging = isDeviceCharging(context)
+    // Live battery: ACTION_BATTERY_CHANGED receiver — level/charging আপডেট হলেই UI বদলাবে
+    var battery    by remember { mutableIntStateOf(getBatteryLevel(context)) }
+    var isCharging by remember { mutableStateOf(isDeviceCharging(context)) }
+    DisposableEffect(context) {
+        val receiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(c: Context?, i: Intent?) {
+                i ?: return
+                val level = i.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+                val scale = i.getIntExtra(BatteryManager.EXTRA_SCALE, 100)
+                if (level >= 0 && scale > 0) battery = (level * 100 / scale).coerceIn(0, 100)
+                val status = i.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+                val plugged = i.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0)
+                isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                    status == BatteryManager.BATTERY_STATUS_FULL || plugged != 0
+            }
+        }
+        // sticky intent: registration এর সাথেই current মান পাওয়া যায়
+        val sticky = context.registerReceiver(receiver, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        sticky?.let { receiver.onReceive(context, it) }
+        onDispose { runCatching { context.unregisterReceiver(receiver) } }
+    }
 
     // Back press: sidebar → settings → context menu → nothing (launcher is home, swallow back)
     BackHandler(enabled = showSidebar || showSettings || longPressedApp != null || pickerSlot != PickerSlot.NONE) {
@@ -504,6 +525,7 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                     .clickable(enabled = false) {}
             ) {
                 SidebarContent(
+                    onRefresh     = { refreshTick++ },
                     allApps       = allApps,
                     frequentApps  = frequentApps,
                     pinnedPkgs    = pinnedPkgs,
@@ -1180,6 +1202,7 @@ fun BottomIconButton(
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 fun SidebarContent(
+    onRefresh:     () -> Unit = {},
     allApps:       List<AppInfo>,
     frequentApps:  List<AppInfo> = emptyList(),
     pinnedPkgs:    List<String>,
@@ -1489,11 +1512,73 @@ fun SidebarContent(
         // ── App list + letter index ───────────────────────────────────────
         Box(Modifier.weight(1f)) {
             val sidebarListState = rememberLazyListState()
+
+            // ── Pull-to-refresh (list এর মাথায় টেনে নামালে app list + usage রিফ্রেশ) ──
+            var pullOffset by remember { mutableFloatStateOf(0f) }
+            var refreshing by remember { mutableStateOf(false) }
+            val pullThresholdPx = with(androidx.compose.ui.platform.LocalDensity.current) { 72.dp.toPx() }
+            val currentOnRefresh by rememberUpdatedState(onRefresh)
+            LaunchedEffect(refreshing) {
+                if (refreshing) { delay(700L); refreshing = false; pullOffset = 0f }
+            }
+            val pullConnection = remember {
+                object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
+                    override fun onPreScroll(
+                        available: androidx.compose.ui.geometry.Offset,
+                        source: androidx.compose.ui.input.nestedscroll.NestedScrollSource
+                    ): androidx.compose.ui.geometry.Offset {
+                        if (!refreshing && pullOffset > 0f && available.y < 0f) {
+                            val c = maxOf(available.y, -pullOffset)
+                            pullOffset += c
+                            return androidx.compose.ui.geometry.Offset(0f, c)
+                        }
+                        return androidx.compose.ui.geometry.Offset.Zero
+                    }
+                    override fun onPostScroll(
+                        consumed: androidx.compose.ui.geometry.Offset,
+                        available: androidx.compose.ui.geometry.Offset,
+                        source: androidx.compose.ui.input.nestedscroll.NestedScrollSource
+                    ): androidx.compose.ui.geometry.Offset {
+                        if (!refreshing && available.y > 0f &&
+                            source == androidx.compose.ui.input.nestedscroll.NestedScrollSource.UserInput) {
+                            pullOffset = (pullOffset + available.y * 0.5f).coerceAtMost(pullThresholdPx * 1.6f)
+                            return androidx.compose.ui.geometry.Offset(0f, available.y)
+                        }
+                        return androidx.compose.ui.geometry.Offset.Zero
+                    }
+                    override suspend fun onPreFling(available: androidx.compose.ui.unit.Velocity): androidx.compose.ui.unit.Velocity {
+                        if (pullOffset >= pullThresholdPx && !refreshing) {
+                            refreshing = true
+                            currentOnRefresh()
+                        } else if (!refreshing) {
+                            pullOffset = 0f
+                        }
+                        return androidx.compose.ui.unit.Velocity.Zero
+                    }
+                }
+            }
+            if (pullOffset > 0f || refreshing) {
+                Box(
+                    Modifier.fillMaxWidth().height(40.dp).align(Alignment.TopCenter),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (refreshing) {
+                        CircularProgressIndicator(Modifier.size(20.dp), color = Color(0xFF14C3B2), strokeWidth = 2.dp)
+                    } else {
+                        Text(
+                            if (pullOffset >= pullThresholdPx) "Release to refresh" else "Pull to refresh",
+                            color = DIM, fontSize = 11.sp
+                        )
+                    }
+                }
+            }
             LazyColumn(
                 state = sidebarListState,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(end = 20.dp)
+                    .nestedScroll(pullConnection)
+                    .offset { IntOffset(0, (if (refreshing) pullThresholdPx * 0.6f else pullOffset).roundToInt()) }
             ) {
                 items(filtered, key = { it.packageName }) { app ->
                     val displayName = renamedMap[app.packageName] ?: app.label
