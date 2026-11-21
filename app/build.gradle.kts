@@ -144,8 +144,9 @@ android {
         release {
             // সবসময় fixedSigning — KEYSTORE_BASE64 ছাড়াও APK signed থাকবে
             signingConfig = signingConfigs.getByName("fixedSigning")
-            isMinifyEnabled   = true
-            isShrinkResources = true
+            // build সময় কমাতে R8 minify/shrink বন্ধ — APK এর সাইজ (MB) একটু বাড়বে
+            isMinifyEnabled   = false
+            isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
