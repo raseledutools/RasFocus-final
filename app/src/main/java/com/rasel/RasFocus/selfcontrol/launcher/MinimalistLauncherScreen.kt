@@ -1542,7 +1542,7 @@ fun SidebarContent(
                         source: androidx.compose.ui.input.nestedscroll.NestedScrollSource
                     ): androidx.compose.ui.geometry.Offset {
                         if (!refreshing && available.y > 0f &&
-                            source == androidx.compose.ui.input.nestedscroll.NestedScrollSource.UserInput) {
+                            source == androidx.compose.ui.input.nestedscroll.NestedScrollSource.Drag) {
                             pullOffset = (pullOffset + available.y * 0.5f).coerceAtMost(pullThresholdPx * 1.6f)
                             return androidx.compose.ui.geometry.Offset(0f, available.y)
                         }
