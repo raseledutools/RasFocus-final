@@ -204,6 +204,10 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
     val doubleTapLockActive by rememberUpdatedState(
         doubleTapLock && !showSettings && !showSidebar && longPressedApp == null && pickerSlot == PickerSlot.NONE
     )
+    // Activity-level double-tap detector reads this flag (overlay খোলা থাকলে lock হবে না)
+    val tapLockArmed = doubleTapLock && !showSettings && !showSidebar && longPressedApp == null && pickerSlot == PickerSlot.NONE
+    SideEffect { LauncherLock.tapLockArmed = tapLockArmed }
+    DisposableEffect(Unit) { onDispose { LauncherLock.tapLockArmed = false } }
 
     val theme       = LauncherTheme.entries[themeIdx.coerceIn(0, LauncherTheme.entries.size - 1)]
     val appFontSize = when (fontSize) { 0 -> 16.sp; 2 -> 26.sp; else -> 21.sp }

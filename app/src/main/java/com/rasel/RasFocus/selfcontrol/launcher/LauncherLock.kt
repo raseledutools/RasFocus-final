@@ -5,7 +5,10 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.accessibilityservice.AccessibilityService
+import android.app.Activity
 import android.os.Build
+import android.os.SystemClock
+import android.view.HapticFeedbackConstants
 import android.widget.Toast
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -29,6 +32,24 @@ object LauncherLock {
     /** Max gap (ms) between two Home presses to count as a double press. */
     private const val HOME_DOUBLE_PRESS_MS = 650L
     private var lastHomePressAt = 0L
+
+    /** Set by the launcher screen: true only when no overlay (sidebar/settings/dialog) is open. */
+    @Volatile var tapLockArmed = false
+    private var lastLockAt = 0L
+
+    /** Short vibration = "double tap detected" feedback (also helps diagnose permission problems). */
+    private fun buzz(context: Context) {
+        try {
+            (context as? Activity)?.window?.decorView
+                ?.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        } catch (_: Exception) {}
+    }
+
+    /** Called by LauncherActivity.dispatchTouchEvent on every double tap anywhere on the screen. */
+    fun onScreenDoubleTap(activity: Activity) {
+        if (!tapLockArmed || !isEnabled(activity)) return
+        lockScreen(activity)
+    }
 
     fun isEnabled(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -70,6 +91,11 @@ object LauncherLock {
 
     /** Locks the screen: Device Admin first, Accessibility as fallback, else asks for permission. */
     fun lockScreen(context: Context) {
+        // Activity-level + Compose-level detectors may both fire — lock only once
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastLockAt < 1500L) return
+        lastLockAt = now
+        buzz(context)
         if (isAdminActive(context)) {
             try {
                 val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
