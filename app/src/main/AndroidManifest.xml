@@ -49,6 +49,9 @@
 <!-- UltraSaveManager: background apps kill করতে লাগে (normal permission — auto granted) -->
 <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
 
+<!-- Launcher double-tap lock: lowers the screen-off timeout for 1 s so the phone locks like a normal timeout (fingerprint still unlocks). -->
+<uses-permission android:name="android.permission.WRITE_SETTINGS" />
+
 <!-- GrayscaleTileService: WRITE_SECURE_SETTINGS দিয়ে daltonizer (grayscale) toggle করা হয়।
      এটি system-level permission — install-time automatically grant হয় না।
      একবার ADB দিয়ে grant করতে হবে:
