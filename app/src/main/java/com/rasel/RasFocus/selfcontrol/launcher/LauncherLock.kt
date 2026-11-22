@@ -27,7 +27,7 @@ object LauncherLock {
     const val KEY_DOUBLE_TAP_LOCK = "double_tap_lock"
 
     /** Max gap (ms) between two Home presses to count as a double press. */
-    private const val HOME_DOUBLE_PRESS_MS = 450L
+    private const val HOME_DOUBLE_PRESS_MS = 650L
     private var lastHomePressAt = 0L
 
     fun isEnabled(context: Context): Boolean =
