@@ -37,4 +37,5 @@
     <!-- RasGram Remote Input Accessibility Service -->
     <string name="remote_input_accessibility_description">RasGram Screen Share — allows remote control of your screen during a video call with trusted contacts. Enable only when sharing your screen.</string>
     <string name="remote_desktop_input_description">RasFocus Remote Desktop — allows PC to control your phone screen remotely. Enable only when using Remote Desktop feature.</string>
+    <string name="lock_screen_a11y_description">Double tap to lock: locks the screen exactly like the power button, so your fingerprint / face unlock keeps working. This service reads nothing from your screen.</string>
 </resources>

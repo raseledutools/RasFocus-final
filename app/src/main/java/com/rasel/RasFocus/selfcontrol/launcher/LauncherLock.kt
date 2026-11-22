@@ -23,7 +23,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Launcher "double tap to lock" helper.
- * Uses DevicePolicyManager.lockNow() — device_admin.xml already declares <force-lock />.
+ * Locks via Accessibility GLOBAL_ACTION_LOCK_SCREEN (fingerprint-friendly); DevicePolicyManager.lockNow() is the fallback.
  */
 object LauncherLock {
     const val PREFS = "launcher_prefs"
@@ -64,14 +64,46 @@ object LauncherLock {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getBoolean(KEY_DOUBLE_TAP_LOCK, true)   // default ON (opt-out), no Settings visit needed
 
-    /** Asks for Device Admin once per install if the feature is on but admin is missing. */
+    /**
+     * Once per install: if the feature is on but nothing can lock yet, send the user to the right switch.
+     * API 28+: Accessibility "RasFocus Screen Lock" (power-button style lock, fingerprint works).
+     * API < 28: Device Admin (lockNow has no strong-auth side effect there).
+     */
     fun ensureAdminOnce(context: Context) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        if (!isEnabled(context) || isAdminActive(context)) return
-        if (prefs.getBoolean("admin_prompted", false)) return
-        prefs.edit().putBoolean("admin_prompted", true).apply()
-        requestAdmin(context)
+        if (!isEnabled(context)) return
+        if (Build.VERSION.SDK_INT >= 28) {
+            if (hasAccessibilityLock() || prefs.getBoolean("a11y_prompted", false)) return
+            prefs.edit().putBoolean("a11y_prompted", true).apply()
+            requestAccessibility(context)
+        } else {
+            if (isAdminActive(context) || prefs.getBoolean("admin_prompted", false)) return
+            prefs.edit().putBoolean("admin_prompted", true).apply()
+            requestAdmin(context)
+        }
     }
+
+    /** Opens Accessibility settings so the user can switch on "RasFocus Screen Lock". */
+    fun requestAccessibility(context: Context) {
+        try {
+            Toast.makeText(
+                context,
+                "Fingerprint দিয়ে unlock এর জন্য Accessibility → \"RasFocus Screen Lock\" চালু করো",
+                Toast.LENGTH_LONG
+            ).show()
+            context.startActivity(
+                Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        } catch (_: Exception) {}
+    }
+
+    /** True when some running accessibility service of ours can do the power-button style lock. */
+    private fun hasAccessibilityLock(): Boolean =
+        Build.VERSION.SDK_INT >= 28 && (
+            LockScreenAccessibilityService.isRunning() ||
+            RasFocusAccessibilityService.blockingInstance != null ||
+            RasFocusAccessibilityService.deepStudyInstance != null)
 
     /** True if any of this app's device-admin receivers is active. */
     fun isAdminActive(context: Context): Boolean {
@@ -96,9 +128,10 @@ object LauncherLock {
         } catch (_: Exception) {}
     }
 
-    /** Accessibility GLOBAL_ACTION_LOCK_SCREEN (API 28+) — needs no Device Admin. */
+    /** Accessibility GLOBAL_ACTION_LOCK_SCREEN (API 28+): same as the power button → fingerprint/face still unlock. */
     private fun lockViaAccessibility(): Boolean {
         if (Build.VERSION.SDK_INT < 28) return false
+        if (LockScreenAccessibilityService.lock()) return true
         val svc: AccessibilityService? =
             RasFocusAccessibilityService.blockingInstance
                 ?: RasFocusAccessibilityService.deepStudyInstance
@@ -107,23 +140,36 @@ object LauncherLock {
         } catch (_: Exception) { false }
     }
 
-    /** Locks the screen: Device Admin first, Accessibility as fallback, else asks for permission. */
+    /**
+     * Locks the screen. Accessibility first (power-button behaviour, fingerprint works);
+     * Device Admin lockNow() only as a fallback because on Android 9+ it forces PIN/password after locking.
+     */
     fun lockScreen(context: Context) {
         // Activity-level + Compose-level detectors may both fire — lock only once
         val now = SystemClock.elapsedRealtime()
         if (now - lastLockAt < 1500L) return
         lastLockAt = now
         buzz(context)
+        if (lockViaAccessibility()) return
         if (isAdminActive(context)) {
             try {
                 val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
                 dpm.lockNow()
+                if (Build.VERSION.SDK_INT >= 28) {
+                    Toast.makeText(
+                        context,
+                        "Fingerprint এ খুলতে: Accessibility → \"RasFocus Screen Lock\" চালু করো",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
                 return
-            } catch (_: Exception) { /* fall through to fallback */ }
+            } catch (_: Exception) { /* fall through to permission request */ }
         }
-        if (lockViaAccessibility()) return
-        Toast.makeText(context, "Screen lock এর জন্য Device Admin permission দাও", Toast.LENGTH_LONG).show()
-        requestAdmin(context)
+        if (Build.VERSION.SDK_INT >= 28) requestAccessibility(context)
+        else {
+            Toast.makeText(context, "Screen lock এর জন্য Device Admin permission দাও", Toast.LENGTH_LONG).show()
+            requestAdmin(context)
+        }
     }
 
     /**
