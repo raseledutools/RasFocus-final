@@ -62,7 +62,16 @@ object LauncherLock {
 
     fun isEnabled(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getBoolean(KEY_DOUBLE_TAP_LOCK, false)
+            .getBoolean(KEY_DOUBLE_TAP_LOCK, true)   // default ON (opt-out), no Settings visit needed
+
+    /** Asks for Device Admin once per install if the feature is on but admin is missing. */
+    fun ensureAdminOnce(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (!isEnabled(context) || isAdminActive(context)) return
+        if (prefs.getBoolean("admin_prompted", false)) return
+        prefs.edit().putBoolean("admin_prompted", true).apply()
+        requestAdmin(context)
+    }
 
     /** True if any of this app's device-admin receivers is active. */
     fun isAdminActive(context: Context): Boolean {

@@ -199,7 +199,7 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
     var btnRightPkg   by remember { mutableStateOf(prefs.getString(KEY_BTN_R, "CAMERA") ?: "CAMERA") }
     var clockPkg      by remember { mutableStateOf(prefs.getString(KEY_CLOCK_PKG, "") ?: "") }
     var autoKeyboard  by rememberSaveable { mutableStateOf(prefs.getBoolean(KEY_AUTO_KB, false)) }
-    var doubleTapLock by rememberSaveable { mutableStateOf(prefs.getBoolean(LauncherLock.KEY_DOUBLE_TAP_LOCK, false)) }
+    var doubleTapLock by rememberSaveable { mutableStateOf(prefs.getBoolean(LauncherLock.KEY_DOUBLE_TAP_LOCK, true)) }
     // Double-tap lock শুধু তখনই কাজ করবে যখন কোনো overlay (sidebar/settings/dialog) খোলা নেই
     val doubleTapLockActive by rememberUpdatedState(
         doubleTapLock && !showSettings && !showSidebar && longPressedApp == null && pickerSlot == PickerSlot.NONE
@@ -207,6 +207,7 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
     // Activity-level double-tap detector reads this flag (overlay খোলা থাকলে lock হবে না)
     val tapLockArmed = doubleTapLock && !showSettings && !showSidebar && longPressedApp == null && pickerSlot == PickerSlot.NONE
     SideEffect { LauncherLock.tapLockArmed = tapLockArmed }
+    LaunchedEffect(Unit) { LauncherLock.ensureAdminOnce(context) }
     DisposableEffect(Unit) { onDispose { LauncherLock.tapLockArmed = false } }
 
     val theme       = LauncherTheme.entries[themeIdx.coerceIn(0, LauncherTheme.entries.size - 1)]
