@@ -34,6 +34,8 @@ class LauncherActivity : ComponentActivity() {
             isAppearanceLightStatusBars = false
             isAppearanceLightNavigationBars = false
         }
+        // fresh launch only (not rotation/recreate) — real Home press
+        if (savedInstanceState == null && isHomeIntent(intent)) LauncherLock.onHomePressed(this)
         setContent {
             RasFocusAppTheme {
                 MinimalistLauncherScreen(navController = null)
@@ -45,9 +47,15 @@ class LauncherActivity : ComponentActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (intent.getBooleanExtra("reload_shortcuts", false)) {
+        val isReload = intent.getBooleanExtra("reload_shortcuts", false)
+        if (!isReload && isHomeIntent(intent)) LauncherLock.onHomePressed(this)
+        if (isReload) {
             intent.removeExtra("reload_shortcuts")
             recreate()
         }
     }
+
+    private fun isHomeIntent(i: android.content.Intent?): Boolean =
+        i?.action == android.content.Intent.ACTION_MAIN &&
+            i.hasCategory(android.content.Intent.CATEGORY_HOME)
 }
