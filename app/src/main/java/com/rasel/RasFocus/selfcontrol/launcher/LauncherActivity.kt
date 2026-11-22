@@ -3,7 +3,10 @@ package com.rasel.RasFocus.selfcontrol.launcher
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import android.graphics.Color
+import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
+import androidx.core.view.WindowCompat
 import com.rasel.RasFocus.ui.theme.RasFocusAppTheme
 
 /**
@@ -17,7 +20,20 @@ import com.rasel.RasFocus.ui.theme.RasFocusAppTheme
 class LauncherActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // Pure black status + navigation bars (light/white icons), no contrast scrim
+        enableEdgeToEdge(
+            statusBarStyle     = SystemBarStyle.dark(Color.BLACK),
+            navigationBarStyle = SystemBarStyle.dark(Color.BLACK)
+        )
+        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.BLACK))
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            window.isNavigationBarContrastEnforced = false
+            window.isStatusBarContrastEnforced = false
+        }
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = false
+            isAppearanceLightNavigationBars = false
+        }
         setContent {
             RasFocusAppTheme {
                 MinimalistLauncherScreen(navController = null)

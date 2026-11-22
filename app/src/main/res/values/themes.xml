@@ -2,6 +2,16 @@
 <resources>
     <style name="Theme.RasFocus" parent="Theme.AppCompat.NoActionBar" />
 
+    <!-- Minimalist Launcher: pure black window + black system bars (no white nav bar). -->
+    <style name="Theme.RasFocus.Launcher" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">#000000</item>
+        <item name="android:colorBackground">#000000</item>
+        <item name="android:statusBarColor">#000000</item>
+        <item name="android:navigationBarColor">#000000</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowIsTranslucent">false</item>
+    </style>
+
     <!-- FileManager + viewer activities: dark bg so the window is instantly
          visible (no white/black flash while Compose inflates). -->
     <style name="Theme.RasFocus.FileManager" parent="Theme.AppCompat.NoActionBar">

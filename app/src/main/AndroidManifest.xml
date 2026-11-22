@@ -995,7 +995,7 @@
         android:name=".selfcontrol.launcher.LauncherActivity"
         android:exported="true"
         android:launchMode="singleTask"
-        android:theme="@style/Theme.RasFocus">
+        android:theme="@style/Theme.RasFocus.Launcher">
         <intent-filter>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.HOME" />
