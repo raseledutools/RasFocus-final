@@ -60,23 +60,51 @@ object AutoUpdater {
     const val EXTRA_APK_URL  = "extra_apk_url"
     const val EXTRA_TAG_NAME = "extra_tag_name"
 
+    // ── FCM push: release upload হলে GitHub Actions topic এ push পাঠায় ──────
+    // App বন্ধ থাকলেও (force-stop ছাড়া) high-priority data message এ service জেগে উঠে notification দেয়।
+    const val UPDATE_TOPIC = "app_update"
+
+    fun subscribeToUpdateTopic() {
+        try {
+            com.google.firebase.messaging.FirebaseMessaging.getInstance()
+                .subscribeToTopic(UPDATE_TOPIC)
+        } catch (e: Exception) {
+            Log.w(TAG, "subscribeToTopic failed", e)
+        }
+    }
+
+    /** Called from FirebaseMessagingService (background thread) when an "app_update" push arrives. */
+    fun handlePushedUpdate(context: Context, pushedTag: String?) {
+        val currentTag = "v" + BuildConfig.VERSION_NAME
+        if (!pushedTag.isNullOrEmpty() && pushedTag == currentTag) return   // আগে থেকেই latest
+
+        val info: ReleaseInfo = runBlocking(Dispatchers.IO) { fetchLatestReleaseInfoSync(context) }
+            ?: run {
+                if (pushedTag.isNullOrEmpty()) return
+                val gh = "https://github.com/$GITHUB_OWNER/$GITHUB_REPO/releases/download/$pushedTag/$APK_UNIVERSAL"
+                ReleaseInfo(pushedTag, "", resolveRedirectUrl(gh))
+            }
+        if (info.tagName == currentTag) return
+        showUpdateNotification(context, info)
+    }
+
     // ── Background periodic check setup ───────────────────────────────────
     fun setupBackgroundAutoUpdate(context: Context) {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
-        val req = PeriodicWorkRequestBuilder<AutoUpdateWorker>(6, TimeUnit.HOURS)
+        val req = PeriodicWorkRequestBuilder<AutoUpdateWorker>(1, TimeUnit.HOURS)
             .setConstraints(constraints)
             .build()
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-            "AutoUpdateCheck", ExistingPeriodicWorkPolicy.KEEP, req
+            "AutoUpdateCheck", ExistingPeriodicWorkPolicy.UPDATE, req
         )
     }
 
     // ── GitHub redirect → direct CDN URL resolve করা ─────────────────────
     // GitHub browser_download_url → 302 → release-assets.githubusercontent.com
     // DownloadManager এই redirect sometimes fail করে, তাই আগেই resolve করা হচ্ছে।
-    private fun resolveRedirectUrl(githubUrl: String): String {
+    internal fun resolveRedirectUrl(githubUrl: String): String {
         return try {
             val conn = (URL(githubUrl).openConnection() as HttpURLConnection).apply {
                 instanceFollowRedirects = false   // manually redirect track করব

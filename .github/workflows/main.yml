@@ -140,3 +140,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Release upload হলে phone এ সরাসরি update notification (FCM topic push).
+      # Secret FIREBASE_SERVICE_ACCOUNT না থাকলে step skip হয়, build fail করে না।
+      - name: Push update notification to phones (FCM)
+        if: env.RELEASE_BUILD == 'true' && success()
+        continue-on-error: true
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          RELEASE_TAG: v1.0.${{ github.run_number }}
+        run: |
+          pip install --quiet google-auth requests
+          python3 scripts/send_update_push.py

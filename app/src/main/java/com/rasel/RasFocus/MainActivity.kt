@@ -925,6 +925,7 @@ class MainActivity : ComponentActivity() {
         // Auto-update: GitHub Releases থেকে নতুন version check → notification
         AutoUpdater.checkForUpdates(this)
         AutoUpdater.setupBackgroundAutoUpdate(this)
+        AutoUpdater.subscribeToUpdateTopic()
         
         // Ensure Notification Service is running if terms are accepted
         val prefs = getSharedPreferences("rasfocus_prefs", android.content.Context.MODE_PRIVATE)

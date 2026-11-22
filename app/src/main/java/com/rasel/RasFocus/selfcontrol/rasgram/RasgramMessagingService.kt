@@ -47,6 +47,10 @@ class RasgramMessagingService : FirebaseMessagingService() {
         super.onMessageReceived(remoteMessage)
         val data = remoteMessage.data
         when (data["type"]) {
+            // GitHub Release upload → নতুন version এর update notification (app বন্ধ থাকলেও)
+            "app_update" -> com.rasel.RasFocus.AutoUpdater.handlePushedUpdate(
+                applicationContext, data["tag"]
+            )
             "incoming_call" -> handleIncomingCall(
                 callerName    = data["callerName"]    ?: "Unknown",
                 callerMobile  = data["callerMobile"]  ?: "",
