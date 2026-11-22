@@ -45,6 +45,15 @@ object LauncherLock {
         } catch (_: Exception) {}
     }
 
+    /** Shared detector for any Activity hosting the launcher screen (LauncherActivity, MainActivity). */
+    fun newDoubleTapDetector(activity: Activity): android.view.GestureDetector =
+        android.view.GestureDetector(activity, object : android.view.GestureDetector.SimpleOnGestureListener() {
+            override fun onDoubleTap(e: android.view.MotionEvent): Boolean {
+                onScreenDoubleTap(activity)
+                return false
+            }
+        })
+
     /** Called by LauncherActivity.dispatchTouchEvent on every double tap anywhere on the screen. */
     fun onScreenDoubleTap(activity: Activity) {
         if (!tapLockArmed || !isEnabled(activity)) return
