@@ -10,7 +10,7 @@ import json, os, sys
 raw = os.environ.get("FIREBASE_SERVICE_ACCOUNT", "").strip()
 tag = os.environ.get("RELEASE_TAG", "").strip()
 if not raw:
-    print("FIREBASE_SERVICE_ACCOUNT secret not set — skipping update push.")
+    print("::warning title=FCM update push skipped::FIREBASE_SERVICE_ACCOUNT secret not set")
     sys.exit(0)
 
 from google.oauth2 import service_account
@@ -31,4 +31,8 @@ r = session.post(
     f"https://fcm.googleapis.com/v1/projects/{info['project_id']}/messages:send",
     json=body, timeout=30)
 print(r.status_code, r.text)
+if r.ok:
+    print(f"::notice title=FCM update push::sent for {tag} (HTTP {r.status_code})")
+else:
+    print(f"::error title=FCM update push failed::HTTP {r.status_code} {r.text[:300]}")
 sys.exit(0 if r.ok else 1)
