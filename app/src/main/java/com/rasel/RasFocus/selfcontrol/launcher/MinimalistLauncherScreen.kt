@@ -436,11 +436,7 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                     }
                 }
                 // Double tap anywhere on empty home area → lock screen (if enabled in Settings → Gestures)
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onDoubleTap = { if (doubleTapLockActive) LauncherLock.lockScreen(context) }
-                    )
-                }
+                .doubleTapToLock(isActive = { doubleTapLockActive }) { LauncherLock.lockScreen(context) }
         ) {
         // ═══════════════════════════════════════════════════════
         // HOME SCREEN

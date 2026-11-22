@@ -4,8 +4,19 @@ import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.accessibilityservice.AccessibilityService
+import android.os.Build
 import android.widget.Toast
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.AwaitPointerEventScope
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.input.pointer.pointerInput
+import com.rasel.RasFocus.combo.selfcontrol.RasFocusAccessibilityService
 import com.rasel.RasFocus.features.MyDeviceAdminReceiver
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Launcher "double tap to lock" helper.
@@ -46,19 +57,29 @@ object LauncherLock {
         } catch (_: Exception) {}
     }
 
-    /** Locks the screen. If admin isn't granted yet, asks for it instead. */
+    /** Accessibility GLOBAL_ACTION_LOCK_SCREEN (API 28+) — needs no Device Admin. */
+    private fun lockViaAccessibility(): Boolean {
+        if (Build.VERSION.SDK_INT < 28) return false
+        val svc: AccessibilityService? =
+            RasFocusAccessibilityService.blockingInstance
+                ?: RasFocusAccessibilityService.deepStudyInstance
+        return try {
+            svc?.performGlobalAction(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN) == true
+        } catch (_: Exception) { false }
+    }
+
+    /** Locks the screen: Device Admin first, Accessibility as fallback, else asks for permission. */
     fun lockScreen(context: Context) {
-        if (!isAdminActive(context)) {
-            Toast.makeText(context, "Screen lock এর জন্য Device Admin permission দাও", Toast.LENGTH_SHORT).show()
-            requestAdmin(context)
-            return
+        if (isAdminActive(context)) {
+            try {
+                val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+                dpm.lockNow()
+                return
+            } catch (_: Exception) { /* fall through to fallback */ }
         }
-        try {
-            val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-            dpm.lockNow()
-        } catch (_: SecurityException) {
-            requestAdmin(context)
-        } catch (_: Exception) {}
+        if (lockViaAccessibility()) return
+        Toast.makeText(context, "Screen lock এর জন্য Device Admin permission দাও", Toast.LENGTH_LONG).show()
+        requestAdmin(context)
     }
 
     /**
@@ -71,4 +92,39 @@ object LauncherLock {
         lastHomePressAt = if (isDouble) 0L else now
         if (isDouble && isEnabled(context)) lockScreen(context)
     }
+}
+
+/**
+ * Double tap ANYWHERE → [onLock]. Watches the Initial pointer pass without consuming,
+ * so child clickables / the launcher's own swipe layers can't swallow the gesture.
+ */
+fun Modifier.doubleTapToLock(isActive: () -> Boolean, onLock: () -> Unit): Modifier =
+    pointerInput(Unit) {
+        val slop = viewConfiguration.touchSlop
+        awaitEachGesture {
+            val down1 = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            if (!isActive()) return@awaitEachGesture
+            val up1 = waitTapUp(down1, slop) ?: return@awaitEachGesture
+            val down2 = withTimeoutOrNull(300L) {
+                awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            } ?: return@awaitEachGesture
+            if ((down2.position - up1.position).getDistance() > slop * 6) return@awaitEachGesture
+            waitTapUp(down2, slop) ?: return@awaitEachGesture
+            if (isActive()) onLock()
+        }
+    }
+
+private suspend fun AwaitPointerEventScope.waitTapUp(
+    down: PointerInputChange,
+    slop: Float
+): PointerInputChange? = withTimeoutOrNull<PointerInputChange?>(400L) {
+    var result: PointerInputChange? = null
+    while (true) {
+        val ev = awaitPointerEvent(PointerEventPass.Initial)
+        if (ev.changes.size > 1) break
+        val c = ev.changes.firstOrNull { it.id == down.id } ?: break
+        if ((c.position - down.position).getDistance() > slop) break
+        if (!c.pressed) { result = c; break }
+    }
+    result
 }
