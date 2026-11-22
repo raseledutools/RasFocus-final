@@ -1121,22 +1121,6 @@
             android:resource="@xml/remote_desktop_input_config" />
     </service>
 
-    <!-- Launcher double-tap lock: GLOBAL_ACTION_LOCK_SCREEN behaves like the power button (fingerprint still unlocks).
-         DevicePolicyManager.lockNow() on Android 9+ forces PIN/password after locking, so this is used first.
-         User enables once in Settings > Accessibility > RasFocus Screen Lock. -->
-    <service
-        android:name=".selfcontrol.launcher.LockScreenAccessibilityService"
-        android:exported="true"
-        android:label="RasFocus Screen Lock"
-        android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
-        <intent-filter>
-            <action android:name="android.accessibilityservice.AccessibilityService" />
-        </intent-filter>
-        <meta-data
-            android:name="android.accessibilityservice"
-            android:resource="@xml/accessibility_lockscreen_config" />
-    </service>
-
     <!-- RasGram Screen Share — Remote Input Accessibility Service
          Allows remote peer to inject touch events during a screen share session.
          User must manually enable in Settings > Accessibility > RasGram Remote Input. -->
