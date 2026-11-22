@@ -6,13 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.accessibilityservice.AccessibilityService
 import android.app.Activity
-import android.content.BroadcastReceiver
-import android.content.IntentFilter
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
-import android.os.PowerManager
-import androidx.core.content.ContextCompat
 import android.os.SystemClock
 import android.view.HapticFeedbackConstants
 import android.widget.Toast
@@ -29,7 +23,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Launcher "double tap to lock" helper.
- * Lock via a 1 s screen-timeout (keeps fingerprint unlock, needs "Modify system settings"); Device Admin lockNow() is the last resort.
+ * Locks via Accessibility GLOBAL_ACTION_LOCK_SCREEN (fingerprint-friendly); DevicePolicyManager.lockNow() is the fallback.
  */
 object LauncherLock {
     const val PREFS = "launcher_prefs"
@@ -71,46 +65,69 @@ object LauncherLock {
             .getBoolean(KEY_DOUBLE_TAP_LOCK, true)   // default ON (opt-out), no Settings visit needed
 
     /**
-     * Once per install: ask for "Modify system settings" (needed for the fingerprint-friendly lock);
-     * Device Admin is only the last-resort fallback and is asked for on a later launch.
+     * Once per install: if the feature is on but nothing can lock yet, send the user to the right switch.
+     * API 28+: Accessibility "RasFocus Screen Lock" (power-button style lock, fingerprint works).
+     * API < 28: Device Admin (lockNow has no strong-auth side effect there).
      */
     fun ensureAdminOnce(context: Context) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        cleanupOldDpmCap(context)
-        restoreTimeout(context)   // safety net: never leave the 1-second screen timeout behind
-        if (!isEnabled(context) || canWriteSettings(context)) return
-        if (!prefs.getBoolean("write_prompted", false)) {
-            prefs.edit().putBoolean("write_prompted", true).apply()
-            requestWriteSettings(context)
-            return
+        cleanupLegacyTimeout(context)
+        if (!isEnabled(context)) return
+        if (Build.VERSION.SDK_INT >= 28) {
+            if (hasAccessibilityLock() || prefs.getBoolean("a11y_prompted", false)) return
+            prefs.edit().putBoolean("a11y_prompted", true).apply()
+            requestAccessibility(context)
+        } else {
+            if (isAdminActive(context) || prefs.getBoolean("admin_prompted", false)) return
+            prefs.edit().putBoolean("admin_prompted", true).apply()
+            requestAdmin(context)
         }
-        if (isAdminActive(context) || prefs.getBoolean("admin_prompted", false)) return
-        prefs.edit().putBoolean("admin_prompted", true).apply()
-        requestAdmin(context)
     }
 
-    fun canWriteSettings(context: Context): Boolean =
-        try { android.provider.Settings.System.canWrite(context) } catch (_: Exception) { false }
-
-    /** Opens the "Modify system settings" page for this app. */
-    fun requestWriteSettings(context: Context) {
+    /**
+     * Two earlier test builds shortened the screen timeout (Device Admin cap / system setting).
+     * Runs once: lifts any such cap and puts a saved screen timeout back, so nothing is left at 1 second.
+     */
+    private fun cleanupLegacyTimeout(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (prefs.getBoolean("legacy_timeout_cleaned", false)) return
+        prefs.edit().putBoolean("legacy_timeout_cleaned", true).apply()
         try {
-            Toast.makeText(context, "Fingerprint দিয়ে unlock এর জন্য \"Modify system settings\" চালু করো", Toast.LENGTH_LONG).show()
+            if (isAdminActive(context)) {
+                val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+                dpm.setMaximumTimeToLock(ComponentName(context, MyDeviceAdminReceiver::class.java), 0L)
+            }
+        } catch (_: Exception) {}
+        try {
+            val orig = prefs.getInt("orig_screen_timeout", -1)
+            val cr = context.contentResolver
+            if (orig > 0 && android.provider.Settings.System.canWrite(context) &&
+                android.provider.Settings.System.getInt(cr, android.provider.Settings.System.SCREEN_OFF_TIMEOUT, orig) == 1000)
+                android.provider.Settings.System.putInt(cr, android.provider.Settings.System.SCREEN_OFF_TIMEOUT, orig)
+        } catch (_: Exception) {}
+    }
+
+    /** Opens Accessibility settings so the user can switch on "RasFocus Screen Lock". */
+    fun requestAccessibility(context: Context) {
+        try {
+            Toast.makeText(
+                context,
+                "Fingerprint দিয়ে unlock এর জন্য Accessibility → \"RasFocus Screen Lock\" চালু করো",
+                Toast.LENGTH_LONG
+            ).show()
             context.startActivity(
-                Intent(android.provider.Settings.ACTION_MANAGE_WRITE_SETTINGS)
-                    .setData(android.net.Uri.parse("package:" + context.packageName))
+                Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             )
         } catch (_: Exception) {}
     }
 
-    /** An earlier build capped the timeout via Device Admin; make sure no such cap is left behind (runs once). */
-    private fun cleanupOldDpmCap(context: Context) {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        if (prefs.getBoolean("dpm_cap_cleaned", false)) return
-        prefs.edit().putBoolean("dpm_cap_cleaned", true).apply()
-        try { if (isAdminActive(context)) dpm(context).setMaximumTimeToLock(adminComponent(context), 0L) } catch (_: Exception) {}
-    }
+    /** True when some running accessibility service of ours can do the power-button style lock. */
+    private fun hasAccessibilityLock(): Boolean =
+        Build.VERSION.SDK_INT >= 28 && (
+            LockScreenAccessibilityService.isRunning() ||
+            RasFocusAccessibilityService.blockingInstance != null ||
+            RasFocusAccessibilityService.deepStudyInstance != null)
 
     /** True if any of this app's device-admin receivers is active. */
     fun isAdminActive(context: Context): Boolean {
@@ -135,9 +152,10 @@ object LauncherLock {
         } catch (_: Exception) {}
     }
 
-    /** Optional: if one of the app's accessibility services is already running, use its power-button style lock. */
+    /** Accessibility GLOBAL_ACTION_LOCK_SCREEN (API 28+): same as the power button → fingerprint/face still unlock. */
     private fun lockViaAccessibility(): Boolean {
         if (Build.VERSION.SDK_INT < 28) return false
+        if (LockScreenAccessibilityService.lock()) return true
         val svc: AccessibilityService? =
             RasFocusAccessibilityService.blockingInstance
                 ?: RasFocusAccessibilityService.deepStudyInstance
@@ -146,81 +164,10 @@ object LauncherLock {
         } catch (_: Exception) { false }
     }
 
-    private const val KEY_ORIG_TIMEOUT = "orig_screen_timeout"   // -1 = nothing pending
-    private const val TEMP_TIMEOUT_MS = 1000
-    private val mainHandler = Handler(Looper.getMainLooper())
-    private var ttlReceiver: BroadcastReceiver? = null
-    private var ttlCheck: Runnable? = null
-
-    private fun dpm(context: Context) =
-        context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-
-    private fun adminComponent(context: Context) = ComponentName(context, MyDeviceAdminReceiver::class.java)
-
     /**
-     * Fingerprint-friendly lock without Accessibility.
-     * DevicePolicyManager.lockNow() makes Android 9+ demand PIN/password next, so instead the system
-     * screen-off timeout is lowered to 1 s (needs "Modify system settings"). The screen then turns off and
-     * locks exactly like a normal timeout, and the original timeout is put back as soon as the screen is off.
-     * Returns false when the permission is missing; the caller then falls back to lockNow().
+     * Locks the screen. Accessibility first (power-button behaviour, fingerprint works);
+     * Device Admin lockNow() only as a fallback because on Android 9+ it forces PIN/password after locking.
      */
-    private fun lockViaTimeout(context: Context): Boolean {
-        if (!canWriteSettings(context)) return false
-        val app = context.applicationContext
-        return try {
-            val cr = app.contentResolver
-            val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            if (prefs.getInt(KEY_ORIG_TIMEOUT, -1) < 0) {
-                val orig = android.provider.Settings.System.getInt(cr, android.provider.Settings.System.SCREEN_OFF_TIMEOUT, 60000)
-                prefs.edit().putInt(KEY_ORIG_TIMEOUT, if (orig == TEMP_TIMEOUT_MS) 60000 else orig).apply()
-            }
-            if (!android.provider.Settings.System.putInt(cr, android.provider.Settings.System.SCREEN_OFF_TIMEOUT, TEMP_TIMEOUT_MS)) {
-                restoreTimeout(app); return false
-            }
-            ttlReceiver?.let { try { app.unregisterReceiver(it) } catch (_: Exception) {} }
-            val rc = object : BroadcastReceiver() {
-                override fun onReceive(c: Context, i: Intent) { restoreTimeout(app) }
-            }
-            ContextCompat.registerReceiver(app, rc, IntentFilter(Intent.ACTION_SCREEN_OFF), ContextCompat.RECEIVER_NOT_EXPORTED)
-            ttlReceiver = rc
-            ttlCheck?.let { mainHandler.removeCallbacks(it) }
-            val check = Runnable {
-                val stillOn = try { (app.getSystemService(Context.POWER_SERVICE) as PowerManager).isInteractive } catch (_: Exception) { false }
-                restoreTimeout(app)
-                if (stillOn) {   // this phone ignored the 1 s timeout → last resort (PIN will be asked)
-                    Toast.makeText(app, "Ei phone e timeout lock kaj korena, PIN lagbe", Toast.LENGTH_LONG).show()
-                    try { dpm(app).lockNow() } catch (_: Exception) {}
-                }
-            }
-            ttlCheck = check
-            mainHandler.postDelayed(check, 4000L)
-            true
-        } catch (_: Exception) {
-            restoreTimeout(app)
-            false
-        }
-    }
-
-    /** Puts the original screen timeout back (no-op when none is pending). Safe to call any time. */
-    fun restoreTimeout(context: Context) {
-        val app = context.applicationContext
-        ttlReceiver?.let { try { app.unregisterReceiver(it) } catch (_: Exception) {} }
-        ttlReceiver = null
-        ttlCheck?.let { mainHandler.removeCallbacks(it) }
-        ttlCheck = null
-        val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val orig = prefs.getInt(KEY_ORIG_TIMEOUT, -1)
-        if (orig < 0) return
-        try {
-            val cr = app.contentResolver
-            // only undo our own change — if the user changed the timeout meanwhile, leave it alone
-            if (android.provider.Settings.System.getInt(cr, android.provider.Settings.System.SCREEN_OFF_TIMEOUT, orig) == TEMP_TIMEOUT_MS)
-                android.provider.Settings.System.putInt(cr, android.provider.Settings.System.SCREEN_OFF_TIMEOUT, orig)
-        } catch (_: Exception) {}
-        prefs.edit().putInt(KEY_ORIG_TIMEOUT, -1).apply()
-    }
-
-    /** Locks: running accessibility (if any) → 1 s timeout trick (fingerprint ok) → lockNow() (PIN) → ask for permission. */
     fun lockScreen(context: Context) {
         // Activity-level + Compose-level detectors may both fire — lock only once
         val now = SystemClock.elapsedRealtime()
@@ -228,15 +175,25 @@ object LauncherLock {
         lastLockAt = now
         buzz(context)
         if (lockViaAccessibility()) return
-        if (lockViaTimeout(context)) return
         if (isAdminActive(context)) {
             try {
-                dpm(context).lockNow()
-                Toast.makeText(context, "Fingerprint এ খুলতে \"Modify system settings\" চালু করো (এখন PIN লাগবে)", Toast.LENGTH_LONG).show()
+                val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+                dpm.lockNow()
+                if (Build.VERSION.SDK_INT >= 28) {
+                    Toast.makeText(
+                        context,
+                        "Fingerprint এ খুলতে: Accessibility → \"RasFocus Screen Lock\" চালু করো",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
                 return
             } catch (_: Exception) { /* fall through to permission request */ }
         }
-        requestWriteSettings(context)
+        if (Build.VERSION.SDK_INT >= 28) requestAccessibility(context)
+        else {
+            Toast.makeText(context, "Screen lock এর জন্য Device Admin permission দাও", Toast.LENGTH_LONG).show()
+            requestAdmin(context)
+        }
     }
 
     /**
