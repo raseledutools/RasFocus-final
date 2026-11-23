@@ -871,17 +871,6 @@ private fun generateMockStats(): List<DailyStats> {
 // ============================================================
 class MainActivity : ComponentActivity() {
 
-    // Launcher screen (nav route "launcher") এর জন্য: স্ক্রিনের যেকোনো জায়গায় double tap → lock
-    // (শুধু তখনই কাজ করে যখন launcher screen দেখা যাচ্ছে এবং Settings এ toggle ON)
-    private val launcherDoubleTapDetector by lazy {
-        com.rasel.RasFocus.selfcontrol.launcher.LauncherLock.newDoubleTapDetector(this)
-    }
-
-    override fun dispatchTouchEvent(ev: android.view.MotionEvent?): Boolean {
-        if (ev != null) { try { launcherDoubleTapDetector.onTouchEvent(ev) } catch (_: Exception) {} }
-        return super.dispatchTouchEvent(ev)
-    }
-
     // ✅ Modern ActivityResultLauncher — onActivityResult deprecated, তাই এটা ব্যবহার করছি
     var googleSignInCallback: ((GoogleSignInAccount?) -> Unit)? = null
 

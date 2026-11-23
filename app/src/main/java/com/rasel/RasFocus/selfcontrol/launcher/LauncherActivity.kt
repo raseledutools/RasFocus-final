@@ -1,8 +1,6 @@
 package com.rasel.RasFocus.selfcontrol.launcher
 
 import android.os.Bundle
-import android.view.GestureDetector
-import android.view.MotionEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import android.graphics.Color
@@ -20,21 +18,6 @@ import com.rasel.RasFocus.ui.theme.RasFocusAppTheme
  * without routing through the main app navigation stack.
  */
 class LauncherActivity : ComponentActivity() {
-    // Double tap anywhere → lock. Activity level, so Compose children can never swallow the touches.
-    private val doubleTapDetector by lazy {
-        GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onDoubleTap(e: MotionEvent): Boolean {
-                LauncherLock.onScreenDoubleTap(this@LauncherActivity)
-                return false
-            }
-        })
-    }
-
-    override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
-        if (ev != null) { try { doubleTapDetector.onTouchEvent(ev) } catch (_: Exception) {} }
-        return super.dispatchTouchEvent(ev)
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Pure black status + navigation bars (light/white icons), no contrast scrim
@@ -51,8 +34,6 @@ class LauncherActivity : ComponentActivity() {
             isAppearanceLightStatusBars = false
             isAppearanceLightNavigationBars = false
         }
-        // fresh launch only (not rotation/recreate) — real Home press
-        if (savedInstanceState == null && isHomeIntent(intent)) LauncherLock.onHomePressed(this)
         setContent {
             RasFocusAppTheme {
                 MinimalistLauncherScreen(navController = null)
@@ -65,14 +46,9 @@ class LauncherActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         val isReload = intent.getBooleanExtra("reload_shortcuts", false)
-        if (!isReload && isHomeIntent(intent)) LauncherLock.onHomePressed(this)
         if (isReload) {
             intent.removeExtra("reload_shortcuts")
             recreate()
         }
     }
-
-    private fun isHomeIntent(i: android.content.Intent?): Boolean =
-        i?.action == android.content.Intent.ACTION_MAIN &&
-            i.hasCategory(android.content.Intent.CATEGORY_HOME)
 }

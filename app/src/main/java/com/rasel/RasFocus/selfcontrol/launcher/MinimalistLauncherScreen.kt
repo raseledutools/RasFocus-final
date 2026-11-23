@@ -200,16 +200,6 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
     var btnRightPkg   by remember { mutableStateOf(prefs.getString(KEY_BTN_R, "CAMERA") ?: "CAMERA") }
     var clockPkg      by remember { mutableStateOf(prefs.getString(KEY_CLOCK_PKG, "") ?: "") }
     var autoKeyboard  by rememberSaveable { mutableStateOf(prefs.getBoolean(KEY_AUTO_KB, false)) }
-    var doubleTapLock by rememberSaveable { mutableStateOf(prefs.getBoolean(LauncherLock.KEY_DOUBLE_TAP_LOCK, true)) }
-    // Double-tap lock শুধু তখনই কাজ করবে যখন কোনো overlay (sidebar/settings/dialog) খোলা নেই
-    val doubleTapLockActive by rememberUpdatedState(
-        doubleTapLock && !showSettings && !showSidebar && longPressedApp == null && pickerSlot == PickerSlot.NONE
-    )
-    // Activity-level double-tap detector reads this flag (overlay খোলা থাকলে lock হবে না)
-    val tapLockArmed = doubleTapLock && !showSettings && !showSidebar && longPressedApp == null && pickerSlot == PickerSlot.NONE
-    SideEffect { LauncherLock.tapLockArmed = tapLockArmed }
-    LaunchedEffect(Unit) { LauncherLock.ensureAdminOnce(context) }
-    DisposableEffect(Unit) { onDispose { LauncherLock.tapLockArmed = false } }
 
     val theme       = LauncherTheme.entries[themeIdx.coerceIn(0, LauncherTheme.entries.size - 1)]
     val appFontSize = when (fontSize) { 0 -> 16.sp; 2 -> 26.sp; else -> 21.sp }
@@ -441,8 +431,6 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                         }
                     }
                 }
-                // Double tap anywhere on empty home area → lock screen (if enabled in Settings → Gestures)
-                .doubleTapToLock(isActive = { doubleTapLockActive }) { LauncherLock.lockScreen(context) }
         ) {
         // ═══════════════════════════════════════════════════════
         // HOME SCREEN
@@ -665,12 +653,6 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                 onFontChange    = { fontSize = it; prefs.edit().putInt(KEY_FONT, it).apply() },
                 onIconToggle    = { showIcons = it; prefs.edit().putBoolean(KEY_ICONS, it).apply() },
                 onAutoKbToggle  = { autoKeyboard = it; prefs.edit().putBoolean(KEY_AUTO_KB, it).apply() },
-                doubleTapLock   = doubleTapLock,
-                onDoubleTapLockToggle = { on ->
-                    doubleTapLock = on
-                    prefs.edit().putBoolean(LauncherLock.KEY_DOUBLE_TAP_LOCK, on).apply()
-                    if (on && !LauncherLock.isAdminActive(context)) LauncherLock.requestAdmin(context)
-                },
                 onUnhide        = { pkg ->
                     val u = hiddenPkgs.toMutableSet(); u.remove(pkg); hiddenPkgs = u
                     prefs.edit().putStringSet(KEY_HIDDEN, u).apply()
@@ -1940,7 +1922,6 @@ fun LauncherSettingsSheet(
     fontSize:      Int,
     showIcons:     Boolean,
     autoKeyboard:  Boolean,
-    doubleTapLock: Boolean,
     hiddenPkgs:    Set<String>,
     allApps:       List<AppInfo>,
     theme:         LauncherTheme,
@@ -1948,7 +1929,6 @@ fun LauncherSettingsSheet(
     onFontChange:     (Int) -> Unit,
     onIconToggle:     (Boolean) -> Unit,
     onAutoKbToggle:   (Boolean) -> Unit,
-    onDoubleTapLockToggle: (Boolean) -> Unit,
     onUnhide:         (String) -> Unit,
     onBack:           () -> Unit,
     onDismiss:        () -> Unit
@@ -2051,12 +2031,6 @@ fun LauncherSettingsSheet(
                 SettingsDivider()
 
                 SettingsExpandableSection("Gestures", expandGestures, { expandGestures = !expandGestures }) {
-                    SettingsToggleRow(
-                        title    = "Double tap to lock",
-                        subtitle = "Home button দুইবার চাপলে বা স্ক্রিনের ফাঁকা জায়গায় double tap করলে screen lock হবে (Device Admin লাগবে)",
-                        checked  = doubleTapLock,
-                        onToggle = onDoubleTapLockToggle
-                    )
                     SettingsInfoRow("Swipe left  →  Open Apps sidebar")
                     SettingsInfoRow("Swipe right (in sidebar)  →  Close")
                     SettingsInfoRow("Swipe down  →  Notifications")
