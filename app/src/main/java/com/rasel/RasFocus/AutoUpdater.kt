@@ -238,35 +238,13 @@ object AutoUpdater {
     // ── BroadcastReceiver: notification tap → DownloadManager দিয়ে APK নামায় ──
     class UpdateDownloadReceiver : BroadcastReceiver() {
         override fun onReceive(ctx: Context, intent: Intent) {
-            val apkUrl   = intent.getStringExtra(EXTRA_APK_URL)  ?: return
-            val tagName  = intent.getStringExtra(EXTRA_TAG_NAME) ?: "update"
-            val fileName = "RasFocus-$tagName.apk"
-
-            val request = DownloadManager.Request(Uri.parse(apkUrl)).apply {
-                setTitle("RasFocus $tagName")
-                setDescription("আপডেট ডাউনলোড হচ্ছে…")
-                setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
-                setMimeType("application/vnd.android.package-archive")
-                setAllowedNetworkTypes(
-                    DownloadManager.Request.NETWORK_WIFI or DownloadManager.Request.NETWORK_MOBILE
-                )
+            // পুরনো notification এর জন্য: external download না করে app এর UpdateActivity খোলে
+            val i = Intent(ctx, UpdateActivity::class.java).apply {
+                putExtra(EXTRA_APK_URL,  intent.getStringExtra(EXTRA_APK_URL))
+                putExtra(EXTRA_TAG_NAME, intent.getStringExtra(EXTRA_TAG_NAME) ?: "update")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
-            val dm = ctx.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-            dm.enqueue(request)
-
-            // Download complete হলে install prompt দেখাবে
-            val receiver = InstallOnCompleteReceiver(fileName)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                ctx.registerReceiver(
-                    receiver,
-                    IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
-                    Context.RECEIVER_NOT_EXPORTED
-                )
-            } else {
-                @Suppress("UnspecifiedRegisterReceiverFlag")
-                ctx.registerReceiver(receiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
-            }
+            try { ctx.startActivity(i) } catch (e: Exception) { Log.e("AutoUpdater", "open UpdateActivity failed", e) }
         }
     }
 
@@ -315,9 +293,28 @@ object AutoUpdater {
             )
         }
         val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        getDownloadedFile(context, info.tagName)?.delete()   // পুরনো file মুছে দাও
+        cleanupOldApks(context, minAgeMs = 0)   // আগের সব APK মুছে — একটাই file থাকবে
         val downloadId = dm.enqueue(request)
         onDownloadId(downloadId)
+    }
+
+    private val OLD_APK = Regex("RasFocus[-_].*\\.apk(\\.part)?")
+
+    /** জমে থাকা পুরনো update APK মুছে ফেলে (app-private + public Downloads)। */
+    fun cleanupOldApks(context: Context, minAgeMs: Long = 10 * 60 * 1000L) {
+        val now = System.currentTimeMillis()
+        val dirs = listOfNotNull(
+            File(context.cacheDir, "update"),
+            context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
+            try { Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS) } catch (_: Exception) { null }
+        )
+        for (d in dirs) {
+            try {
+                d.listFiles()?.forEach { f ->
+                    if (f.isFile && OLD_APK.matches(f.name) && now - f.lastModified() >= minAgeMs) f.delete()
+                }
+            } catch (_: Exception) { }
+        }
     }
 
     fun getDownloadedFile(context: Context, tag: String): File? {

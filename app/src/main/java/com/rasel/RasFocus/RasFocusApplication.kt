@@ -21,6 +21,7 @@ class RasFocusApplication : Application() {
         
         // Update notification: app খোলা না লাগলেও যেন কাজ করে — process শুরু হলেই
         // (boot / FCM wake / WorkManager) topic subscribe + hourly check schedule হয়।
+        Thread { try { com.rasel.RasFocus.AutoUpdater.cleanupOldApks(this) } catch (_: Exception) { } }.start()
         try { com.rasel.RasFocus.AutoUpdater.subscribeToUpdateTopic() } catch (_: Exception) { }
         try { com.rasel.RasFocus.AutoUpdater.setupBackgroundAutoUpdate(this) } catch (_: Exception) { }
     }
