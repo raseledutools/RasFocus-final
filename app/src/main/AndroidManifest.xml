@@ -930,6 +930,13 @@
         </intent-filter>
     </receiver>
 
+    <activity
+        android:name=".UpdateActivity"
+        android:exported="false"
+        android:launchMode="singleTop"
+        android:configChanges="orientation|screenSize|keyboardHidden"
+        android:theme="@style/Theme.RasFocus" />
+
     <!-- Notification tap → DownloadManager দিয়ে APK নামায় (Rajib Tutorial style) -->
     <receiver
         android:name=".AutoUpdater$UpdateDownloadReceiver"

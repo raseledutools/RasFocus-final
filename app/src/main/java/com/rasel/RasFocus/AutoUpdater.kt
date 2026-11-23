@@ -203,13 +203,14 @@ object AutoUpdater {
         val lastNotifiedTag = prefs.getString(LAST_NOTIFIED_TAG_KEY, "") ?: ""
         if (info.tagName == lastNotifiedTag) return   // এই version এর notification আগেই গেছে
 
-        // Tap → DownloadReceiver → DownloadManager APK নামাবে → install prompt
-        val downloadIntent = Intent(context, UpdateDownloadReceiver::class.java).apply {
+        // Tap → UpdateActivity (app খোলে, ভেতরেই download, শেষে install popup)
+        val updateIntent = Intent(context, UpdateActivity::class.java).apply {
             putExtra(EXTRA_APK_URL,  info.downloadUrl)
             putExtra(EXTRA_TAG_NAME, info.tagName)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
-        val pi = PendingIntent.getBroadcast(
-            context, 0, downloadIntent,
+        val pi = PendingIntent.getActivity(
+            context, 0, updateIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
