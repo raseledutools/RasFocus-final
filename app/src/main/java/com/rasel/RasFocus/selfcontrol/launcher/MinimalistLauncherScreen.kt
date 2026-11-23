@@ -172,6 +172,7 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
     var showSidebar   by rememberSaveable { mutableStateOf(false) }
     var showSettings  by rememberSaveable { mutableStateOf(false) }
     var longPressedApp by remember { mutableStateOf<AppInfo?>(null) }
+    var reorderPkg by remember { mutableStateOf<String?>(null) }
     var pickerSlot    by remember { mutableStateOf(PickerSlot.NONE) }
     var query         by rememberSaveable { mutableStateOf("") }
 
@@ -497,6 +498,8 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                 onLongPressClockRing   = { pickerSlot = PickerSlot.CLOCK },
                 onLongPressBtnLeft     = { pickerSlot = PickerSlot.BTN_LEFT },
                 onLongPressBtnRight    = { pickerSlot = PickerSlot.BTN_RIGHT },
+                reorderPkg        = reorderPkg,
+                onReorderStarted  = { reorderPkg = null },
                 onReorder = { reorderedApps ->
                     val newOrder = reorderedApps.map { it.packageName }.toMutableList()
                     pinnedPkgs = newOrder
@@ -598,6 +601,9 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                 },
                 onDismiss = { longPressedApp = null },
                 extraActions = {
+                    ContextMenuRow(Icons.Default.UnfoldMore, "Reorder Home") {
+                        reorderPkg = app.packageName; longPressedApp = null
+                    }
                     // Always show Remove from Home since these ARE pinned apps
                     ContextMenuRow(Icons.Default.PushPin, "Remove from Home") {
                         val u = pinnedPkgs.toMutableList(); u.remove(app.packageName); pinnedPkgs = u
@@ -701,7 +707,9 @@ fun HomeScreen(
     onLongPressClockRing: () -> Unit,
     onLongPressBtnLeft:   () -> Unit,
     onLongPressBtnRight:  () -> Unit,
-    onReorder:            (List<AppInfo>) -> Unit = {}
+    onReorder:            (List<AppInfo>) -> Unit = {},
+    reorderPkg:           String? = null,
+    onReorderStarted:     () -> Unit = {}
 ) {
     // Reorder state — long press একটা app → reorder mode চালু,
     // তারপর যেকোনো app এ tap → সেই position এ move, Done tap → save
@@ -710,6 +718,15 @@ fun HomeScreen(
     var localOrder by remember(pinnedApps) { mutableStateOf(pinnedApps.toMutableList()) }
     LaunchedEffect(pinnedApps) {
         if (!reorderMode) localOrder = pinnedApps.toMutableList()
+    }
+
+    // Long-press menu থেকে "Reorder" চাপলে reorder mode চালু
+    LaunchedEffect(reorderPkg) {
+        reorderPkg?.let { pkg ->
+            reorderMode = true
+            selectedIndex = localOrder.indexOfFirst { it.packageName == pkg }.takeIf { it >= 0 }
+            onReorderStarted()
+        }
     }
 
     // Back press → reorder mode cancel
@@ -819,9 +836,8 @@ fun HomeScreen(
                                     }
                                 },
                                 onLongClick = {
-                                    // long press → reorder mode চালু + এই app selected
-                                    reorderMode   = true
-                                    selectedIndex = index
+                                    // long press → menu (App Info / Uninstall / Reorder ...)
+                                    if (reorderMode) selectedIndex = index else onLongPress(app)
                                 }
                             )
                             .pointerInput(reorderMode) {
@@ -1759,6 +1775,22 @@ fun AppContextMenu(
             }
 
             extraActions?.invoke()
+
+            // App Info + Uninstall
+            ContextMenuRow(Icons.Default.Info, "App Info") {
+                try {
+                    context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        android.net.Uri.parse("package:${app.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                } catch (_: Exception) {}
+                onDismiss()
+            }
+            ContextMenuRow(Icons.Default.Delete, "Uninstall") {
+                try {
+                    context.startActivity(Intent(Intent.ACTION_DELETE,
+                        android.net.Uri.parse("package:${app.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                } catch (_: Exception) {}
+                onDismiss()
+            }
 
             if (showRename) {
                 Spacer(Modifier.height(8.dp))
