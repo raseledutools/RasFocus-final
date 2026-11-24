@@ -41,6 +41,8 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
@@ -172,7 +174,6 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
     var showSidebar   by rememberSaveable { mutableStateOf(false) }
     var showSettings  by rememberSaveable { mutableStateOf(false) }
     var longPressedApp by remember { mutableStateOf<AppInfo?>(null) }
-    var reorderPkg by remember { mutableStateOf<String?>(null) }
     var pickerSlot    by remember { mutableStateOf(PickerSlot.NONE) }
     var query         by rememberSaveable { mutableStateOf("") }
 
@@ -330,6 +331,7 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                         var directionLocked  = false
                         var isHorizontal     = false
                         var gestureConsuming = false
+                        var consumedByChild  = false   // item drag / list scroll এ child consume করলে sidebar/notification gesture বন্ধ
                         val gestureStartTime = System.currentTimeMillis()
 
                         // Snapshot showSidebar at gesture start — don't read live state mid-drag
@@ -338,6 +340,12 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                         while (true) {
                             val event  = awaitPointerEvent()
                             val change = event.changes.firstOrNull() ?: break
+
+                            if (change.isConsumed) consumedByChild = true
+                            if (consumedByChild) {
+                                if (!change.pressed) { gestureActiveRef.value = false; break }
+                                continue
+                            }
 
                             if (!change.pressed) {
                                 // ── Finger up: velocity + distance based snap ─────────────
@@ -486,8 +494,6 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                 onLongPressClockRing   = { pickerSlot = PickerSlot.CLOCK },
                 onLongPressBtnLeft     = { pickerSlot = PickerSlot.BTN_LEFT },
                 onLongPressBtnRight    = { pickerSlot = PickerSlot.BTN_RIGHT },
-                reorderPkg        = reorderPkg,
-                onReorderStarted  = { reorderPkg = null },
                 onReorder = { reorderedApps ->
                     val newOrder = reorderedApps.map { it.packageName }.toMutableList()
                     pinnedPkgs = newOrder
@@ -589,9 +595,6 @@ fun MinimalistLauncherScreen(navController: NavController? = null) {
                 },
                 onDismiss = { longPressedApp = null },
                 extraActions = {
-                    ContextMenuRow(Icons.Default.UnfoldMore, "Reorder Home") {
-                        reorderPkg = app.packageName; longPressedApp = null
-                    }
                     // Always show Remove from Home since these ARE pinned apps
                     ContextMenuRow(Icons.Default.PushPin, "Remove from Home") {
                         val u = pinnedPkgs.toMutableList(); u.remove(app.packageName); pinnedPkgs = u
@@ -689,32 +692,62 @@ fun HomeScreen(
     onLongPressClockRing: () -> Unit,
     onLongPressBtnLeft:   () -> Unit,
     onLongPressBtnRight:  () -> Unit,
-    onReorder:            (List<AppInfo>) -> Unit = {},
-    reorderPkg:           String? = null,
-    onReorderStarted:     () -> Unit = {}
+    onReorder:            (List<AppInfo>) -> Unit = {}
 ) {
-    // Reorder state — long press একটা app → reorder mode চালু,
-    // তারপর যেকোনো app এ tap → সেই position এ move, Done tap → save
-    var reorderMode       by remember { mutableStateOf(false) }
-    var selectedIndex     by remember { mutableStateOf<Int?>(null) }   // যে app টা move করতে চাই
-    var localOrder by remember(pinnedApps) { mutableStateOf(pinnedApps.toMutableList()) }
-    LaunchedEffect(pinnedApps) {
-        if (!reorderMode) localOrder = pinnedApps.toMutableList()
+    // ── Drag & drop reorder ───────────────────────────────────────────────
+    // App এর উপর long press করে ধরে রাখলে app উঠে আসে → আঙুলের সাথে সরান → ছাড়লে ওই জায়গায় বসে যায়।
+    // Long press করে না নড়িয়ে ছেড়ে দিলে আগের মতো options menu খোলে (rename / remove ...)।
+    val listState = rememberLazyListState()
+    val haptic    = LocalHapticFeedback.current
+    val currentOnReorder   by rememberUpdatedState(onReorder)
+    val currentOnLongPress by rememberUpdatedState(onLongPress)
+    val currentPinned      by rememberUpdatedState(pinnedApps)
+    var localOrder by remember { mutableStateOf(pinnedApps) }
+    var draggedKey by remember { mutableStateOf<String?>(null) }
+    var dragOffset by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(pinnedApps) { if (draggedKey == null) localOrder = pinnedApps }
+
+    // dragged item এর center যে item এর উপর এসেছে, তার সাথে জায়গা বদল
+    fun maybeSwap() {
+        val key = draggedKey ?: return
+        val items = listState.layoutInfo.visibleItemsInfo
+        val dragged = items.firstOrNull { it.key == key } ?: return
+        val center = dragged.offset + dragged.size / 2f + dragOffset
+        val target = items.firstOrNull {
+            it.key != key && it.key is String && center >= it.offset && center <= it.offset + it.size
+        } ?: return
+        val from = localOrder.indexOfFirst { it.packageName == key }
+        val to   = localOrder.indexOfFirst { it.packageName == target.key }
+        if (from < 0 || to < 0 || from == to) return
+        // আগের swap এর layout এখনো update না হলে skip (double swap / flicker আটকাতে)
+        if (dragged.index != from || target.index != to) return
+        val newOffset = if (to > from) target.offset + target.size - dragged.size else target.offset
+        dragOffset += (dragged.offset - newOffset).toFloat()
+        localOrder = localOrder.toMutableList().apply { add(to, removeAt(from)) }
     }
 
-    // Long-press menu থেকে "Reorder" চাপলে reorder mode চালু
-    LaunchedEffect(reorderPkg) {
-        reorderPkg?.let { pkg ->
-            reorderMode = true
-            selectedIndex = localOrder.indexOfFirst { it.packageName == pkg }.takeIf { it >= 0 }
-            onReorderStarted()
+    // List এর উপর/নিচের কিনারায় ধরে রাখলে auto-scroll
+    LaunchedEffect(draggedKey) {
+        while (draggedKey != null) {
+            val key  = draggedKey
+            val info = listState.layoutInfo
+            val item = info.visibleItemsInfo.firstOrNull { it.key == key }
+            if (item != null) {
+                val top    = item.offset + dragOffset
+                val bottom = top + item.size
+                val dy = when {
+                    top < info.viewportStartOffset + 60f  -> -14f
+                    bottom > info.viewportEndOffset - 60f -> 14f
+                    else -> 0f
+                }
+                if (dy != 0f) {
+                    val consumed = listState.scrollBy(dy)
+                    dragOffset += consumed
+                    maybeSwap()
+                }
+            }
+            delay(16)
         }
-    }
-
-    // Back press → reorder mode cancel
-    BackHandler(enabled = reorderMode) {
-        reorderMode   = false
-        selectedIndex = null
     }
 
     Box(
@@ -752,6 +785,7 @@ fun HomeScreen(
         // clock (180) + top pad (48) + spacer (10) + widget (~80) + spacer (8)
         val clockSectionHeight = 48.dp + 180.dp + 12.dp
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopStart)
@@ -771,127 +805,86 @@ fun HomeScreen(
                     )
                 }
             } else {
-                itemsIndexed(localOrder, key = { _, app -> app.packageName }) { index, app ->
-                    val isSelected   = reorderMode && selectedIndex == index
-                    val isTargetSlot = reorderMode && selectedIndex != null && selectedIndex != index
-
-                    var homeAppPressed by remember { mutableStateOf(false) }
-                    val homeAppBgAlpha by animateFloatAsState(
-                        targetValue   = if (homeAppPressed) 0.13f else 0f,
-                        animationSpec = tween(80),
-                        label         = "homeAppBg"
-                    )
+                itemsIndexed(localOrder, key = { _, app -> app.packageName }) { _, app ->
+                    val isDragging = draggedKey == app.packageName
+                    val interaction = remember { MutableInteractionSource() }
+                    val pressed by interaction.collectIsPressedAsState()
+                    val hi = isDragging || pressed
 
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .then(
-                                when {
-                                    isSelected   -> Modifier.drawBehind { drawRect(ACCENT.copy(alpha = 0.18f)) }
-                                    isTargetSlot -> Modifier.drawBehind { drawRect(Color.White.copy(alpha = 0.05f)) }
-                                    homeAppPressed -> Modifier.drawBehind { drawRect(Color.White.copy(alpha = homeAppBgAlpha)) }
-                                    else         -> Modifier
-                                }
+                            // বাকি app গুলো smooth ভাবে সরে জায়গা করে দেয়; যেটা drag হচ্ছে সেটা snap (আঙুল follow করে)
+                            .animateItemPlacement(
+                                animationSpec = if (isDragging) snap<IntOffset>() else spring(
+                                    stiffness = Spring.StiffnessMediumLow,
+                                    visibilityThreshold = IntOffset.VisibilityThreshold
+                                )
                             )
-                            .combinedClickable(
-                                onClick = {
-                                    when {
-                                        // reorder mode — selected app আছে → move করো
-                                        reorderMode && selectedIndex != null && selectedIndex != index -> {
-                                            val nl   = localOrder.toMutableList()
-                                            val from = selectedIndex!!
-                                            nl.add(index, nl.removeAt(from))
-                                            localOrder = nl
-                                            onReorder(nl)
-                                            selectedIndex = null          // deselect — আরেকটা move করা যাবে
-                                        }
-                                        // reorder mode — এই app ই selected → deselect
-                                        reorderMode && selectedIndex == index -> {
-                                            selectedIndex = null
-                                        }
-                                        // reorder mode — কোনো selection নেই → এটা select করো
-                                        reorderMode -> {
-                                            selectedIndex = index
-                                        }
-                                        // normal mode — launch
-                                        else -> onLaunch(app)
-                                    }
-                                },
-                                onLongClick = {
-                                    // long press → menu (App Info / Uninstall / Reorder ...)
-                                    if (reorderMode) selectedIndex = index else onLongPress(app)
-                                }
+                            .zIndex(if (isDragging) 1f else 0f)
+                            .graphicsLayer {
+                                translationY = if (isDragging) dragOffset else 0f
+                                val sc = if (isDragging) 1.04f else 1f
+                                scaleX = sc; scaleY = sc
+                                shadowElevation = if (isDragging) 24f else 0f
+                            }
+                            .drawBehind {
+                                if (isDragging) drawRect(ACCENT.copy(alpha = 0.18f))
+                                else if (pressed) drawRect(Color.White.copy(alpha = 0.13f))
+                            }
+                            .clickable(
+                                interactionSource = interaction,
+                                indication        = null,
+                                onClick           = { onLaunch(app) }
                             )
-                            .pointerInput(reorderMode) {
-                                if (!reorderMode) {
-                                    awaitEachGesture {
-                                        awaitFirstDown(requireUnconsumed = false)
-                                        homeAppPressed = true
-                                        waitForUpOrCancellation()
-                                        homeAppPressed = false
+                            // Long press → drag. (clickable এর পরে রাখা, যাতে drag শুরু হলে tap/launch না হয়)
+                            .pointerInput(app.packageName) {
+                                var moved = 0f
+                                val slop = viewConfiguration.touchSlop
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = {
+                                        moved = 0f
+                                        dragOffset = 0f
+                                        draggedKey = app.packageName
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    },
+                                    onDrag = { change, amount ->
+                                        change.consume()
+                                        moved += abs(amount.x) + abs(amount.y)
+                                        dragOffset += amount.y
+                                        maybeSwap()
+                                    },
+                                    onDragEnd = {
+                                        val order = localOrder
+                                        draggedKey = null
+                                        dragOffset = 0f
+                                        if (moved < slop) currentOnLongPress(app)   // নড়েনি → options menu
+                                        else currentOnReorder(order)                // নড়েছে → নতুন order save
+                                    },
+                                    onDragCancel = {
+                                        draggedKey = null
+                                        dragOffset = 0f
+                                        localOrder = currentPinned
                                     }
-                                }
+                                )
                             }
                             .padding(vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // reorder mode এ left side indicator
-                        if (reorderMode) {
-                            Icon(
-                                if (isSelected) Icons.Default.DragHandle else Icons.Default.UnfoldMore,
-                                null,
-                                tint     = if (isSelected) theme.accent else theme.text.copy(alpha = 0.25f),
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(Modifier.width(10.dp))
-                        }
-
                         Text(
                             text       = renamedMap[app.packageName] ?: app.label,
                             color      = when {
-                                isSelected    -> theme.accent
+                                isDragging    -> theme.accent
                                 app.isBlocked -> RED.copy(alpha = 0.7f)
                                 else          -> theme.text
                             },
                             fontSize   = appFontSize,
-                            fontWeight = if (isSelected) FontWeight.Normal else FontWeight.Light,
+                            fontWeight = FontWeight.Light,
                             modifier   = Modifier.weight(1f)
                         )
-
-                        // selected app এ ডান দিকে arrow hints
-                        if (reorderMode && selectedIndex == null) {
-                            Text("tap to move here", color = theme.text.copy(alpha = 0.2f), fontSize = 11.sp)
-                        }
-                        if (isSelected) {
-                            Spacer(Modifier.width(8.dp))
-                            Text("tap a slot →", color = theme.accent.copy(alpha = 0.7f), fontSize = 11.sp)
-                        }
-                    }
-
-                    if (reorderMode && index < localOrder.size - 1) {
-                        HorizontalDivider(color = DIVIDER.copy(alpha = 0.3f), thickness = 0.5.dp)
-                    }
-                }
-
-                // Done button — reorder mode এ দেখা যাবে
-                if (reorderMode) {
-                    item {
-                        Spacer(Modifier.height(12.dp))
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(theme.accent.copy(alpha = 0.15f))
-                                .clickable {
-                                    reorderMode   = false
-                                    selectedIndex = null
-                                }
-                                .padding(vertical = 14.dp),
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Icon(Icons.Default.Check, null, tint = theme.accent, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Done", color = theme.accent, fontSize = 14.sp)
+                        if (isDragging) {
+                            Icon(Icons.Default.DragHandle, null,
+                                tint = theme.accent, modifier = Modifier.size(20.dp))
                         }
                     }
                 }
