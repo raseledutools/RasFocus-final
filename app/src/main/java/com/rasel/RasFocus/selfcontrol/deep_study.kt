@@ -650,6 +650,13 @@ fun Deep_study() {
             isFocusMode -> DeepStudyBlockerService.start(context)
             !isFocusMode && !isBreak -> DeepStudyBlockerService.stop(context)
         }
+        // Native focus lock: accessibility service এই state পড়ে সাথে সাথে block করে।
+        when {
+            isFocusMode -> FocusSessionState.start(context, System.currentTimeMillis() + timeLeftMillis)
+            isBreak && DataManager.dsKeepBlockingInBreak ->
+                FocusSessionState.start(context, System.currentTimeMillis() + timeLeftMillis)
+            else -> FocusSessionState.stop(context)
+        }
         when {
             chkSound && (isFocusMode || isBreak) -> AmbientSoundEngine.play(context, soundType)
             !isFocusMode && !isBreak -> AmbientSoundEngine.stop()

@@ -756,6 +756,16 @@
          enables this Accessibility Service, crashing the whole app process (since this service
          runs in the main process, that crash takes Button Phone Mode / YouTube native / RasBrowser
          down with it). -->
+    <!-- Native Focus lock screen — Deep Study চলাকালীন non-allowed app / Chrome notun tab এ সামনে আসে -->
+    <activity
+        android:name=".selfcontrol.FocusLockActivity"
+        android:exported="false"
+        android:theme="@style/Theme.RasFocus"
+        android:launchMode="singleTask"
+        android:taskAffinity=""
+        android:excludeFromRecents="true"
+        android:showWhenLocked="true" />
+
     <service
         android:name=".selfcontrol.UnifiedBlockerService"
         android:label="RasFocus Protection"

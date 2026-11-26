@@ -339,6 +339,13 @@ class UnifiedBlockerService : AccessibilityService() {
         // ★ FAST PATH — extrem_block style: event.text থেকে adult URL instant check
         if (fastAdultCheck(event, pkg0)) return
 
+        // ── FOCUS LOCK (Deep Study, native) ────────────────────────────
+        // Focus চলাকালীন non-allowed app বা Chrome এর notun tab খুললে
+        // সাথে সাথে native FocusLockActivity সামনে আসে।
+        if ((event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                    event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) &&
+            FocusSessionState.isActive(this) && enforceFocusLock(pkg0)) return
+
         // ── 1. PANIC MODE (AdultBlockService priority #1) ──────────────
         if (isPanicActive) {
             if (System.currentTimeMillis() < panicEndTime) {
@@ -1579,6 +1586,71 @@ class UnifiedBlockerService : AccessibilityService() {
                 sendBroadcast(Intent("POMODORO_SESSION_UPDATE"))
             }
         }.start()
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // FOCUS LOCK ENFORCEMENT — শুধু allowed app/website চলবে (exe এর মতো)
+    // ══════════════════════════════════════════════════════════════════
+
+    private fun isFocusExempt(pkg: String): Boolean {
+        return isSystemApp(pkg) || pkg == "android" ||
+                pkg.contains("telecom") || pkg.contains("incallui") || pkg.contains("emergency")
+    }
+
+    private fun enforceFocusLock(pkg: String): Boolean {
+        if (pkg == packageName || isFocusExempt(pkg)) return false
+
+        val allowedApps = DataManager.dsAllowAppList.filter { it.isNotBlank() }
+        val appAllowed = allowedApps.any { pkg.contains(it, ignoreCase = true) }
+        if (!appAllowed) {
+            launchFocusLock()
+            return true
+        }
+
+        // Allowed browser (যেমন Chrome): website allow-list দেওয়া থাকলে শুধু ওই site চলবে,
+        // notun tab / অন্য site এ গেলেই focus screen।
+        if (isBrowserApp(pkg)) {
+            val webs = DataManager.dsAllowWebList.filter { it.isNotBlank() }
+            if (webs.isEmpty()) return false
+            val root = rootInActiveWindow ?: return false
+            try {
+                val url = extractBrowserUrl(root, pkg)?.lowercase().orEmpty()
+                val webAllowed = url.isNotEmpty() &&
+                        webs.any { url.contains(it.substringBefore("."), ignoreCase = true) }
+                val isNewTab = url.contains("newtab") || url.startsWith("chrome://") ||
+                        (url.isEmpty() && looksLikeNewTabPage(root))
+                if ((url.isNotEmpty() && !webAllowed) || isNewTab) {
+                    launchFocusLock()
+                    return true
+                }
+            } finally {
+                root.recycle()
+            }
+        }
+        return false
+    }
+
+    private fun looksLikeNewTabPage(root: AccessibilityNodeInfo): Boolean {
+        val hints = listOf("search or type web address", "search or type url", "search google or type url")
+        for (h in hints) {
+            if (root.findAccessibilityNodeInfosByText(h).isNotEmpty()) return true
+        }
+        return false
+    }
+
+    private var lastFocusLockLaunch = 0L
+
+    private fun launchFocusLock() {
+        val now = System.currentTimeMillis()
+        if (now - lastFocusLockLaunch < 600) return
+        lastFocusLockLaunch = now
+        try {
+            FocusLockActivity.launch(this)
+        } catch (_: Exception) {
+            // Activity launch আটকে গেলে পুরনো overlay + home fallback
+            multiLayerForceHome()
+            BlockPage.show(this, BlockPage.Type.FOCUS, "STAY FOCUSED!", getMotivationalQuote())
+        }
     }
 
     private fun checkDeepStudyBlocking(packageName: String, url: String) {
