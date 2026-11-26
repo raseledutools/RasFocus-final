@@ -390,6 +390,7 @@ fun RasGramApp(
     ) else null
 
     var isLoggedIn by remember { mutableStateOf(initialUser != null) }
+    LaunchedEffect(Unit) { ensureFirebaseAuth() }
     var currentUser by remember { mutableStateOf(initialUser) }
     var isDarkMode by remember { mutableStateOf(true) }
     // Logged-in users: splash max 2s তারপর force-dismiss — Firebase slow হলেও আটকে থাকবে না।
@@ -658,6 +659,21 @@ fun RasGramSplashScreen() {
     }
 }
 
+/**
+ * Firestore rules সাধারণত request.auth != null চায়। RasGram এর phone-only login
+ * Firebase Auth ব্যবহার করে না, তাই কেউ Firebase এ sign-in না থাকলে
+ * "Missing or insufficient permissions" আসে। এখানে silent anonymous sign-in করা হয়।
+ * (Firebase Console → Authentication → Sign-in method → Anonymous চালু থাকতে হবে)
+ */
+suspend fun ensureFirebaseAuth() {
+    try {
+        val auth = FirebaseAuth.getInstance()
+        if (auth.currentUser == null) auth.signInAnonymously().await()
+    } catch (e: Exception) {
+        android.util.Log.w("RasGramAuth", "anonymous sign-in failed: ${e.message}")
+    }
+}
+
 // ==================== OTP LOGIN SCREEN ====================
 @Composable
 fun OtpLoginScreen(onLogin: (User) -> Unit) {
@@ -702,6 +718,7 @@ fun OtpLoginScreen(onLogin: (User) -> Unit) {
         // BYPASS FIREBASE AUTH (For testing)
         scope.launch {
             try {
+                ensureFirebaseAuth()
                 val uid = "user_${fullPhone.replace("+", "").replace(" ", "")}"
                 val mobile = fullPhone.replace("+", "").replace(" ", "")
                 val docRef = db.collection("chat_users").document(mobile)
