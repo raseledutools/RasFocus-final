@@ -27,9 +27,15 @@ on:
 env:
   RELEASE_BUILD: true
 
+# নতুন push এলে পুরনো চলমান build বাতিল — runner সময় নষ্ট হবে না
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     permissions:
       contents: write
 
@@ -60,10 +66,10 @@ jobs:
         run: |
           if [ "$RELEASE_BUILD" = "true" ]; then
             echo ">>> RELEASE BUILD (minify + sign)"
-            ./gradlew assembleFullRelease --build-cache --parallel 2>&1 | tee /tmp/build.log; BUILD_EXIT=${PIPESTATUS[0]}
+            ./gradlew assembleFullRelease --build-cache --parallel --no-daemon -Pkotlin.incremental=false 2>&1 | tee /tmp/build.log; BUILD_EXIT=${PIPESTATUS[0]}
           else
             echo ">>> DEBUG BUILD (fast, no minify)"
-            ./gradlew assembleFullDebug --build-cache --parallel 2>&1 | tee /tmp/build.log; BUILD_EXIT=${PIPESTATUS[0]}
+            ./gradlew assembleFullDebug --build-cache --parallel --no-daemon -Pkotlin.incremental=false 2>&1 | tee /tmp/build.log; BUILD_EXIT=${PIPESTATUS[0]}
           fi
           exit $BUILD_EXIT
 
@@ -120,7 +126,8 @@ jobs:
       - name: List generated APKs
         run: find app/build/outputs/apk -name "*.apk" -print
 
-      - name: Upload APK as artifact
+      - name: Upload APK as artifact (debug only)
+        if: env.RELEASE_BUILD != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: RasFocus-${{ env.RELEASE_BUILD == 'true' && 'release' || 'debug' }}

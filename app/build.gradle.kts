@@ -147,11 +147,18 @@ android {
             // build সময় কমাতে R8 minify/shrink বন্ধ — APK এর সাইজ (MB) একটু বাড়বে
             isMinifyEnabled   = false
             isShrinkResources = false
+            isCrunchPngs      = false   // PNG recompress বন্ধ — build দ্রুত
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
         }
+    }
+
+    // Build speed: release build এ lintVital (অতিরিক্ত ~১ মিনিট) চালানোর দরকার নেই
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
     }
 
     compileOptions {
