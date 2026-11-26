@@ -132,7 +132,11 @@ object AutoUpdater {
                 connectTimeout = 8000
                 readTimeout    = 8000
             }
-            if (conn.responseCode != HttpURLConnection.HTTP_OK) return null
+            if (conn.responseCode != HttpURLConnection.HTTP_OK) {
+                // API rate-limit (403, ঘণ্টায় 60/IP) বা অন্য error — github.com redirect দিয়ে fallback
+                Log.w(TAG, "API responded ${conn.responseCode}, using web fallback")
+                return fetchLatestReleaseInfoViaWeb()
+            }
 
             val json    = JSONObject(conn.inputStream.bufferedReader().readText())
             val tagName = json.getString("tag_name")
@@ -166,6 +170,46 @@ object AutoUpdater {
             ReleaseInfo(tagName, publishedAt, directUrl)
         } catch (e: Exception) {
             Log.e(TAG, "fetchLatestReleaseInfoSync failed", e)
+            try { fetchLatestReleaseInfoViaWeb() } catch (e2: Exception) { null }
+        }
+    }
+
+    // ── Fallback: api.github.com ছাড়া (rate-limit নেই) ───────────────────
+    // /releases/latest → 302 → /releases/tag/<tag>; তারপর asset URL HEAD দিয়ে verify।
+    private fun fetchLatestReleaseInfoViaWeb(): ReleaseInfo? {
+        return try {
+            val base = "https://github.com/$GITHUB_OWNER/$GITHUB_REPO"
+            val c1 = (URL("$base/releases/latest").openConnection() as HttpURLConnection).apply {
+                instanceFollowRedirects = false
+                requestMethod = "HEAD"
+                connectTimeout = 8000
+                readTimeout    = 8000
+            }
+            c1.connect()
+            val loc = c1.getHeaderField("Location")
+            c1.disconnect()
+            val tag = loc?.substringAfter("/releases/tag/", "")?.substringBefore('?')?.trim().orEmpty()
+            if (tag.isEmpty()) return null
+
+            var direct: String? = null
+            for (apk in listOf(getPreferredApkName(), APK_UNIVERSAL).distinct()) {
+                val u = "$base/releases/download/$tag/$apk"
+                val c = (URL(u).openConnection() as HttpURLConnection).apply {
+                    instanceFollowRedirects = false
+                    requestMethod = "HEAD"
+                    connectTimeout = 8000
+                    readTimeout    = 8000
+                }
+                c.connect()
+                val code = c.responseCode
+                val l = c.getHeaderField("Location")
+                c.disconnect()
+                if (code in 300..399 && !l.isNullOrEmpty()) { direct = l; break }
+            }
+            if (direct == null) return null
+            ReleaseInfo(tag, "—", direct)
+        } catch (e: Exception) {
+            Log.e(TAG, "web fallback failed", e)
             null
         }
     }
