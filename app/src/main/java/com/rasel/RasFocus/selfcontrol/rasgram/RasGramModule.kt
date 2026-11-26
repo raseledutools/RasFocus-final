@@ -711,7 +711,7 @@ fun OtpLoginScreen(onLogin: (User) -> Unit) {
                 // নতুন নাম শুধু Settings > Profile থেকে পরিবর্তন করা যাবে।
                 if (!snap.exists()) {
                     docRef.set(hashMapOf(
-                        "uid" to uid, "name" to userName, "mobile" to mobile,
+                        "uid" to uid, "name" to userName.ifBlank { mobile }, "mobile" to mobile,
                         "avatarUrl" to "", "lastActive" to System.currentTimeMillis(),
                         "typingTo" to null, "statusVisible" to true,
                         "about" to "Hey there! I am using RasGram."
@@ -724,7 +724,7 @@ fun OtpLoginScreen(onLogin: (User) -> Unit) {
                 // BUG FIX: snap ছিল login এর আগের state।
                 // নতুন user হলে snap.getString("name") → null, তাই re-fetch করো।
                 val freshSnap = docRef.get().await()
-                val savedName = freshSnap.getString("name") ?: userName
+                val savedName = freshSnap.getString("name") ?: userName.ifBlank { mobile }
                 
                 // Save FCM token after login
                 try {
@@ -907,8 +907,9 @@ fun OtpLoginScreen(onLogin: (User) -> Unit) {
                                 onCountryCodeChange = { countryCode = it },
                                 isLoading = isLoading,
                                 errorMsg = errorMsg,
+                                // শুধু ফোন নম্বর দিলেই সরাসরি login — name/OTP ধাপ নেই
                                 onNext = {
-                                    if (phoneNumber.isNotBlank()) step = 1 else errorMsg = "Enter phone number"
+                                    if (phoneNumber.length >= 9) sendOtp() else errorMsg = "Enter a valid phone number"
                                 }
                             )
                             1 -> NameInputStep(
