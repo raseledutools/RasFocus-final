@@ -1386,6 +1386,11 @@ fun MainScreen(
     LaunchedEffect(currentUser.mobile) {
         // ── Profile sync (unchanged) ──────────────────────────────────────────
         db.collection("chat_users").document(currentUser.mobile).addSnapshotListener { snap, _ ->
+            // Server এ user document মুছে গেলে (admin reset) — পুরনো login বাতিল, নতুন করে login করতে হবে।
+            if (snap != null && !snap.exists() && !snap.metadata.isFromCache) {
+                onLogout()
+                return@addSnapshotListener
+            }
             snap?.data?.let { d ->
                 liveCurrentUser = liveCurrentUser.copy(
                     name = d["name"] as? String ?: liveCurrentUser.name,
